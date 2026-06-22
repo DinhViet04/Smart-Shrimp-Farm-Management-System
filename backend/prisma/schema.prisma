@@ -1,13 +1,167 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  FARMER
+  TECHNICIAN
+  ADMIN
+}
+
+enum HealthStatus {
+  GOOD
+  WARNING
+  DANGER
+}
+
+enum CropStatus {
+  ACTIVE
+  HARVESTED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  phone     String?
+  role      Role     @default(FARMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  farms     Farm[]
+}
+
+model Farm {
+  id        String   @id @default(uuid())
+  name      String
+  location  String?
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  ponds     Pond[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Pond {
+  id        String   @id @default(uuid())
+  name      String
+  areaSize  Float // in square meters
+  depth     Float // in meters
+  farmId    String
+  farm      Farm     @relation(fields: [farmId], references: [id])
+  crops     Crop[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Crop {
+  id                 String              @id @default(uuid())
+  pondId             String
+  pond               Pond                @relation(fields: [pondId], references: [id])
+  startDate          DateTime
+  initialShrimpCount Int // T_o: Số tôm thả ban đầu
+  status             CropStatus          @default(ACTIVE)
+  fiveTCycles        FiveTCycle[]
+  environmentRecords EnvironmentRecord[]
+  incidents          Incident[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model FiveTCycle {
+  id                    String                 @id @default(uuid())
+  cropId                String
+  crop                  Crop                   @relation(fields: [cropId], references: [id])
+  startDayIndex         Int // Ngày bắt đầu vòng lặp
+  endDayIndex           Int // Ngày kết thúc vòng lặp
+  dailyRecords          DailyRecord[]
+  sizeMeasurement       SizeMeasurement?
+  feedingRecommendation FeedingRecommendation?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+}
+
+model DailyRecord {
+  id             String       @id @default(uuid())
+  cycleId        String
+  cycle          FiveTCycle   @relation(fields: [cycleId], references: [id])
+  recordDate     DateTime
+  dayIndex       Int // Ngày nuôi thứ mấy (1, 2, 3...)
+  actualFeedKg   Float // Lượng thức ăn thực tế (Food_i)
+  mortalityCount Int // Số tôm hao
+  healthStatus   HealthStatus
+  waterTemp      Float // Nhiệt độ nước để hiệu chỉnh lượng ăn
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([cycleId, recordDate])
+}
+
+model SizeMeasurement {
+  id                  String     @id @default(uuid())
+  cycleId             String     @unique
+  cycle               FiveTCycle @relation(fields: [cycleId], references: [id])
+  measurementDate     DateTime
+  dayIndex            Int // Phải chia hết cho 5 theo quy trình 5T
+  sampleWeightGram    Float // G_m: Trọng lượng mẫu
+  shrimpCountInSample Int // N_đ: Số tôm đếm được
+  calculatedSize      Float // Size_m = N_đ / (G_m / 1000)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+}
+
+model FeedingRecommendation {
+  id                  String     @id @default(uuid())
+  cycleId             String     @unique
+  cycle               FiveTCycle @relation(fields: [cycleId], references: [id])
+  recommendedFeedKg   Float[] // Mảng 5 phần tử: Lượng thức ăn đề xuất 5 ngày tới
+  adjustmentReasoning String? // Lý do hiệu chỉnh (ví dụ: "Giảm 10% do nhiệt độ thấp")
+  applied             Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+}
+
+model EnvironmentRecord {
+  id         String   @id @default(uuid())
+  cropId     String
+  crop       Crop     @relation(fields: [cropId], references: [id])
+  recordDate DateTime @default(now())
+  ph         Float?
+  do         Float? // Dissolved Oxygen
+  alkalinity Float? // Độ kiềm
+  nh3        Float?
+  no2        Float?
+  salinity   Float? // Độ mặn
+  createdAt  DateTime @default(now())
+}
+
+model Incident {
+  id          String    @id @default(uuid())
+  cropId      String
+  crop        Crop      @relation(fields: [cropId], references: [id])
+  title       String
+  description String
+  treatment   String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Standard5T {
+  id         Int      @id @default(autoincrement())
+  dayMark    Int      @unique // 20, 35, 45, 60...
+  targetSize Float // e.g. < 1000
+  targetFcr  Float // e.g. < 1.0
+  createdAt  DateTime @default(now())
 }

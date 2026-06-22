@@ -1,48 +1,63 @@
 # Smart Shrimp Farm Management System (SSFM)
 
-This repository contains the source code for the SSFM project, including the Backend (NestJS), Web App (React Vite), Mobile App (Expo), and AI Service (Python FastAPI).
+Dự án Hệ thống Quản lý Trang trại Nuôi tôm Thông minh (SSFM) được thiết kế theo **Quy trình 5T** của TS. Trần Văn Thái, tập trung vào việc số hóa **Vòng lặp 5 ngày (5T Care)** nhằm kiểm soát tối ưu Tốc độ tăng trưởng và hệ số FCR.
 
-## 🚀 Getting Started
+## 🚀 Kiến Trúc Hệ Thống
+Dự án bao gồm 4 khối chính độc lập:
+1. `backend/`: NestJS + Prisma + PostgreSQL (Cung cấp API cho 5T Care).
+2. `frontend-web/`: React + Vite + TailwindCSS (Dashboard cho Quản lý & Kỹ thuật viên).
+3. `frontend-mobile/`: React Native Expo (App tối giản cho Nông dân nhập liệu hàng ngày).
+4. `ai-service/`: Python + FastAPI (Chatbot RAG hỏi đáp dựa trên 10 Chương Quy trình 5T).
 
-### 1. Prerequisites
-- Node.js (v20+)
-- Python (v3.10+)
-- Docker & Docker Compose
+---
 
-### 2. Run Database
+## 🛠 Hướng Dẫn Cài Đặt & Chạy Dịch Vụ (Cho Toàn Nhóm)
+
+### Yêu cầu hệ thống:
+- [Node.js (v20+)](https://nodejs.org/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Python 3.10+](https://www.python.org/)
+
+### 1. Khởi động Database (PostgreSQL & Redis)
+Mở Docker Desktop. Mở terminal ở thư mục gốc và chạy:
 ```bash
 docker-compose up -d
 ```
-This will start PostgreSQL on port `5432` and Redis on port `6379`.
 
-### 3. Backend (NestJS)
+### 2. Backend (NestJS)
 ```bash
 cd backend
 npm install
+cp .env.example .env
+npx prisma db push
 npm run start:dev
 ```
-Don't forget to configure your `.env` with the `DATABASE_URL` and run `npx prisma db push` or `npx prisma migrate dev`.
 
-### 4. Frontend Web (React + Vite)
+### 3. Frontend Web (React Vite)
 ```bash
 cd frontend-web
 npm install
 npm run dev
 ```
 
-### 5. Frontend Mobile (Expo)
+### 4. Frontend Mobile (Expo)
 ```bash
 cd frontend-mobile
 npm install
 npm start
 ```
 
-### 6. AI Service (Python FastAPI)
+### 5. AI Service (Python)
 ```bash
 cd ai-service
-# Activate venv
-# Windows: .\venv\Scripts\activate
-# Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+cp .env.example .env
+uvicorn main:app --reload
 ```
+
+---
+
+## 📘 Logic Cốt Lõi: Vòng Lặp 5 Ngày (5T Care)
+- **Ngày 1-4:** Nông dân dùng Mobile App nhập lượng thức ăn, tôm hao, nhiệt độ.
+- **Ngày 5:** Nông dân bắt mẫu tôm, cân trọng lượng mẫu ($G_m$) và đếm số lượng ($N_đ$).
+- **Hệ thống xử lý:** Tự động tính Size ($Size_m$), FCR thực tế, so sánh với **Bảng Mục Tiêu Chuẩn 5T** và xuất Bảng Khuyến Nghị Cho Ăn cho 5 ngày tiếp theo (có hiệu chỉnh theo nhiệt độ).

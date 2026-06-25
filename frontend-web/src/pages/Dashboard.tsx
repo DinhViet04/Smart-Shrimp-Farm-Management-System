@@ -1,4 +1,18 @@
+import { useNavigate } from 'react-router-dom';
+
 export default function Dashboard() {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    // Clear any stored authentication data
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    
+    // Redirect to login page
+    navigate('/login');
+  };
+
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
       {/* Sidebar */}
@@ -20,6 +34,12 @@ export default function Dashboard() {
           <div className="flex items-center space-x-4">
             <span className="text-gray-600">Xin chào, Admin</span>
             <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+            <button 
+              onClick={handleLogout}
+              className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200"
+            >
+              Đăng xuất
+            </button>
           </div>
         </header>
 

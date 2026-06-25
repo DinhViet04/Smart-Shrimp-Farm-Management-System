@@ -10,3 +10,6 @@ coverage/
 .DS_Store
 Thumbs.db
 !.env.example
+.codegraph/
+run_notebook_query.js
+test_mcp.js

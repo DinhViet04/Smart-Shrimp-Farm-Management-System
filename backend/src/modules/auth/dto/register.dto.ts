@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  Matches,
 } from 'class-validator';
 
 export class RegisterDto {
@@ -11,7 +12,10 @@ export class RegisterDto {
   email: string;
 
   @IsString()
-  @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
+  @MinLength(8, { message: 'Mật khẩu phải có ít nhất 8 ký tự' })
+  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
+    message: 'Mật khẩu phải chứa chữ hoa, chữ thường và số hoặc ký tự đặc biệt',
+  })
   password: string;
 
   @IsString()
@@ -20,5 +24,8 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^0[35789][0-9]{8}$/, {
+    message: 'Số điện thoại phải có 10 chữ số và bắt đầu bằng 0',
+  })
   phone?: string;
 }

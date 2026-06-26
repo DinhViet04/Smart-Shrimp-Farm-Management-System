@@ -37,8 +37,12 @@ export default function LoginPage() {
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        // Redirect to dashboard
-        navigate('/dashboard');
+        // Redirect to appropriate dashboard based on role
+        if (data.user.role === 'ADMIN') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
       }
     } catch (error) {
       setServerError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');

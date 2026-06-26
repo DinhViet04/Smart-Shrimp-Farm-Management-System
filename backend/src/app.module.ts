@@ -13,6 +13,7 @@ import { EnvironmentModule } from './modules/environment/environment.module.js';
 import { IncidentsModule } from './modules/incidents/incidents.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
 import { ChatbotModule } from './modules/chatbot/chatbot.module.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module.js';
     IncidentsModule,
     ReportsModule,
     ChatbotModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

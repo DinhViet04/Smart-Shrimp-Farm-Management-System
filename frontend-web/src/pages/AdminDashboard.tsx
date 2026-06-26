@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const userStr = localStorage.getItem('user');
@@ -87,36 +87,7 @@ const adminItems = [
   { label: 'Bảo mật', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
 ];
 
-const statCards = [
-  { label: 'Tổng Người dùng', value: '1,284', change: '+10.5%', up: true, color: '#6366f1', bg: 'bg-indigo-50', iconColor: 'text-indigo-500' },
-  { label: 'Tổng Trang trại', value: '24', change: '+8.2%', up: true, color: '#10b981', bg: 'bg-emerald-50', iconColor: 'text-emerald-500' },
-  { label: 'Ao đang hoạt động', value: '89', change: '-2.1%', up: false, color: '#f59e0b', bg: 'bg-amber-50', iconColor: 'text-amber-500' },
-  { label: 'Thời gian phản hồi', value: '1.2s', change: '+5.4%', up: true, color: '#3b82f6', bg: 'bg-blue-50', iconColor: 'text-blue-500' },
-];
-
-const growthData = [68, 120, 45, 30, 80, 95, 140];
-const growthLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-
-const recentUsers = [
-  { id: '#U1081', name: 'Nguyễn Văn A', role: 'FARMER', email: 'a.nguyen@mail.com', status: 'Hoạt động', date: '26/06/2025' },
-  { id: '#U1082', name: 'Trần Thị B', role: 'FARM_MANAGER', email: 'b.tran@mail.com', status: 'Hoạt động', date: '25/06/2025' },
-  { id: '#U1083', name: 'Lê Văn C', role: 'TECHNICIAN', email: 'c.le@mail.com', status: 'Chờ duyệt', date: '24/06/2025' },
-  { id: '#U1084', name: 'Phạm Thị D', role: 'FARMER', email: 'd.pham@mail.com', status: 'Hoạt động', date: '24/06/2025' },
-];
-
-const recentActivity = [
-  { text: 'Người dùng mới đăng ký', sub: '2 phút trước', color: 'bg-indigo-500' },
-  { text: 'Trang trại #24 được tạo', sub: '15 phút trước', color: 'bg-emerald-500' },
-  { text: 'Cảnh báo môi trường ao B3', sub: '1 giờ trước', color: 'bg-amber-500' },
-  { text: 'Hệ thống cập nhật xong', sub: '3 giờ trước', color: 'bg-blue-500' },
-];
-
-const roleDistrib = [
-  { value: 52, color: '#6366f1', label: 'Farmer' },
-  { value: 24, color: '#10b981', label: 'Farm Manager' },
-  { value: 14, color: '#f59e0b', label: 'Technician' },
-  { value: 10, color: '#ef4444', label: 'Admin' },
-];
+// Static data replaced by API call
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'bg-red-100 text-red-700',
@@ -134,6 +105,95 @@ const roleLabel: Record<string, string> = {
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'Tổng quan');
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('adminActiveTab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    fetchUsers();
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3000/api/admin/dashboard-stats', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3000/api/users', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3000/api/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ role: newRole })
+      });
+      if (response.ok) {
+        setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      } else {
+        alert('Cập nhật quyền thất bại!');
+      }
+    } catch (error) {
+      console.error('Error updating role:', error);
+      alert('Lỗi kết nối!');
+    }
+  };
+
+  const handleStatusChange = async (userId: string, newStatus: boolean) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3000/api/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ isActive: newStatus })
+      });
+      if (response.ok) {
+        setUsers(users.map(u => u.id === userId ? { ...u, isActive: newStatus } : u));
+      } else {
+        alert('Cập nhật trạng thái thất bại!');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Lỗi kết nối!');
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
@@ -162,8 +222,9 @@ export default function AdminDashboard() {
             <a
               key={item.label}
               href="#"
+              onClick={(e) => { e.preventDefault(); setActiveTab(item.label); }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                item.active
+                activeTab === item.label
                   ? 'bg-indigo-50 text-indigo-700'
                   : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
               }`}
@@ -254,20 +315,24 @@ export default function AdminDashboard() {
         <main className="flex-1 overflow-y-auto p-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+              <h1 className="text-xl font-bold text-gray-900">{activeTab}</h1>
               <p className="text-gray-400 text-sm mt-0.5">Xin chào! Đây là những gì đang xảy ra.</p>
             </div>
-            <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Thêm mới
-            </button>
+            {activeTab === 'Người dùng' && (
+              <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Thêm người dùng
+              </button>
+            )}
           </div>
 
-          {/* Stat cards */}
+          {activeTab === 'Tổng quan' && (
+            <>
+              {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {statCards.map((card) => (
+            {stats?.statCards?.map((card: any) => (
               <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-3 shadow-sm">
                 <div className="flex items-start justify-between">
                   <div>
@@ -292,9 +357,9 @@ export default function AdminDashboard() {
                 <h2 className="text-sm font-bold text-gray-800">Người dùng mới (7 ngày qua)</h2>
                 <span className="text-xs text-gray-400">Tuần này</span>
               </div>
-              <BarChart data={growthData} color="#6366f1" />
+              <BarChart data={stats?.growthData || []} color="#6366f1" />
               <div className="flex justify-between mt-2">
-                {growthLabels.map((l) => (
+                {stats?.growthLabels?.map((l: string) => (
                   <span key={l} className="text-[10px] text-gray-400 flex-1 text-center">{l}</span>
                 ))}
               </div>
@@ -304,7 +369,7 @@ export default function AdminDashboard() {
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
               <h2 className="text-sm font-bold text-gray-800 mb-4">Hoạt động gần đây</h2>
               <div className="space-y-4">
-                {recentActivity.map((item, i) => (
+                {stats?.recentActivity?.map((item: any, i: number) => (
                   <div key={i} className="flex items-start gap-3">
                     <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${item.color}`} />
                     <div>
@@ -316,9 +381,12 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+          </>
+          )}
 
-          {/* Bottom row: Recent users + Role distribution */}
+          {activeTab === 'Người dùng' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Bottom row: Recent users + Role distribution */}
             {/* Recent users table */}
             <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
@@ -337,27 +405,50 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {recentUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-5 py-3 font-mono text-indigo-600 font-semibold text-xs">{u.id}</td>
-                        <td className="px-5 py-3">
-                          <p className="font-medium text-gray-800">{u.name}</p>
-                          <p className="text-gray-400 text-xs">{u.email}</p>
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${roleBadge[u.role]}`}>
-                            {roleLabel[u.role]}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`flex items-center gap-1.5 text-xs font-medium ${u.status === 'Hoạt động' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Hoạt động' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                            {u.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-gray-400 text-xs">{u.date}</td>
+                    {loadingUsers ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-8 text-gray-500">Đang tải dữ liệu...</td>
                       </tr>
-                    ))}
+                    ) : users.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-8 text-gray-500">Chưa có người dùng nào</td>
+                      </tr>
+                    ) : (
+                      users.map((u) => (
+                        <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3 font-mono text-indigo-600 font-semibold text-xs">#{u.id.substring(0, 8)}</td>
+                          <td className="px-5 py-3">
+                            <p className="font-medium text-gray-800">{u.fullName}</p>
+                            <p className="text-gray-400 text-xs">{u.email}</p>
+                          </td>
+                          <td className="px-5 py-3">
+                            <select 
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                              className={`px-2 py-1 outline-none cursor-pointer rounded-lg text-xs font-semibold border-2 border-transparent hover:border-gray-200 transition-colors ${roleBadge[u.role] || 'bg-gray-100 text-gray-700'}`}
+                            >
+                              <option value="ADMIN" className="bg-white text-gray-800">Admin</option>
+                              <option value="FARM_MANAGER" className="bg-white text-gray-800">Quản lý</option>
+                              <option value="TECHNICIAN" className="bg-white text-gray-800">Kỹ thuật viên</option>
+                              <option value="FARMER" className="bg-white text-gray-800">Nông dân</option>
+                            </select>
+                          </td>
+                          <td className="px-5 py-3">
+                            <select
+                              value={u.isActive ? "true" : "false"}
+                              onChange={(e) => handleStatusChange(u.id, e.target.value === 'true')}
+                              className={`px-2 py-1 outline-none cursor-pointer rounded-lg text-xs font-semibold border-2 border-transparent hover:border-gray-200 transition-colors ${
+                                u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              <option value="true" className="bg-white text-gray-800">Hoạt động</option>
+                              <option value="false" className="bg-white text-gray-800">Khóa tài khoản</option>
+                            </select>
+                          </td>
+                          <td className="px-5 py-3 text-gray-400 text-xs">{new Date(u.createdAt).toLocaleDateString('vi-VN')}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -367,21 +458,22 @@ export default function AdminDashboard() {
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm flex flex-col">
               <h2 className="text-sm font-bold text-gray-800 mb-4">Phân bổ Vai trò</h2>
               <div className="flex-1 flex items-center justify-center">
-                <DonutChart segments={roleDistrib} />
+                <DonutChart segments={stats?.roleDistrib || []} />
               </div>
               <div className="mt-4 space-y-2">
-                {roleDistrib.map((s) => (
+                {stats?.roleDistrib?.map((s: any) => (
                   <div key={s.label} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 text-gray-500">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
                       {s.label}
                     </div>
-                    <span className="font-semibold text-gray-700">{s.value}%</span>
+                    <span className="font-semibold text-gray-700">{s.value} người</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
+          )}
         </main>
       </div>
     </div>

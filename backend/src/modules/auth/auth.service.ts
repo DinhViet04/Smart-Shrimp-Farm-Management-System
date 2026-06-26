@@ -52,6 +52,9 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
+    }
 
     // Compare passwords
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
@@ -85,6 +88,9 @@ export class AuthService {
       const user = await this.usersService.findById(payload.sub);
       if (!user) {
         throw new UnauthorizedException('User không tồn tại');
+      }
+      if (!user.isActive) {
+        throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
       }
 
       // Generate new token pair

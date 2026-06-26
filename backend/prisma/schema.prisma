@@ -16,6 +16,7 @@ enum Role {
   FARMER
   TECHNICIAN
   ADMIN
+  FARM_MANAGER
 }
 
 enum HealthStatus {

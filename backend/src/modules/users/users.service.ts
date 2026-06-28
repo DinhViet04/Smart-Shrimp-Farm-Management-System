@@ -47,21 +47,11 @@ export class UsersService {
   }
 
   async create(data: Prisma.UserCreateInput) {
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = data.password ? await bcrypt.hash(data.password, 10) : null;
     return this.prisma.user.create({
       data: {
         ...data,
         password: hashedPassword,
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
       },
     });
   }
@@ -91,6 +81,13 @@ export class UsersService {
         role: true,
         isActive: true,
       },
+    });
+  }
+
+  async updateGoogleId(id: string, googleId: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { googleId },
     });
   }
 }

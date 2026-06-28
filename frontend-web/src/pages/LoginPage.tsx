@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function LoginPage() {
@@ -8,6 +8,85 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  const handleGoogleLogin = async (response: any) => {
+    setServerError('');
+    setIsLoading(true);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const res = await fetch(`${apiUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        let errorMsg = data.message || 'Đăng nhập Google thất bại';
+        if (Array.isArray(data.message)) {
+          errorMsg = data.message[0];
+        }
+        setServerError(errorMsg);
+      } else {
+        // Save tokens to localStorage
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        // Redirect to appropriate dashboard based on role
+        if (data.user.role === 'ADMIN') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    } catch (error) {
+      setServerError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const initGoogle = () => {
+      if ((window as any).google?.accounts?.id) {
+        const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id-here.apps.googleusercontent.com';
+        (window as any).google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleLogin,
+          auto_select: false,
+        });
+
+        if (googleBtnRef.current) {
+          (window as any).google.accounts.id.renderButton(
+            googleBtnRef.current,
+            {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+              shape: 'pill',
+              logo_alignment: 'center',
+            }
+          );
+        }
+      }
+    };
+
+    // Poll to make sure script is loaded
+    const timer = setInterval(() => {
+      if ((window as any).google) {
+        initGoogle();
+        clearInterval(timer);
+      }
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,7 +94,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/auth/login', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,6 +130,7 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   };
+
   return (
     <div className="min-h-screen flex font-sans bg-white">
       {/* Left side - Image & Branding */}
@@ -94,14 +175,14 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-10 text-center lg:text-left">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Log In</h1>
-            <p className="text-gray-600">Enter your credentials to access your account.</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Đăng Nhập</h1>
+            <p className="text-gray-600">Nhập thông tin tài khoản của bạn để tiếp tục.</p>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="email">
-                Email Address
+                Địa chỉ Email
               </label>
               <input
                 id="email"
@@ -117,10 +198,10 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="password">
-                  Password
+                  Mật khẩu
                 </label>
                 <a href="#" tabIndex={-1} className="text-sm font-medium text-green-700 hover:text-green-800">
-                  Forgot password?
+                  Quên mật khẩu?
                 </a>
               </div>
               <div className="relative">
@@ -162,12 +243,12 @@ export default function LoginPage() {
                 className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                Remember me
+                Ghi nhớ tài khoản
               </label>
             </div>
 
             {serverError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-150">
                 {serverError}
               </div>
             )}
@@ -175,16 +256,37 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white font-semibold py-3 px-4 rounded-full transition-colors flex justify-center items-center ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white font-semibold py-3 px-4 rounded-full transition-colors flex justify-center items-center shadow-md ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              {isLoading ? 'Processing...' : 'Log In'}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Đang xử lý...
+                </span>
+              ) : 'Đăng Nhập'}
             </button>
           </form>
 
+          {/* Google Sign In Component */}
+          <div className="mt-6">
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="flex-shrink mx-4 text-gray-400 text-sm font-normal bg-white px-2">Hoặc tiếp tục với</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            <div className="mt-4 flex justify-center">
+              <div ref={googleBtnRef} className="w-full min-h-[44px]"></div>
+            </div>
+          </div>
+
           <p className="mt-8 text-center text-sm text-gray-600">
-            Don't have an account?{' '}
-            <Link to="/register" className="font-semibold text-green-700 hover:text-green-800">
-              Sign up
+            Chưa có tài khoản?{' '}
+            <Link to="/register" className="font-semibold text-green-700 hover:text-green-800 transition-colors">
+              Đăng ký ngay
             </Link>
           </p>
         </div>

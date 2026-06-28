@@ -56,10 +56,80 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
     }
 
+    if (!user.password) {
+      throw new UnauthorizedException(
+        'Tài khoản này được liên kết với Google. Vui lòng đăng nhập bằng tài khoản Google của bạn.',
+      );
+    }
+
     // Compare passwords
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+
+    // Generate tokens
+    const tokens = await this.generateTokens({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    // Return user info without password
+    const { password: _, ...userWithoutPassword } = user;
+
+    return {
+      user: userWithoutPassword,
+      ...tokens,
+    };
+  }
+
+  async loginWithGoogle(credential: string) {
+    let payload;
+    try {
+      const response = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`,
+      );
+      if (!response.ok) {
+        throw new UnauthorizedException('Token Google không hợp lệ hoặc đã hết hạn');
+      }
+      payload = await response.json();
+    } catch (error) {
+      throw new UnauthorizedException('Không thể xác thực token Google. Vui lòng thử lại.');
+    }
+
+    const { sub: googleId, email, name, email_verified } = payload;
+
+    if (!email) {
+      throw new UnauthorizedException('Không thể lấy thông tin email từ Google.');
+    }
+
+    if (email_verified !== 'true' && email_verified !== true) {
+      throw new UnauthorizedException('Email Google chưa được xác minh');
+    }
+
+    // Find user by email
+    const existingUser = await this.usersService.findByEmail(email);
+    let user;
+
+    if (existingUser) {
+      user = existingUser;
+      // If user exists but googleId is not set, update it
+      if (!user.googleId) {
+        user = await this.usersService.updateGoogleId(user.id, googleId);
+      }
+    } else {
+      // Create a new user
+      user = await this.usersService.create({
+        email,
+        googleId,
+        fullName: name || email.split('@')[0],
+        password: '', // Empty password
+      });
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
     }
 
     // Generate tokens

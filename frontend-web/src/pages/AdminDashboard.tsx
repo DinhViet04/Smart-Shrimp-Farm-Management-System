@@ -95,12 +95,6 @@ const roleBadge: Record<string, string> = {
   TECHNICIAN: 'bg-amber-100 text-amber-700',
   FARMER: 'bg-indigo-100 text-indigo-700',
 };
-const roleLabel: Record<string, string> = {
-  ADMIN: 'Admin',
-  FARM_MANAGER: 'Quản lý',
-  TECHNICIAN: 'Kỹ thuật viên',
-  FARMER: 'Nông dân',
-};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();

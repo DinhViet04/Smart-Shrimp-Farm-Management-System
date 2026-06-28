@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function RegisterPage() {
@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
 
   const getFieldError = (id: string, value: string, currentData: typeof formData): string => {
     if (id === 'fullName') {
@@ -59,6 +60,84 @@ export default function RegisterPage() {
     return isValid;
   };
 
+  const handleGoogleLogin = async (response: any) => {
+    setServerError('');
+    setIsLoading(true);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const res = await fetch(`${apiUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        let errorMsg = data.message || 'Đăng ký bằng Google thất bại';
+        if (Array.isArray(data.message)) {
+          errorMsg = data.message[0];
+        }
+        setServerError(errorMsg);
+      } else {
+        // Save tokens to localStorage
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        // Redirect to dashboard
+        if (data.user.role === 'ADMIN') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    } catch (error) {
+      setServerError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const initGoogle = () => {
+      if ((window as any).google?.accounts?.id) {
+        const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id-here.apps.googleusercontent.com';
+        (window as any).google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleLogin,
+          auto_select: false,
+        });
+
+        if (googleBtnRef.current) {
+          (window as any).google.accounts.id.renderButton(
+            googleBtnRef.current,
+            {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+              shape: 'pill',
+              logo_alignment: 'center',
+            }
+          );
+        }
+      }
+    };
+
+    // Poll to make sure script is loaded
+    const timer = setInterval(() => {
+      if ((window as any).google) {
+        initGoogle();
+        clearInterval(timer);
+      }
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setServerError('');
@@ -66,7 +145,8 @@ export default function RegisterPage() {
     if (validateForm()) {
       setIsLoading(true);
       try {
-        const response = await fetch('http://localhost:3000/api/auth/register', {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        const response = await fetch(`${apiUrl}/api/auth/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -82,14 +162,13 @@ export default function RegisterPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          // Backend returned an error (e.g., ConflictException if email exists)
           let errorMsg = data.message || 'Có lỗi xảy ra, vui lòng thử lại';
           if (Array.isArray(data.message)) {
-            errorMsg = data.message[0]; // If ValidationPipe returns array of errors
+            errorMsg = data.message[0];
           }
           setServerError(errorMsg);
         } else {
-          // Success! Redirect to login (or dashboard)
+          // Redirect to login
           navigate('/login');
         }
       } catch (error) {
@@ -166,15 +245,15 @@ export default function RegisterPage() {
             </Link>
           </div>
 
-          <div className="mb-10 text-center lg:text-left">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
-            <p className="text-gray-600">Enter your details to get started.</p>
+          <div className="mb-8 text-center lg:text-left">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Đăng Ký Tài Khoản</h1>
+            <p className="text-gray-600">Nhập thông tin cá nhân của bạn để bắt đầu.</p>
           </div>
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fullName">
-                Full Name <span className="text-red-500">*</span>
+                Họ và Tên <span className="text-red-500">*</span>
               </label>
               <input
                 id="fullName"
@@ -182,14 +261,14 @@ export default function RegisterPage() {
                 value={formData.fullName}
                 onChange={handleChange}
                 className={`w-full px-4 py-3 rounded-lg border ${errors.fullName ? 'border-red-500' : 'border-gray-300'} focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all text-gray-900`}
-                placeholder="John Doe"
+                placeholder="Nguyễn Văn A"
               />
               {errors.fullName && <p className="mt-1 text-sm text-red-500">{errors.fullName}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="email">
-                Email Address <span className="text-red-500">*</span>
+                Địa chỉ Email <span className="text-red-500">*</span>
               </label>
               <input
                 id="email"
@@ -204,7 +283,7 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="phone">
-                Phone Number
+                Số Điện Thoại
               </label>
               <input
                 id="phone"
@@ -220,7 +299,7 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="password">
-                Password <span className="text-red-500">*</span>
+                Mật Khẩu <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -255,7 +334,7 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="confirmPassword">
-                Confirm Password <span className="text-red-500">*</span>
+                Xác Nhận Mật Khẩu <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -289,7 +368,7 @@ export default function RegisterPage() {
             </div>
 
             {serverError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-150">
                 {serverError}
               </div>
             )}
@@ -297,16 +376,37 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white font-semibold py-3 px-4 rounded-full transition-colors flex justify-center items-center mt-6 ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full bg-[#2E7D32] hover:bg-[#1B5E20] text-white font-semibold py-3 px-4 rounded-full transition-colors flex justify-center items-center mt-6 shadow-md ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              {isLoading ? 'Processing...' : 'Sign Up'}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Đang xử lý...
+                </span>
+              ) : 'Đăng Ký'}
             </button>
           </form>
 
+          {/* Google Sign In Component */}
+          <div className="mt-6">
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="flex-shrink mx-4 text-gray-400 text-sm font-normal bg-white px-2">Hoặc đăng ký nhanh bằng</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            <div className="mt-4 flex justify-center">
+              <div ref={googleBtnRef} className="w-full min-h-[44px]"></div>
+            </div>
+          </div>
+
           <p className="mt-8 text-center text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link to="/login" className="font-semibold text-green-700 hover:text-green-800">
-              Log In
+            Đã có tài khoản?{' '}
+            <Link to="/login" className="font-semibold text-green-700 hover:text-green-800 transition-colors">
+              Đăng Nhập
             </Link>
           </p>
         </div>

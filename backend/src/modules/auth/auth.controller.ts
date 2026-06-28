@@ -11,6 +11,7 @@ import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { GoogleLoginDto } from './dto/google-login.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { UsersService } from '../users/users.service.js';
@@ -31,6 +32,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  async googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.loginWithGoogle(dto.credential);
   }
 
   @Post('refresh')

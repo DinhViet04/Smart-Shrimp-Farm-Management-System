@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AccountSettings from '../components/AccountSettings';
 
 const userStr = localStorage.getItem('user');
 const currentUser = userStr ? JSON.parse(userStr) : { fullName: 'Admin', email: 'admin@ssfm.com' };
@@ -259,7 +260,8 @@ export default function AdminDashboard() {
             <a
               key={item.label}
               href="#"
-              className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors text-sm font-semibold"
+              onClick={(e) => { e.preventDefault(); setActiveTab(item.label); }}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-semibold ${activeTab === item.label ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
             >
               <svg className="w-5 h-5 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
@@ -352,7 +354,9 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {activeTab === 'Tổng quan' && (
+            {activeTab === 'Cài đặt' ? (
+              <AccountSettings />
+            ) : activeTab === 'Tổng quan' && (
               <>
                 {/* Stat cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

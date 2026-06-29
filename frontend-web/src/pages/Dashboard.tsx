@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Droplets, LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle } from 'lucide-react';
+import { Droplets, LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings } from 'lucide-react';
+import AccountSettings from '../components/AccountSettings';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function Dashboard() {
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
     { name: 'Môi trường', icon: <Thermometer className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
+    { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
   return (
@@ -165,7 +167,9 @@ export default function Dashboard() {
             </div>
           )}
 
-          {activeTab !== 'Dashboard' && (
+          {activeTab === 'Cài đặt' ? (
+            <AccountSettings />
+          ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">
                 <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-500">
@@ -175,7 +179,7 @@ export default function Dashboard() {
                 <p className="text-slate-500 max-w-md mx-auto">Tính năng <span className="font-semibold text-blue-600">{activeTab}</span> đang trong quá trình hoàn thiện và sẽ sớm ra mắt.</p>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </main>
     </div>

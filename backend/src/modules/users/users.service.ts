@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
@@ -37,6 +37,8 @@ export class UsersService {
         email: true,
         fullName: true,
         phone: true,
+        address: true,
+        avatarUrl: true,
         role: true,
         isActive: true,
         createdAt: true,
@@ -82,6 +84,57 @@ export class UsersService {
         isActive: true,
       },
     });
+  }
+
+  async updateProfile(id: string, data: { fullName?: string; phone?: string; address?: string; avatarUrl?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        fullName: data.fullName,
+        phone: data.phone ?? null,
+        address: data.address ?? null,
+        avatarUrl: data.avatarUrl ?? null,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        address: true,
+        avatarUrl: true,
+        role: true,
+        isActive: true,
+      },
+    });
+  }
+
+  async changePassword(id: string, currentPassword: string, newPassword: string, confirmPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || !user.password) {
+      throw new BadRequestException('Tài khoản này không hỗ trợ đổi mật khẩu');
+    }
+
+    if (newPassword !== confirmPassword) {
+      throw new BadRequestException('Xác nhận mật khẩu không khớp');
+    }
+
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async updateGoogleId(id: string, googleId: string) {

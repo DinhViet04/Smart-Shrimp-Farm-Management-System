@@ -6,6 +6,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
 import { UpdateStatusDto } from './dto/update-status.dto.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -15,6 +17,21 @@ export class UsersController {
   @Get('profile')
   async getProfile(@CurrentUser('userId') userId: string) {
     return this.usersService.findById(userId);
+  }
+
+  @Patch('profile')
+  async updateProfile(@CurrentUser('userId') userId: string, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.usersService.updateProfile(userId, updateProfileDto);
+  }
+
+  @Patch('password')
+  async changePassword(@CurrentUser('userId') userId: string, @Body() changePasswordDto: ChangePasswordDto) {
+    return this.usersService.changePassword(
+      userId,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword,
+      changePasswordDto.confirmPassword,
+    );
   }
 
   @Get()

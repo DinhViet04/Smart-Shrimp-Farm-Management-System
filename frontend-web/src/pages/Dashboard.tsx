@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Droplets, LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
 
 export default function Dashboard() {

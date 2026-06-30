@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Droplets, Mail, Lock, ArrowRight, Activity, LineChart } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Activity, LineChart } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -222,9 +222,9 @@ export default function LoginPage() {
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest" htmlFor="password">
                   Mật Khẩu
                 </label>
-                <a href="#" tabIndex={-1} className="text-[13px] font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+                <Link to="/forgot-password" state={{ email }} className="text-[13px] font-semibold text-blue-600 hover:text-blue-800 transition-colors">
                   Quên mật khẩu?
-                </a>
+                </Link>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />

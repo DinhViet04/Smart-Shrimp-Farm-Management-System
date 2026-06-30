@@ -27,9 +27,7 @@ export default function Dashboard() {
       <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
         <div className="h-20 flex items-center px-8 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-xl flex items-center justify-center text-white shadow-md">
-              <Droplets className="w-6 h-6" />
-            </div>
+            <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200" />
             <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 tracking-tight">SSFM</span>
           </div>
         </div>

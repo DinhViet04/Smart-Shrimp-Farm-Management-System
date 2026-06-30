@@ -214,13 +214,9 @@ export default function RegisterPage() {
         <div className="hidden md:flex flex-col justify-between w-5/12 p-10 bg-cyan-900/30 backdrop-blur-md border-r border-white/10 relative">
 
           <div className="relative z-10">
-            {/* Metallic Logo */}
+            {/* Image Logo */}
             <Link to="/" className="flex items-center gap-3 group inline-flex mb-12">
-              <div className="relative w-12 h-12 flex items-center justify-center">
-                <div className="absolute inset-0 bg-gradient-to-tr from-slate-300 via-white to-slate-100 rounded-xl transform rotate-3 group-hover:rotate-6 transition-transform duration-500 shadow-lg"></div>
-                <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-slate-200 border border-white/50 rounded-xl transform -rotate-3 group-hover:-rotate-6 transition-transform duration-500"></div>
-                <Droplets className="w-6 h-6 text-blue-700 relative z-10" strokeWidth={2.5} />
-              </div>
+              <img src="/logonen.jpg" alt="SSFM Logo" className="w-12 h-12 rounded-full object-cover bg-white shadow-lg border-2 border-white/80 group-hover:scale-105 transition-transform duration-500" />
               <span className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">SSFM</span>
             </Link>
 
@@ -264,10 +260,8 @@ export default function RegisterPage() {
 
           {/* Mobile Logo */}
           <div className="md:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-300 via-white to-slate-100 flex items-center justify-center shadow-lg">
-              <Droplets className="w-6 h-6 text-blue-700" strokeWidth={2.5} />
-            </div>
-            <span className="text-2xl font-bold text-white">SSFM</span>
+            <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-lg border-2 border-white/80" />
+            <span className="text-2xl font-bold text-slate-900">SSFM</span>
           </div>
 
           <div className="mb-8">

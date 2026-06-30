@@ -230,9 +230,7 @@ export default function AdminDashboard() {
       >
         {/* Logo */}
         <div className="flex items-center h-20 px-6 border-b border-slate-100 gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-md">
-            S
-          </div>
+          <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm flex-shrink-0 border border-slate-200" />
           {sidebarOpen && <span className="font-bold text-slate-800 text-xl tracking-tight whitespace-nowrap">SSFM Admin</span>}
         </div>
 

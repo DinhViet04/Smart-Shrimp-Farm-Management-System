@@ -137,6 +137,19 @@ export class UsersService {
     return { message: 'Đổi mật khẩu thành công' };
   }
 
+  async updatePasswordByEmail(email: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    return this.prisma.user.update({
+      where: { email },
+      data: { password: hashedPassword },
+    });
+  }
+
   async updateGoogleId(id: string, googleId: string) {
     return this.prisma.user.update({
       where: { id },

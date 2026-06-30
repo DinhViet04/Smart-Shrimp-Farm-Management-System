@@ -79,7 +79,7 @@ export default function HomePage() {
         <div className="absolute inset-0 z-0 overflow-hidden bg-white">
           {/* Parallax Image */}
           <div className="absolute inset-0" style={{ transform: `translateY(${scrollY * 0.35}px)` }}>
-            <img src="/unnamed.jpg" alt="Aquaculture Farm" className="absolute inset-0 w-full h-full object-cover" style={{ imageRendering: 'high-quality' }} />
+            <img src="/unnamed.jpg" alt="Aquaculture Farm" className="absolute inset-0 w-full h-full object-cover" style={{ imageRendering: 'auto' }} />
           </div>
 
           {/* Dynamic Scroll Fade & Blur */}

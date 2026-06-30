@@ -2,16 +2,23 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as nodemailer from 'nodemailer';
 import { UsersService } from '../users/users.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 
 @Injectable()
 export class AuthService {
+  private passwordResetStore: Record<string, { otp: string; expiresAt: number; used: boolean }> = {};
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -148,6 +155,80 @@ export class AuthService {
     };
   }
 
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.usersService.findByEmail(dto.email);
+    if (!user) {
+      throw new NotFoundException('Email không tồn tại trong hệ thống');
+    }
+
+    const otp = this.generateOtp();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    this.passwordResetStore[dto.email.toLowerCase()] = {
+      otp,
+      expiresAt,
+      used: false,
+    };
+
+    const transporter = nodemailer.createTransport({
+      host: this.configService.get<string>('SMTP_HOST'),
+      port: Number(this.configService.get<string>('SMTP_PORT') ?? 587),
+      secure: this.configService.get<string>('SMTP_SECURE') === 'true',
+      auth: {
+        user: this.configService.get<string>('SMTP_USER'),
+        pass: this.configService.get<string>('SMTP_PASS'),
+      },
+    });
+
+    await transporter.sendMail({
+      from: this.configService.get<string>('SMTP_FROM'),
+      to: dto.email,
+      subject: 'Mã OTP đặt lại mật khẩu SSFM',
+      html: `<p>Xin chào ${user.fullName || 'bạn'},</p><p>Mã OTP của bạn là <strong>${otp}</strong>. Mã này có hiệu lực trong 5 phút.</p><p>Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>`,
+    });
+
+    return {
+      message: 'Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.',
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const normalizedEmail = dto.email.toLowerCase();
+    const resetEntry = this.passwordResetStore[normalizedEmail];
+
+    if (!resetEntry) {
+      throw new BadRequestException('Không tìm thấy yêu cầu đặt lại mật khẩu');
+    }
+
+    if (resetEntry.used) {
+      throw new BadRequestException('OTP đã được sử dụng');
+    }
+
+    if (Date.now() > resetEntry.expiresAt) {
+      delete this.passwordResetStore[normalizedEmail];
+      throw new BadRequestException('OTP đã hết hạn');
+    }
+
+    if (resetEntry.otp !== dto.otp) {
+      throw new BadRequestException('OTP không đúng');
+    }
+
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Xác nhận mật khẩu không khớp');
+    }
+
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      throw new NotFoundException('Email không tồn tại trong hệ thống');
+    }
+
+    await this.usersService.updatePasswordByEmail(normalizedEmail, dto.password);
+    resetEntry.used = true;
+
+    return {
+      message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.',
+    };
+  }
+
   async refreshToken(refreshToken: string) {
     try {
       const payload = await this.jwtService.verifyAsync(refreshToken, {
@@ -174,6 +255,10 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
     }
+  }
+
+  private generateOtp() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
   private async generateTokens(payload: {

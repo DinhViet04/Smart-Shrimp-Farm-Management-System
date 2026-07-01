@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2 } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
@@ -8,6 +8,33 @@ import PondManagement from '../components/PondManagement';
 export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        setCurrentUser(JSON.parse(userStr));
+      } catch (e) {
+        console.error("Failed to parse user from localStorage", e);
+      }
+    }
+  }, []);
+
+  const getInitials = (name: string) => {
+    if (!name) return 'U';
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch(role) {
+      case 'ADMIN': return 'Quản trị viên';
+      case 'FARM_MANAGER': return 'Quản lý trang trại';
+      case 'TECHNICIAN': return 'Kỹ thuật viên';
+      case 'FARMER': return 'Nông dân';
+      default: return 'Người dùng';
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
@@ -61,12 +88,24 @@ export default function Dashboard() {
 
         <div className="mt-auto p-6 border-t border-slate-100">
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-              ND
-            </div>
+            {currentUser?.avatarUrl ? (
+              <img 
+                src={currentUser.avatarUrl} 
+                alt="Avatar" 
+                className="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-200"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                {currentUser?.fullName ? getInitials(currentUser.fullName) : 'ND'}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-slate-900 truncate">Nông Dân A</p>
-              <p className="text-xs text-slate-500 truncate">Trại tôm Bạc Liêu</p>
+              <p className="text-sm font-bold text-slate-900 truncate" title={currentUser?.fullName || 'Nông Dân'}>
+                {currentUser?.fullName || 'Nông Dân'}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {currentUser?.role ? getRoleLabel(currentUser.role) : 'Thành viên'}
+              </p>
             </div>
           </div>
           <button 

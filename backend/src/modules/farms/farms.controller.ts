@@ -13,37 +13,37 @@ export class FarmsController {
 
   @Get()
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
-  findAll(@Query('search') search: string, @Query('status') status: string) {
-    return this.farmsService.findAll(search, status);
+  findAll(@Query('search') search: string, @Query('status') status: string, @Request() req: any) {
+    return this.farmsService.findAll(search, status, req.user.userId, req.user.role);
   }
 
   @Get('my')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   findMyFarms(@Request() req: any) {
     return this.farmsService.findAllByManager(req.user.userId);
   }
 
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
-  findOne(@Param('id') id: string) {
-    return this.farmsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.farmsService.findOne(id, req.user.userId, req.user.role);
   }
 
   @Post()
-  @Roles('FARM_MANAGER', 'ADMIN') 
+  @Roles('FARM_MANAGER') 
   create(@Body() createFarmDto: CreateFarmDto) {
     return this.farmsService.create(createFarmDto);
   }
 
   @Put(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
-  update(@Param('id') id: string, @Body() updateFarmDto: UpdateFarmDto) {
-    return this.farmsService.update(id, updateFarmDto);
+  @Roles('FARM_MANAGER')
+  update(@Param('id') id: string, @Body() updateFarmDto: UpdateFarmDto, @Request() req: any) {
+    return this.farmsService.update(id, updateFarmDto, req.user.userId, req.user.role);
   }
 
   @Delete(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
-  remove(@Param('id') id: string) {
-    return this.farmsService.remove(id);
+  @Roles('FARM_MANAGER')
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.farmsService.remove(id, req.user.userId, req.user.role);
   }
 }

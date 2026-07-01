@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 
+const PROVINCES = [
+  "An Giang", "Bà Rịa - Vũng Tàu", "Bắc Giang", "Bắc Kạn", "Bạc Liêu", "Bắc Ninh", "Bến Tre", "Bình Định", "Bình Dương", "Bình Phước", "Bình Thuận", "Cà Mau", "Cần Thơ", "Cao Bằng", "Đà Nẵng", "Đắk Lắk", "Đắk Nông", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Giang", "Hà Nam", "Hà Nội", "Hà Tĩnh", "Hải Dương", "Hải Phòng", "Hậu Giang", "Hòa Bình", "Hưng Yên", "Khánh Hòa", "Kiên Giang", "Kon Tum", "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Long An", "Nam Định", "Nghệ An", "Ninh Bình", "Ninh Thuận", "Phú Thọ", "Phú Yên", "Quảng Bình", "Quảng Nam", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sóc Trăng", "Sơn La", "Tây Ninh", "Thái Bình", "Thái Nguyên", "Thanh Hóa", "Thừa Thiên Huế", "Tiền Giang", "TP Hồ Chí Minh", "Trà Vinh", "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"
+];
+
 interface FarmFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -115,16 +119,19 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-slate-700">Địa Chỉ <span className="text-red-500">*</span></label>
-              <input
-                type="text"
+              <label className="text-sm font-semibold text-slate-700">Tỉnh/Thành phố <span className="text-red-500">*</span></label>
+              <select
                 name="address"
                 value={formData.address}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-slate-700"
-                placeholder="Nhập địa chỉ chi tiết"
-              />
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-slate-700 bg-white"
+              >
+                <option value="" disabled>-- Chọn Tỉnh/Thành phố --</option>
+                {PROVINCES.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-5">

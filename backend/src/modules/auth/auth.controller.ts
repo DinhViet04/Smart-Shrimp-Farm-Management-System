@@ -65,4 +65,12 @@ export class AuthController {
   async getMe(@CurrentUser('userId') userId: string) {
     return this.usersService.findById(userId);
   }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout() {
+    // Với JWT stateless, logout thường chỉ cần client xóa token.
+    // Nếu có token blacklist hoặc refresh token table thì xử lý ở đây.
+    return { message: 'Đăng xuất thành công' };
+  }
 }

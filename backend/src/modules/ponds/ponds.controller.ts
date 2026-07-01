@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Param, Put, Delete } from '@nestjs/common';
+import { PondsService } from './ponds.service.js';
+import { CreatePondDto } from './dto/create-pond.dto.js';
+import { UpdatePondDto } from './dto/update-pond.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -6,27 +9,35 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 @Controller('ponds')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PondsController {
-  @Get()
-  @Roles('FARM_MANAGER', 'FARMER')
-  findAll() {
-    return { message: 'This action returns all ponds' };
-  }
+  constructor(private readonly pondsService: PondsService) {}
 
   @Post()
-  @Roles('FARM_MANAGER', 'FARMER')
-  create() {
-    return { message: 'This action adds a new ponds' };
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  create(@Request() req: any, @Body() createPondDto: CreatePondDto) {
+    return this.pondsService.create(req.user.userId, createPondDto);
+  }
+
+  @Get()
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  findAll(@Request() req: any) {
+    return this.pondsService.findAllByManager(req.user.userId);
+  }
+
+  @Get(':id')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.pondsService.findOne(id, req.user.userId);
   }
 
   @Put(':id')
-  @Roles('FARM_MANAGER', 'FARMER')
-  update() {
-    return { message: 'This action updates a ponds' };
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  update(@Request() req: any, @Param('id') id: string, @Body() updatePondDto: UpdatePondDto) {
+    return this.pondsService.update(id, req.user.userId, updatePondDto);
   }
 
   @Delete(':id')
-  @Roles('FARM_MANAGER') // Only manager can delete
-  remove() {
-    return { message: 'This action removes a ponds' };
+  @Roles('FARM_MANAGER', 'ADMIN')
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.pondsService.remove(id, req.user.userId);
   }
 }

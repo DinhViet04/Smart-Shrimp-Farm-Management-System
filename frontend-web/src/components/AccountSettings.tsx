@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ChangeEvent } from 'react';
 import { Camera, Eye, EyeOff, Loader2, Lock, ShieldCheck, UserCircle2 } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 type TabKey = 'profile' | 'security';
 
@@ -47,10 +48,7 @@ export default function AccountSettings() {
 
   const fetchProfile = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${apiUrl}/api/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiFetch(`${apiUrl}/api/users/profile`);
       if (!response.ok) {
         throw new Error('Không thể tải hồ sơ');
       }
@@ -127,13 +125,8 @@ export default function AccountSettings() {
     try {
       setSubmittingProfile(true);
       setFeedback(null);
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${apiUrl}/api/users/profile`, {
+      const response = await apiFetch(`${apiUrl}/api/users/profile`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           fullName: profile.fullName.trim(),
           phone: profile.phone.trim() || undefined,
@@ -170,13 +163,8 @@ export default function AccountSettings() {
     try {
       setSubmittingPassword(true);
       setFeedback(null);
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${apiUrl}/api/users/password`, {
+      const response = await apiFetch(`${apiUrl}/api/users/password`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           currentPassword: passwordForm.currentPassword,
           newPassword: passwordForm.newPassword,

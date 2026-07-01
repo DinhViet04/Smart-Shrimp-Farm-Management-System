@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
+import { apiFetch } from '../utils/api';
 
 const userStr = localStorage.getItem('user');
 const currentUser = userStr ? JSON.parse(userStr) : { fullName: 'Admin', email: 'admin@ssfm.com' };
@@ -107,10 +108,7 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3000/api/admin/dashboard-stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await apiFetch('http://localhost:3000/api/admin/dashboard-stats');
       if (response.ok) {
         const data = await response.json();
         // Override colors for the new theme if necessary
@@ -157,10 +155,7 @@ export default function AdminDashboard() {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3000/api/users', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await apiFetch('http://localhost:3000/api/users');
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -174,13 +169,8 @@ export default function AdminDashboard() {
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3000/api/users/${userId}/role`, {
+      const response = await apiFetch(`http://localhost:3000/api/users/${userId}/role`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
         body: JSON.stringify({ role: newRole })
       });
       if (response.ok) {
@@ -196,13 +186,8 @@ export default function AdminDashboard() {
 
   const handleStatusChange = async (userId: string, newStatus: boolean) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3000/api/users/${userId}/status`, {
+      const response = await apiFetch(`http://localhost:3000/api/users/${userId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
         body: JSON.stringify({ isActive: newStatus })
       });
       if (response.ok) {

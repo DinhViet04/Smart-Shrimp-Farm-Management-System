@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
 import { FarmsService } from './farms.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
@@ -15,6 +15,12 @@ export class FarmsController {
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   findAll(@Query('search') search: string, @Query('status') status: string) {
     return this.farmsService.findAll(search, status);
+  }
+
+  @Get('my')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  findMyFarms(@Request() req: any) {
+    return this.farmsService.findAllByManager(req.user.userId);
   }
 
   @Get(':id')

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2 } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
+import PondManagement from '../components/PondManagement';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -171,6 +172,8 @@ export default function Dashboard() {
             <AccountSettings />
           ) : activeTab === 'Quản lý Trang Trại' ? (
             <FarmList />
+          ) : activeTab === 'Quản lý Ao/Vụ' ? (
+            <PondManagement />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

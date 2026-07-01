@@ -1,11 +1,11 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateFarmDto } from './dto/create-farm.dto';
-import { UpdateFarmDto } from './dto/update-farm.dto';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import { CreateFarmDto } from './dto/create-farm.dto.js';
+import { UpdateFarmDto } from './dto/update-farm.dto.js';
 
 @Injectable()
 export class FarmsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(data: CreateFarmDto) {
     const exists = await this.prisma.farm.findFirst({ where: { name: data.name } });
@@ -22,6 +22,13 @@ export class FarmsService {
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (status) where.status = status;
     return this.prisma.farm.findMany({ where, include: { owner: true, ponds: true } });
+  }
+
+  async findAllByManager(userId: string) {
+    return this.prisma.farm.findMany({
+      where: { ownerId: userId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async findOne(id: string) {

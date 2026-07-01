@@ -12,6 +12,7 @@ export class FarmsController {
   constructor(private readonly farmsService: FarmsService) {}
 
   @Get()
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   findAll(@Query('search') search: string, @Query('status') status: string) {
     return this.farmsService.findAll(search, status);
   }
@@ -23,6 +24,7 @@ export class FarmsController {
   }
 
   @Get(':id')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   findOne(@Param('id') id: string) {
     return this.farmsService.findOne(id);
   }

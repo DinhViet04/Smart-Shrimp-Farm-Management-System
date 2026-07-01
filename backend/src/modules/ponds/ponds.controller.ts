@@ -12,25 +12,25 @@ export class PondsController {
   constructor(private readonly pondsService: PondsService) {}
 
   @Post()
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   create(@Request() req: any, @Body() createPondDto: CreatePondDto) {
     return this.pondsService.create(req.user.userId, createPondDto);
   }
 
   @Get()
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   findAll(@Request() req: any) {
     return this.pondsService.findAllByManager(req.user.userId);
   }
 
   @Get(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   findOne(@Request() req: any, @Param('id') id: string) {
     return this.pondsService.findOne(id, req.user.userId);
   }
 
   @Put(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   update(@Request() req: any, @Param('id') id: string, @Body() updatePondDto: UpdatePondDto) {
     return this.pondsService.update(id, req.user.userId, updatePondDto);
   }

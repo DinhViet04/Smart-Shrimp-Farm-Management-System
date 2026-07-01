@@ -24,15 +24,27 @@ function TrendLine({ color = '#2563eb' }: { color?: string }) {
 }
 
 function BarChart({ data, color = '#2563eb' }: { data: number[]; color?: string }) {
-  const max = Math.max(...data);
+  const max = Math.max(...data, 1);
   return (
-    <div className="flex items-end gap-1.5 h-32">
+    <div className="relative h-48 w-full flex items-end gap-2 sm:gap-4 pt-6 mt-2">
+      {/* Background Grid */}
+      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+        {[0, 1, 2, 3].map((_, i) => (
+          <div key={i} className="w-full border-b border-slate-200/50 border-dashed" style={{ height: '33.33%' }} />
+        ))}
+      </div>
+      
       {data.map((v, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative z-10">
+          <span className="opacity-0 group-hover:opacity-100 transition-all duration-300 absolute -top-8 text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 shadow-sm z-20">
+            {v}
+          </span>
           <div
-            className="w-full rounded-t-md transition-all duration-300 group-hover:opacity-80"
-            style={{ height: `${(v / max) * 100}%`, backgroundColor: color }}
-          />
+            className="w-full max-w-[3rem] rounded-t-2xl transition-all duration-500 ease-out group-hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] bg-gradient-to-t from-blue-600 to-cyan-400 group-hover:from-blue-500 group-hover:to-cyan-300 relative overflow-hidden"
+            style={{ height: `${(v / max) * 100}%` }}
+          >
+            <div className="absolute top-0 left-0 right-0 h-2 bg-white/30 rounded-t-2xl" />
+          </div>
         </div>
       ))}
     </div>
@@ -44,25 +56,48 @@ function DonutChart({ segments }: { segments: { value: number; color: string; la
   const r = 40;
   const cx = 55;
   const cy = 55;
-  let cumulative = 0;
-  const arcs = segments.map((seg) => {
-    const frac = seg.value / total;
-    const start = cumulative * 2 * Math.PI - Math.PI / 2;
-    cumulative += frac;
-    const end = cumulative * 2 * Math.PI - Math.PI / 2;
-    const x1 = cx + r * Math.cos(start);
-    const y1 = cy + r * Math.sin(start);
-    const x2 = cx + r * Math.cos(end);
-    const y2 = cy + r * Math.sin(end);
-    const largeArc = frac > 0.5 ? 1 : 0;
-    return { d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`, color: seg.color };
-  });
+  const circumference = 2 * Math.PI * r;
+
   return (
-    <div className="flex flex-col items-center">
-      <svg viewBox="0 0 110 110" className="w-32 h-32 drop-shadow-sm">
-        {arcs.map((a, i) => <path key={i} d={a.d} fill={a.color} className="transition-all duration-300 hover:opacity-80" />)}
-        <circle cx={cx} cy={cy} r="26" fill="white" />
+    <div className="flex flex-col items-center relative">
+      <svg viewBox="0 0 110 110" className="w-40 h-40 transform -rotate-90 drop-shadow-xl">
+        <defs>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f1f5f9" strokeWidth="12" />
+        
+        {segments.map((seg, i) => {
+          const frac = seg.value / total;
+          const strokeDasharray = `${frac * circumference} ${circumference}`;
+          const previousFracSum = segments.slice(0, i).reduce((sum, s) => sum + s.value, 0) / total;
+          const strokeDashoffset = circumference - (previousFracSum * circumference);
+          
+          return (
+            <circle
+              key={i}
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="12"
+              strokeDasharray={strokeDasharray}
+              strokeDashoffset={strokeDashoffset}
+              className="transition-all duration-1000 ease-out hover:stroke-[14px] cursor-pointer"
+              strokeLinecap="round"
+              filter="url(#glow)"
+            />
+          );
+        })}
       </svg>
+      {/* Inner center content */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-2xl font-black text-slate-800">{total}</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+      </div>
     </div>
   );
 }
@@ -101,10 +136,6 @@ export default function AdminDashboard() {
     localStorage.setItem('adminActiveTab', activeTab);
   }, [activeTab]);
 
-  useEffect(() => {
-    fetchUsers();
-    fetchStats();
-  }, []);
 
   const fetchStats = async () => {
     try {
@@ -166,6 +197,11 @@ export default function AdminDashboard() {
       setLoadingUsers(false);
     }
   };
+
+  useEffect(() => {
+    fetchUsers();
+    fetchStats();
+  }, []);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
@@ -407,16 +443,85 @@ export default function AdminDashboard() {
             )}
 
             {activeTab === 'Người dùng' && (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Users table */}
-                <div className="xl:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm shadow-slate-200/50 overflow-hidden">
-                  <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
-                    <h2 className="text-lg font-bold text-slate-800">Danh sách Người dùng</h2>
+              <div className="flex flex-col gap-8">
+                
+                {/* Role distribution donut (Top) */}
+                <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-white/60 p-8 shadow-xl shadow-slate-200/50 flex flex-col md:flex-row items-center gap-8 justify-between">
+                  <div className="flex-1 w-full">
+                    <h2 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight mb-6">Phân bổ Vai trò</h2>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      {Object.entries(
+                        users.reduce((acc, user) => {
+                          acc[user.role] = (acc[user.role] || 0) + 1;
+                          return acc;
+                        }, {} as Record<string, number>)
+                      ).map(([role, count]: [string, any]) => {
+                        const colors: Record<string, string> = {
+                          ADMIN: '#e11d48', // rose-600
+                          FARM_MANAGER: '#059669', // emerald-600
+                          TECHNICIAN: '#d97706', // amber-600
+                          FARMER: '#2563eb', // blue-600
+                        };
+                        const labels: Record<string, string> = {
+                          ADMIN: 'Admin',
+                          FARM_MANAGER: 'Quản lý',
+                          TECHNICIAN: 'Kỹ thuật viên',
+                          FARMER: 'Nông dân',
+                        };
+                        const color = colors[role] || '#64748b';
+                        const label = labels[role] || role;
+                        
+                        return (
+                          <div key={role} className="flex flex-col gap-2 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 shadow-inner hover:bg-slate-50 transition-colors group">
+                            <div className="flex items-center gap-2 font-bold text-slate-600 text-sm">
+                              <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}80` }} />
+                              {label}
+                            </div>
+                            <span className="text-2xl font-black text-slate-800">{count} <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">User</span></span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex items-center justify-center min-w-[200px]">
+                    <DonutChart segments={
+                      Object.entries(
+                        users.reduce((acc, user) => {
+                          acc[user.role] = (acc[user.role] || 0) + 1;
+                          return acc;
+                        }, {} as Record<string, number>)
+                      ).map(([role, count]: [string, any]) => {
+                        const colors: Record<string, string> = {
+                          ADMIN: '#e11d48',
+                          FARM_MANAGER: '#059669',
+                          TECHNICIAN: '#d97706',
+                          FARMER: '#2563eb',
+                        };
+                        const labels: Record<string, string> = {
+                          ADMIN: 'Admin',
+                          FARM_MANAGER: 'Quản lý',
+                          TECHNICIAN: 'Kỹ thuật viên',
+                          FARMER: 'Nông dân',
+                        };
+                        return {
+                          label: labels[role] || role,
+                          value: count,
+                          color: colors[role] || '#64748b'
+                        };
+                      })
+                    } />
+                  </div>
+                </div>
+
+                {/* Users table (Bottom) */}
+                <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-white/60 shadow-xl shadow-slate-200/50 overflow-hidden">
+                  <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100/50 bg-gradient-to-r from-slate-50/80 to-white/80">
+                    <h2 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">Danh sách Người dùng</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-slate-50/80 text-left border-b border-slate-100">
+                        <tr className="bg-slate-50/50 text-left border-b border-slate-100/50">
                           <th className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ID</th>
                           <th className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Người dùng</th>
                           <th className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Vai trò</th>
@@ -424,7 +529,7 @@ export default function AdminDashboard() {
                           <th className="px-8 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ngày tham gia</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-slate-100/50 bg-white/50">
                         {loadingUsers ? (
                           <tr>
                             <td colSpan={5} className="text-center py-12">
@@ -438,24 +543,28 @@ export default function AdminDashboard() {
                           </tr>
                         ) : (
                           users.map((u) => (
-                            <tr key={u.id} className="hover:bg-slate-50/50 transition-colors group">
-                              <td className="px-8 py-4 font-mono text-blue-600 font-semibold text-xs">#{u.id.substring(0, 8)}</td>
-                              <td className="px-8 py-4">
+                            <tr key={u.id} className="hover:bg-white/80 hover:shadow-md hover:shadow-blue-500/5 transition-all duration-300 group">
+                              <td className="px-8 py-5 font-mono text-blue-600/80 font-bold text-xs group-hover:text-blue-600 transition-colors">#{u.id.substring(0, 8)}</td>
+                              <td className="px-8 py-5">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-xs">
-                                    {u.fullName[0]}
-                                  </div>
+                                  {u.avatarUrl ? (
+                                    <img src={u.avatarUrl} alt={u.fullName} className="w-10 h-10 rounded-full object-cover shadow-sm border border-white" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-cyan-50 text-blue-700 font-black flex items-center justify-center text-sm shadow-inner border border-blue-200/50">
+                                      {u.fullName[0]?.toUpperCase()}
+                                    </div>
+                                  )}
                                   <div>
-                                    <p className="font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{u.fullName}</p>
+                                    <p className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">{u.fullName}</p>
                                     <p className="text-slate-500 text-xs font-medium mt-0.5">{u.email}</p>
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-8 py-4">
+                              <td className="px-8 py-5">
                                 <select
                                   value={u.role}
                                   onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                                  className={`px-3 py-1.5 outline-none cursor-pointer rounded-lg text-xs font-bold border border-transparent hover:border-slate-200 transition-all ${roleBadge[u.role] || 'bg-slate-100 text-slate-700'}`}
+                                  className={`px-3 py-1.5 outline-none cursor-pointer rounded-xl text-xs font-bold border border-transparent hover:border-slate-200 focus:ring-4 focus:ring-blue-500/10 transition-all ${roleBadge[u.role] || 'bg-slate-100 text-slate-700'}`}
                                 >
                                   <option value="ADMIN" className="bg-white text-slate-800">Admin</option>
                                   <option value="FARM_MANAGER" className="bg-white text-slate-800">Quản lý</option>
@@ -463,42 +572,23 @@ export default function AdminDashboard() {
                                   <option value="FARMER" className="bg-white text-slate-800">Nông dân</option>
                                 </select>
                               </td>
-                              <td className="px-8 py-4">
+                              <td className="px-8 py-5">
                                 <select
                                   value={u.isActive ? "true" : "false"}
                                   onChange={(e) => handleStatusChange(u.id, e.target.value === 'true')}
-                                  className={`px-3 py-1.5 outline-none cursor-pointer rounded-lg text-xs font-bold border border-transparent hover:border-slate-200 transition-all ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                  className={`px-3 py-1.5 outline-none cursor-pointer rounded-xl text-xs font-bold border border-transparent hover:border-slate-200 focus:ring-4 focus:ring-emerald-500/10 transition-all ${u.isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50' : 'bg-rose-50 text-rose-600 border-rose-100/50'
                                     }`}
                                 >
                                   <option value="true" className="bg-white text-slate-800">Hoạt động</option>
                                   <option value="false" className="bg-white text-slate-800">Bị khóa</option>
                                 </select>
                               </td>
-                              <td className="px-8 py-4 text-slate-500 text-sm font-medium">{new Date(u.createdAt).toLocaleDateString('vi-VN')}</td>
+                              <td className="px-8 py-5 text-slate-500 text-sm font-medium">{new Date(u.createdAt).toLocaleDateString('vi-VN')}</td>
                             </tr>
                           ))
                         )}
                       </tbody>
                     </table>
-                  </div>
-                </div>
-
-                {/* Role distribution donut */}
-                <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-sm shadow-slate-200/50 flex flex-col">
-                  <h2 className="text-lg font-bold text-slate-800 mb-8">Phân bổ Vai trò</h2>
-                  <div className="flex-1 flex items-center justify-center mb-8">
-                    <DonutChart segments={stats?.roleDistrib || []} />
-                  </div>
-                  <div className="space-y-4">
-                    {stats?.roleDistrib?.map((s: any) => (
-                      <div key={s.label} className="flex items-center justify-between text-sm bg-slate-50 p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
-                        <div className="flex items-center gap-3 font-semibold text-slate-700">
-                          <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: s.color }} />
-                          {s.label}
-                        </div>
-                        <span className="font-bold text-slate-900 bg-white px-2 py-1 rounded-md shadow-sm border border-slate-100">{s.value}</span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreatePondDto } from './dto/create-pond.dto.js';
 
@@ -19,6 +19,16 @@ export class PondsService {
     // Kiểm tra quyền sở hữu
     if (farm.ownerId !== userId) {
       throw new ForbiddenException('Bạn không có quyền thêm ao vào trang trại này');
+    }
+
+    const totalPondsArea = await this.prisma.pond.aggregate({
+      where: { farmId: dto.farmId },
+      _sum: { areaSize: true },
+    });
+    const currentTotalArea = totalPondsArea._sum.areaSize || 0;
+
+    if (currentTotalArea + dto.areaSize > farm.area) {
+      throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + dto.areaSize}) không được vượt quá diện tích trang trại (${farm.area})`);
     }
 
     // Create pond
@@ -68,7 +78,19 @@ export class PondsService {
 
   async update(pondId: string, userId: string, data: any) {
     // Use findOne to ensure the pond exists and belongs to the user
-    await this.findOne(pondId, userId);
+    const pond = await this.findOne(pondId, userId);
+
+    if (data.areaSize) {
+      const totalPondsArea = await this.prisma.pond.aggregate({
+        where: { farmId: pond.farmId, id: { not: pondId } },
+        _sum: { areaSize: true },
+      });
+      const currentTotalArea = totalPondsArea._sum.areaSize || 0;
+
+      if (currentTotalArea + data.areaSize > pond.farm.area) {
+        throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + data.areaSize}) không được vượt quá diện tích trang trại (${pond.farm.area})`);
+      }
+    }
 
     return this.prisma.pond.update({
       where: { id: pondId },

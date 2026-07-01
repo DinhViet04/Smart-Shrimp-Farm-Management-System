@@ -79,7 +79,7 @@ export default function HomePage() {
         <div className="absolute inset-0 z-0 overflow-hidden bg-white">
           {/* Parallax Image */}
           <div className="absolute inset-0" style={{ transform: `translateY(${scrollY * 0.35}px)` }}>
-            <img src="/unnamed.jpg" alt="Aquaculture Farm" className="absolute inset-0 w-full h-full object-cover" style={{ imageRendering: 'auto' }} />
+            <img src="/unnamed.jpg" alt="Aquaculture Farm" className="absolute inset-0 w-full h-full object-cover" style={{ imageRendering: 'high-quality' as any }} />
           </div>
 
           {/* Dynamic Scroll Fade & Blur */}
@@ -181,7 +181,7 @@ export default function HomePage() {
               </div>
 
               {/* Floating Water Quality */}
-              <div className="absolute bottom-[15%] left-[-15%] w-[240px] bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.1)] p-4 z-30 text-slate-800">
+              <div className="absolute bottom-[5%] left-[-5%] w-[240px] bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.1)] p-4 z-30 animate-[bounce_5s_infinite] text-slate-800">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-blue-100/80 rounded-xl flex items-center justify-center text-blue-600">
                     <ActivitySquare className="w-4 h-4" />

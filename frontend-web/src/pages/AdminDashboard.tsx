@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AccountSettings from '../components/AccountSettings';
+import FarmList from '../features/farms/FarmList';
 
 const userStr = localStorage.getItem('user');
 const currentUser = userStr ? JSON.parse(userStr) : { fullName: 'Admin', email: 'admin@ssfm.com' };
@@ -354,6 +355,8 @@ export default function AdminDashboard() {
 
             {activeTab === 'Cài đặt' ? (
               <AccountSettings />
+            ) : activeTab === 'Trang trại' ? (
+              <FarmList />
             ) : activeTab === 'Tổng quan' && (
               <>
                 {/* Stat cards */}

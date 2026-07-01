@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2 } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
+import FarmList from '../features/farms/FarmList';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function Dashboard() {
 
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { name: 'Quản lý Trang Trại', icon: <Building2 className="w-5 h-5" /> },
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
     { name: 'Môi trường', icon: <Thermometer className="w-5 h-5" /> },
@@ -35,7 +37,7 @@ export default function Dashboard() {
         </div>
         
         <div className="px-6 py-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Nông Trại của bạn</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Trang Trại của bạn</p>
           <nav className="space-y-1.5">
             {navItems.map((item) => (
               <button
@@ -167,6 +169,8 @@ export default function Dashboard() {
 
           {activeTab === 'Cài đặt' ? (
             <AccountSettings />
+          ) : activeTab === 'Quản lý Trang Trại' ? (
+            <FarmList />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

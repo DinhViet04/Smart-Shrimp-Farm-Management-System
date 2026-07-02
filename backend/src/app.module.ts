@@ -14,6 +14,7 @@ import { IncidentsModule } from './modules/incidents/incidents.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
 import { ChatbotModule } from './modules/chatbot/chatbot.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
+import { WaterQualityModule } from './modules/water-quality/water-quality.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminModule } from './modules/admin/admin.module.js';
     ReportsModule,
     ChatbotModule,
     AdminModule,
+    WaterQualityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

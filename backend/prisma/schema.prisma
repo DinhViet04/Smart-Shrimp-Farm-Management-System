@@ -32,19 +32,20 @@ enum CropStatus {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String?
-  fullName  String
-  phone     String?
-  address   String?
-  avatarUrl String?
-  role      Role     @default(FARMER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  farms     Farm[]
-  googleId  String?  @unique
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  password            String?
+  fullName            String
+  phone               String?
+  address             String?
+  avatarUrl           String?
+  role                Role                 @default(FARMER)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  farms               Farm[]
+  googleId            String?              @unique
+  waterQualityRecords WaterQualityRecord[]
 }
 
 model Farm {
@@ -64,15 +65,16 @@ model Farm {
 }
 
 model Pond {
-  id        String   @id @default(uuid())
-  name      String
-  areaSize  Float // in square meters
-  depth     Float // in meters
-  farmId    String
-  farm      Farm     @relation(fields: [farmId], references: [id])
-  crops     Crop[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String               @id @default(uuid())
+  name                String
+  areaSize            Float // in square meters
+  depth               Float // in meters
+  farmId              String
+  farm                Farm                 @relation(fields: [farmId], references: [id])
+  crops               Crop[]
+  waterQualityRecords WaterQualityRecord[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model Crop {
@@ -166,6 +168,29 @@ model Incident {
   resolvedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+/// Stores periodic water quality measurements for a pond.
+/// Used by: Water Quality History, Trend Analysis, Environmental Warning, AI Analysis.
+model WaterQualityRecord {
+  id              String   @id @default(uuid())
+  pondId          String
+  pond            Pond     @relation(fields: [pondId], references: [id])
+  recordTime      DateTime
+  temperature     Decimal  @db.Decimal(5, 2)
+  ph              Decimal  @db.Decimal(4, 2)
+  dissolvedOxygen Decimal  @db.Decimal(5, 2)
+  salinity        Decimal  @db.Decimal(5, 2)
+  alkalinity      Decimal  @db.Decimal(6, 2)
+  nh3             Decimal  @db.Decimal(6, 3)
+  no2             Decimal  @db.Decimal(6, 3)
+  note            String?
+  createdBy       String
+  creator         User     @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@index([pondId, recordTime])
+  @@map("water_quality_records")
 }
 
 model Standard5T {

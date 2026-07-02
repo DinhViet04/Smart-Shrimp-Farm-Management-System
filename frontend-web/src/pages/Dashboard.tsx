@@ -4,6 +4,7 @@ import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Sear
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
 import PondManagement from '../components/PondManagement';
+import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -213,6 +214,8 @@ export default function Dashboard() {
             <FarmList />
           ) : activeTab === 'Quản lý Ao/Vụ' ? (
             <PondManagement />
+          ) : activeTab === 'Môi trường' ? (
+            <EnvironmentDashboard />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

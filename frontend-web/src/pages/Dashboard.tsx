@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2 } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
 import PondManagement from '../components/PondManagement';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
+import InventoryManagement from '../features/inventory/InventoryManagement';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -48,6 +49,7 @@ export default function Dashboard() {
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Quản lý Trang Trại', icon: <Building2 className="w-5 h-5" /> },
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
+    { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
     { name: 'Môi trường', icon: <Thermometer className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
@@ -214,6 +216,8 @@ export default function Dashboard() {
             <FarmList />
           ) : activeTab === 'Quản lý Ao/Vụ' ? (
             <PondManagement />
+          ) : activeTab === 'Quản Lý Kho' ? (
+            <InventoryManagement />
           ) : activeTab === 'Môi trường' ? (
             <EnvironmentDashboard />
           ) : activeTab !== 'Dashboard' ? (

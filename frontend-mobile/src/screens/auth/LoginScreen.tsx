@@ -49,7 +49,7 @@ export default function LoginScreen() {
         const errorMsg = Array.isArray(data.message) ? data.message[0] : (data.message || 'Sai email hoặc mật khẩu');
         Alert.alert('Đăng nhập thất bại', errorMsg);
       } else {
-        await login(data.accessToken);
+        await login(data.accessToken, data.user);
       }
     } catch (error) {
       Alert.alert('Lỗi kết nối', 'Không thể kết nối đến máy chủ. Hãy kiểm tra lại kết nối mạng.');

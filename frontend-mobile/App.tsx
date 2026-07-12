@@ -3,11 +3,12 @@ import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
 import MainNavigator from './src/navigation/MainNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
+import TechnicianNavigator from './src/navigation/TechnicianNavigator';
 import { AuthProvider, AuthContext } from './src/context/AuthContext';
 import { NavigationContainer } from '@react-navigation/native';
 
 function RootNavigator() {
-  const { userToken, isLoading } = useContext(AuthContext);
+  const { userToken, userRole, isLoading } = useContext(AuthContext);
 
   if (isLoading) {
     return (
@@ -17,9 +18,15 @@ function RootNavigator() {
     );
   }
 
+  const renderNavigator = () => {
+    if (!userToken) return <AuthNavigator />;
+    if (userRole === 'TECHNICIAN') return <TechnicianNavigator />;
+    return <MainNavigator />;
+  };
+
   return (
     <NavigationContainer>
-      {userToken ? <MainNavigator /> : <AuthNavigator />}
+      {renderNavigator()}
     </NavigationContainer>
   );
 }

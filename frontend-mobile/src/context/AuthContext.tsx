@@ -3,13 +3,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type AuthContextType = {
   userToken: string | null;
+  userRole: string | null;
   isLoading: boolean;
-  login: (token: string) => Promise<void>;
+  login: (token: string, user: any) => Promise<void>;
   logout: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextType>({
   userToken: null,
+  userRole: null,
   isLoading: true,
   login: async () => {},
   logout: async () => {},
@@ -17,13 +19,16 @@ export const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userToken, setUserToken] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadToken = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
+      const role = await AsyncStorage.getItem('userRole');
       if (token) {
         setUserToken(token);
+        if (role) setUserRole(role);
       }
     } catch (e) {
       console.error('Failed to load token', e);
@@ -36,10 +41,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     loadToken();
   }, []);
 
-  const login = async (token: string) => {
+  const login = async (token: string, user: any) => {
     try {
       setIsLoading(true);
       await AsyncStorage.setItem('userToken', token);
+      if (user?.role) {
+        await AsyncStorage.setItem('userRole', user.role);
+        setUserRole(user.role);
+      }
       setUserToken(token);
     } catch (e) {
       console.error('Failed to save token', e);
@@ -64,7 +73,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userRole');
       setUserToken(null);
+      setUserRole(null);
     } catch (e) {
       console.error('Failed to remove token', e);
     } finally {
@@ -73,7 +84,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ userToken, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ userToken, userRole, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

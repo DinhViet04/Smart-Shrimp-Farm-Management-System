@@ -31,7 +31,13 @@ export default function LoginPage() {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        navigate(data.user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
+        
+        let redirectPath = '/dashboard';
+        if (data.user.role === 'ADMIN') redirectPath = '/admin/dashboard';
+        else if (data.user.role === 'FARMER') redirectPath = '/farmer/dashboard';
+        else if (data.user.role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
+        
+        navigate(redirectPath);
       }
     } catch (error) {
       setServerError('Không thể kết nối đến máy chủ.');
@@ -97,7 +103,13 @@ export default function LoginPage() {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        navigate(data.user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
+        
+        let redirectPath = '/dashboard';
+        if (data.user.role === 'ADMIN') redirectPath = '/admin/dashboard';
+        else if (data.user.role === 'FARMER') redirectPath = '/farmer/dashboard';
+        else if (data.user.role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
+        
+        navigate(redirectPath);
       }
     } catch (error) {
       setServerError('Không thể kết nối đến máy chủ.');

@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, ClipboardList, CalendarDays, MinusCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, ClipboardList, CalendarDays, MinusCircle, Truck, X } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
 import { farmService } from '../../services/farm.service';
+import { supplierService } from '../../services/supplier.service';
 import InventoryFormModal from './InventoryFormModal';
+
+const SUPPLIER_PHONE_REGEX = /^0\d{9}$/;
+const SUPPLIER_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function InventoryManagement() {
   const [inventories, setInventories] = useState<any[]>([]);
@@ -14,6 +18,7 @@ export default function InventoryManagement() {
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
   const [consumptionSummary, setConsumptionSummary] = useState<any>(null);
   const [usageLogs, setUsageLogs] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,12 +35,24 @@ export default function InventoryManagement() {
     notes: '',
   });
   const [isRecordingUsage, setIsRecordingUsage] = useState(false);
+  const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<any>(null);
+  const [supplierForm, setSupplierForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    note: '',
+  });
+  const [supplierErrors, setSupplierErrors] = useState<{ phone?: string; email?: string }>({});
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const canEdit = user.role === 'FARM_MANAGER';
+  const canManageInventory = user.role === 'FARM_MANAGER';
+  const canRecordUsage = user.role === 'FARMER';
 
   const fetchInventories = async (farmId: string) => {
     if (!farmId) return;
@@ -64,6 +81,16 @@ export default function InventoryManagement() {
     }
   };
 
+  const fetchSuppliers = async (farmId: string) => {
+    if (!farmId || !canManageInventory) return;
+    try {
+      const data = await supplierService.getAll(farmId);
+      setSuppliers(data || []);
+    } catch (error) {
+      showToast('Không thể tải danh sách nhà cung cấp', 'error');
+    }
+  };
+
   const fetchFarms = async () => {
     try {
       const data = await farmService.getAll();
@@ -84,6 +111,7 @@ export default function InventoryManagement() {
     const timer = setTimeout(() => {
       fetchInventories(selectedFarmId);
       fetchConsumptionData(selectedFarmId);
+      fetchSuppliers(selectedFarmId);
     }, 300);
     return () => clearTimeout(timer);
   }, [search, categoryFilter, selectedFarmId]);
@@ -159,6 +187,82 @@ export default function InventoryManagement() {
     return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(date));
   };
 
+  const handleOpenSupplierForm = (supplier?: any) => {
+    setEditingSupplier(supplier || null);
+    setSupplierForm({
+      name: supplier?.name || '',
+      phone: supplier?.phone || '',
+      email: supplier?.email || '',
+      address: supplier?.address || '',
+      note: supplier?.note || '',
+    });
+    setSupplierErrors({});
+    setIsSupplierModalOpen(true);
+  };
+
+  const handleSaveSupplier = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedFarmId) return;
+
+    const phone = supplierForm.phone.trim();
+    const email = supplierForm.email.trim();
+    const errors: { phone?: string; email?: string } = {};
+
+    if (phone && !SUPPLIER_PHONE_REGEX.test(phone)) {
+      errors.phone = 'Số điện thoại phải có đúng 10 chữ số và bắt đầu bằng 0.';
+    }
+
+    if (email && !SUPPLIER_EMAIL_REGEX.test(email)) {
+      errors.email = 'Email không hợp lệ.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setSupplierErrors(errors);
+      return;
+    }
+
+    setIsSavingSupplier(true);
+    try {
+      const payload = {
+        ...supplierForm,
+        name: supplierForm.name.trim(),
+        farmId: selectedFarmId,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: supplierForm.address.trim() || undefined,
+        note: supplierForm.note.trim() || undefined,
+      };
+
+      if (editingSupplier) {
+        await supplierService.update(editingSupplier.id, payload);
+        showToast('Cập nhật nhà cung cấp thành công', 'success');
+      } else {
+        await supplierService.create(payload);
+        showToast('Thêm nhà cung cấp thành công', 'success');
+      }
+
+      setIsSupplierModalOpen(false);
+      setEditingSupplier(null);
+      fetchSuppliers(selectedFarmId);
+    } catch (error: any) {
+      showToast(error.message || 'Không thể lưu nhà cung cấp', 'error');
+    } finally {
+      setIsSavingSupplier(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (supplier: any) => {
+    if (!window.confirm(`Xóa nhà cung cấp "${supplier.name}"?`)) return;
+
+    try {
+      await supplierService.remove(supplier.id);
+      showToast('Xóa nhà cung cấp thành công', 'success');
+      fetchSuppliers(selectedFarmId);
+    } catch (error: any) {
+      showToast(error.message || 'Không thể xóa nhà cung cấp', 'error');
+    }
+  };
+
   const getCategoryDetails = (category: string) => {
     switch(category) {
       case 'FEED': return { label: 'Thức ăn', icon: <Package className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' };
@@ -227,7 +331,7 @@ export default function InventoryManagement() {
             />
           </div>
 
-          {canEdit && (
+          {canManageInventory && (
             <button
               onClick={() => handleOpenForm()}
               className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 whitespace-nowrap"
@@ -323,6 +427,9 @@ export default function InventoryManagement() {
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-slate-700 truncate">{log.inventory?.itemName}</p>
                       <p className="text-xs text-slate-400 mt-0.5">{formatDate(log.usageDate)}</p>
+                      {log.creator?.fullName && (
+                        <p className="text-xs text-slate-500 mt-1">Người ghi nhận: {log.creator.fullName}</p>
+                      )}
                     </div>
                     <span className="text-sm font-black text-emerald-600 whitespace-nowrap">
                       {formatNumber(log.quantityUsed)} {log.inventory?.unit}
@@ -336,6 +443,123 @@ export default function InventoryManagement() {
         </div>
       </div>
 
+      {canManageInventory && (
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Danh sách nhà cung cấp</h3>
+              <p className="text-xs text-slate-500 font-medium">Tổng hợp từ các vật tư đang có trong kho</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl">
+              {suppliers.length} nhà cung cấp
+            </span>
+            <button
+              onClick={() => handleOpenSupplierForm()}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Thêm
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-sm">
+                <th className="px-6 py-4 font-bold text-slate-600">Nhà cung cấp</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Số mặt hàng</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Nhóm vật tư</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Sắp hết</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Cập nhật gần nhất</th>
+                <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {suppliers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center">
+                    <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Truck className="w-7 h-7 text-slate-300" />
+                    </div>
+                    <p className="text-slate-500 font-medium">Chưa có nhà cung cấp nào trong kho.</p>
+                  </td>
+                </tr>
+              ) : (
+                suppliers.map((supplier) => (
+                  <tr key={supplier.name} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-slate-800">{supplier.name}</p>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                        {supplier.items?.slice(0, 3).map((item: any) => item.itemName).join(', ')}
+                        {supplier.items?.length > 3 ? '...' : ''}
+                      </p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-lg font-black text-slate-800">{supplier.itemCount}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        {supplier.categories.map((category: string) => {
+                          const cat = getCategoryDetails(category);
+                          return (
+                            <span key={category} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${cat.bg} ${cat.color} ${cat.border}`}>
+                              {cat.icon}
+                              {cat.label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {supplier.lowStockCount > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-100">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {supplier.lowStockCount} mặt hàng
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Ổn định
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-medium text-slate-600">{formatDate(supplier.latestUpdatedAt)}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenSupplierForm(supplier)}
+                          className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                          title="Sửa"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSupplier(supplier)}
+                          className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -347,13 +571,13 @@ export default function InventoryManagement() {
                 <th className="px-6 py-4 font-bold text-slate-600">Tồn kho</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Tiêu thụ</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Nhà cung cấp</th>
-                {canEdit && <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>}
+                {canManageInventory && <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={canEdit ? 6 : 5} className="px-6 py-12 text-center">
+                  <td colSpan={canManageInventory ? 6 : 5} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
                       <p className="text-slate-500 font-medium">Đang tải dữ liệu...</p>
@@ -362,7 +586,7 @@ export default function InventoryManagement() {
                 </tr>
               ) : inventories.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 6 : 5} className="px-6 py-12 text-center">
+                  <td colSpan={canManageInventory ? 6 : 5} className="px-6 py-12 text-center">
                     <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
                       <Package className="w-8 h-8 text-slate-300" />
                     </div>
@@ -418,24 +642,27 @@ export default function InventoryManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {item.category === 'FEED' ? (
+                        {item.category === 'FEED' && canRecordUsage ? (
                           <button
                             onClick={() => handleOpenUsageForm(item)}
-                            disabled={!canEdit}
                             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             title="Ghi nhận tiêu thụ"
                           >
                             <MinusCircle className="w-4 h-4" />
                             Ghi nhận
                           </button>
+                        ) : item.category === 'FEED' ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-100">
+                            Chỉ xem
+                          </span>
                         ) : (
                           <span className="text-sm text-slate-400">-</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-slate-600">{item.supplier || '-'}</span>
+                        <span className="text-sm font-medium text-slate-600">{item.supplier?.name || '-'}</span>
                       </td>
-                      {canEdit && (
+                      {canManageInventory && (
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
@@ -476,8 +703,131 @@ export default function InventoryManagement() {
         onSuccess={(msg) => {
           showToast(msg, 'success');
           fetchInventories(selectedFarmId);
+          fetchSuppliers(selectedFarmId);
         }}
       />
+
+      {isSupplierModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  {editingSupplier ? 'Cập nhật nhà cung cấp' : 'Thêm nhà cung cấp'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">Lưu thông tin nhà cung cấp thường xuyên của trang trại</p>
+              </div>
+              <button
+                onClick={() => setIsSupplierModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Tên nhà cung cấp <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={supplierForm.name}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-sm font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại</label>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    maxLength={10}
+                    pattern="0[0-9]{9}"
+                    value={supplierForm.phone}
+                    onChange={(e) => {
+                      const phone = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setSupplierForm({ ...supplierForm, phone });
+                      setSupplierErrors((prev) => ({ ...prev, phone: undefined }));
+                    }}
+                    aria-invalid={Boolean(supplierErrors.phone)}
+                    className={`w-full px-4 py-3 rounded-xl border focus:ring-4 outline-none text-sm font-medium ${
+                      supplierErrors.phone
+                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10'
+                        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10'
+                    }`}
+                  />
+                  {supplierErrors.phone && (
+                    <p className="mt-2 text-xs font-medium text-red-600">{supplierErrors.phone}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={supplierForm.email}
+                    onChange={(e) => {
+                      setSupplierForm({ ...supplierForm, email: e.target.value });
+                      setSupplierErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    aria-invalid={Boolean(supplierErrors.email)}
+                    className={`w-full px-4 py-3 rounded-xl border focus:ring-4 outline-none text-sm font-medium ${
+                      supplierErrors.email
+                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10'
+                        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10'
+                    }`}
+                  />
+                  {supplierErrors.email && (
+                    <p className="mt-2 text-xs font-medium text-red-600">{supplierErrors.email}</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Địa chỉ</label>
+                <input
+                  type="text"
+                  value={supplierForm.address}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, address: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Ghi chú</label>
+                <textarea
+                  rows={3}
+                  value={supplierForm.note}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, note: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-sm font-medium resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSupplierModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-sm"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSupplier}
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center"
+                >
+                  {isSavingSupplier ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Lưu'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {usageItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">

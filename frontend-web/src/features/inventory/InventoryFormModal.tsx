@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Package } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
+import { supplierService } from '../../services/supplier.service';
 
 interface InventoryFormModalProps {
   isOpen: boolean;
@@ -20,12 +21,13 @@ export default function InventoryFormModal({ isOpen, initialData, selectedFarmId
     quantity: 0,
     unit: 'kg',
     minThreshold: 0,
-    supplier: '',
+    supplierId: '',
     description: '',
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [suppliers, setSuppliers] = useState<any[]>([]);
 
   useEffect(() => {
     if (initialData) {
@@ -38,7 +40,7 @@ export default function InventoryFormModal({ isOpen, initialData, selectedFarmId
         quantity: initialData.quantity || 0,
         unit: initialData.unit || 'kg',
         minThreshold: initialData.minThreshold || 0,
-        supplier: initialData.supplier || '',
+        supplierId: initialData.supplierId || initialData.supplier?.id || '',
         description: initialData.description || '',
       });
     } else {
@@ -51,12 +53,27 @@ export default function InventoryFormModal({ isOpen, initialData, selectedFarmId
         quantity: 0,
         unit: 'kg',
         minThreshold: 0,
-        supplier: '',
+        supplierId: '',
         description: '',
       });
     }
     setError('');
   }, [initialData, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedFarmId) return;
+
+    const fetchSuppliers = async () => {
+      try {
+        const data = await supplierService.getAll(selectedFarmId);
+        setSuppliers(data || []);
+      } catch (err) {
+        setSuppliers([]);
+      }
+    };
+
+    fetchSuppliers();
+  }, [isOpen, selectedFarmId]);
 
   if (!isOpen) return null;
 
@@ -242,14 +259,20 @@ export default function InventoryFormModal({ isOpen, initialData, selectedFarmId
               {/* Nhà cung cấp */}
               <div className="col-span-1 md:col-span-2">
                 <label className="block text-sm font-bold text-slate-700 mb-2">Nhà cung cấp</label>
-                <input
-                  type="text"
-                  name="supplier"
-                  value={formData.supplier}
+                <select
+                  name="supplierId"
+                  value={formData.supplierId}
                   onChange={handleChange}
-                  placeholder="Nhập tên nhà cung cấp..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-                />
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer"
+                >
+                  <option value="">Chưa chọn nhà cung cấp</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                  ))}
+                </select>
+                {suppliers.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-600 font-medium">Chưa có nhà cung cấp. Vui lòng tạo nhà cung cấp trước trong danh sách nhà cung cấp.</p>
+                )}
               </div>
 
               {/* Ghi chú */}

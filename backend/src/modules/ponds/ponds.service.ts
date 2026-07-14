@@ -1,24 +1,24 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreatePondDto } from './dto/create-pond.dto.js';
+import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class PondsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly farmAccess: FarmAccessService,
+  ) {}
 
-  async create(userId: string, dto: CreatePondDto) {
-    // Check if farm exists and belongs to the user
+  async create(user: AuthUser, dto: CreatePondDto) {
+    await this.farmAccess.assertCanManageFarm(user, dto.farmId);
+
     const farm = await this.prisma.farm.findUnique({
       where: { id: dto.farmId },
     });
 
     if (!farm) {
-      throw new NotFoundException('Không tìm thấy trang trại');
-    }
-
-    // Kiểm tra quyền sở hữu
-    if (farm.ownerId !== userId) {
-      throw new ForbiddenException('Bạn không có quyền thêm ao vào trang trại này');
+      throw new NotFoundException('Khong tim thay trang trai');
     }
 
     const totalPondsArea = await this.prisma.pond.aggregate({
@@ -28,10 +28,11 @@ export class PondsService {
     const currentTotalArea = totalPondsArea._sum.areaSize || 0;
 
     if (currentTotalArea + dto.areaSize > farm.area) {
-      throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + dto.areaSize}) không được vượt quá diện tích trang trại (${farm.area})`);
+      throw new BadRequestException(
+        `Tong dien tich cac ao (${currentTotalArea + dto.areaSize}) khong duoc vuot qua dien tich trang trai (${farm.area})`,
+      );
     }
 
-    // Create pond
     return this.prisma.pond.create({
       data: {
         name: dto.name,
@@ -42,18 +43,13 @@ export class PondsService {
     });
   }
 
-  async findAll(userId: string, role?: string) {
-    const where: any = {};
-    if (role !== 'ADMIN') {
-      where.farm = {
-        OR: [
-          { ownerId: userId },
-          { staff: { some: { userId } } }
-        ]
-      };
-    }
+  async findAll(user: AuthUser) {
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
+
     return this.prisma.pond.findMany({
-      where,
+      where: {
+        ...(accessibleFarmIds ? { farmId: { in: accessibleFarmIds } } : {}),
+      },
       include: {
         farm: true,
       },
@@ -64,11 +60,11 @@ export class PondsService {
   }
 
   async findAllByManager(userId: string) {
-    // Return all ponds that belong to any farm owned by this manager
     return this.prisma.pond.findMany({
       where: {
         farm: {
           ownerId: userId,
+          deletedAt: null,
         },
       },
       include: {
@@ -80,39 +76,23 @@ export class PondsService {
     });
   }
 
-  async findOne(pondId: string, userId: string, role?: string) {
+  async findOne(pondId: string, user: AuthUser) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
       include: { farm: true },
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
-    if (role !== 'ADMIN' && pond.farm.ownerId !== userId) {
-      const isStaff = await this.prisma.farmStaff.findUnique({
-        where: {
-          farmId_userId: {
-            farmId: pond.farmId,
-            userId,
-          },
-        },
-      });
-      if (!isStaff) {
-        throw new ForbiddenException('Bạn không có quyền truy cập ao nuôi này');
-      }
-    }
-
+    await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
     return pond;
   }
 
-  async update(pondId: string, userId: string, role: string, data: any) {
-    // Use findOne to ensure the pond exists and belongs to the user or staff
-    const pond = await this.findOne(pondId, userId, role);
-    if (role !== 'ADMIN' && pond.farm.ownerId !== userId) {
-      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới có quyền cập nhật ao nuôi này');
-    }
+  async update(pondId: string, user: AuthUser, data: any) {
+    const pond = await this.findOne(pondId, user);
+    await this.farmAccess.assertCanManageFarm(user, pond.farmId);
 
     if (data.areaSize) {
       const totalPondsArea = await this.prisma.pond.aggregate({
@@ -122,7 +102,9 @@ export class PondsService {
       const currentTotalArea = totalPondsArea._sum.areaSize || 0;
 
       if (currentTotalArea + data.areaSize > pond.farm.area) {
-        throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + data.areaSize}) không được vượt quá diện tích trang trại (${pond.farm.area})`);
+        throw new BadRequestException(
+          `Tong dien tich cac ao (${currentTotalArea + data.areaSize}) khong duoc vuot qua dien tich trang trai (${pond.farm.area})`,
+        );
       }
     }
 
@@ -132,17 +114,10 @@ export class PondsService {
     });
   }
 
-  async remove(pondId: string, userId: string, role?: string) {
-    // Use findOne to ensure the pond exists and belongs to the user or staff
-    const pond = await this.findOne(pondId, userId, role);
-    if (role !== 'ADMIN' && pond.farm.ownerId !== userId) {
-      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới có quyền xóa ao nuôi này');
-    }
+  async remove(pondId: string, user: AuthUser) {
+    const pond = await this.findOne(pondId, user);
+    await this.farmAccess.assertCanManageFarm(user, pond.farmId);
 
-    // Check if there are active crops, maybe prevent deletion if crops exist?
-    // For now, allow deletion if prisma cascade rules are set, otherwise it will fail.
-    // The requirement is simple CRUD.
-    
     return this.prisma.pond.delete({
       where: { id: pondId },
     });

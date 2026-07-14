@@ -1,68 +1,32 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { WaterQualityResponseDto } from './dto/water-quality-response.dto.js';
+import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
 
-/**
- * Service for water quality record operations.
- *
- * Responsibilities:
- *  - Verify the target pond exists.
- *  - Verify the requesting Farmer owns the pond's farm.
- *  - Persist the WaterQualityRecord.
- *
- * Reusable by: Water Quality History, Trend Analysis,
- *              Environmental Warning, AI Analysis modules.
- */
 @Injectable()
 export class WaterQualityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly farmAccess: FarmAccessService,
+  ) {}
 
-  /**
-   * Creates a new water quality record for a pond owned by the requesting farmer.
-   *
-   * @param userId - The authenticated Farmer's user ID (from JWT payload).
-   * @param dto    - Validated creation payload.
-   * @returns      - The new record's UUID and a success message.
-   * @throws NotFoundException    if the pond does not exist.
-   * @throws ForbiddenException   if the farmer does not own the pond's farm.
-   */
-  async create(
-    user: { userId: string; role: string },
-    dto: CreateWaterQualityDto,
-  ): Promise<WaterQualityResponseDto> {
-    // 1. Load pond along with its parent farm to validate ownership
+  async create(user: AuthUser, dto: CreateWaterQualityDto): Promise<WaterQualityResponseDto> {
     const pond = await this.prisma.pond.findUnique({
       where: { id: dto.pondId },
       include: { farm: true },
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
-    // 2. Security: ensure the user owns the farm or is assigned as staff (skip for ADMIN)
-    if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
-      const isStaff = await this.prisma.farmStaff.findUnique({
-        where: {
-          farmId_userId: {
-            farmId: pond.farmId,
-            userId: user.userId,
-          },
-        },
-      });
-      if (!isStaff) {
-        throw new ForbiddenException(
-          'Bạn không có quyền ghi nhận thông số môi trường cho ao này',
-        );
-      }
+    if (user.role === 'FARMER') {
+      await this.farmAccess.assertCanRecordUsage(user, pond.farmId);
+    } else {
+      await this.farmAccess.assertCanManageFarm(user, pond.farmId);
     }
 
-    // 3. Persist the record
     const record = await this.prisma.waterQualityRecord.create({
       data: {
         pondId: dto.pondId,
@@ -81,44 +45,21 @@ export class WaterQualityService {
 
     return {
       id: record.id,
-      message: 'Ghi nhận thông số môi trường nước thành công.',
+      message: 'Ghi nhan thong so moi truong nuoc thanh cong.',
     };
   }
 
-  /**
-   * Retrieves all water quality records for a given pond,
-   * ordered most-recent first.
-   *
-   * Used by Water Quality History, Trend Analysis, Environmental Warning,
-   * and AI Analysis modules.
-   *
-   * @param pondId - Target pond UUID.
-   * @param user   - Requesting user's ID & role (ownership check).
-   */
-  async findAllByPond(pondId: string, user: { userId: string; role: string }) {
-    // Verify pond exists and belongs to the user
+  async findAllByPond(pondId: string, user: AuthUser) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
       include: { farm: true },
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
-    if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
-      const isStaff = await this.prisma.farmStaff.findUnique({
-        where: {
-          farmId_userId: {
-            farmId: pond.farmId,
-            userId: user.userId,
-          },
-        },
-      });
-      if (!isStaff) {
-        throw new ForbiddenException('Bạn không có quyền xem ao nuôi này');
-      }
-    }
+    await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
 
     return this.prisma.waterQualityRecord.findMany({
       where: { pondId },
@@ -126,96 +67,57 @@ export class WaterQualityService {
     });
   }
 
-  /**
-   * Retrieves paginated, sorted, and filtered water quality records for the farmer's owned ponds.
-   * Calculates overall status dynamically.
-   */
-  async findHistory(user: { userId: string; role: string }, query: {
-    farmId?: string;
-    pondId?: string;
-    fromDate?: string;
-    toDate?: string;
-    page?: number;
-    size?: number;
-    sort?: string;
-  }) {
+  async findHistory(
+    user: AuthUser,
+    query: {
+      farmId?: string;
+      pondId?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+      sort?: string;
+    },
+  ) {
     const page = query.page ?? 0;
     const size = query.size ?? 10;
     const sort = query.sort ?? 'desc';
     const { farmId, pondId, fromDate, toDate } = query;
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
     const where: any = {};
 
-    // 1. Verify ownership of farm or pond if specified
     if (pondId) {
       const pond = await this.prisma.pond.findUnique({
         where: { id: pondId },
         include: { farm: true },
       });
       if (!pond) {
-        throw new NotFoundException('Không tìm thấy ao nuôi');
+        throw new NotFoundException('Khong tim thay ao nuoi');
       }
-      if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
-        const isStaff = await this.prisma.farmStaff.findUnique({
-          where: {
-            farmId_userId: {
-              farmId: pond.farmId,
-              userId: user.userId,
-            },
-          },
-        });
-        if (!isStaff) {
-          throw new ForbiddenException('Bạn không có quyền truy cập ao nuôi này');
-        }
-      }
+      await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
       where.pondId = pondId;
     } else if (farmId) {
       const farm = await this.prisma.farm.findUnique({
         where: { id: farmId },
       });
       if (!farm) {
-        throw new NotFoundException('Không tìm thấy trang trại');
+        throw new NotFoundException('Khong tim thay trang trai');
       }
-      if (user.role !== 'ADMIN' && farm.ownerId !== user.userId) {
-        const isStaff = await this.prisma.farmStaff.findUnique({
-          where: {
-            farmId_userId: {
-              farmId,
-              userId: user.userId,
-            },
-          },
-        });
-        if (!isStaff) {
-          throw new ForbiddenException('Bạn không có quyền truy cập trang trại này');
-        }
-      }
-      where.pond = { farmId: farmId };
-    } else {
-      // For admins, do not filter by ownerId or staff if no farmId/pondId is specified.
-      if (user.role !== 'ADMIN') {
-        where.pond = {
-          farm: {
-            OR: [
-              { ownerId: user.userId },
-              { staff: { some: { userId: user.userId } } }
-            ]
-          },
-        };
-      }
+      await this.farmAccess.assertCanAccessFarm(user, farmId);
+      where.pond = { farmId };
+    } else if (accessibleFarmIds) {
+      where.pond = {
+        farmId: { in: accessibleFarmIds },
+      };
     }
 
-    // 2. Date filtering
     if (fromDate || toDate) {
       where.recordTime = {};
-      if (fromDate) {
-        where.recordTime.gte = new Date(fromDate);
-      }
-      if (toDate) {
-        where.recordTime.lte = new Date(toDate);
-      }
+      if (fromDate) where.recordTime.gte = new Date(fromDate);
+      if (toDate) where.recordTime.lte = new Date(toDate);
     }
 
-    // 3. Pagination & Count queries
     const skip = page * size;
     const take = size;
 
@@ -238,7 +140,6 @@ export class WaterQualityService {
       this.prisma.waterQualityRecord.count({ where }),
     ]);
 
-    // 4. Map records and calculate overall status
     const content = records.map((record) => {
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
@@ -274,9 +175,6 @@ export class WaterQualityService {
     };
   }
 
-  /**
-   * Helper to calculate rule-based overall status for a record.
-   */
   private calculateOverallStatus(metrics: {
     temperature: any;
     ph: any;

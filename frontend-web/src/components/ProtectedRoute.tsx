@@ -4,6 +4,20 @@ interface ProtectedRouteProps {
   allowedRoles?: string[];
 }
 
+const getDashboardPath = (role?: string) => {
+  switch (role) {
+    case 'ADMIN':
+      return '/admin/dashboard';
+    case 'FARMER':
+      return '/farmer/dashboard';
+    case 'TECHNICIAN':
+      return '/technician/dashboard';
+    case 'FARM_MANAGER':
+    default:
+      return '/dashboard';
+  }
+};
+
 export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   const userStr = localStorage.getItem('user');
   const token = localStorage.getItem('accessToken');
@@ -19,7 +33,7 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
     if (allowedRoles && allowedRoles.length > 0) {
       if (!allowedRoles.includes(user.role)) {
         // Redirect unauthorized users to their default dashboard or home
-        return <Navigate to={user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard'} replace />;
+        return <Navigate to={getDashboardPath(user.role)} replace />;
       }
     }
     

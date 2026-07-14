@@ -16,6 +16,9 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
 import { WaterQualityModule } from './modules/water-quality/water-quality.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
+import { SuppliersModule } from './modules/suppliers/suppliers.module.js';
+import { FarmAccessModule } from './modules/farm-access/farm-access.module.js';
+import { FarmStaffsModule } from './modules/farm-staffs/farm-staffs.module.js';
 
 @Module({
   imports: [
@@ -40,7 +43,10 @@ import { InventoryModule } from './modules/inventory/inventory.module.js';
     ChatbotModule,
     AdminModule,
     WaterQualityModule,
+    FarmAccessModule,
+    FarmStaffsModule,
     InventoryModule,
+    SuppliersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

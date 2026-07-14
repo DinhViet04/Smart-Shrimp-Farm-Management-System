@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Save, AlertCircle } from 'lucide-react';
+import { X, Save, AlertCircle, Users } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 
 const PROVINCES = [
@@ -23,6 +23,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
 
   // Load user from local storage to get ownerId
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -44,8 +46,37 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         description: '',
         status: 'ACTIVE',
       });
+      setSelectedStaffIds([]);
     }
     setError(null);
+  }, [initialData, isOpen]);
+
+  // Fetch candidates and current staff when open
+  useEffect(() => {
+    const loadCandidates = async () => {
+      try {
+        const data = await farmService.getCandidates();
+        setCandidates(data);
+      } catch (e) {
+        console.error("Failed to load staff candidates", e);
+      }
+    };
+
+    const loadCurrentStaff = async () => {
+      if (initialData && isOpen) {
+        try {
+          const staff = await farmService.getStaff(initialData.id);
+          setSelectedStaffIds(staff.map((s: any) => s.userId));
+        } catch (e) {
+          console.error("Failed to load farm staff", e);
+        }
+      }
+    };
+
+    if (isOpen) {
+      loadCandidates();
+      loadCurrentStaff();
+    }
   }, [initialData, isOpen]);
 
   if (!isOpen) return null;
@@ -64,11 +95,16 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     setIsLoading(true);
 
     try {
+      const payload = {
+        ...formData,
+        staffIds: selectedStaffIds,
+      };
+
       if (initialData) {
-        await farmService.update(initialData.id, formData);
+        await farmService.update(initialData.id, payload);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
-        await farmService.create({ ...formData, ownerId: user.id });
+        await farmService.create({ ...payload, ownerId: user.id });
         onSuccess('Thêm trang trại mới thành công!');
       }
       onClose();
@@ -81,7 +117,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h2 className="text-xl font-bold text-slate-800">
@@ -173,6 +209,61 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-slate-700 resize-none"
                 placeholder="Nhập mô tả thêm (không bắt buộc)"
               ></textarea>
+            </div>
+
+            {/* Phân công thành viên */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-500" />
+                Phân công thành viên (Nông dân & Kỹ thuật viên)
+              </label>
+              {candidates.length === 0 ? (
+                <div className="p-4 bg-slate-50 border border-slate-100/60 rounded-2xl text-center text-xs font-semibold text-slate-400 italic">
+                  Không có tài khoản Nông dân hoặc Kỹ thuật viên nào khác sẵn có trong hệ thống để phân công.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto p-2 border border-slate-100 rounded-2xl bg-slate-50/50">
+                  {candidates.map((cand) => {
+                    const isChecked = selectedStaffIds.includes(cand.id);
+                    return (
+                      <label
+                        key={cand.id}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                          isChecked
+                            ? 'bg-blue-50/50 border-blue-200 shadow-sm'
+                            : 'bg-white border-slate-100 hover:border-slate-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedStaffIds((prev) => [...prev, cand.id]);
+                            } else {
+                              setSelectedStaffIds((prev) => prev.filter((id) => id !== cand.id));
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 transition-all cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">{cand.fullName}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                              cand.role === 'TECHNICIAN'
+                                ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                            }`}>
+                              {cand.role === 'TECHNICIAN' ? 'Tech' : 'Farmer'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 truncate">{cand.email}</span>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </form>
         </div>

@@ -12,9 +12,17 @@ export class FarmsService {
     if (exists) throw new BadRequestException('Tên nông trại đã tồn tại!');
     
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { ponds_count, ...farmData } = data;
+    const { ponds_count, staffIds, ...farmData } = data;
 
-    return this.prisma.farm.create({ data: farmData });
+    const farm = await this.prisma.farm.create({ data: farmData });
+
+    if (staffIds && staffIds.length > 0) {
+      await this.prisma.farmStaff.createMany({
+        data: staffIds.map((userId) => ({ farmId: farm.id, userId })),
+      });
+    }
+
+    return farm;
   }
 
   async findAll(search?: string, status?: string, userId?: string, role?: string) {
@@ -23,7 +31,10 @@ export class FarmsService {
     if (status) where.status = status;
 
     if (role !== 'ADMIN' && userId) {
-      where.ownerId = userId;
+      where.OR = [
+        { ownerId: userId },
+        { staff: { some: { userId } } }
+      ];
     }
 
     return this.prisma.farm.findMany({ 
@@ -41,23 +52,36 @@ export class FarmsService {
   }
 
   async findOne(id: string, userId?: string, role?: string) {
-    const where: any = { id, deletedAt: null };
-    
-    if (role !== 'ADMIN' && userId) {
-      where.ownerId = userId;
-    }
-
     const farm = await this.prisma.farm.findFirst({ 
-      where, 
+      where: { id, deletedAt: null }, 
       include: { owner: true, ponds: true } 
     });
     
-    if (!farm) throw new NotFoundException('Không tìm thấy nông trại hoặc bạn không có quyền truy cập');
+    if (!farm) throw new NotFoundException('Không tìm thấy nông trại');
+
+    if (role !== 'ADMIN' && userId && farm.ownerId !== userId) {
+      const isStaff = await this.prisma.farmStaff.findUnique({
+        where: {
+          farmId_userId: {
+            farmId: id,
+            userId,
+          },
+        },
+      });
+      if (!isStaff) {
+        throw new ForbiddenException('Bạn không có quyền truy cập nông trại này');
+      }
+    }
+
     return farm;
   }
 
   async update(id: string, data: UpdateFarmDto, userId?: string, role?: string) {
-    await this.findOne(id, userId, role); 
+    const farm = await this.findOne(id, userId, role); 
+    if (role !== 'ADMIN' && userId && farm.ownerId !== userId) {
+      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới có quyền chỉnh sửa trang trại này');
+    }
+
     if (data.name) {
       const exists = await this.prisma.farm.findFirst({ where: { name: data.name, id: { not: id } } });
       if (exists) throw new BadRequestException('Tên nông trại đã tồn tại!');
@@ -76,13 +100,27 @@ export class FarmsService {
     }
     
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { ponds_count, ...farmData } = data;
+    const { ponds_count, staffIds, ...farmData } = data;
 
-    return this.prisma.farm.update({ where: { id }, data: farmData });
+    const updatedFarm = await this.prisma.farm.update({ where: { id }, data: farmData });
+
+    if (staffIds) {
+      await this.prisma.farmStaff.deleteMany({ where: { farmId: id } });
+      if (staffIds.length > 0) {
+        await this.prisma.farmStaff.createMany({
+          data: staffIds.map((userId) => ({ farmId: id, userId })),
+        });
+      }
+    }
+
+    return updatedFarm;
   }
 
   async remove(id: string, userId?: string, role?: string) {
     const farm = await this.findOne(id, userId, role);
+    if (role !== 'ADMIN' && userId && farm.ownerId !== userId) {
+      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới có quyền xóa trang trại này');
+    }
     
     if (farm.ponds && farm.ponds.length > 0) {
       throw new BadRequestException('Không thể xóa nông trại đang có Ao nuôi!');
@@ -91,6 +129,97 @@ export class FarmsService {
     return this.prisma.farm.update({
       where: { id },
       data: { deletedAt: new Date() }
+    });
+  }
+
+  async getStaff(farmId: string, userId: string, role: string) {
+    await this.findOne(farmId, userId, role);
+
+    return this.prisma.farmStaff.findMany({
+      where: { farmId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: true,
+            phone: true,
+          },
+        },
+      },
+      orderBy: { assignedAt: 'desc' },
+    });
+  }
+
+  async assignStaff(farmId: string, userIdToAssign: string, requesterId: string, role: string) {
+    const farm = await this.prisma.farm.findUnique({ where: { id: farmId } });
+    if (!farm) throw new NotFoundException('Không tìm thấy trang trại');
+    if (role !== 'ADMIN' && farm.ownerId !== requesterId) {
+      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới được phép phân công nhân sự');
+    }
+
+    const userToAssign = await this.prisma.user.findUnique({ where: { id: userIdToAssign } });
+    if (!userToAssign) throw new NotFoundException('Không tìm thấy tài khoản nhân sự');
+    if (userToAssign.role !== 'FARMER' && userToAssign.role !== 'TECHNICIAN') {
+      throw new BadRequestException('Chỉ có thể phân công tài khoản Nông dân hoặc Kỹ thuật viên');
+    }
+
+    const existing = await this.prisma.farmStaff.findUnique({
+      where: {
+        farmId_userId: {
+          farmId,
+          userId: userIdToAssign,
+        },
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('Nhân sự này đã được phân công vào trang trại từ trước');
+    }
+
+    return this.prisma.farmStaff.create({
+      data: {
+        farmId,
+        userId: userIdToAssign,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            role: true,
+          },
+        },
+      },
+    });
+  }
+
+  async unassignStaff(farmId: string, userIdToUnassign: string, requesterId: string, role: string) {
+    const farm = await this.prisma.farm.findUnique({ where: { id: farmId } });
+    if (!farm) throw new NotFoundException('Không tìm thấy trang trại');
+    if (role !== 'ADMIN' && farm.ownerId !== requesterId) {
+      throw new ForbiddenException('Chỉ chủ trang trại hoặc quản trị viên mới được phép gỡ phân công nhân sự');
+    }
+
+    const assignment = await this.prisma.farmStaff.findUnique({
+      where: {
+        farmId_userId: {
+          farmId,
+          userId: userIdToUnassign,
+        },
+      },
+    });
+    if (!assignment) {
+      throw new NotFoundException('Nhân sự này chưa từng được phân công vào trang trại');
+    }
+
+    return this.prisma.farmStaff.delete({
+      where: {
+        farmId_userId: {
+          farmId,
+          userId: userIdToUnassign,
+        },
+      },
     });
   }
 }

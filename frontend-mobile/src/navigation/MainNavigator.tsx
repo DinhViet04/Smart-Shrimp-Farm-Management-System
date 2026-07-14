@@ -35,7 +35,7 @@ const EnvironmentStack = createNativeStackNavigator();
  * Allows pushing sub-screens (RecordWaterQuality, future History, etc.)
  * without breaking the bottom tab bar.
  */
-function EnvironmentStackNavigator() {
+export function EnvironmentStackNavigator() {
   return (
     <EnvironmentStack.Navigator>
       <EnvironmentStack.Screen

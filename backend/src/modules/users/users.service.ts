@@ -23,6 +23,25 @@ export class UsersService {
     });
   }
 
+  async findCandidates() {
+    return this.prisma.user.findMany({
+      where: {
+        role: {
+          in: [Role.FARMER, Role.TECHNICIAN],
+        },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        isActive: true,
+      },
+      orderBy: { fullName: 'asc' },
+    });
+  }
+
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
       where: { email },

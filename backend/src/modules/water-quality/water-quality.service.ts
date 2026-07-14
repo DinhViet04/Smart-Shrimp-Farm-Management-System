@@ -32,7 +32,7 @@ export class WaterQualityService {
    * @throws ForbiddenException   if the farmer does not own the pond's farm.
    */
   async create(
-    userId: string,
+    user: { userId: string; role: string },
     dto: CreateWaterQualityDto,
   ): Promise<WaterQualityResponseDto> {
     // 1. Load pond along with its parent farm to validate ownership
@@ -45,11 +45,21 @@ export class WaterQualityService {
       throw new NotFoundException('Không tìm thấy ao nuôi');
     }
 
-    // 2. Security: ensure the authenticated farmer owns this farm
-    if (pond.farm.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền ghi nhận thông số môi trường cho ao này',
-      );
+    // 2. Security: ensure the user owns the farm or is assigned as staff (skip for ADMIN)
+    if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
+      const isStaff = await this.prisma.farmStaff.findUnique({
+        where: {
+          farmId_userId: {
+            farmId: pond.farmId,
+            userId: user.userId,
+          },
+        },
+      });
+      if (!isStaff) {
+        throw new ForbiddenException(
+          'Bạn không có quyền ghi nhận thông số môi trường cho ao này',
+        );
+      }
     }
 
     // 3. Persist the record
@@ -65,7 +75,7 @@ export class WaterQualityService {
         nh3: dto.nh3,
         no2: dto.no2,
         note: dto.note ?? null,
-        createdBy: userId,
+        createdBy: user.userId,
       },
     });
 
@@ -83,9 +93,9 @@ export class WaterQualityService {
    * and AI Analysis modules.
    *
    * @param pondId - Target pond UUID.
-   * @param userId - Requesting user's ID (ownership check).
+   * @param user   - Requesting user's ID & role (ownership check).
    */
-  async findAllByPond(pondId: string, userId: string) {
+  async findAllByPond(pondId: string, user: { userId: string; role: string }) {
     // Verify pond exists and belongs to the user
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
@@ -96,8 +106,18 @@ export class WaterQualityService {
       throw new NotFoundException('Không tìm thấy ao nuôi');
     }
 
-    if (pond.farm.ownerId !== userId) {
-      throw new ForbiddenException('Bạn không có quyền xem ao nuôi này');
+    if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
+      const isStaff = await this.prisma.farmStaff.findUnique({
+        where: {
+          farmId_userId: {
+            farmId: pond.farmId,
+            userId: user.userId,
+          },
+        },
+      });
+      if (!isStaff) {
+        throw new ForbiddenException('Bạn không có quyền xem ao nuôi này');
+      }
     }
 
     return this.prisma.waterQualityRecord.findMany({
@@ -110,7 +130,7 @@ export class WaterQualityService {
    * Retrieves paginated, sorted, and filtered water quality records for the farmer's owned ponds.
    * Calculates overall status dynamically.
    */
-  async findHistory(userId: string, query: {
+  async findHistory(user: { userId: string; role: string }, query: {
     farmId?: string;
     pondId?: string;
     fromDate?: string;
@@ -135,8 +155,18 @@ export class WaterQualityService {
       if (!pond) {
         throw new NotFoundException('Không tìm thấy ao nuôi');
       }
-      if (pond.farm.ownerId !== userId) {
-        throw new ForbiddenException('Bạn không có quyền truy cập ao nuôi này');
+      if (user.role !== 'ADMIN' && pond.farm.ownerId !== user.userId) {
+        const isStaff = await this.prisma.farmStaff.findUnique({
+          where: {
+            farmId_userId: {
+              farmId: pond.farmId,
+              userId: user.userId,
+            },
+          },
+        });
+        if (!isStaff) {
+          throw new ForbiddenException('Bạn không có quyền truy cập ao nuôi này');
+        }
       }
       where.pondId = pondId;
     } else if (farmId) {
@@ -146,17 +176,32 @@ export class WaterQualityService {
       if (!farm) {
         throw new NotFoundException('Không tìm thấy trang trại');
       }
-      if (farm.ownerId !== userId) {
-        throw new ForbiddenException('Bạn không có quyền truy cập trang trại này');
+      if (user.role !== 'ADMIN' && farm.ownerId !== user.userId) {
+        const isStaff = await this.prisma.farmStaff.findUnique({
+          where: {
+            farmId_userId: {
+              farmId,
+              userId: user.userId,
+            },
+          },
+        });
+        if (!isStaff) {
+          throw new ForbiddenException('Bạn không có quyền truy cập trang trại này');
+        }
       }
       where.pond = { farmId: farmId };
     } else {
-      // Return records only for farms owned by the requesting farmer
-      where.pond = {
-        farm: {
-          ownerId: userId,
-        },
-      };
+      // For admins, do not filter by ownerId or staff if no farmId/pondId is specified.
+      if (user.role !== 'ADMIN') {
+        where.pond = {
+          farm: {
+            OR: [
+              { ownerId: user.userId },
+              { staff: { some: { userId: user.userId } } }
+            ]
+          },
+        };
+      }
     }
 
     // 2. Date filtering

@@ -45,6 +45,42 @@ interface HistoryRecord {
 }
 
 export default function WaterQualityHistory() {
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        setCurrentUser(JSON.parse(userStr));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const isFarmer = currentUser?.role === 'FARMER';
+  
+  const themeText = isFarmer ? 'text-teal-600' : 'text-blue-600';
+  const themeText500 = isFarmer ? 'text-teal-500' : 'text-blue-500';
+  const themeTextHover = isFarmer ? 'group-hover:text-teal-600' : 'group-hover:text-blue-600';
+  const themeBg = isFarmer ? 'bg-teal-600' : 'bg-blue-600';
+  const themeBgHover = isFarmer ? 'hover:bg-teal-700' : 'hover:bg-blue-700';
+  const themeGradient = isFarmer 
+    ? 'from-teal-600 to-emerald-500 hover:from-teal-700 hover:to-emerald-600' 
+    : 'from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600';
+  const themeGradientHeader = isFarmer 
+    ? 'from-teal-500 to-emerald-400' 
+    : 'from-blue-500 to-cyan-400';
+  const themeTextGradientHeader = isFarmer
+    ? 'from-teal-700 to-emerald-500'
+    : 'from-blue-700 to-cyan-500';
+  const themeShadow = isFarmer ? 'shadow-teal-500/20' : 'shadow-blue-500/20';
+  const themeShadowHeader = isFarmer ? 'shadow-teal-500/30' : 'shadow-blue-500/30';
+  const themeFocusRing = isFarmer 
+    ? 'focus:border-teal-500 focus:ring-teal-500/10' 
+    : 'focus:border-blue-500 focus:ring-blue-500/10';
+  const themeSpinner = isFarmer ? 'border-t-teal-600' : 'border-t-blue-600';
+
   // ─── Filter States ─────────────────────────────────────────────────────────
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -180,13 +216,13 @@ export default function WaterQualityHistory() {
   return (
     <div className="max-w-[1200px] mx-auto space-y-6">
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60">
+      <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-xl ${isFarmer ? 'shadow-teal-900/5' : 'shadow-blue-900/5'} border border-white/60`}>
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+          <div className={`w-14 h-14 bg-gradient-to-br ${themeGradientHeader} rounded-2xl flex items-center justify-center shadow-lg ${themeShadowHeader}`}>
             <FileText className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">
+            <h2 className={`text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r ${themeTextGradientHeader} tracking-tight`}>
               Lịch Sử Đo Môi Trường Nước
             </h2>
             <p className="text-sm text-slate-500 font-medium">
@@ -222,7 +258,7 @@ export default function WaterQualityHistory() {
                   setSelectedFarmId(e.target.value);
                   setSelectedPondId('');
                 }}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white ${themeFocusRing} transition-all`}
               >
                 <option value="">Tất cả trang trại</option>
                 {farms.map((f) => (
@@ -238,7 +274,7 @@ export default function WaterQualityHistory() {
                 value={selectedPondId}
                 onChange={(e) => setSelectedPondId(e.target.value)}
                 disabled={!selectedFarmId}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white ${themeFocusRing} transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <option value="">Tất cả ao nuôi</option>
                 {filteredPonds.map((p) => (
@@ -254,7 +290,7 @@ export default function WaterQualityHistory() {
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                className={`w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white ${themeFocusRing} transition-all`}
               />
             </div>
 
@@ -265,7 +301,7 @@ export default function WaterQualityHistory() {
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                className={`w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:bg-white ${themeFocusRing} transition-all`}
               />
             </div>
           </div>
@@ -292,7 +328,7 @@ export default function WaterQualityHistory() {
               </button>
               <button
                 type="submit"
-                className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-md shadow-blue-500/10 hover:shadow-blue-500/30"
+                className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r ${themeGradient} text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${isFarmer ? 'shadow-teal-500/10 hover:shadow-teal-500/30' : 'shadow-blue-500/10 hover:shadow-blue-500/30'}`}
               >
                 <Search className="w-4 h-4" />
                 Tìm kiếm
@@ -305,7 +341,7 @@ export default function WaterQualityHistory() {
       {/* ─── Content Section ────────────────────────────────────────────────── */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm gap-4">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+          <div className={`w-10 h-10 border-4 border-slate-200 ${themeSpinner} rounded-full animate-spin`} />
           <p className="text-sm font-semibold text-slate-500">Đang truy vấn lịch sử...</p>
         </div>
       ) : errorMsg ? (
@@ -345,12 +381,12 @@ export default function WaterQualityHistory() {
                     setSelectedRecord(r);
                     setShowDetailDialog(true);
                   }}
-                  className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-1.5 duration-500 flex flex-col justify-between cursor-pointer overflow-hidden p-6 gap-4 group relative"
+                  className={`bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 hover:shadow-2xl ${isFarmer ? 'hover:shadow-teal-500/10' : 'hover:shadow-blue-500/10'} hover:-translate-y-1.5 duration-500 flex flex-col justify-between cursor-pointer overflow-hidden p-6 gap-4 group relative`}
                 >
                   {/* Card Header: Time & Status */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                      <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                      <Calendar className={`w-3.5 h-3.5 ${themeText500}`} />
                       <span>{timeStr}</span>
                       <span className="text-slate-300">•</span>
                       <span>{dateStr}</span>
@@ -360,7 +396,7 @@ export default function WaterQualityHistory() {
 
                   {/* Card Location Info */}
                   <div>
-                    <h4 className="text-lg font-black text-slate-800 group-hover:text-blue-600 transition-colors">
+                    <h4 className={`text-lg font-black text-slate-800 ${themeTextHover} transition-colors`}>
                       {r.pondName}
                     </h4>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
@@ -435,7 +471,7 @@ export default function WaterQualityHistory() {
 
                   {/* Card Footer: Detail Link indicator */}
                   <div className="flex items-center justify-end pt-3 border-t border-slate-100/50 mt-1">
-                    <span className="text-xs font-bold text-blue-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                    <span className={`text-xs font-bold ${themeText} flex items-center gap-1 group-hover:translate-x-0.5 transition-transform`}>
                       <Eye className="w-3.5 h-3.5" /> Chi tiết đo lường
                     </span>
                   </div>
@@ -485,7 +521,7 @@ export default function WaterQualityHistory() {
             {/* Header info */}
             <div className="flex items-start justify-between mb-5">
               <div>
-                <span className="text-[10px] font-extrabold text-blue-500 uppercase tracking-widest">
+                <span className={`text-[10px] font-extrabold ${themeText500} uppercase tracking-widest`}>
                   Chi tiết bản ghi nước
                 </span>
                 <h3 className="text-xl font-bold text-slate-800 mt-1">
@@ -556,7 +592,7 @@ export default function WaterQualityHistory() {
                   setShowDetailDialog(false);
                   setSelectedRecord(null);
                 }}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-colors text-sm shadow-lg shadow-blue-500/20"
+                className={`flex-1 py-3 ${themeBg} ${themeBgHover} text-white font-bold rounded-2xl transition-colors text-sm shadow-lg ${themeShadow}`}
               >
                 Đóng
               </button>

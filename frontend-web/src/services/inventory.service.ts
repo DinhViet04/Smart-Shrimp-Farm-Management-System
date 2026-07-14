@@ -40,6 +40,16 @@ export const inventoryService = {
     return response.json();
   },
 
+  getSuppliers: async (farmId?: string, search?: string) => {
+    const params = new URLSearchParams();
+    if (farmId) params.append('farmId', farmId);
+    if (search) params.append('search', search);
+
+    const response = await apiFetch(`${apiUrl}/api/inventory/suppliers?${params.toString()}`);
+    if (!response.ok) throw new Error('Không thể tải danh sách nhà cung cấp');
+    return response.json();
+  },
+
   create: async (data: any) => {
     const response = await apiFetch(`${apiUrl}/api/inventory`, {
       method: 'POST',

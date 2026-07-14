@@ -1,41 +1,20 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { WaterQualityResponseDto } from './dto/water-quality-response.dto.js';
+import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
 
-/**
- * Service for water quality record operations.
- *
- * Responsibilities:
- *  - Verify the target pond exists.
- *  - Verify the requesting Farmer owns the pond's farm.
- *  - Persist the WaterQualityRecord.
- *
- * Reusable by: Water Quality History, Trend Analysis,
- *              Environmental Warning, AI Analysis modules.
- */
 @Injectable()
 export class WaterQualityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly farmAccess: FarmAccessService,
+  ) {}
 
-  /**
-   * Creates a new water quality record for a pond owned by the requesting farmer.
-   *
-   * @param userId - The authenticated Farmer's user ID (from JWT payload).
-   * @param dto    - Validated creation payload.
-   * @returns      - The new record's UUID and a success message.
-   * @throws NotFoundException    if the pond does not exist.
-   * @throws ForbiddenException   if the farmer does not own the pond's farm.
-   */
   async create(
-    userId: string,
+    user: AuthUser,
     dto: CreateWaterQualityDto,
   ): Promise<WaterQualityResponseDto> {
-    // 1. Load pond along with its parent farm to validate ownership
     const pond = await this.prisma.pond.findUnique({
       where: { id: dto.pondId },
       include: { farm: true },
@@ -45,14 +24,12 @@ export class WaterQualityService {
       throw new NotFoundException('Không tìm thấy ao nuôi');
     }
 
-    // 2. Security: ensure the authenticated farmer owns this farm
-    if (pond.farm.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền ghi nhận thông số môi trường cho ao này',
-      );
+    if (user.role === 'FARMER') {
+      await this.farmAccess.assertCanRecordUsage(user, pond.farmId);
+    } else {
+      await this.farmAccess.assertCanManageFarm(user, pond.farmId);
     }
 
-    // 3. Persist the record
     const record = await this.prisma.waterQualityRecord.create({
       data: {
         pondId: dto.pondId,
@@ -65,7 +42,7 @@ export class WaterQualityService {
         nh3: dto.nh3,
         no2: dto.no2,
         note: dto.note ?? null,
-        createdBy: userId,
+        createdBy: user.userId,
       },
     });
 
@@ -75,18 +52,7 @@ export class WaterQualityService {
     };
   }
 
-  /**
-   * Retrieves all water quality records for a given pond,
-   * ordered most-recent first.
-   *
-   * Used by Water Quality History, Trend Analysis, Environmental Warning,
-   * and AI Analysis modules.
-   *
-   * @param pondId - Target pond UUID.
-   * @param userId - Requesting user's ID (ownership check).
-   */
-  async findAllByPond(pondId: string, userId: string) {
-    // Verify pond exists and belongs to the user
+  async findAllByPond(pondId: string, user: AuthUser) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
       include: { farm: true },
@@ -96,9 +62,7 @@ export class WaterQualityService {
       throw new NotFoundException('Không tìm thấy ao nuôi');
     }
 
-    if (pond.farm.ownerId !== userId) {
-      throw new ForbiddenException('Bạn không có quyền xem ao nuôi này');
-    }
+    await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
 
     return this.prisma.waterQualityRecord.findMany({
       where: { pondId },
@@ -106,11 +70,7 @@ export class WaterQualityService {
     });
   }
 
-  /**
-   * Retrieves paginated, sorted, and filtered water quality records for the farmer's owned ponds.
-   * Calculates overall status dynamically.
-   */
-  async findHistory(userId: string, query: {
+  async findHistory(user: AuthUser, query: {
     farmId?: string;
     pondId?: string;
     fromDate?: string;
@@ -123,10 +83,10 @@ export class WaterQualityService {
     const size = query.size ?? 10;
     const sort = query.sort ?? 'desc';
     const { farmId, pondId, fromDate, toDate } = query;
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
     const where: any = {};
 
-    // 1. Verify ownership of farm or pond if specified
     if (pondId) {
       const pond = await this.prisma.pond.findUnique({
         where: { id: pondId },
@@ -135,9 +95,7 @@ export class WaterQualityService {
       if (!pond) {
         throw new NotFoundException('Không tìm thấy ao nuôi');
       }
-      if (pond.farm.ownerId !== userId) {
-        throw new ForbiddenException('Bạn không có quyền truy cập ao nuôi này');
-      }
+      await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
       where.pondId = pondId;
     } else if (farmId) {
       const farm = await this.prisma.farm.findUnique({
@@ -146,31 +104,20 @@ export class WaterQualityService {
       if (!farm) {
         throw new NotFoundException('Không tìm thấy trang trại');
       }
-      if (farm.ownerId !== userId) {
-        throw new ForbiddenException('Bạn không có quyền truy cập trang trại này');
-      }
-      where.pond = { farmId: farmId };
-    } else {
-      // Return records only for farms owned by the requesting farmer
+      await this.farmAccess.assertCanAccessFarm(user, farmId);
+      where.pond = { farmId };
+    } else if (accessibleFarmIds) {
       where.pond = {
-        farm: {
-          ownerId: userId,
-        },
+        farmId: { in: accessibleFarmIds },
       };
     }
 
-    // 2. Date filtering
     if (fromDate || toDate) {
       where.recordTime = {};
-      if (fromDate) {
-        where.recordTime.gte = new Date(fromDate);
-      }
-      if (toDate) {
-        where.recordTime.lte = new Date(toDate);
-      }
+      if (fromDate) where.recordTime.gte = new Date(fromDate);
+      if (toDate) where.recordTime.lte = new Date(toDate);
     }
 
-    // 3. Pagination & Count queries
     const skip = page * size;
     const take = size;
 
@@ -193,7 +140,6 @@ export class WaterQualityService {
       this.prisma.waterQualityRecord.count({ where }),
     ]);
 
-    // 4. Map records and calculate overall status
     const content = records.map((record) => {
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
@@ -229,9 +175,6 @@ export class WaterQualityService {
     };
   }
 
-  /**
-   * Helper to calculate rule-based overall status for a record.
-   */
   private calculateOverallStatus(metrics: {
     temperature: any;
     ph: any;

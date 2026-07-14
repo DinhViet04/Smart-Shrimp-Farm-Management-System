@@ -44,25 +44,50 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   farms               Farm[]
+  farmStaffs          FarmStaff[]
   googleId            String?              @unique
   waterQualityRecords WaterQualityRecord[]
+  inventoryUsageLogs  InventoryUsageLog[]
+
+  @@map("users")
 }
 
 model Farm {
-  id          String    @id @default(uuid())
-  name        String    @unique
+  id          String      @id @default(uuid())
+  name        String      @unique
   location    String?
   address     String
   area        Float
   description String?
-  status      String    @default("ACTIVE")
+  status      String      @default("ACTIVE")
   ownerId     String
-  owner       User      @relation(fields: [ownerId], references: [id])
+  owner       User        @relation(fields: [ownerId], references: [id])
   ponds       Pond[]
   inventories Inventory[]
+  suppliers   Supplier[]
+  staffs      FarmStaff[]
   deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("farms")
+}
+
+model FarmStaff {
+  id       String  @id @default(uuid())
+  farmId   String  @map("farm_id")
+  farm     Farm    @relation(fields: [farmId], references: [id])
+  userId   String  @map("user_id")
+  user     User    @relation(fields: [userId], references: [id])
+  role     Role
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([farmId, userId])
+  @@index([userId])
+  @@map("farm_staffs")
 }
 
 model Pond {
@@ -76,6 +101,8 @@ model Pond {
   waterQualityRecords WaterQualityRecord[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@map("ponds")
 }
 
 model Crop {
@@ -90,6 +117,8 @@ model Crop {
   incidents          Incident[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  @@map("crops")
 }
 
 model FiveTCycle {
@@ -103,6 +132,8 @@ model FiveTCycle {
   feedingRecommendation FeedingRecommendation?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+
+  @@map("five_t_cycles")
 }
 
 model DailyRecord {
@@ -119,6 +150,7 @@ model DailyRecord {
   updatedAt      DateTime     @updatedAt
 
   @@unique([cycleId, recordDate])
+  @@map("daily_records")
 }
 
 model SizeMeasurement {
@@ -132,6 +164,8 @@ model SizeMeasurement {
   calculatedSize      Float // Size_m = N_đ / (G_m / 1000)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
+
+  @@map("size_measurements")
 }
 
 model FeedingRecommendation {
@@ -143,6 +177,8 @@ model FeedingRecommendation {
   applied             Boolean    @default(false)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
+
+  @@map("feeding_recommendations")
 }
 
 model EnvironmentRecord {
@@ -157,6 +193,8 @@ model EnvironmentRecord {
   no2        Float?
   salinity   Float? // Độ mặn
   createdAt  DateTime @default(now())
+
+  @@map("environment_records")
 }
 
 model Incident {
@@ -169,6 +207,8 @@ model Incident {
   resolvedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@map("incidents")
 }
 
 /// Stores periodic water quality measurements for a pond.
@@ -200,6 +240,8 @@ model Standard5T {
   targetSize Float // e.g. < 1000
   targetFcr  Float // e.g. < 1.0
   createdAt  DateTime @default(now())
+
+  @@map("standard_5t")
 }
 
 enum InventoryCategory {
@@ -209,41 +251,65 @@ enum InventoryCategory {
 }
 
 model Inventory {
-  id            String            @id @default(uuid())
-  itemName      String            @map("item_name")
-  category      InventoryCategory
-  quantity      Float             @default(0)
-  unit          String
-  packageType   String?           @map("package_type")
-  packageQty    Float?            @map("package_qty")
-  weightPerPkg  Float?            @map("weight_per_pkg")
-  minThreshold  Float             @map("min_threshold") @default(0)
-  supplier      String?
-  description   String?
-  
-  farmId        String            @map("farm_id")
-  farm          Farm              @relation(fields: [farmId], references: [id])
-  
-  usageLogs     InventoryUsageLog[]
-  
-  deletedAt     DateTime?         @map("deleted_at")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  id           String            @id @default(uuid())
+  itemName     String            @map("item_name")
+  category     InventoryCategory
+  quantity     Float             @default(0)
+  unit         String
+  packageType  String?           @map("package_type")
+  packageQty   Float?            @map("package_qty")
+  weightPerPkg Float?            @map("weight_per_pkg")
+  minThreshold Float             @default(0) @map("min_threshold")
+  supplierName String?           @map("supplier")
+  description  String?
+
+  farmId     String    @map("farm_id")
+  farm       Farm      @relation(fields: [farmId], references: [id])
+  supplierId String?   @map("supplier_id")
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  usageLogs InventoryUsageLog[]
+
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@unique([itemName, farmId])
   @@map("inventories")
 }
 
-model InventoryUsageLog {
-  id            String            @id @default(uuid())
-  inventoryId   String            @map("inventory_id")
-  inventory     Inventory         @relation(fields: [inventoryId], references: [id])
-  quantityUsed  Float             @map("quantity_used")
-  usageDate     DateTime          @default(now()) @map("usage_date")
-  notes         String?
+model Supplier {
+  id      String  @id @default(uuid())
+  name    String
+  phone   String?
+  email   String?
+  address String?
+  note    String?
 
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  farmId      String      @map("farm_id")
+  farm        Farm        @relation(fields: [farmId], references: [id])
+  inventories Inventory[]
+
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([name, farmId])
+  @@map("suppliers")
+}
+
+model InventoryUsageLog {
+  id           String    @id @default(uuid())
+  inventoryId  String    @map("inventory_id")
+  inventory    Inventory @relation(fields: [inventoryId], references: [id])
+  quantityUsed Float     @map("quantity_used")
+  usageDate    DateTime  @default(now()) @map("usage_date")
+  notes        String?
+  createdBy    String?   @map("created_by")
+  creator      User?     @relation(fields: [createdBy], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("inventory_usage_logs")
 }

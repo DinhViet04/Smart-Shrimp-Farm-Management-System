@@ -11,11 +11,13 @@ import {
   Search, 
   Leaf,
   Activity,
-  AlertCircle
+  AlertCircle,
+  Package
 } from 'lucide-react';
 
 // Import AccountSettings from existing component so user can still edit profile
 import AccountSettings from '../components/AccountSettings';
+import InventoryManagement from '../features/inventory/InventoryManagement';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export default function FarmerDashboard() {
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
     { name: 'Ghi chép Môi trường', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
+    { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -258,6 +261,8 @@ export default function FarmerDashboard() {
 
           {activeTab === 'Cài đặt' ? (
              <AccountSettings />
+          ) : activeTab === 'Kho thức ăn' ? (
+             <InventoryManagement />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-teal-100 rounded-3xl shadow-sm max-w-lg">

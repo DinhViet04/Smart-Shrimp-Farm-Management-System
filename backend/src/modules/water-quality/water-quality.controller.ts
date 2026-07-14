@@ -40,7 +40,7 @@ export class WaterQualityController {
   @Roles('FARMER', 'FARM_MANAGER')
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateWaterQualityDto) {
-    return this.waterQualityService.create(req.user.userId, dto);
+    return this.waterQualityService.create(req.user, dto);
   }
 
   /**
@@ -51,9 +51,9 @@ export class WaterQualityController {
    * @returns 200 OK — Paginated history
    */
   @Get('history')
-  @Roles('FARMER', 'FARM_MANAGER')
+  @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
   getHistory(@Request() req: any, @Query() query: GetWaterQualityHistoryDto) {
-    return this.waterQualityService.findHistory(req.user.userId, query);
+    return this.waterQualityService.findHistory(req.user, query);
   }
 
   /**
@@ -66,8 +66,8 @@ export class WaterQualityController {
    * @returns 200 OK — WaterQualityRecord[]
    */
   @Get('pond/:pondId')
-  @Roles('FARMER', 'FARM_MANAGER', 'ADMIN')
+  @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
   findAllByPond(@Request() req: any, @Param('pondId') pondId: string) {
-    return this.waterQualityService.findAllByPond(pondId, req.user.userId);
+    return this.waterQualityService.findAllByPond(pondId, req.user);
   }
 }

@@ -41,7 +41,7 @@ export class CreateInventoryDto {
 
   @IsString()
   @IsOptional()
-  supplier?: string;
+  supplierId?: string;
 
   @IsString()
   @IsOptional()

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { WaterQualityController } from './water-quality.controller.js';
 import { WaterQualityService } from './water-quality.service.js';
+import { PrismaModule } from '../../prisma/prisma.module.js';
+import { FarmAccessModule } from '../farm-access/farm-access.module.js';
 
 /**
  * WaterQualityModule
@@ -13,6 +15,7 @@ import { WaterQualityService } from './water-quality.service.js';
  *  - AI Analysis module
  */
 @Module({
+  imports: [PrismaModule, FarmAccessModule],
   controllers: [WaterQualityController],
   providers: [WaterQualityService],
   exports: [WaterQualityService],

@@ -2,6 +2,20 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
 
+const getDashboardPath = (role?: string) => {
+  switch (role) {
+    case 'ADMIN':
+      return '/admin/dashboard';
+    case 'FARMER':
+      return '/farmer/dashboard';
+    case 'TECHNICIAN':
+      return '/technician/dashboard';
+    case 'FARM_MANAGER':
+    default:
+      return '/dashboard';
+  }
+};
+
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -80,7 +94,7 @@ export default function RegisterPage() {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        navigate(data.user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
+        navigate(getDashboardPath(data.user.role));
       }
     } catch (error) {
       setServerError('Không thể kết nối máy chủ.');

@@ -2,10 +2,14 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException 
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
+import { FarmAccessService } from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class FarmsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly farmAccess: FarmAccessService,
+  ) {}
 
   async create(data: CreateFarmDto) {
     const exists = await this.prisma.farm.findFirst({ where: { name: data.name } });
@@ -22,8 +26,11 @@ export class FarmsService {
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (status) where.status = status;
 
-    if (role !== 'ADMIN' && userId) {
+    if (role === 'FARM_MANAGER' && userId) {
       where.ownerId = userId;
+    } else if ((role === 'FARMER' || role === 'TECHNICIAN') && userId) {
+      const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds({ userId, role });
+      where.id = { in: accessibleFarmIds };
     }
 
     return this.prisma.farm.findMany({ 
@@ -43,8 +50,11 @@ export class FarmsService {
   async findOne(id: string, userId?: string, role?: string) {
     const where: any = { id, deletedAt: null };
     
-    if (role !== 'ADMIN' && userId) {
+    if (role === 'FARM_MANAGER' && userId) {
       where.ownerId = userId;
+    } else if ((role === 'FARMER' || role === 'TECHNICIAN') && userId) {
+      const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds({ userId, role });
+      where.id = { in: accessibleFarmIds };
     }
 
     const farm = await this.prisma.farm.findFirst({ 

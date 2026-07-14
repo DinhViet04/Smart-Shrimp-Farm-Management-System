@@ -18,6 +18,7 @@ import {
 // Import AccountSettings from existing component so user can still edit profile
 import AccountSettings from '../components/AccountSettings';
 import InventoryManagement from '../features/inventory/InventoryManagement';
+import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -263,12 +264,13 @@ export default function FarmerDashboard() {
              <AccountSettings />
           ) : activeTab === 'Kho thức ăn' ? (
              <InventoryManagement />
+          ) : activeTab === 'Ghi chép Môi trường' ? (
+             <EnvironmentDashboard viewOnly={true} />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-teal-100 rounded-3xl shadow-sm max-w-lg">
                 <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-6">
                   {activeTab === 'Quản lý Ao của tôi' && <Waves className="w-12 h-12 text-teal-500" />}
-                  {activeTab === 'Ghi chép Môi trường' && <Droplets className="w-12 h-12 text-teal-500" />}
                   {activeTab === 'Nhật ký Chăm sóc' && <ClipboardList className="w-12 h-12 text-teal-500" />}
                 </div>
                 <h2 className="text-2xl font-black text-teal-900 mb-3">{activeTab}</h2>

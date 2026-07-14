@@ -18,7 +18,7 @@ export class PondsService {
     });
 
     if (!farm) {
-      throw new NotFoundException('Không tìm thấy trang trại');
+      throw new NotFoundException('Khong tim thay trang trai');
     }
 
     const totalPondsArea = await this.prisma.pond.aggregate({
@@ -28,7 +28,9 @@ export class PondsService {
     const currentTotalArea = totalPondsArea._sum.areaSize || 0;
 
     if (currentTotalArea + dto.areaSize > farm.area) {
-      throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + dto.areaSize}) không được vượt quá diện tích trang trại (${farm.area})`);
+      throw new BadRequestException(
+        `Tong dien tich cac ao (${currentTotalArea + dto.areaSize}) khong duoc vuot qua dien tich trang trai (${farm.area})`,
+      );
     }
 
     return this.prisma.pond.create({
@@ -57,6 +59,23 @@ export class PondsService {
     });
   }
 
+  async findAllByManager(userId: string) {
+    return this.prisma.pond.findMany({
+      where: {
+        farm: {
+          ownerId: userId,
+          deletedAt: null,
+        },
+      },
+      include: {
+        farm: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   async findOne(pondId: string, user: AuthUser) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
@@ -64,7 +83,7 @@ export class PondsService {
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
     await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
@@ -83,7 +102,9 @@ export class PondsService {
       const currentTotalArea = totalPondsArea._sum.areaSize || 0;
 
       if (currentTotalArea + data.areaSize > pond.farm.area) {
-        throw new BadRequestException(`Tổng diện tích các ao (${currentTotalArea + data.areaSize}) không được vượt quá diện tích trang trại (${pond.farm.area})`);
+        throw new BadRequestException(
+          `Tong dien tich cac ao (${currentTotalArea + data.areaSize}) khong duoc vuot qua dien tich trang trai (${pond.farm.area})`,
+        );
       }
     }
 

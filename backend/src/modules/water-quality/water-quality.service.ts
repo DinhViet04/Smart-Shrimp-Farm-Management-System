@@ -11,17 +11,14 @@ export class WaterQualityService {
     private readonly farmAccess: FarmAccessService,
   ) {}
 
-  async create(
-    user: AuthUser,
-    dto: CreateWaterQualityDto,
-  ): Promise<WaterQualityResponseDto> {
+  async create(user: AuthUser, dto: CreateWaterQualityDto): Promise<WaterQualityResponseDto> {
     const pond = await this.prisma.pond.findUnique({
       where: { id: dto.pondId },
       include: { farm: true },
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
     if (user.role === 'FARMER') {
@@ -48,7 +45,7 @@ export class WaterQualityService {
 
     return {
       id: record.id,
-      message: 'Ghi nhận thông số môi trường nước thành công.',
+      message: 'Ghi nhan thong so moi truong nuoc thanh cong.',
     };
   }
 
@@ -59,7 +56,7 @@ export class WaterQualityService {
     });
 
     if (!pond) {
-      throw new NotFoundException('Không tìm thấy ao nuôi');
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
 
     await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
@@ -70,15 +67,18 @@ export class WaterQualityService {
     });
   }
 
-  async findHistory(user: AuthUser, query: {
-    farmId?: string;
-    pondId?: string;
-    fromDate?: string;
-    toDate?: string;
-    page?: number;
-    size?: number;
-    sort?: string;
-  }) {
+  async findHistory(
+    user: AuthUser,
+    query: {
+      farmId?: string;
+      pondId?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+      sort?: string;
+    },
+  ) {
     const page = query.page ?? 0;
     const size = query.size ?? 10;
     const sort = query.sort ?? 'desc';
@@ -93,7 +93,7 @@ export class WaterQualityService {
         include: { farm: true },
       });
       if (!pond) {
-        throw new NotFoundException('Không tìm thấy ao nuôi');
+        throw new NotFoundException('Khong tim thay ao nuoi');
       }
       await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
       where.pondId = pondId;
@@ -102,7 +102,7 @@ export class WaterQualityService {
         where: { id: farmId },
       });
       if (!farm) {
-        throw new NotFoundException('Không tìm thấy trang trại');
+        throw new NotFoundException('Khong tim thay trang trai');
       }
       await this.farmAccess.assertCanAccessFarm(user, farmId);
       where.pond = { farmId };

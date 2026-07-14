@@ -6,10 +6,12 @@ import {
   LogOut, 
   Bell, 
   Search, 
-  Wrench
+  Wrench,
+  Droplets
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
+import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -41,6 +43,7 @@ export default function TechnicianDashboard() {
 
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -138,6 +141,10 @@ export default function TechnicianDashboard() {
           {activeTab === 'Cài đặt' ? (
             <div className="w-full max-w-6xl h-full flex flex-col justify-start">
               <AccountSettings />
+            </div>
+          ) : activeTab === 'Môi trường nước' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <EnvironmentDashboard />
             </div>
           ) : (
             <div className="text-center p-12 bg-white border border-indigo-100 rounded-3xl shadow-sm max-w-xl">

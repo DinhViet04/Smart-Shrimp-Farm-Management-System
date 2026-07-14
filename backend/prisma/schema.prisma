@@ -44,7 +44,7 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   farms               Farm[]
-  farmStaffs          FarmStaff[]
+  farmStaff           FarmStaff[]
   googleId            String?              @unique
   waterQualityRecords WaterQualityRecord[]
   inventoryUsageLogs  InventoryUsageLog[]
@@ -65,7 +65,7 @@ model Farm {
   ponds       Pond[]
   inventories Inventory[]
   suppliers   Supplier[]
-  staffs      FarmStaff[]
+  staff       FarmStaff[]
   deletedAt   DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -74,16 +74,16 @@ model Farm {
 }
 
 model FarmStaff {
-  id       String  @id @default(uuid())
-  farmId   String  @map("farm_id")
-  farm     Farm    @relation(fields: [farmId], references: [id])
-  userId   String  @map("user_id")
-  user     User    @relation(fields: [userId], references: [id])
-  role     Role
-  isActive Boolean @default(true) @map("is_active")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  farmId     String   @map("farm_id")
+  farm       Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role
+  isActive   Boolean  @default(true) @map("is_active")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([farmId, userId])
   @@index([userId])

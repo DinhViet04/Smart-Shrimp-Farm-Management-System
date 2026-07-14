@@ -34,6 +34,12 @@ export class UsersController {
     );
   }
 
+  @Get('candidates')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  async getCandidates() {
+    return this.usersService.findCandidates();
+  }
+
   @Get()
   @Roles('ADMIN')
   async getAllUsers() {

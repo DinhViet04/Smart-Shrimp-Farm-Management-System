@@ -41,7 +41,7 @@ function BarChart({ data, color = '#2563eb' }: { data: number[]; color?: string 
           </span>
           <div
             className="w-full max-w-[3rem] rounded-t-2xl transition-all duration-500 ease-out group-hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] bg-gradient-to-t from-blue-600 to-cyan-400 group-hover:from-blue-500 group-hover:to-cyan-300 relative overflow-hidden"
-            style={{ height: `${(v / max) * 100}%` }}
+            style={{ height: `${(v / max) * 100}%`, background: `linear-gradient(to top, ${color}, #22d3ee)` }}
           >
             <div className="absolute top-0 left-0 right-0 h-2 bg-white/30 rounded-t-2xl" />
           </div>

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
+import { CreateInventoryUsageDto } from './dto/create-inventory-usage.dto.js';
 import { InventoryCategory } from '@prisma/client';
 
 @Injectable()
@@ -60,6 +61,163 @@ export class InventoryService {
       throw new NotFoundException('Không tìm thấy vật tư');
     }
     return inventory;
+  }
+
+  async recordUsage(id: string, data: CreateInventoryUsageDto) {
+    const inventory = await this.findOne(id);
+
+    if (data.quantityUsed > inventory.quantity) {
+      throw new BadRequestException('Số lượng sử dụng vượt quá tồn kho hiện có!');
+    }
+
+    const nextQuantity = inventory.quantity - data.quantityUsed;
+    const updateData: any = { quantity: nextQuantity };
+
+    if (inventory.packageQty !== null && inventory.weightPerPkg && inventory.weightPerPkg > 0) {
+      updateData.packageQty = Number((nextQuantity / inventory.weightPerPkg).toFixed(2));
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const usageLog = await tx.inventoryUsageLog.create({
+        data: {
+          inventoryId: id,
+          quantityUsed: data.quantityUsed,
+          usageDate: data.usageDate ? new Date(data.usageDate) : new Date(),
+          notes: data.notes,
+        },
+        include: {
+          inventory: {
+            select: {
+              id: true,
+              itemName: true,
+              category: true,
+              unit: true,
+              farmId: true,
+            },
+          },
+        },
+      });
+
+      await tx.inventory.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return usageLog;
+    });
+  }
+
+  async findUsageLogs(farmId?: string, inventoryId?: string, from?: string, to?: string) {
+    const where: any = {
+      inventory: {
+        is: {
+          deletedAt: null,
+        },
+      },
+    };
+
+    if (inventoryId) {
+      where.inventoryId = inventoryId;
+    }
+
+    if (farmId) {
+      where.inventory.is.farmId = farmId;
+    }
+
+    if (from || to) {
+      where.usageDate = {};
+      if (from) where.usageDate.gte = new Date(from);
+      if (to) where.usageDate.lte = new Date(to);
+    }
+
+    return this.prisma.inventoryUsageLog.findMany({
+      where,
+      include: {
+        inventory: {
+          select: {
+            id: true,
+            itemName: true,
+            category: true,
+            unit: true,
+            farmId: true,
+          },
+        },
+      },
+      orderBy: { usageDate: 'desc' },
+      take: 50,
+    });
+  }
+
+  async getConsumptionSummary(farmId?: string, days = 30) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const where: any = {
+      usageDate: { gte: since },
+      inventory: {
+        is: {
+          deletedAt: null,
+          category: InventoryCategory.FEED,
+        },
+      },
+    };
+
+    if (farmId) {
+      where.inventory.is.farmId = farmId;
+    }
+
+    const [logs, lowStockItems] = await Promise.all([
+      this.prisma.inventoryUsageLog.findMany({
+        where,
+        include: {
+          inventory: {
+            select: {
+              id: true,
+              itemName: true,
+              unit: true,
+              quantity: true,
+              minThreshold: true,
+            },
+          },
+        },
+        orderBy: { usageDate: 'desc' },
+      }),
+      this.prisma.inventory.findMany({
+        where: {
+          deletedAt: null,
+          category: InventoryCategory.FEED,
+          ...(farmId ? { farmId } : {}),
+        },
+        orderBy: { quantity: 'asc' },
+      }),
+    ]);
+
+    const totalUsed = logs.reduce((sum, log) => sum + log.quantityUsed, 0);
+    const consumptionByItem = logs.reduce((acc: any[], log) => {
+      const existing = acc.find((item) => item.inventoryId === log.inventoryId);
+      if (existing) {
+        existing.quantityUsed += log.quantityUsed;
+        return acc;
+      }
+      acc.push({
+        inventoryId: log.inventoryId,
+        itemName: log.inventory.itemName,
+        unit: log.inventory.unit,
+        quantityUsed: log.quantityUsed,
+        currentQuantity: log.inventory.quantity,
+        minThreshold: log.inventory.minThreshold,
+      });
+      return acc;
+    }, []);
+
+    return {
+      days,
+      totalUsed,
+      averageDailyUsage: days > 0 ? totalUsed / days : 0,
+      lowStockCount: lowStockItems.filter((item) => item.quantity <= item.minThreshold).length,
+      consumptionByItem: consumptionByItem.sort((a, b) => b.quantityUsed - a.quantityUsed),
+      recentLogs: logs.slice(0, 10),
+    };
   }
 
   async update(id: string, data: UpdateInventoryDto) {

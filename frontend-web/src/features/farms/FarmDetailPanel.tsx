@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, MapPin, Maximize, Calendar, Activity, Info, Building2, Waves, Eye } from 'lucide-react';
+import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye } from 'lucide-react';
 import PondDetailPanel from '../../components/PondDetailPanel';
 
 interface FarmDetailPanelProps {

@@ -32,8 +32,6 @@ export default function PondManagement() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      
       // Fetch Farms (sử dụng service chung)
       const { farmService } = await import('../services/farm.service');
       try {

@@ -7,20 +7,10 @@ import {
   ChevronRight,
   Eye,
   AlertCircle,
-  TrendingUp,
   FileText,
   Filter,
   ArrowUpDown,
   RefreshCw,
-  Building2,
-  Waves,
-  Thermometer,
-  FlaskConical,
-  Wind,
-  Droplets,
-  Beaker,
-  Activity,
-  Settings,
 } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';

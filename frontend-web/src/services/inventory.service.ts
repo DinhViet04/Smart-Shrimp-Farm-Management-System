@@ -20,6 +20,26 @@ export const inventoryService = {
     return response.json();
   },
 
+  getConsumptionSummary: async (farmId?: string, days = 30) => {
+    const params = new URLSearchParams();
+    if (farmId) params.append('farmId', farmId);
+    params.append('days', String(days));
+
+    const response = await apiFetch(`${apiUrl}/api/inventory/consumption-summary?${params.toString()}`);
+    if (!response.ok) throw new Error('Không thể tải tổng quan tiêu thụ');
+    return response.json();
+  },
+
+  getUsageLogs: async (farmId?: string, inventoryId?: string) => {
+    const params = new URLSearchParams();
+    if (farmId) params.append('farmId', farmId);
+    if (inventoryId) params.append('inventoryId', inventoryId);
+
+    const response = await apiFetch(`${apiUrl}/api/inventory/usage-logs?${params.toString()}`);
+    if (!response.ok) throw new Error('Không thể tải nhật ký tiêu thụ');
+    return response.json();
+  },
+
   create: async (data: any) => {
     const response = await apiFetch(`${apiUrl}/api/inventory`, {
       method: 'POST',
@@ -37,6 +57,16 @@ export const inventoryService = {
     });
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Failed to update inventory item');
+    return resData;
+  },
+
+  recordUsage: async (id: string, data: any) => {
+    const response = await apiFetch(`${apiUrl}/api/inventory/${id}/usage`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const resData = await response.json();
+    if (!response.ok) throw new Error(resData.message || 'Không thể ghi nhận tiêu thụ tồn kho');
     return resData;
   },
 

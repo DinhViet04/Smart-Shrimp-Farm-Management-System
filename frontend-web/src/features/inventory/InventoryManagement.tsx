@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box } from 'lucide-react';
+import type { FormEvent } from 'react';
+import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, ClipboardList, CalendarDays, MinusCircle } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
 import { farmService } from '../../services/farm.service';
 import InventoryFormModal from './InventoryFormModal';
@@ -11,6 +12,8 @@ export default function InventoryManagement() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [farms, setFarms] = useState<any[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
+  const [consumptionSummary, setConsumptionSummary] = useState<any>(null);
+  const [usageLogs, setUsageLogs] = useState<any[]>([]);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,6 +23,13 @@ export default function InventoryManagement() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [usageItem, setUsageItem] = useState<any>(null);
+  const [usageForm, setUsageForm] = useState({
+    quantityUsed: '',
+    usageDate: new Date().toISOString().slice(0, 10),
+    notes: '',
+  });
+  const [isRecordingUsage, setIsRecordingUsage] = useState(false);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -37,6 +47,20 @@ export default function InventoryManagement() {
       showToast('Không thể tải danh sách vật tư', 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchConsumptionData = async (farmId: string) => {
+    if (!farmId) return;
+    try {
+      const [summary, logs] = await Promise.all([
+        inventoryService.getConsumptionSummary(farmId, 30),
+        inventoryService.getUsageLogs(farmId),
+      ]);
+      setConsumptionSummary(summary);
+      setUsageLogs(logs || []);
+    } catch (error) {
+      showToast('Không thể tải dữ liệu tiêu thụ', 'error');
     }
   };
 
@@ -59,6 +83,7 @@ export default function InventoryManagement() {
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchInventories(selectedFarmId);
+      fetchConsumptionData(selectedFarmId);
     }, 300);
     return () => clearTimeout(timer);
   }, [search, categoryFilter, selectedFarmId]);
@@ -87,6 +112,51 @@ export default function InventoryManagement() {
   const handleOpenForm = (item?: any) => {
     setEditingItem(item || null);
     setIsModalOpen(true);
+  };
+
+  const handleOpenUsageForm = (item: any) => {
+    setUsageItem(item);
+    setUsageForm({
+      quantityUsed: '',
+      usageDate: new Date().toISOString().slice(0, 10),
+      notes: '',
+    });
+  };
+
+  const handleRecordUsage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!usageItem) return;
+
+    const quantityUsed = Number(usageForm.quantityUsed);
+    if (!quantityUsed || quantityUsed <= 0) {
+      showToast('Số lượng tiêu thụ phải lớn hơn 0', 'error');
+      return;
+    }
+
+    setIsRecordingUsage(true);
+    try {
+      await inventoryService.recordUsage(usageItem.id, {
+        quantityUsed,
+        usageDate: usageForm.usageDate,
+        notes: usageForm.notes || undefined,
+      });
+      showToast('Đã ghi nhận tiêu thụ thức ăn', 'success');
+      setUsageItem(null);
+      fetchInventories(selectedFarmId);
+      fetchConsumptionData(selectedFarmId);
+    } catch (error: any) {
+      showToast(error.message || 'Không thể ghi nhận tiêu thụ', 'error');
+    } finally {
+      setIsRecordingUsage(false);
+    }
+  };
+
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value || 0);
+  };
+
+  const formatDate = (date: string) => {
+    return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(date));
   };
 
   const getCategoryDetails = (category: string) => {
@@ -168,6 +238,104 @@ export default function InventoryManagement() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <TrendingDown className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold text-slate-400 uppercase">30 ngày</span>
+          </div>
+          <p className="text-sm font-semibold text-slate-500">Tổng thức ăn đã dùng</p>
+          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed)} kg</p>
+          <p className="text-xs text-slate-400 mt-2">
+            Trung bình {formatNumber(consumptionSummary?.averageDailyUsage)} kg/ngày
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold text-slate-400 uppercase">Cần theo dõi</span>
+          </div>
+          <p className="text-sm font-semibold text-slate-500">Mặt hàng sắp hết</p>
+          <p className="text-3xl font-black text-slate-800 mt-1">{consumptionSummary?.lowStockCount || 0}</p>
+          <p className="text-xs text-slate-400 mt-2">So với ngưỡng tối thiểu trong kho</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <ClipboardList className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold text-slate-400 uppercase">Gần đây</span>
+          </div>
+          <p className="text-sm font-semibold text-slate-500">Lượt ghi nhận tiêu thụ</p>
+          <p className="text-3xl font-black text-slate-800 mt-1">{usageLogs.length}</p>
+          <p className="text-xs text-slate-400 mt-2">Hiển thị tối đa 50 nhật ký mới nhất</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-slate-800">Tiêu thụ theo loại thức ăn</h3>
+            <Package className="w-5 h-5 text-slate-300" />
+          </div>
+          <div className="space-y-3">
+            {(consumptionSummary?.consumptionByItem || []).length === 0 ? (
+              <p className="text-sm text-slate-500 py-6 text-center">Chưa có dữ liệu tiêu thụ trong 30 ngày gần đây.</p>
+            ) : (
+              consumptionSummary.consumptionByItem.slice(0, 5).map((item: any) => (
+                <div key={item.inventoryId} className="flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="text-sm font-bold text-slate-700 truncate">{item.itemName}</p>
+                      <span className="text-sm font-black text-slate-800">{formatNumber(item.quantityUsed)} {item.unit}</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${Math.min(100, (item.quantityUsed / Math.max(consumptionSummary.totalUsed || 1, item.quantityUsed)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-slate-800">Nhật ký gần đây</h3>
+            <CalendarDays className="w-5 h-5 text-slate-300" />
+          </div>
+          <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+            {usageLogs.length === 0 ? (
+              <p className="text-sm text-slate-500 py-6 text-center">Chưa có nhật ký tiêu thụ.</p>
+            ) : (
+              usageLogs.slice(0, 6).map((log) => (
+                <div key={log.id} className="border border-slate-100 rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-700 truncate">{log.inventory?.itemName}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{formatDate(log.usageDate)}</p>
+                    </div>
+                    <span className="text-sm font-black text-emerald-600 whitespace-nowrap">
+                      {formatNumber(log.quantityUsed)} {log.inventory?.unit}
+                    </span>
+                  </div>
+                  {log.notes && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{log.notes}</p>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -177,6 +345,7 @@ export default function InventoryManagement() {
                 <th className="px-6 py-4 font-bold text-slate-600">Tên vật tư</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Phân loại</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Tồn kho</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Tiêu thụ</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Nhà cung cấp</th>
                 {canEdit && <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>}
               </tr>
@@ -184,7 +353,7 @@ export default function InventoryManagement() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={canEdit ? 5 : 4} className="px-6 py-12 text-center">
+                  <td colSpan={canEdit ? 6 : 5} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
                       <p className="text-slate-500 font-medium">Đang tải dữ liệu...</p>
@@ -193,7 +362,7 @@ export default function InventoryManagement() {
                 </tr>
               ) : inventories.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 5 : 4} className="px-6 py-12 text-center">
+                  <td colSpan={canEdit ? 6 : 5} className="px-6 py-12 text-center">
                     <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
                       <Package className="w-8 h-8 text-slate-300" />
                     </div>
@@ -249,6 +418,21 @@ export default function InventoryManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
+                        {item.category === 'FEED' ? (
+                          <button
+                            onClick={() => handleOpenUsageForm(item)}
+                            disabled={!canEdit}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Ghi nhận tiêu thụ"
+                          >
+                            <MinusCircle className="w-4 h-4" />
+                            Ghi nhận
+                          </button>
+                        ) : (
+                          <span className="text-sm text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
                         <span className="text-sm font-medium text-slate-600">{item.supplier || '-'}</span>
                       </td>
                       {canEdit && (
@@ -294,6 +478,73 @@ export default function InventoryManagement() {
           fetchInventories(selectedFarmId);
         }}
       />
+
+      {usageItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">Ghi nhận tiêu thụ thức ăn</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                {usageItem.itemName} - tồn kho {formatNumber(usageItem.quantity)} {usageItem.unit}
+              </p>
+            </div>
+            <form onSubmit={handleRecordUsage} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Số lượng đã dùng ({usageItem.unit})</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={usageForm.quantityUsed}
+                  onChange={(e) => setUsageForm({ ...usageForm, quantityUsed: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Ngày sử dụng</label>
+                <input
+                  type="date"
+                  value={usageForm.usageDate}
+                  onChange={(e) => setUsageForm({ ...usageForm, usageDate: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Ghi chú</label>
+                <textarea
+                  value={usageForm.notes}
+                  onChange={(e) => setUsageForm({ ...usageForm, notes: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium resize-none"
+                  placeholder="Ví dụ: Cho ăn ao A1 buổi sáng"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUsageItem(null)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-sm"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRecordingUsage}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center"
+                >
+                  {isRecordingUsage ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Lưu nhật ký'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (

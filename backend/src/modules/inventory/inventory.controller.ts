@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards } fro
 import { InventoryService } from './inventory.service.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
+import { CreateInventoryUsageDto } from './dto/create-inventory-usage.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -24,6 +25,26 @@ export class InventoryController {
     return this.inventoryService.findAll(search, category, farmId, skip, take);
   }
 
+  @Get('consumption-summary')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  getConsumptionSummary(
+    @Query('farmId') farmId?: string,
+    @Query('days') days?: number,
+  ) {
+    return this.inventoryService.getConsumptionSummary(farmId, days ? Number(days) : 30);
+  }
+
+  @Get('usage-logs')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  findUsageLogs(
+    @Query('farmId') farmId?: string,
+    @Query('inventoryId') inventoryId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.inventoryService.findUsageLogs(farmId, inventoryId, from, to);
+  }
+
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
   findOne(@Param('id') id: string) {
@@ -40,6 +61,12 @@ export class InventoryController {
   @Roles('FARM_MANAGER')
   update(@Param('id') id: string, @Body() updateInventoryDto: UpdateInventoryDto) {
     return this.inventoryService.update(id, updateInventoryDto);
+  }
+
+  @Post(':id/usage')
+  @Roles('FARM_MANAGER')
+  recordUsage(@Param('id') id: string, @Body() createUsageDto: CreateInventoryUsageDto) {
+    return this.inventoryService.recordUsage(id, createUsageDto);
   }
 
   @Delete(':id')

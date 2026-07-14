@@ -44,6 +44,7 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   farms               Farm[]
+  farmStaff           FarmStaff[]
   googleId            String?              @unique
   waterQualityRecords WaterQualityRecord[]
 }
@@ -60,6 +61,7 @@ model Farm {
   owner       User      @relation(fields: [ownerId], references: [id])
   ponds       Pond[]
   inventories Inventory[]
+  staff       FarmStaff[]
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -246,4 +248,16 @@ model InventoryUsageLog {
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
   @@map("inventory_usage_logs")
+}
+
+model FarmStaff {
+  id         String   @id @default(uuid())
+  farmId     String
+  farm       Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([farmId, userId])
+  @@map("farm_staffs")
 }

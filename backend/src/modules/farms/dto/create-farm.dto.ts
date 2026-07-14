@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, IsEnum, IsArray } from 'class-validator';
 
 export class CreateFarmDto {
   @IsString()
@@ -29,4 +29,9 @@ export class CreateFarmDto {
   @IsEnum(['ACTIVE', 'INACTIVE'])
   @IsOptional()
   status?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  staffIds?: string[];
 }

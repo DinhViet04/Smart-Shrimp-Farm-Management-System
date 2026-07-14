@@ -18,26 +18,26 @@ export class PondsController {
   }
 
   @Get()
-  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN', 'TECHNICIAN')
   findAll(@Request() req: any) {
-    return this.pondsService.findAllByManager(req.user.userId);
+    return this.pondsService.findAll(req.user.userId, req.user.role);
   }
 
   @Get(':id')
-  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'ADMIN', 'TECHNICIAN')
   findOne(@Request() req: any, @Param('id') id: string) {
-    return this.pondsService.findOne(id, req.user.userId);
+    return this.pondsService.findOne(id, req.user.userId, req.user.role);
   }
 
   @Put(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN')
   update(@Request() req: any, @Param('id') id: string, @Body() updatePondDto: UpdatePondDto) {
-    return this.pondsService.update(id, req.user.userId, updatePondDto);
+    return this.pondsService.update(id, req.user.userId, req.user.role, updatePondDto);
   }
 
   @Delete(':id')
   @Roles('FARM_MANAGER', 'ADMIN')
   remove(@Request() req: any, @Param('id') id: string) {
-    return this.pondsService.remove(id, req.user.userId);
+    return this.pondsService.remove(id, req.user.userId, req.user.role);
   }
 }

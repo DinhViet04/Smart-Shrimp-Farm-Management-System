@@ -1,9 +1,10 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Wrench, Settings } from 'lucide-react-native';
+import { Wrench, Settings, Thermometer } from 'lucide-react-native';
 
 import TechnicianScreen from '../screens/TechnicianScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { EnvironmentStackNavigator } from './MainNavigator';
 
 const Tab = createBottomTabNavigator();
 
@@ -13,6 +14,7 @@ export default function TechnicianNavigator() {
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
           if (route.name === 'Dashboard') return <Wrench color={color} size={size} />;
+          if (route.name === 'Môi trường') return <Thermometer color={color} size={size} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={size} />;
         },
         tabBarActiveTintColor: '#6366f1', // Indigo
@@ -32,6 +34,11 @@ export default function TechnicianNavigator() {
       })}
     >
       <Tab.Screen name="Dashboard" component={TechnicianScreen} />
+      <Tab.Screen
+        name="Môi trường"
+        component={EnvironmentStackNavigator}
+        options={{ headerShown: false }}
+      />
       <Tab.Screen name="Cài đặt" component={SettingsScreen} />
     </Tab.Navigator>
   );

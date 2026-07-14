@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2 } from 'lucide-react';
 import PondDetailPanel from '../../components/PondDetailPanel';
+import { farmService } from '../../services/farm.service';
 
 interface FarmDetailPanelProps {
   farm: any | null;
@@ -10,6 +11,90 @@ interface FarmDetailPanelProps {
 
 export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPanelProps) {
   const [viewingPond, setViewingPond] = useState<any | null>(null);
+  const [staffList, setStaffList] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState('');
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Get currently logged in user info
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        setCurrentUser(JSON.parse(userStr));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  // Fetch staff list and candidates when farm details open
+  useEffect(() => {
+    if (isOpen && farm?.id) {
+      fetchStaff();
+      if (isOwner) {
+        fetchCandidates();
+      }
+    } else {
+      setStaffList([]);
+      setCandidates([]);
+      setSelectedCandidateId('');
+      setErrorMessage(null);
+    }
+  }, [isOpen, farm?.id]);
+
+  const isOwner = currentUser?.id === farm?.ownerId || currentUser?.role === 'ADMIN';
+
+  const fetchStaff = async () => {
+    setLoadingStaff(true);
+    try {
+      const data = await farmService.getStaff(farm.id);
+      setStaffList(data);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
+  const fetchCandidates = async () => {
+    try {
+      const data = await farmService.getCandidates();
+      setCandidates(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAssign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCandidateId) return;
+    setAssigning(true);
+    setErrorMessage(null);
+    try {
+      await farmService.assignStaff(farm.id, selectedCandidateId);
+      setSelectedCandidateId('');
+      fetchStaff();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Lỗi khi gán thành viên');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUnassign = async (userId: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn gỡ phân công của thành viên này khỏi trang trại?')) return;
+    setErrorMessage(null);
+    try {
+      await farmService.unassignStaff(farm.id, userId);
+      fetchStaff();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Lỗi khi gỡ phân công');
+    }
+  };
 
   if (!farm) return null;
 
@@ -23,7 +108,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
         >
           {/* Centered Modal */}
           <div 
-            className="bg-white/95 backdrop-blur-xl rounded-3xl w-full max-w-lg shadow-2xl border border-white/60 overflow-hidden flex flex-col max-h-[90vh] transform transition-all animate-in zoom-in-95 duration-300"
+            className="bg-white/95 backdrop-blur-xl rounded-3xl w-full max-w-2xl shadow-2xl border border-white/60 overflow-hidden flex flex-col max-h-[90vh] transform transition-all animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -135,6 +220,96 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
                   </div>
                 </div>
               )}
+
+              {/* Staff Management */}
+              <div className="space-y-4 pt-6 border-t border-slate-100/50">
+                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  Thành viên trang trại ({staffList.length})
+                </h4>
+
+                {errorMessage && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl">
+                    {errorMessage}
+                  </div>
+                )}
+
+                {/* Form to Assign Staff */}
+                {isOwner && candidates.length > 0 && (
+                  <form onSubmit={handleAssign} className="flex gap-2">
+                    <select
+                      value={selectedCandidateId}
+                      onChange={(e) => setSelectedCandidateId(e.target.value)}
+                      className="flex-1 px-4 py-2 border border-slate-200 bg-slate-50/50 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
+                    >
+                      <option value="">-- Chọn thành viên để phân công --</option>
+                      {candidates
+                        .filter(cand => !staffList.some(s => s.userId === cand.id))
+                        .map(cand => (
+                          <option key={cand.id} value={cand.id}>
+                            {cand.fullName} ({cand.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}) - {cand.email}
+                          </option>
+                        ))
+                      }
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={assigning || !selectedCandidateId}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Phân công
+                    </button>
+                  </form>
+                )}
+
+                {/* Staff List */}
+                {loadingStaff ? (
+                  <div className="flex justify-center py-4">
+                    <div className="w-6 h-6 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+                  </div>
+                ) : staffList.length === 0 ? (
+                  <p className="text-slate-400 text-xs font-medium italic text-center py-2">Chưa có thành viên nào được phân công.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {staffList.map((staff: any) => (
+                      <div
+                        key={staff.id}
+                        className="p-3.5 bg-slate-50/50 border border-slate-100 rounded-2xl flex justify-between items-center group/staff"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-blue-50/80 text-blue-600 border border-blue-100/50 shadow-sm flex items-center justify-center font-bold text-xs uppercase">
+                            {staff.user.fullName?.split(' ').pop()?.substring(0, 2) || 'TV'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{staff.user.fullName}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider ${
+                                staff.user.role === 'TECHNICIAN'
+                                  ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                  : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                              }`}>
+                                {staff.user.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">{staff.user.email}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {isOwner && (
+                          <button
+                            onClick={() => handleUnassign(staff.userId)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl opacity-0 group-hover/staff:opacity-100 transition-all"
+                            title="Gỡ khỏi trang trại"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
             </div>
 

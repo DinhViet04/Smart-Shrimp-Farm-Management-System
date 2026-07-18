@@ -5,6 +5,7 @@ import { inventoryService } from '../../services/inventory.service';
 import { farmService } from '../../services/farm.service';
 import { supplierService } from '../../services/supplier.service';
 import InventoryFormModal from './InventoryFormModal';
+import InventoryDetailsModal from './InventoryDetailsModal';
 
 const SUPPLIER_PHONE_REGEX = /^0\d{9}$/;
 const SUPPLIER_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,6 +24,7 @@ export default function InventoryManagement() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [selectedDetailsItem, setSelectedDetailsItem] = useState<any>(null);
   
   // Delete Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -560,138 +562,155 @@ export default function InventoryManagement() {
       </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-sm">
-                <th className="px-6 py-4 font-bold text-slate-600">Tên vật tư</th>
-                <th className="px-6 py-4 font-bold text-slate-600">Phân loại</th>
-                <th className="px-6 py-4 font-bold text-slate-600">Tồn kho</th>
-                <th className="px-6 py-4 font-bold text-slate-600">Tiêu thụ</th>
-                <th className="px-6 py-4 font-bold text-slate-600">Nhà cung cấp</th>
-                {canManageInventory && <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={canManageInventory ? 6 : 5} className="px-6 py-12 text-center">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-                      <p className="text-slate-500 font-medium">Đang tải dữ liệu...</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : inventories.length === 0 ? (
-                <tr>
-                  <td colSpan={canManageInventory ? 6 : 5} className="px-6 py-12 text-center">
-                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <Package className="w-8 h-8 text-slate-300" />
-                    </div>
-                    <p className="text-slate-500 font-medium">Không tìm thấy vật tư nào.</p>
-                  </td>
-                </tr>
-              ) : (
-                inventories.map((item) => {
-                  const cat = getCategoryDetails(item.category);
-                  const isLowStock = item.quantity <= item.minThreshold;
+      {/* Grid Cards for Inventory List */}
+      <div className="mt-6">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed">
+            <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-500 font-medium">Đang tải dữ liệu kho...</p>
+          </div>
+        ) : inventories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed">
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+              <Package className="w-10 h-10 text-slate-300" />
+            </div>
+            <p className="text-slate-500 font-medium">Không tìm thấy vật tư nào.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {inventories.map((item) => {
+              const cat = getCategoryDetails(item.category);
+              const isLowStock = item.quantity <= item.minThreshold;
 
-                  return (
-                    <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-bold text-slate-800">{item.itemName}</p>
-                          {item.description && <p className="text-xs text-slate-500 mt-1 line-clamp-1 max-w-xs">{item.description}</p>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${cat.bg} ${cat.color} ${cat.border}`}>
-                          {cat.icon}
-                          {cat.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          {item.packageType && item.packageQty != null ? (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-lg font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                                {item.packageQty}
-                              </span>
-                              <span className="text-sm font-medium text-slate-500">{item.packageType}</span>
-                              <span className="text-xs text-slate-400 font-medium">
-                                (Tổng: {item.quantity} {item.unit})
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-lg font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                                {item.quantity}
-                              </span>
-                              <span className="text-sm font-medium text-slate-500">{item.unit}</span>
-                            </div>
-                          )}
-                          
+              return (
+                <div 
+                  key={item.id} 
+                  className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group relative flex flex-col hover:-translate-y-1 cursor-pointer"
+                  onClick={() => setSelectedDetailsItem(item)}
+                >
+                  {/* Image Section */}
+                  <div className="relative w-full h-56 bg-slate-100 overflow-hidden flex-shrink-0">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} alt={item.itemName} className="w-full h-full object-contain" />
+                    ) : (
+                      <div className={`w-full h-full flex items-center justify-center ${cat.bg}`}>
+                        {item.category === 'FEED' && <Package className={`w-24 h-24 ${cat.color} opacity-40`} />}
+                        {item.category === 'MEDICINE' && <Pill className={`w-24 h-24 ${cat.color} opacity-40`} />}
+                        {item.category === 'CHEMICAL' && <FlaskConical className={`w-24 h-24 ${cat.color} opacity-40`} />}
+                        {!['FEED', 'MEDICINE', 'CHEMICAL'].includes(item.category) && <Box className={`w-24 h-24 ${cat.color} opacity-40`} />}
+                      </div>
+                    )}
+                    
+                    {/* Category Badge overlay on image */}
+                    <div className="absolute top-3 left-3">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-white/95 backdrop-blur-sm shadow-sm ${cat.color} ${cat.border}`}>
+                        {cat.icon}
+                        {cat.label}
+                      </span>
+                    </div>
+
+                    {/* Actions overlay on image (visible on hover) */}
+                    {canManageInventory && (
+                      <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenForm(item);
+                          }}
+                          className="p-2.5 text-blue-600 bg-white/95 backdrop-blur-sm hover:bg-blue-50 hover:text-blue-700 rounded-xl shadow-sm transition-colors border border-blue-100"
+                          title="Sửa"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setItemToDelete(item);
+                            setIsDeleteModalOpen(true);
+                          }}
+                          className="p-2.5 text-rose-600 bg-white/95 backdrop-blur-sm hover:bg-rose-50 hover:text-rose-700 rounded-xl shadow-sm transition-colors border border-rose-100"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info Section */}
+                  <div className="p-4 flex flex-col flex-1 bg-white">
+                    <div className="mb-3">
+                      <h3 className="font-bold text-slate-800 text-lg leading-tight line-clamp-2" title={item.itemName}>{item.itemName}</h3>
+                      {item.description && (
+                        <p className="text-sm text-slate-500 mt-2 line-clamp-2" title={item.description}>{item.description}</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1 flex flex-col justify-end gap-4">
+                      {/* Stock Info */}
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tồn kho</span>
                           {isLowStock && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-wider">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-wider">
                               <AlertCircle className="w-3 h-3" />
                               Sắp hết
                             </span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {item.category === 'FEED' && canRecordUsage ? (
-                          <button
-                            onClick={() => handleOpenUsageForm(item)}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            title="Ghi nhận tiêu thụ"
-                          >
-                            <MinusCircle className="w-4 h-4" />
-                            Ghi nhận
-                          </button>
-                        ) : item.category === 'FEED' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-100">
-                            Chỉ xem
-                          </span>
-                        ) : (
-                          <span className="text-sm text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-slate-600">{item.supplier?.name || '-'}</span>
-                      </td>
-                      {canManageInventory && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleOpenForm(item)}
-                              className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-                              title="Sửa"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setItemToDelete(item);
-                                setIsDeleteModalOpen(true);
-                              }}
-                              className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors"
-                              title="Xóa"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                        
+                        {item.packageType && item.packageQty != null ? (
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-baseline gap-1.5">
+                              <span className={`text-2xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
+                                {item.packageQty}
+                              </span>
+                              <span className="text-sm font-semibold text-slate-600">{item.packageType}</span>
+                            </div>
+                            <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 self-start">
+                              Tổng: {item.quantity} {item.unit}
+                            </span>
                           </div>
-                        </td>
+                        ) : (
+                          <div className="flex items-baseline gap-1.5 mt-1">
+                            <span className={`text-2xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
+                              {item.quantity}
+                            </span>
+                            <span className="text-sm font-semibold text-slate-600">{item.unit}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Supplier */}
+                      <div className="flex items-center gap-2.5 text-sm bg-white border border-slate-100 p-2.5 rounded-xl">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                          <Truck className="w-3.5 h-3.5 text-indigo-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">Nhà cung cấp</p>
+                          <p className="text-slate-700 font-semibold truncate" title={item.supplier?.name || 'Chưa có thông tin'}>
+                            {item.supplier?.name || 'Không xác định'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Action Button for Usage (FEED only) */}
+                      {item.category === 'FEED' && canRecordUsage && (
+                        <button
+                          onClick={() => handleOpenUsageForm(item)}
+                          className="w-full mt-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-sm group/btn"
+                        >
+                          <MinusCircle className="w-4 h-4 group-hover/btn:-translate-y-0.5 transition-transform" />
+                          Ghi nhận tiêu thụ
+                        </button>
                       )}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Form Modal */}
@@ -930,6 +949,13 @@ export default function InventoryManagement() {
           </div>
         </div>
       )}
+
+      {/* Details Modal */}
+      <InventoryDetailsModal 
+        isOpen={!!selectedDetailsItem}
+        item={selectedDetailsItem}
+        onClose={() => setSelectedDetailsItem(null)}
+      />
     </div>
   );
 }

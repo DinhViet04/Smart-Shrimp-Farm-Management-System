@@ -41,7 +41,12 @@ const CROP_STATUS_BADGES: Record<string, { dot: string; bg: string }> = {
   FAILED: { dot: 'bg-rose-500', bg: 'border-rose-200 bg-rose-50 text-rose-700' },
 };
 
-export default function CropManagement() {
+interface CropManagementProps {
+  initialEditCrop?: Crop | null;
+  onClearEditCrop?: () => void;
+}
+
+export default function CropManagement({ initialEditCrop, onClearEditCrop }: CropManagementProps = {}) {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -110,6 +115,13 @@ export default function CropManagement() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (initialEditCrop) {
+      openEditModal(initialEditCrop);
+      onClearEditCrop?.();
+    }
+  }, [initialEditCrop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Filtered Crops List ─────────────────────────────────────────────────────
   const filteredCrops = crops.filter((c) => {

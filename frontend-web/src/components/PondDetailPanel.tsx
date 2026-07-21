@@ -1,12 +1,35 @@
-import { X, MapPin, Maximize, Calendar, Activity, Info, Droplets } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, MapPin, Maximize, Calendar, Activity, Info, Droplets, Target } from 'lucide-react';
+import { cropService, type Crop } from '../services/crop.service';
 
 interface PondDetailPanelProps {
   pond: any | null;
   isOpen: boolean;
   onClose: () => void;
+  onEditCrop?: (crop: Crop) => void;
 }
 
-export default function PondDetailPanel({ pond, isOpen, onClose }: PondDetailPanelProps) {
+export default function PondDetailPanel({ pond, isOpen, onClose, onEditCrop }: PondDetailPanelProps) {
+  const [crops, setCrops] = useState<Crop[]>([]);
+  const [loadingCrops, setLoadingCrops] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && pond?.id) {
+      const fetchCrops = async () => {
+        setLoadingCrops(true);
+        try {
+          const data = await cropService.getByPond(pond.id);
+          setCrops(data);
+        } catch (error) {
+          console.error('Failed to fetch crops', error);
+        } finally {
+          setLoadingCrops(false);
+        }
+      };
+      fetchCrops();
+    }
+  }, [isOpen, pond?.id]);
+
   if (!pond) return null;
 
   return (
@@ -115,6 +138,51 @@ export default function PondDetailPanel({ pond, isOpen, onClose }: PondDetailPan
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Crop Info */}
+              <div className="space-y-4 pt-4 border-t border-slate-100/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-indigo-50/80 text-indigo-600 flex items-center justify-center flex-shrink-0 border border-indigo-100/50 shadow-sm">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-lg font-bold text-slate-800">Danh sách Vụ Nuôi</h4>
+                </div>
+                
+                {loadingCrops ? (
+                  <div className="text-sm text-slate-500 animate-pulse text-center py-4">Đang tải dữ liệu vụ nuôi...</div>
+                ) : crops.length > 0 ? (
+                  <div className="space-y-3">
+                    {crops.map((crop) => (
+                      <div 
+                        key={crop.id} 
+                        onClick={() => {
+                          onClose();
+                          if (onEditCrop) onEditCrop(crop);
+                        }}
+                        className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:border-blue-300 cursor-pointer"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            Bắt đầu: {new Date(crop.startDate).toLocaleDateString('vi-VN')}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Tôm giống: <span className="font-bold text-slate-700">{crop.initialShrimpCount.toLocaleString()}</span>
+                          </p>
+                        </div>
+                        <div>
+                          {crop.status === 'ACTIVE' && <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-emerald-50 text-emerald-600 border-emerald-200 uppercase tracking-wider">Đang nuôi</span>}
+                          {crop.status === 'HARVESTED' && <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-blue-50 text-blue-600 border-blue-200 uppercase tracking-wider">Đã thu hoạch</span>}
+                          {crop.status === 'FAILED' && <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-rose-50 text-rose-600 border-rose-200 uppercase tracking-wider">Thất thu</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 text-center py-6 bg-slate-50/50 rounded-2xl border border-slate-100 border-dashed">
+                    Chưa có vụ nuôi nào cho ao này.
+                  </div>
+                )}
               </div>
 
             </div>

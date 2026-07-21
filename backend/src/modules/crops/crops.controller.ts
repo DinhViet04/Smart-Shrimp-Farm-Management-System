@@ -1,4 +1,20 @@
-import { Controller, Get, Post, Put, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  Request,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { CropsService } from './crops.service.js';
+import { CreateCropDto } from './dto/create-crop.dto.js';
+import { UpdateCropDto } from './dto/update-crop.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -6,27 +22,44 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 @Controller('crops')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CropsController {
+  constructor(private readonly cropsService: CropsService) {}
+
   @Get()
-  @Roles('FARM_MANAGER', 'FARMER')
-  findAll() {
-    return { message: 'This action returns all crops' };
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  findAll(
+    @Request() req: any,
+    @Query('pondId') pondId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.cropsService.findAll(req.user, { pondId, status });
+  }
+
+  @Get(':id')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.cropsService.findOne(req.user, id);
   }
 
   @Post()
   @Roles('FARM_MANAGER', 'FARMER')
-  create() {
-    return { message: 'This action adds a new crops' };
+  @HttpCode(HttpStatus.CREATED)
+  create(@Request() req: any, @Body() dto: CreateCropDto) {
+    return this.cropsService.create(req.user, dto);
   }
 
   @Put(':id')
   @Roles('FARM_MANAGER', 'FARMER')
-  update() {
-    return { message: 'This action updates a crops' };
+  update(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateCropDto,
+  ) {
+    return this.cropsService.update(req.user, id, dto);
   }
 
   @Delete(':id')
-  @Roles('FARM_MANAGER') // Only manager can delete
-  remove() {
-    return { message: 'This action removes a crops' };
+  @Roles('FARM_MANAGER', 'FARMER')
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.cropsService.remove(req.user, id);
   }
 }

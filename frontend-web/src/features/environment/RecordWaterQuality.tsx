@@ -168,13 +168,13 @@ interface ParameterFieldProps {
 function ParameterField({
   label, unit, fieldKey, value, icon, onChange, error, status, placeholder,
 }: ParameterFieldProps) {
-  const statusRing = status ? STATUS_CONFIG[status].ring : 'focus:ring-blue-500/20 focus:border-blue-500';
+  const statusRing = status ? STATUS_CONFIG[status].ring : 'focus:ring-indigo-500/20 focus:border-indigo-500';
   return (
     <div>
       {/* Label row */}
       <div className="flex items-center justify-between mb-1.5">
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <span className="text-blue-500">{icon}</span>
+          <span className="text-indigo-600">{icon}</span>
           {label}
           {unit && <span className="text-slate-400 font-normal">({unit})</span>}
         </label>
@@ -384,7 +384,7 @@ export default function RecordWaterQuality() {
     return (
       <div className="flex items-center justify-center h-80">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
           <p className="text-sm font-medium text-slate-500">Đang tải dữ liệu...</p>
         </div>
       </div>
@@ -399,12 +399,12 @@ export default function RecordWaterQuality() {
       <form onSubmit={handleSubmit} noValidate>
 
         {/* ── Page Header ──────────────────────────────────────────────── */}
-        <div className="flex items-center gap-5 bg-white/80 backdrop-blur-xl px-6 py-5 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60 mb-6">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
+        <div className="flex items-center gap-5 bg-white/80 backdrop-blur-xl px-6 py-5 rounded-3xl shadow-xl shadow-indigo-900/5 border border-white/60 mb-6">
+          <div className="w-14 h-14 bg-gradient-to-br from-indigo-600 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
             <Droplets className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">
+            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-600 tracking-tight">
               Ghi nhận Thông số Môi trường Nước
             </h2>
             <p className="text-sm text-slate-500 font-medium mt-0.5">
@@ -416,7 +416,7 @@ export default function RecordWaterQuality() {
         {/* ── Section 1: Location + Time ──────────────────────────────── */}
         <div className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 p-6 mb-5">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-5 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xs">1</span>
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-extrabold">1</span>
             Vị trí & Thời gian
           </h3>
 
@@ -434,7 +434,7 @@ export default function RecordWaterQuality() {
                     setSelectedFarmId(e.target.value);
                     setSelectedPondId('');
                   }}
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-700 appearance-none outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all cursor-pointer"
+                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-700 appearance-none outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all cursor-pointer"
                 >
                   <option value="">-- Chọn trang trại --</option>
                   {farms.map((f) => (
@@ -456,7 +456,7 @@ export default function RecordWaterQuality() {
                   onChange={(e) => setSelectedPondId(e.target.value)}
                   disabled={!selectedFarmId}
                   className={`w-full px-4 py-2.5 pr-10 rounded-xl border text-sm font-medium appearance-none outline-none transition-all cursor-pointer ${selectedFarmId
-                      ? 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20'
+                      ? 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-white hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20'
                       : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'
                     }`}
                 >
@@ -603,7 +603,7 @@ export default function RecordWaterQuality() {
         {/* ── Section 3: Note ───────────────────────────────────────────── */}
         <div className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 p-6 mb-6">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xs">3</span>
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-extrabold">2</span>
             Ghi chú
           </h3>
           <textarea
@@ -611,7 +611,7 @@ export default function RecordWaterQuality() {
             onChange={(e) => handleChange('note', e.target.value)}
             rows={3}
             placeholder="Nhập ghi chú về lần đo này (không bắt buộc)..."
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-700 outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all resize-none placeholder:text-slate-400"
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-700 outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all resize-none placeholder:text-slate-400"
           />
         </div>
 
@@ -628,7 +628,7 @@ export default function RecordWaterQuality() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full sm:w-auto px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            className="w-full sm:w-auto px-8 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
             {saving ? (
               <>

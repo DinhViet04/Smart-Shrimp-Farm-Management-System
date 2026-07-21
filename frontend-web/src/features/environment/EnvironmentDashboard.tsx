@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ClipboardList, History, LineChart } from 'lucide-react';
 import RecordWaterQuality from './RecordWaterQuality';
 import WaterQualityHistory from './WaterQualityHistory';
@@ -10,6 +10,23 @@ interface EnvironmentDashboardProps {
 
 export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDashboardProps) {
   const [subTab, setSubTab] = useState<'record' | 'history' | 'trend'>(viewOnly ? 'trend' : 'record');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        setCurrentUser(JSON.parse(userStr));
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const isFarmer = currentUser?.role === 'FARMER';
+  const activeTabClass = isFarmer
+    ? 'border-teal-600 text-teal-600'
+    : 'border-indigo-600 text-indigo-600';
 
   return (
     <div className="space-y-6 flex flex-col h-full">
@@ -20,7 +37,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
             onClick={() => setSubTab('record')}
             className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
               subTab === 'record'
-                ? 'border-indigo-600 text-indigo-600'
+                ? activeTabClass
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -33,7 +50,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
           onClick={() => setSubTab('trend')}
           className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
             subTab === 'trend'
-              ? 'border-indigo-600 text-indigo-600'
+              ? activeTabClass
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -45,7 +62,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
           onClick={() => setSubTab('history')}
           className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
             subTab === 'history'
-              ? 'border-indigo-600 text-indigo-600'
+              ? activeTabClass
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >

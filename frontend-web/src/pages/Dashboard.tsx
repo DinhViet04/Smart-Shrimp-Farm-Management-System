@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
-import PondManagement from '../components/PondManagement';
+import PondCropDashboard from '../components/PondCropDashboard';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import InventoryManagement from '../features/inventory/InventoryManagement';
 
@@ -51,7 +51,7 @@ export default function Dashboard() {
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
-    { name: 'Môi trường', icon: <Thermometer className="w-5 h-5" /> },
+    { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -215,10 +215,10 @@ export default function Dashboard() {
           ) : activeTab === 'Quản lý Trang Trại' ? (
             <FarmList />
           ) : activeTab === 'Quản lý Ao/Vụ' ? (
-            <PondManagement />
+            <PondCropDashboard />
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />
-          ) : activeTab === 'Môi trường' ? (
+          ) : activeTab === 'Môi trường nước' ? (
             <EnvironmentDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">

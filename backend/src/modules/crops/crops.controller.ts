@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Put,
   Delete,
   Param,
@@ -55,6 +56,12 @@ export class CropsController {
     @Body() dto: UpdateCropDto,
   ) {
     return this.cropsService.update(req.user, id, dto);
+  }
+
+  @Patch(':id/harvest')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  harvest(@Request() req: any, @Param('id') id: string) {
+    return this.cropsService.harvest(req.user, id);
   }
 
   @Delete(':id')

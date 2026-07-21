@@ -13,3 +13,4 @@ Thumbs.db
 .codegraph/
 run_notebook_query.js
 test_mcp.js
+AGENTS.md

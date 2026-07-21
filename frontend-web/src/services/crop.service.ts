@@ -103,6 +103,17 @@ export const cropService = {
     return data as Crop;
   },
 
+  harvest: async (id: string): Promise<Crop> => {
+    const response = await apiFetch(`${apiUrl}/api/crops/${id}/harvest`, {
+      method: 'PATCH',
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể đóng vụ nuôi');
+    }
+    return data as Crop;
+  },
+
   /**
    * DELETE /api/crops/:id
    */

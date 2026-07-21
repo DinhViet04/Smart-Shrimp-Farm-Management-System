@@ -174,4 +174,27 @@ export class CropsService {
 
     return { message: 'Xóa vụ nuôi thành công' };
   }
+
+  async harvest(user: AuthUser, id: string) {
+    const crop = await this.prisma.crop.findUnique({
+      where: { id },
+      include: { pond: true },
+    });
+
+    if (!crop) {
+      throw new NotFoundException('Không tìm thấy vụ nuôi');
+    }
+
+    await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+
+    if (crop.status !== 'ACTIVE') {
+      throw new BadRequestException('Chỉ có thể thu hoạch vụ nuôi đang hoạt động');
+    }
+
+    return this.prisma.crop.update({
+      where: { id },
+      data: { status: 'HARVESTED' },
+      include: { pond: { select: { id: true, name: true, farmId: true } } },
+    });
+  }
 }

@@ -23,7 +23,7 @@ export class WaterQualityController {
   constructor(private readonly waterQualityService: WaterQualityService) {}
 
   @Post()
-  @Roles('FARMER', 'FARM_MANAGER')
+  @Roles('TECHNICIAN', 'ADMIN')
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateWaterQualityDto) {
     return this.waterQualityService.create(req.user, dto);
@@ -39,5 +39,16 @@ export class WaterQualityController {
   @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
   findAllByPond(@Request() req: any, @Param('pondId') pondId: string) {
     return this.waterQualityService.findAllByPond(pondId, req.user);
+  }
+
+  @Get('trends')
+  @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
+  getTrends(
+    @Request() req: any,
+    @Query('pondId') pondId: string,
+    @Query('fromDate') fromDate: string,
+    @Query('toDate') toDate: string,
+  ) {
+    return this.waterQualityService.findTrends(pondId, fromDate, toDate, req.user);
   }
 }

@@ -219,7 +219,7 @@ export default function Dashboard() {
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />
           ) : activeTab === 'Môi trường' ? (
-            <EnvironmentDashboard />
+            <EnvironmentDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

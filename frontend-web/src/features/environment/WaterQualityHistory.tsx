@@ -39,6 +39,7 @@ interface HistoryRecord {
   alkalinity: number;
   nh3: number;
   no2: number;
+  transparency: number;
   overallStatus: 'Optimal' | 'Warning' | 'Danger';
   note?: string;
   createdAt: string;
@@ -404,8 +405,8 @@ export default function WaterQualityHistory() {
                     </p>
                   </div>
 
-                  {/* Symmetrical Param Matrix Grid (2x4 on desktop, 4x2 on mobile) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50/70 p-3 rounded-2xl border border-slate-100/50 shadow-inner">
+                  {/* Symmetrical Param Matrix Grid (3x3) */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50/70 p-3 rounded-2xl border border-slate-100/50 shadow-inner">
                     {/* Temperature */}
                     <div className="flex flex-col items-center justify-center p-1 bg-white/50 rounded-xl border border-white/30">
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Nhiệt độ</span>
@@ -457,6 +458,14 @@ export default function WaterQualityHistory() {
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">NO2</span>
                       <span className="text-xs font-black text-slate-700 mt-1">
                         {r.no2}<span className="text-[8px] font-medium text-slate-400 ml-0.5">mg/L</span>
+                      </span>
+                    </div>
+
+                    {/* Transparency */}
+                    <div className="flex flex-col items-center justify-center p-1 bg-white/50 rounded-xl border border-white/30">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Độ trong</span>
+                      <span className="text-xs font-black text-slate-700 mt-1">
+                        {r.transparency}<span className="text-[8px] font-medium text-slate-400 ml-0.5">cm</span>
                       </span>
                     </div>
 
@@ -562,7 +571,7 @@ export default function WaterQualityHistory() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Độ mặn</span>
                   <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.salinity} ppt</p>
                 </div>
-                <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl col-span-2">
+                <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Độ kiềm</span>
                   <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.alkalinity} mg/L</p>
                 </div>
@@ -573,6 +582,10 @@ export default function WaterQualityHistory() {
                 <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">NO2</span>
                   <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.no2} mg/L</p>
+                </div>
+                <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Độ trong</span>
+                  <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.transparency} cm</p>
                 </div>
               </div>
 

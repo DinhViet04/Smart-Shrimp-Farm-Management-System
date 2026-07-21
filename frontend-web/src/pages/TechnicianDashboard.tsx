@@ -7,12 +7,14 @@ import {
   Bell, 
   Search, 
   Wrench,
-  Droplets
+  Droplets,
+  HeartPulse
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendDashboard';
+import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -45,6 +47,7 @@ export default function TechnicianDashboard() {
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
+    { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -150,6 +153,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Dashboard' ? (
             <div className="w-full h-full flex flex-col justify-start max-w-[1400px] mx-auto">
               <EnvironmentTrendDashboard />
+            </div>
+          ) : activeTab === 'Sức khỏe tôm' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <ShrimpHealthDashboard />
             </div>
           ) : (
             <div className="text-center p-12 bg-white border border-indigo-100 rounded-3xl shadow-sm max-w-xl">

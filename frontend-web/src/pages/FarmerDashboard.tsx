@@ -12,13 +12,16 @@ import {
   Leaf,
   Activity,
   AlertCircle,
-  Package
+  Package,
+  HeartPulse
 } from 'lucide-react';
 
 // Import AccountSettings from existing component so user can still edit profile
 import AccountSettings from '../components/AccountSettings';
 import InventoryManagement from '../features/inventory/InventoryManagement';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
+import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
+import PondCropDashboard from '../components/PondCropDashboard';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -51,7 +54,8 @@ export default function FarmerDashboard() {
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
-    { name: 'Ghi chép Môi trường', icon: <Droplets className="w-5 h-5" /> },
+    { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
+    { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
@@ -264,8 +268,12 @@ export default function FarmerDashboard() {
              <AccountSettings />
           ) : activeTab === 'Kho thức ăn' ? (
              <InventoryManagement />
-          ) : activeTab === 'Ghi chép Môi trường' ? (
+          ) : activeTab === 'Môi trường nước' ? (
              <EnvironmentDashboard viewOnly={true} />
+          ) : activeTab === 'Quản lý Ao của tôi' ? (
+             <PondCropDashboard />
+          ) : activeTab === 'Sức khỏe tôm' ? (
+             <ShrimpHealthDashboard viewOnly={true} />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-teal-100 rounded-3xl shadow-sm max-w-lg">

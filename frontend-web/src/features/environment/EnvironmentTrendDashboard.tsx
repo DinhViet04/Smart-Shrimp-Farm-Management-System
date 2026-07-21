@@ -362,7 +362,7 @@ export default function EnvironmentTrendDashboard() {
                       tickLine={false} 
                       tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
                       dx={-10}
-                      tickFormatter={(val) => Number.isInteger(val) ? val : val.toFixed(2)}
+                      tickFormatter={(val: number) => Number.isInteger(val) ? val.toString() : val.toFixed(2)}
                     />
                     <RechartsTooltip content={<CustomTooltip />} cursor={{ stroke: color, strokeWidth: 1.5, strokeDasharray: '4 4' }} />
                     

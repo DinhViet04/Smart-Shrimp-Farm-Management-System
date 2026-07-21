@@ -83,6 +83,27 @@ function getAlkalinityStatus(v: number | null): WQStatus {
   return 'danger';
 }
 
+function getNh3Status(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v <= 0.10) return 'optimal';
+  if (v > 0.10 && v <= 0.30) return 'warning';
+  return 'danger';
+}
+
+function getNo2Status(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v <= 0.30) return 'optimal';
+  if (v > 0.30 && v <= 1.00) return 'warning';
+  return 'danger';
+}
+
+function getTransparencyStatus(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v >= 30 && v <= 40) return 'optimal';
+  if ((v >= 20 && v < 30) || (v > 40 && v <= 50)) return 'warning';
+  return 'danger';
+}
+
 function validateField(name: string, v: number | null): string | null {
   if (v === null || isNaN(v as number)) return 'Vui lòng nhập giá trị hợp lệ';
   switch (name) {
@@ -93,6 +114,7 @@ function validateField(name: string, v: number | null): string | null {
     case 'alkalinity': return v < 0 || v > 300 ? 'Độ kiềm phải từ 0–300 mg/L' : null;
     case 'nh3': return v < 0 ? 'NH3 không được âm' : null;
     case 'no2': return v < 0 ? 'NO2 không được âm' : null;
+    case 'transparency': return v < 0 ? 'Độ trong không được âm' : null;
     default: return null;
   }
 }
@@ -220,6 +242,7 @@ const INITIAL_FORM = {
   alkalinity: '',
   nh3: '',
   no2: '',
+  transparency: '',
   note: '',
 };
 
@@ -262,8 +285,9 @@ export default function RecordWaterQuality() {
     dissolvedOxygen: getDoStatus(numVal('dissolvedOxygen')),
     salinity: getSalinityStatus(numVal('salinity')),
     alkalinity: getAlkalinityStatus(numVal('alkalinity')),
-    nh3: null as WQStatus,
-    no2: null as WQStatus,
+    nh3: getNh3Status(numVal('nh3')),
+    no2: getNo2Status(numVal('no2')),
+    transparency: getTransparencyStatus(numVal('transparency')),
   };
 
   // ── Load farms & ponds ───────────────────────────────────────────────────────
@@ -298,7 +322,7 @@ export default function RecordWaterQuality() {
   const validate = (): boolean => {
     const newErrors: Partial<Record<FormKey, string>> = {};
     const numericKeys: FormKey[] = [
-      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'no2',
+      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'no2', 'transparency',
     ];
     numericKeys.forEach((k) => {
       const err = validateField(k, numVal(k));
@@ -329,6 +353,7 @@ export default function RecordWaterQuality() {
         alkalinity: parseFloat(form.alkalinity),
         nh3: parseFloat(form.nh3),
         no2: parseFloat(form.no2),
+        transparency: parseFloat(form.transparency),
         note: form.note || undefined,
       };
 
@@ -560,6 +585,17 @@ export default function RecordWaterQuality() {
               error={errors.no2 ?? null}
               status={status.no2}
               placeholder="vd: 0.03"
+            />
+            <ParameterField
+              label="Độ trong"
+              unit="cm"
+              fieldKey="transparency"
+              value={form.transparency}
+              icon={<Beaker className="w-4 h-4" />}
+              onChange={handleChange}
+              error={errors.transparency ?? null}
+              status={status.transparency}
+              placeholder="vd: 35"
             />
           </div>
         </div>

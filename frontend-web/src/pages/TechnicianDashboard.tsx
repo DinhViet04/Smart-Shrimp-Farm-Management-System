@@ -12,6 +12,7 @@ import {
 
 import AccountSettings from '../components/AccountSettings';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
+import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendDashboard';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -145,6 +146,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Môi trường nước' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <EnvironmentDashboard />
+            </div>
+          ) : activeTab === 'Dashboard' ? (
+            <div className="w-full h-full flex flex-col justify-start max-w-[1400px] mx-auto">
+              <EnvironmentTrendDashboard />
             </div>
           ) : (
             <div className="text-center p-12 bg-white border border-indigo-100 rounded-3xl shadow-sm max-w-xl">

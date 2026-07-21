@@ -35,6 +35,7 @@ export interface CreateWaterQualityPayload {
   alkalinity: number;
   nh3: number;
   no2: number;
+  transparency: number;
   note?: string;
 }
 

@@ -61,6 +61,11 @@ export class CreateWaterQualityDto {
   @Min(0, { message: 'NO2 không được âm' })
   no2: number;
 
+  /** Water transparency in cm — must be >= 0 */
+  @IsNumber({}, { message: 'Độ trong phải là số' })
+  @Min(0, { message: 'Độ trong không được âm' })
+  transparency: number;
+
   /** Optional observation note */
   @IsOptional()
   @IsString({ message: 'Ghi chú phải là chuỗi ký tự' })

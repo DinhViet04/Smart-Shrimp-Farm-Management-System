@@ -31,13 +31,15 @@ export interface CreateWaterQualityPayload {
   alkalinity: number;
   nh3: number;
   no2: number;
+  transparency: number;
   note?: string;
 }
 
 export interface WaterQualityRecord {
   id: string;
-  pondId: string;
   recordTime: string;
+  farmName: string;
+  pondName: string;
   temperature: number;
   ph: number;
   dissolvedOxygen: number;
@@ -45,7 +47,8 @@ export interface WaterQualityRecord {
   alkalinity: number;
   nh3: number;
   no2: number;
-  note?: string;
+  transparency: number;
+  overallStatus: 'Optimal' | 'Warning' | 'Danger';
   createdBy: string;
   createdAt: string;
 }
@@ -118,6 +121,7 @@ export const waterQualityService = {
       alkalinity: number;
       nh3: number;
       no2: number;
+      transparency: number;
       overallStatus: 'Optimal' | 'Warning' | 'Danger';
       note?: string;
       createdAt: string;
@@ -139,6 +143,36 @@ export const waterQualityService = {
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data?.message || 'Không thể tải lịch sử chất lượng nước');
+    }
+    return data;
+  },
+
+  /**
+   * GET /api/water-quality/trends
+   * Returns unpaginated history for a pond ordered by recordTime asc for charts.
+   */
+  getTrends: async (pondId: string, fromDate?: string, toDate?: string): Promise<{
+    id: string;
+    recordTime: string;
+    temperature: number;
+    ph: number;
+    dissolvedOxygen: number;
+    salinity: number;
+    alkalinity: number;
+    nh3: number;
+    no2: number;
+    transparency: number;
+    overallStatus: 'Optimal' | 'Warning' | 'Danger';
+  }[]> => {
+    const params = new URLSearchParams();
+    params.append('pondId', pondId);
+    if (fromDate) params.append('fromDate', fromDate);
+    if (toDate) params.append('toDate', toDate);
+
+    const response = await apiFetch(`${apiUrl}/api/water-quality/trends?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể tải xu hướng chất lượng nước');
     }
     return data;
   },

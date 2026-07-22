@@ -33,8 +33,10 @@ export class WaterQualityService {
         salinity: dto.salinity,
         alkalinity: dto.alkalinity,
         nh3: dto.nh3,
-        no2: dto.no2,
+        no2: dto.no2 ?? dto.h2s ?? 0,
+        h2s: dto.h2s ?? dto.no2 ?? 0,
         transparency: dto.transparency,
+        waterColor: dto.waterColor ?? null,
         note: dto.note ?? null,
         createdBy: user.userId,
       },
@@ -138,6 +140,7 @@ export class WaterQualityService {
     ]);
 
     const content = records.map((record) => {
+      const h2sVal = record.h2s !== undefined && record.h2s !== null ? Number(record.h2s) : Number(record.no2);
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
         ph: record.ph,
@@ -145,8 +148,9 @@ export class WaterQualityService {
         salinity: record.salinity,
         alkalinity: record.alkalinity,
         nh3: record.nh3,
-        no2: record.no2,
+        h2s: h2sVal,
         transparency: record.transparency,
+        waterColor: record.waterColor,
       });
 
       return {
@@ -160,8 +164,10 @@ export class WaterQualityService {
         salinity: Number(record.salinity),
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
+        h2s: h2sVal,
         no2: Number(record.no2),
         transparency: Number(record.transparency),
+        waterColor: record.waterColor ?? undefined,
         overallStatus,
         note: record.note,
         createdAt: record.createdAt.toISOString(),
@@ -199,6 +205,7 @@ export class WaterQualityService {
     });
 
     return records.map((record) => {
+      const h2sVal = record.h2s !== undefined && record.h2s !== null ? Number(record.h2s) : Number(record.no2);
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
         ph: record.ph,
@@ -206,8 +213,9 @@ export class WaterQualityService {
         salinity: record.salinity,
         alkalinity: record.alkalinity,
         nh3: record.nh3,
-        no2: record.no2,
+        h2s: h2sVal,
         transparency: record.transparency,
+        waterColor: record.waterColor,
       });
 
       return {
@@ -219,8 +227,10 @@ export class WaterQualityService {
         salinity: Number(record.salinity),
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
+        h2s: h2sVal,
         no2: Number(record.no2),
         transparency: Number(record.transparency),
+        waterColor: record.waterColor ?? undefined,
         overallStatus,
       };
     });
@@ -233,8 +243,9 @@ export class WaterQualityService {
     salinity: any;
     alkalinity: any;
     nh3: any;
-    no2: any;
+    h2s: any;
     transparency: any;
+    waterColor?: any;
   }): 'Optimal' | 'Warning' | 'Danger' {
     const temp = Number(metrics.temperature);
     const ph = Number(metrics.ph);
@@ -242,8 +253,9 @@ export class WaterQualityService {
     const salinity = Number(metrics.salinity);
     const alkalinity = Number(metrics.alkalinity);
     const nh3 = Number(metrics.nh3);
-    const no2 = Number(metrics.no2);
+    const h2s = Number(metrics.h2s);
     const transparency = Number(metrics.transparency);
+    const waterColor = metrics.waterColor;
 
     const statuses = [
       this.getTempStatus(temp),
@@ -252,9 +264,13 @@ export class WaterQualityService {
       this.getSalinityStatus(salinity),
       this.getAlkalinityStatus(alkalinity),
       this.getNh3Status(nh3),
-      this.getNo2Status(no2),
+      this.getH2sStatus(h2s),
       this.getTransparencyStatus(transparency),
     ];
+
+    if (waterColor) {
+      statuses.push(this.getWaterColorStatus(waterColor));
+    }
 
     if (statuses.includes('Danger')) return 'Danger';
     if (statuses.includes('Warning')) return 'Warning';
@@ -262,20 +278,20 @@ export class WaterQualityService {
   }
 
   private getTempStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v >= 28 && v <= 32) return 'Optimal';
-    if ((v >= 25 && v < 28) || (v > 32 && v <= 34)) return 'Warning';
+    if (v >= 25 && v <= 30) return 'Optimal';
+    if ((v >= 20 && v < 25) || (v > 30 && v <= 33)) return 'Warning';
     return 'Danger';
   }
 
   private getPhStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v >= 7.5 && v <= 8.5) return 'Optimal';
-    if ((v >= 7.0 && v < 7.5) || (v > 8.5 && v <= 9.0)) return 'Warning';
+    if (v >= 8.2 && v <= 8.5) return 'Optimal';
+    if ((v >= 7.5 && v < 8.2) || (v > 8.5 && v <= 9.0)) return 'Warning';
     return 'Danger';
   }
 
   private getDoStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v > 5) return 'Optimal';
-    if (v >= 4 && v <= 5) return 'Warning';
+    if (v > 4) return 'Optimal';
+    if (v >= 3 && v <= 4) return 'Warning';
     return 'Danger';
   }
 
@@ -286,26 +302,37 @@ export class WaterQualityService {
   }
 
   private getAlkalinityStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v >= 80 && v <= 200) return 'Optimal';
-    if ((v >= 60 && v < 80) || (v > 200 && v <= 250)) return 'Warning';
+    if (v >= 100 && v <= 160) return 'Optimal';
+    if ((v >= 80 && v < 100) || (v > 160 && v <= 200)) return 'Warning';
     return 'Danger';
   }
 
   private getNh3Status(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v <= 0.10) return 'Optimal';
-    if (v > 0.10 && v <= 0.30) return 'Warning';
+    if (v <= 0.30) return 'Optimal';
+    if (v > 0.30 && v <= 0.50) return 'Warning';
     return 'Danger';
   }
 
-  private getNo2Status(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v <= 0.30) return 'Optimal';
-    if (v > 0.30 && v <= 1.00) return 'Warning';
+  private getH2sStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
+    if (v <= 0.03) return 'Optimal';
+    if (v > 0.03 && v <= 0.05) return 'Warning';
     return 'Danger';
   }
 
   private getTransparencyStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v >= 30 && v <= 40) return 'Optimal';
-    if ((v >= 20 && v < 30) || (v > 40 && v <= 50)) return 'Warning';
+    if (v >= 25 && v <= 40) return 'Optimal';
+    if ((v >= 20 && v < 25) || (v > 40 && v <= 50)) return 'Warning';
     return 'Danger';
+  }
+
+  private getWaterColorStatus(v: string): 'Optimal' | 'Warning' | 'Danger' {
+    const val = v.toLowerCase().trim();
+    if (val.includes('xanh lục') || val.includes('xanh vỏ đậu') || val.includes('màu nâu nhạt') || val.includes('nâu nhạt')) {
+      return 'Optimal';
+    }
+    if (val.includes('đỏ') || val.includes('đen')) {
+      return 'Danger';
+    }
+    return 'Warning';
   }
 }

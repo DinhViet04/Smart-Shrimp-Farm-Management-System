@@ -450,9 +450,15 @@ export default function RecordHistoryScreen() {
                     <Text style={styles.paramValue}>{selectedRecord.nh3} mg/L</Text>
                   </View>
                   <View style={styles.paramItem}>
-                    <Text style={styles.paramLabel}>NO2</Text>
-                    <Text style={styles.paramValue}>{selectedRecord.no2} mg/L</Text>
+                    <Text style={styles.paramLabel}>H2S</Text>
+                    <Text style={styles.paramValue}>{selectedRecord.h2s ?? selectedRecord.no2 ?? 0} mg/L</Text>
                   </View>
+                  {selectedRecord.waterColor ? (
+                    <View style={[styles.paramItem, { width: '100%' }]}>
+                      <Text style={styles.paramLabel}>Màu nước</Text>
+                      <Text style={styles.paramValue}>{selectedRecord.waterColor}</Text>
+                    </View>
+                  ) : null}
                 </View>
 
                 <View style={styles.dialogNoteBox}>

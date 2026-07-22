@@ -43,7 +43,7 @@ export default function EnvironmentScreen({ navigation }: any) {
         <View style={styles.actionBody}>
           <Text style={styles.actionTitle}>Ghi nhận thông số</Text>
           <Text style={styles.actionDesc}>
-            pH, DO, Nhiệt độ, Độ mặn, Độ kiềm, NH3, NO2
+            pH, DO, Nhiệt độ, Độ mặn, Độ kiềm, NH3, H2S, Màu nước
           </Text>
         </View>
         <Text style={styles.chevron}>›</Text>

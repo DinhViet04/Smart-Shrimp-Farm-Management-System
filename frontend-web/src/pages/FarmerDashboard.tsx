@@ -22,6 +22,7 @@ import InventoryManagement from '../features/inventory/InventoryManagement';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
 import PondCropDashboard from '../components/PondCropDashboard';
+import FeedingLogDashboard from '../features/feeding-logs/FeedingLogDashboard';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -274,6 +275,8 @@ export default function FarmerDashboard() {
              <PondCropDashboard />
           ) : activeTab === 'Sức khỏe tôm' ? (
              <ShrimpHealthDashboard viewOnly={true} />
+          ) : activeTab === 'Nhật ký Chăm sóc' ? (
+             <FeedingLogDashboard />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-teal-100 rounded-3xl shadow-sm max-w-lg">

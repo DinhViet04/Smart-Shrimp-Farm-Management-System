@@ -38,8 +38,10 @@ interface HistoryRecord {
   salinity: number;
   alkalinity: number;
   nh3: number;
-  no2: number;
+  h2s: number;
+  no2?: number;
   transparency: number;
+  waterColor?: string;
   overallStatus: 'Optimal' | 'Warning' | 'Danger';
   note?: string;
   createdAt: string;
@@ -453,11 +455,11 @@ export default function WaterQualityHistory() {
                       </span>
                     </div>
 
-                    {/* NO2 */}
+                    {/* H2S */}
                     <div className="flex flex-col items-center justify-center p-1 bg-white/50 rounded-xl border border-white/30">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">NO2</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">H2S</span>
                       <span className="text-xs font-black text-slate-700 mt-1">
-                        {r.no2}<span className="text-[8px] font-medium text-slate-400 ml-0.5">mg/L</span>
+                        {r.h2s ?? r.no2 ?? 0}<span className="text-[8px] font-medium text-slate-400 ml-0.5">mg/L</span>
                       </span>
                     </div>
 
@@ -469,11 +471,11 @@ export default function WaterQualityHistory() {
                       </span>
                     </div>
 
-                    {/* Note Indicator */}
+                    {/* Water Color / Note Indicator */}
                     <div className="flex flex-col items-center justify-center p-1 bg-white/50 rounded-xl border border-white/30">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Ghi chú</span>
-                      <span className="text-xs mt-1 text-slate-500">
-                        {r.note ? '📝 Có' : '❌ Không'}
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Màu nước</span>
+                      <span className="text-[11px] font-bold mt-1 text-slate-700 truncate max-w-full">
+                        {r.waterColor || 'Chưa ghi'}
                       </span>
                     </div>
                   </div>
@@ -580,12 +582,16 @@ export default function WaterQualityHistory() {
                   <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.nh3} mg/L</p>
                 </div>
                 <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">NO2</span>
-                  <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.no2} mg/L</p>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">H2S</span>
+                  <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.h2s ?? selectedRecord.no2 ?? 0} mg/L</p>
                 </div>
                 <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Độ trong</span>
                   <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.transparency} cm</p>
+                </div>
+                <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl col-span-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Màu nước</span>
+                  <p className="text-base font-bold text-slate-800 mt-0.5">{selectedRecord.waterColor || 'Chưa ghi nhận'}</p>
                 </div>
               </div>
 

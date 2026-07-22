@@ -4,11 +4,21 @@ import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskC
 import { inventoryService } from '../../services/inventory.service';
 import { farmService } from '../../services/farm.service';
 import { supplierService } from '../../services/supplier.service';
+import { pondService } from '../../services/pond.service';
 import InventoryFormModal from './InventoryFormModal';
 import InventoryDetailsModal from './InventoryDetailsModal';
 
 const SUPPLIER_PHONE_REGEX = /^0\d{9}$/;
 const SUPPLIER_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const USAGE_PURPOSES = [
+  { id: 'FEEDING', label: 'Cho tôm ăn', icon: '🦐', desc: 'Cho ăn hàng ngày theo cử' },
+  { id: 'WATER_TREATMENT', label: 'Xử lý nước ao', icon: '🧪', desc: 'Đánh vi sinh, vôi, hóa chất' },
+  { id: 'TREATMENT', label: 'Điều trị bệnh tôm', icon: '💊', desc: 'Trộn thuốc kháng sinh, bổ tôm' },
+  { id: 'EQUIPMENT', label: 'Bảo trì / Vệ sinh', icon: '⚙️', desc: 'Vệ sinh quạt, bạt ao, thiết bị' },
+  { id: 'LOSS_EXPIRED', label: 'Hao hụt / Hết hạn', icon: '⚠️', desc: 'Hàng hỏng, hết hạn, sự cố' },
+  { id: 'OTHER', label: 'Mục đích khác', icon: '✏️', desc: 'Nhu cầu sử dụng riêng khác' },
+];
 
 export default function InventoryManagement() {
   const [inventories, setInventories] = useState<any[]>([]);
@@ -30,10 +40,13 @@ export default function InventoryManagement() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [ponds, setPonds] = useState<any[]>([]);
   const [usageItem, setUsageItem] = useState<any>(null);
   const [usageForm, setUsageForm] = useState({
     quantityUsed: '',
     usageDate: new Date().toISOString().slice(0, 10),
+    purpose: 'FEEDING',
+    pondId: '',
     notes: '',
   });
   const [isRecordingUsage, setIsRecordingUsage] = useState(false);
@@ -54,7 +67,16 @@ export default function InventoryManagement() {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canManageInventory = user.role === 'FARM_MANAGER';
-  const canRecordUsage = user.role === 'FARMER';
+  const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(user.role || '');
+
+  const fetchPonds = async () => {
+    try {
+      const list = await pondService.getAll();
+      setPonds(list);
+    } catch (err) {
+      console.error('Error fetching ponds:', err);
+    }
+  };
 
   const fetchInventories = async (farmId: string) => {
     if (!farmId) return;
@@ -107,6 +129,7 @@ export default function InventoryManagement() {
 
   useEffect(() => {
     fetchFarms();
+    fetchPonds();
   }, []);
 
   useEffect(() => {
@@ -145,10 +168,17 @@ export default function InventoryManagement() {
   };
 
   const handleOpenUsageForm = (item: any) => {
+    let defaultPurpose = 'OTHER';
+    if (item.category === 'FEED') defaultPurpose = 'FEEDING';
+    else if (item.category === 'MEDICINE') defaultPurpose = 'TREATMENT';
+    else if (item.category === 'CHEMICAL') defaultPurpose = 'WATER_TREATMENT';
+
     setUsageItem(item);
     setUsageForm({
       quantityUsed: '',
       usageDate: new Date().toISOString().slice(0, 10),
+      purpose: defaultPurpose,
+      pondId: '',
       notes: '',
     });
   };
@@ -163,14 +193,26 @@ export default function InventoryManagement() {
       return;
     }
 
+    if (quantityUsed > usageItem.quantity) {
+      showToast(`Số lượng xuất (${quantityUsed} ${usageItem.unit}) vượt quá tồn kho (${usageItem.quantity} ${usageItem.unit})`, 'error');
+      return;
+    }
+
     setIsRecordingUsage(true);
     try {
+      const purposeObj = USAGE_PURPOSES.find((p) => p.id === usageForm.purpose);
+      const purposeLabel = purposeObj ? `${purposeObj.icon} ${purposeObj.label}` : usageForm.purpose;
+      const selectedPond = ponds.find((p) => p.id === usageForm.pondId);
+      const pondText = selectedPond ? ` [Ao: ${selectedPond.name}]` : '';
+      const noteText = usageForm.notes.trim() ? ` — ${usageForm.notes.trim()}` : '';
+      const formattedNotes = `[Mục đích: ${purposeLabel}]${pondText}${noteText}`;
+
       await inventoryService.recordUsage(usageItem.id, {
         quantityUsed,
         usageDate: usageForm.usageDate,
-        notes: usageForm.notes || undefined,
+        notes: formattedNotes,
       });
-      showToast('Đã ghi nhận tiêu thụ thức ăn', 'success');
+      showToast('Ghi nhận xuất kho / tiêu thụ thành công!', 'success');
       setUsageItem(null);
       fetchInventories(selectedFarmId);
       fetchConsumptionData(selectedFarmId);
@@ -663,12 +705,12 @@ export default function InventoryManagement() {
                           <div className="flex flex-col gap-1.5">
                             <div className="flex items-baseline gap-1.5">
                               <span className={`text-2xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                                {item.packageQty}
+                                {Math.ceil(item.packageQty)}
                               </span>
                               <span className="text-sm font-semibold text-slate-600">{item.packageType}</span>
                             </div>
                             <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 self-start">
-                              Tổng: {item.quantity} {item.unit}
+                              Tổng: {Math.round(item.quantity * 100) / 100} {item.unit}
                             </span>
                           </div>
                         ) : (
@@ -694,14 +736,17 @@ export default function InventoryManagement() {
                         </div>
                       </div>
 
-                      {/* Action Button for Usage (FEED only) */}
-                      {item.category === 'FEED' && canRecordUsage && (
+                      {/* Action Button for Usage (ALL categories) */}
+                      {canRecordUsage && (
                         <button
-                          onClick={() => handleOpenUsageForm(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenUsageForm(item);
+                          }}
                           className="w-full mt-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-sm group/btn"
                         >
                           <MinusCircle className="w-4 h-4 group-hover/btn:-translate-y-0.5 transition-transform" />
-                          Ghi nhận tiêu thụ
+                          Ghi nhận tiêu thụ / Xuất kho
                         </button>
                       )}
                     </div>
@@ -850,63 +895,153 @@ export default function InventoryManagement() {
 
       {usageItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-100">
-              <h3 className="text-lg font-bold text-slate-800">Ghi nhận tiêu thụ thức ăn</h3>
-              <p className="text-sm text-slate-500 mt-1">
-                {usageItem.itemName} - tồn kho {formatNumber(usageItem.quantity)} {usageItem.unit}
-              </p>
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-teal-50">
+              <div>
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <MinusCircle className="w-5 h-5 text-emerald-600" /> Ghi Nhận Tiêu Thụ / Xuất Kho
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-1">
+                  Mặt hàng: <span className="text-emerald-800 font-bold">{usageItem.itemName}</span> — Tồn hiện tại:{' '}
+                  <span className="font-extrabold text-slate-800">{formatNumber(usageItem.quantity)} {usageItem.unit}</span>
+                  {usageItem.packageQty ? ` (${Math.ceil(usageItem.packageQty)} ${usageItem.packageType || 'bao'})` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUsageItem(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <form onSubmit={handleRecordUsage} className="p-6 space-y-4">
+
+            <form onSubmit={handleRecordUsage} className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Section 1: Purpose Selection */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Số lượng đã dùng ({usageItem.unit})</label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={usageForm.quantityUsed}
-                  onChange={(e) => setUsageForm({ ...usageForm, quantityUsed: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium"
-                  required
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  1. Mục đích xuất kho / tiêu thụ <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {USAGE_PURPOSES.map((p) => {
+                    const isSelected = usageForm.purpose === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setUsageForm({ ...usageForm, purpose: p.id })}
+                        className={`p-3 rounded-2xl border text-left transition-all flex items-start gap-2.5 ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20 text-emerald-950 font-bold shadow-sm'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-white text-slate-700 font-semibold'
+                        }`}
+                      >
+                        <span className="text-lg leading-none">{p.icon}</span>
+                        <div>
+                          <p className="text-xs font-bold leading-tight">{p.label}</p>
+                          <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{p.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Section 2: Pond Picker (Optional) */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Ngày sử dụng</label>
-                <input
-                  type="date"
-                  value={usageForm.usageDate}
-                  onChange={(e) => setUsageForm({ ...usageForm, usageDate: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium"
-                  required
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  2. Ao nuôi áp dụng <span className="text-slate-400 font-normal">(Không bắt buộc)</span>
+                </label>
+                <select
+                  value={usageForm.pondId}
+                  onChange={(e) => setUsageForm({ ...usageForm, pondId: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all cursor-pointer"
+                >
+                  <option value="">-- Sử dụng chung cho trang trại / Kho --</option>
+                  {ponds
+                    .filter((p) => !selectedFarmId || p.farmId === selectedFarmId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
               </div>
+
+              {/* Section 3: Quantity & Usage Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    3. Số lượng xuất ({usageItem.unit}) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={usageForm.quantityUsed}
+                    onChange={(e) => setUsageForm({ ...usageForm, quantityUsed: e.target.value })}
+                    placeholder={`Nhập số lượng ${usageItem.unit}...`}
+                    className={`w-full px-4 py-2.5 rounded-xl border text-xs font-bold outline-none transition-all ${
+                      Number(usageForm.quantityUsed) > usageItem.quantity
+                        ? 'border-red-300 bg-red-50 text-red-900 focus:border-red-500'
+                        : 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-white focus:border-emerald-500'
+                    }`}
+                    required
+                  />
+                  {Number(usageForm.quantityUsed) > usageItem.quantity && (
+                    <p className="text-[11px] font-bold text-red-600 mt-1">
+                      ⚠️ Vượt tồn kho ({usageItem.quantity} {usageItem.unit})!
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Ngày sử dụng <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={usageForm.usageDate}
+                    onChange={(e) => setUsageForm({ ...usageForm, usageDate: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Section 4: Notes */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Ghi chú</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  4. Ghi chú chi tiết thêm
+                </label>
                 <textarea
                   value={usageForm.notes}
                   onChange={(e) => setUsageForm({ ...usageForm, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none text-sm font-medium resize-none"
-                  placeholder="Ví dụ: Cho ăn ao A1 buổi sáng"
+                  rows={2}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 outline-none hover:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all resize-none"
+                  placeholder="Ví dụ: Đánh vi sinh buổi sáng theo hướng dẫn của kỹ sư..."
                 />
               </div>
-              <div className="flex gap-3 pt-2">
+
+              {/* Footer Buttons */}
+              <div className="flex gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setUsageItem(null)}
-                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-sm"
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs"
                 >
-                  Hủy
+                  Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  disabled={isRecordingUsage}
-                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center"
+                  disabled={isRecordingUsage || Number(usageForm.quantityUsed) > usageItem.quantity}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
                 >
                   {isRecordingUsage ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    'Lưu nhật ký'
+                    'Xác nhận xuất kho'
                   )}
                 </button>
               </div>

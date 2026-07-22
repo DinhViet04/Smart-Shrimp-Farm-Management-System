@@ -23,20 +23,22 @@ interface TrendData {
   salinity: number;
   alkalinity: number;
   nh3: number;
-  no2: number;
+  h2s: number;
+  no2?: number;
   transparency: number;
+  waterColor?: string;
   overallStatus: WQStatus;
 }
 
 const PARAM_CONFIG = {
-  temperature: { name: 'Nhiệt độ', unit: '°C', color: '#f43f5e', optimal: [28, 32], warningHigh: [32, 34], warningLow: [25, 28], domain: [25, 45] },
-  ph: { name: 'pH', unit: '', color: '#8b5cf6', optimal: [7.5, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.0, 7.5], domain: [4.0, 12.0] },
-  dissolvedOxygen: { name: 'DO (Oxy)', unit: 'mg/L', color: '#0ea5e9', optimal: [5, 10], warningLow: [4, 5], domain: [0, 10] },
-  salinity: { name: 'Độ mặn', unit: 'ppt', color: '#10b981', optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
-  alkalinity: { name: 'Độ kiềm', unit: 'mg/L', color: '#f59e0b', optimal: [80, 200], warningHigh: [200, 250], warningLow: [60, 80], domain: [50, 250] },
-  nh3: { name: 'NH3', unit: 'mg/L', color: '#d946ef', optimal: [0, 0.10], warningHigh: [0.10, 0.30], domain: [0, 1.0] },
-  no2: { name: 'NO2', unit: 'mg/L', color: '#f97316', optimal: [0, 0.30], warningHigh: [0.30, 1.00], domain: [0, 2.0] },
-  transparency: { name: 'Độ trong', unit: 'cm', color: '#06b6d4', optimal: [30, 40], warningHigh: [40, 50], warningLow: [20, 30], domain: [0, 70] },
+  temperature: { name: 'Nhiệt độ', unit: '°C', color: '#f43f5e', optimal: [25, 30], warningHigh: [30, 33], warningLow: [20, 25], domain: [15, 40] },
+  ph: { name: 'pH', unit: '', color: '#8b5cf6', optimal: [8.2, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.5, 8.2], domain: [5.0, 10.0] },
+  dissolvedOxygen: { name: 'DO (Oxy)', unit: 'mg/L', color: '#0ea5e9', optimal: [4, 10], warningLow: [3, 4], domain: [0, 15] },
+  salinity: { name: 'Độ mặn', unit: '‰', color: '#10b981', optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
+  alkalinity: { name: 'Độ kiềm', unit: 'mg/L', color: '#f59e0b', optimal: [100, 160], warningHigh: [160, 200], warningLow: [80, 100], domain: [50, 250] },
+  nh3: { name: 'NH3', unit: 'mg/L', color: '#d946ef', optimal: [0, 0.30], warningHigh: [0.30, 0.50], domain: [0, 1.0] },
+  h2s: { name: 'H2S', unit: 'mg/L', color: '#f97316', optimal: [0, 0.03], warningHigh: [0.03, 0.05], domain: [0, 0.2] },
+  transparency: { name: 'Độ trong', unit: 'cm', color: '#06b6d4', optimal: [25, 40], warningHigh: [40, 50], warningLow: [20, 25], domain: [0, 70] },
 };
 
 type ParamKey = keyof typeof PARAM_CONFIG;

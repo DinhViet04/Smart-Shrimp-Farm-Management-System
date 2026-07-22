@@ -78,7 +78,7 @@ export class InventoryController {
   }
 
   @Post(':id/usage')
-  @Roles('FARMER')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
   recordUsage(
     @Param('id') id: string,
     @Body() createUsageDto: CreateInventoryUsageDto,

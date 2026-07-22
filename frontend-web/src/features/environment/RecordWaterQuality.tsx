@@ -50,22 +50,22 @@ type WQStatus = 'optimal' | 'warning' | 'danger' | null;
 
 function getTemperatureStatus(v: number | null): WQStatus {
   if (v === null || v < 15 || v > 40) return null;
-  if (v >= 28 && v <= 32) return 'optimal';
-  if ((v >= 25 && v < 28) || (v > 32 && v <= 34)) return 'warning';
+  if (v >= 25 && v <= 30) return 'optimal';
+  if ((v >= 20 && v < 25) || (v > 30 && v <= 33)) return 'warning';
   return 'danger';
 }
 
 function getPhStatus(v: number | null): WQStatus {
   if (v === null || v < 5 || v > 10) return null;
-  if (v >= 7.5 && v <= 8.5) return 'optimal';
-  if ((v >= 7.0 && v < 7.5) || (v > 8.5 && v <= 9.0)) return 'warning';
+  if (v >= 8.2 && v <= 8.5) return 'optimal';
+  if ((v >= 7.5 && v < 8.2) || (v > 8.5 && v <= 9.0)) return 'warning';
   return 'danger';
 }
 
 function getDoStatus(v: number | null): WQStatus {
   if (v === null || v < 0 || v > 20) return null;
-  if (v > 5) return 'optimal';
-  if (v >= 4) return 'warning';
+  if (v > 4) return 'optimal';
+  if (v >= 3) return 'warning';
   return 'danger';
 }
 
@@ -78,30 +78,42 @@ function getSalinityStatus(v: number | null): WQStatus {
 
 function getAlkalinityStatus(v: number | null): WQStatus {
   if (v === null || v < 0 || v > 300) return null;
-  if (v >= 80 && v <= 200) return 'optimal';
-  if ((v >= 60 && v < 80) || (v > 200 && v <= 250)) return 'warning';
+  if (v >= 100 && v <= 160) return 'optimal';
+  if ((v >= 80 && v < 100) || (v > 160 && v <= 200)) return 'warning';
   return 'danger';
 }
 
 function getNh3Status(v: number | null): WQStatus {
   if (v === null || v < 0) return null;
-  if (v <= 0.10) return 'optimal';
-  if (v > 0.10 && v <= 0.30) return 'warning';
+  if (v <= 0.30) return 'optimal';
+  if (v > 0.30 && v <= 0.50) return 'warning';
   return 'danger';
 }
 
-function getNo2Status(v: number | null): WQStatus {
+function getH2sStatus(v: number | null): WQStatus {
   if (v === null || v < 0) return null;
-  if (v <= 0.30) return 'optimal';
-  if (v > 0.30 && v <= 1.00) return 'warning';
+  if (v <= 0.03) return 'optimal';
+  if (v > 0.03 && v <= 0.05) return 'warning';
   return 'danger';
 }
 
 function getTransparencyStatus(v: number | null): WQStatus {
   if (v === null || v < 0) return null;
-  if (v >= 30 && v <= 40) return 'optimal';
-  if ((v >= 20 && v < 30) || (v > 40 && v <= 50)) return 'warning';
+  if (v >= 25 && v <= 40) return 'optimal';
+  if ((v >= 20 && v < 25) || (v > 40 && v <= 50)) return 'warning';
   return 'danger';
+}
+
+function getWaterColorStatus(v: string): WQStatus {
+  if (!v) return null;
+  const val = v.toLowerCase().trim();
+  if (val.includes('xanh lục') || val.includes('xanh vỏ đậu') || val.includes('màu nâu nhạt') || val.includes('nâu nhạt')) {
+    return 'optimal';
+  }
+  if (val.includes('đỏ') || val.includes('đen')) {
+    return 'danger';
+  }
+  return 'warning';
 }
 
 function validateField(name: string, v: number | null): string | null {
@@ -113,7 +125,7 @@ function validateField(name: string, v: number | null): string | null {
     case 'salinity': return v < 0 || v > 50 ? 'Độ mặn phải từ 0–50 ppt' : null;
     case 'alkalinity': return v < 0 || v > 300 ? 'Độ kiềm phải từ 0–300 mg/L' : null;
     case 'nh3': return v < 0 ? 'NH3 không được âm' : null;
-    case 'no2': return v < 0 ? 'NO2 không được âm' : null;
+    case 'h2s': return v < 0 ? 'H2S không được âm' : null;
     case 'transparency': return v < 0 ? 'Độ trong không được âm' : null;
     default: return null;
   }
@@ -163,10 +175,11 @@ interface ParameterFieldProps {
   error: string | null;
   status: WQStatus;
   placeholder?: string;
+  hint?: string;
 }
 
 function ParameterField({
-  label, unit, fieldKey, value, icon, onChange, error, status, placeholder,
+  label, unit, fieldKey, value, icon, onChange, error, status, placeholder, hint,
 }: ParameterFieldProps) {
   const statusRing = status ? STATUS_CONFIG[status].ring : 'focus:ring-indigo-500/20 focus:border-indigo-500';
   return (
@@ -198,13 +211,67 @@ function ParameterField({
         `}
       />
 
-      {/* Validation message */}
+      {/* Hint & Error row */}
+      {hint && !error && (
+        <p className="mt-1 text-[11px] text-slate-400 font-medium">
+          Khuyến nghị: {hint}
+        </p>
+      )}
       {error && (
         <p className="mt-1 text-xs text-red-600 flex items-center gap-1 font-medium">
           <AlertCircle className="w-3 h-3 flex-shrink-0" />
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+const WATER_COLOR_OPTIONS = [
+  { label: '-- Chọn màu nước --', value: '' },
+  { label: 'Xanh lục (Thích hợp)', value: 'Xanh lục' },
+  { label: 'Xanh vỏ đậu (Thích hợp)', value: 'Xanh vỏ đậu' },
+  { label: 'Màu nâu nhạt (Thích hợp)', value: 'Màu nâu nhạt' },
+  { label: 'Vàng nâu (Cảnh báo)', value: 'Vàng nâu' },
+  { label: 'Đỏ thẫm (Nguy hiểm)', value: 'Đỏ thẫm' },
+  { label: 'Đen (Nguy hiểm)', value: 'Đen' },
+  { label: 'Khác', value: 'Khác' },
+];
+
+interface WaterColorFieldProps {
+  value: string;
+  onChange: (key: string, val: string) => void;
+  status: WQStatus;
+}
+
+function WaterColorField({ value, onChange, status }: WaterColorFieldProps) {
+  const statusRing = status ? STATUS_CONFIG[status].ring : 'focus:ring-indigo-500/20 focus:border-indigo-500';
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <span className="text-indigo-600"><Droplets className="w-4 h-4" /></span>
+          Màu nước
+        </label>
+        <StatusBadge status={status} />
+      </div>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange('waterColor', e.target.value)}
+          className={`w-full px-4 py-2.5 pr-10 rounded-xl border text-sm font-medium transition-all outline-none appearance-none cursor-pointer border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 focus:bg-white focus:ring-4 ${statusRing}`}
+        >
+          {WATER_COLOR_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400 font-medium">
+        Khuyến nghị: Xanh lục, xanh vỏ đậu, màu nâu nhạt
+      </p>
     </div>
   );
 }
@@ -241,8 +308,9 @@ const INITIAL_FORM = {
   salinity: '',
   alkalinity: '',
   nh3: '',
-  no2: '',
+  h2s: '',
   transparency: '',
+  waterColor: '',
   note: '',
 };
 
@@ -255,7 +323,6 @@ export default function RecordWaterQuality() {
   const [selectedFarmId, setSelectedFarmId] = useState('');
   const [selectedPondId, setSelectedPondId] = useState('');
   const [recordTime, setRecordTime] = useState<string>(() => {
-    // Default to current local datetime-local string
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 16);
@@ -286,8 +353,9 @@ export default function RecordWaterQuality() {
     salinity: getSalinityStatus(numVal('salinity')),
     alkalinity: getAlkalinityStatus(numVal('alkalinity')),
     nh3: getNh3Status(numVal('nh3')),
-    no2: getNo2Status(numVal('no2')),
+    h2s: getH2sStatus(numVal('h2s')),
     transparency: getTransparencyStatus(numVal('transparency')),
+    waterColor: getWaterColorStatus(form.waterColor),
   };
 
   // ── Load farms & ponds ───────────────────────────────────────────────────────
@@ -322,7 +390,7 @@ export default function RecordWaterQuality() {
   const validate = (): boolean => {
     const newErrors: Partial<Record<FormKey, string>> = {};
     const numericKeys: FormKey[] = [
-      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'no2', 'transparency',
+      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'h2s', 'transparency',
     ];
     numericKeys.forEach((k) => {
       const err = validateField(k, numVal(k));
@@ -352,8 +420,9 @@ export default function RecordWaterQuality() {
         salinity: parseFloat(form.salinity),
         alkalinity: parseFloat(form.alkalinity),
         nh3: parseFloat(form.nh3),
-        no2: parseFloat(form.no2),
+        h2s: parseFloat(form.h2s),
         transparency: parseFloat(form.transparency),
+        waterColor: form.waterColor || undefined,
         note: form.note || undefined,
       };
 
@@ -510,6 +579,18 @@ export default function RecordWaterQuality() {
           {/* Responsive 2-column grid for parameters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <ParameterField
+              label="pH nước"
+              unit=""
+              fieldKey="ph"
+              value={form.ph}
+              icon={<FlaskConical className="w-4 h-4" />}
+              onChange={handleChange}
+              error={errors.ph ?? null}
+              status={status.ph}
+              placeholder="vd: 8.3"
+              hint="8.2 – 8.5"
+            />
+            <ParameterField
               label="Nhiệt độ"
               unit="°C"
               fieldKey="temperature"
@@ -518,33 +599,12 @@ export default function RecordWaterQuality() {
               onChange={handleChange}
               error={errors.temperature ?? null}
               status={status.temperature}
-              placeholder="vd: 29.5"
-            />
-            <ParameterField
-              label="pH"
-              unit=""
-              fieldKey="ph"
-              value={form.ph}
-              icon={<FlaskConical className="w-4 h-4" />}
-              onChange={handleChange}
-              error={errors.ph ?? null}
-              status={status.ph}
-              placeholder="vd: 7.9"
-            />
-            <ParameterField
-              label="Oxy hòa tan (DO)"
-              unit="mg/L"
-              fieldKey="dissolvedOxygen"
-              value={form.dissolvedOxygen}
-              icon={<Wind className="w-4 h-4" />}
-              onChange={handleChange}
-              error={errors.dissolvedOxygen ?? null}
-              status={status.dissolvedOxygen}
-              placeholder="vd: 5.6"
+              placeholder="vd: 28.5"
+              hint="25°C – 30°C"
             />
             <ParameterField
               label="Độ mặn"
-              unit="ppt"
+              unit="‰"
               fieldKey="salinity"
               value={form.salinity}
               icon={<Waves className="w-4 h-4" />}
@@ -552,6 +612,43 @@ export default function RecordWaterQuality() {
               error={errors.salinity ?? null}
               status={status.salinity}
               placeholder="vd: 18"
+              hint="10 – 25‰"
+            />
+            <ParameterField
+              label="Độ trong"
+              unit="cm"
+              fieldKey="transparency"
+              value={form.transparency}
+              icon={<Beaker className="w-4 h-4" />}
+              onChange={handleChange}
+              error={errors.transparency ?? null}
+              status={status.transparency}
+              placeholder="vd: 30"
+              hint="25 – 40 cm"
+            />
+            <ParameterField
+              label="NH₃"
+              unit="mg/L"
+              fieldKey="nh3"
+              value={form.nh3}
+              icon={<FlaskConical className="w-4 h-4" />}
+              onChange={handleChange}
+              error={errors.nh3 ?? null}
+              status={status.nh3}
+              placeholder="vd: 0.15"
+              hint="≤ 0.3 mg/L"
+            />
+            <ParameterField
+              label="H₂S"
+              unit="mg/L"
+              fieldKey="h2s"
+              value={form.h2s}
+              icon={<FlaskConical className="w-4 h-4" />}
+              onChange={handleChange}
+              error={errors.h2s ?? null}
+              status={status.h2s}
+              placeholder="vd: 0.01"
+              hint="≤ 0.03 mg/L"
             />
             <ParameterField
               label="Độ kiềm"
@@ -563,39 +660,24 @@ export default function RecordWaterQuality() {
               error={errors.alkalinity ?? null}
               status={status.alkalinity}
               placeholder="vd: 120"
+              hint="100 – 160 mg/L"
             />
             <ParameterField
-              label="NH3"
+              label="Oxy hòa tan (DO)"
               unit="mg/L"
-              fieldKey="nh3"
-              value={form.nh3}
-              icon={<FlaskConical className="w-4 h-4" />}
+              fieldKey="dissolvedOxygen"
+              value={form.dissolvedOxygen}
+              icon={<Wind className="w-4 h-4" />}
               onChange={handleChange}
-              error={errors.nh3 ?? null}
-              status={status.nh3}
-              placeholder="vd: 0.02"
+              error={errors.dissolvedOxygen ?? null}
+              status={status.dissolvedOxygen}
+              placeholder="vd: 5.2"
+              hint="> 4 mg/L"
             />
-            <ParameterField
-              label="NO2"
-              unit="mg/L"
-              fieldKey="no2"
-              value={form.no2}
-              icon={<FlaskConical className="w-4 h-4" />}
+            <WaterColorField
+              value={form.waterColor}
               onChange={handleChange}
-              error={errors.no2 ?? null}
-              status={status.no2}
-              placeholder="vd: 0.03"
-            />
-            <ParameterField
-              label="Độ trong"
-              unit="cm"
-              fieldKey="transparency"
-              value={form.transparency}
-              icon={<Beaker className="w-4 h-4" />}
-              onChange={handleChange}
-              error={errors.transparency ?? null}
-              status={status.transparency}
-              placeholder="vd: 35"
+              status={status.waterColor}
             />
           </div>
         </div>

@@ -40,22 +40,22 @@ type WQStatus = 'optimal' | 'warning' | 'danger' | null;
 
 function getTemperatureStatus(v: number | null): WQStatus {
   if (v === null || v < 15 || v > 40) return null;
-  if (v >= 28 && v <= 32) return 'optimal';
-  if ((v >= 25 && v < 28) || (v > 32 && v <= 34)) return 'warning';
+  if (v >= 25 && v <= 30) return 'optimal';
+  if ((v >= 20 && v < 25) || (v > 30 && v <= 33)) return 'warning';
   return 'danger';
 }
 
 function getPhStatus(v: number | null): WQStatus {
   if (v === null || v < 5 || v > 10) return null;
-  if (v >= 7.5 && v <= 8.5) return 'optimal';
-  if ((v >= 7.0 && v < 7.5) || (v > 8.5 && v <= 9.0)) return 'warning';
+  if (v >= 8.2 && v <= 8.5) return 'optimal';
+  if ((v >= 7.5 && v < 8.2) || (v > 8.5 && v <= 9.0)) return 'warning';
   return 'danger';
 }
 
 function getDoStatus(v: number | null): WQStatus {
   if (v === null || v < 0 || v > 20) return null;
-  if (v > 5) return 'optimal';
-  if (v >= 4) return 'warning';
+  if (v > 4) return 'optimal';
+  if (v >= 3) return 'warning';
   return 'danger';
 }
 
@@ -68,9 +68,42 @@ function getSalinityStatus(v: number | null): WQStatus {
 
 function getAlkalinityStatus(v: number | null): WQStatus {
   if (v === null || v < 0 || v > 300) return null;
-  if (v >= 80 && v <= 200) return 'optimal';
-  if ((v >= 60 && v < 80) || (v > 200 && v <= 250)) return 'warning';
+  if (v >= 100 && v <= 160) return 'optimal';
+  if ((v >= 80 && v < 100) || (v > 160 && v <= 200)) return 'warning';
   return 'danger';
+}
+
+function getNh3Status(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v <= 0.30) return 'optimal';
+  if (v > 0.30 && v <= 0.50) return 'warning';
+  return 'danger';
+}
+
+function getH2sStatus(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v <= 0.03) return 'optimal';
+  if (v > 0.03 && v <= 0.05) return 'warning';
+  return 'danger';
+}
+
+function getTransparencyStatus(v: number | null): WQStatus {
+  if (v === null || v < 0) return null;
+  if (v >= 25 && v <= 40) return 'optimal';
+  if ((v >= 20 && v < 25) || (v > 40 && v <= 50)) return 'warning';
+  return 'danger';
+}
+
+function getWaterColorStatus(v: string): WQStatus {
+  if (!v) return null;
+  const val = v.toLowerCase().trim();
+  if (val.includes('xanh lục') || val.includes('xanh vỏ đậu') || val.includes('màu nâu nhạt') || val.includes('nâu nhạt')) {
+    return 'optimal';
+  }
+  if (val.includes('đỏ') || val.includes('đen')) {
+    return 'danger';
+  }
+  return 'warning';
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -96,8 +129,10 @@ function validateField(name: string, v: number | null): string | null {
       return v < 0 || v > 300 ? 'Độ kiềm phải từ 0–300 mg/L' : null;
     case 'nh3':
       return v < 0 ? 'NH3 không được âm' : null;
-    case 'no2':
-      return v < 0 ? 'NO2 không được âm' : null;
+    case 'h2s':
+      return v < 0 ? 'H2S không được âm' : null;
+    case 'transparency':
+      return v < 0 ? 'Độ trong không được âm' : null;
     default:
       return null;
   }
@@ -199,6 +234,7 @@ interface NumericFieldProps {
   onChange: (key: string, val: string) => void;
   error: string | null;
   status: WQStatus;
+  hint?: string;
 }
 const NumericField = ({
   label,
@@ -208,11 +244,12 @@ const NumericField = ({
   onChange,
   error,
   status,
+  hint,
 }: NumericFieldProps) => (
   <View style={styles.fieldBlock}>
     <View style={styles.labelRow}>
       <Text style={styles.label}>
-        {label} <Text style={styles.unit}>({unit})</Text>
+        {label} {unit ? <Text style={styles.unit}>({unit})</Text> : null}
       </Text>
       <StatusBadge status={status} />
     </View>
@@ -224,6 +261,7 @@ const NumericField = ({
       value={value}
       onChangeText={(t) => onChange(fieldKey, t)}
     />
+    {hint && !error ? <Text style={styles.hintText}>Khuyến nghị: {hint}</Text> : null}
     {error ? <Text style={styles.errorText}>{error}</Text> : null}
   </View>
 );
@@ -256,7 +294,9 @@ interface FormValues {
   salinity: string;
   alkalinity: string;
   nh3: string;
-  no2: string;
+  h2s: string;
+  transparency: string;
+  waterColor: string;
   note: string;
 }
 
@@ -267,7 +307,9 @@ const INITIAL_FORM: FormValues = {
   salinity: '',
   alkalinity: '',
   nh3: '',
-  no2: '',
+  h2s: '',
+  transparency: '',
+  waterColor: '',
   note: '',
 };
 
@@ -284,7 +326,7 @@ export default function RecordWaterQualityScreen({
 
   // recordTime — defaults to now, editable as ISO string
   const [recordTime, setRecordTime] = useState<string>(
-    new Date().toISOString().slice(0, 16), // "YYYY-MM-DDTHH:mm"
+    new Date().toISOString().slice(0, 16),
   );
 
   const [form, setForm] = useState<FormValues>(INITIAL_FORM);
@@ -322,7 +364,6 @@ export default function RecordWaterQualityScreen({
   // ── Field change handler ─────────────────────────────────────────────────────
   const handleChange = useCallback((key: string, val: string) => {
     setForm((prev) => ({ ...prev, [key]: val }));
-    // Clear error on change
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }, []);
 
@@ -338,15 +379,17 @@ export default function RecordWaterQualityScreen({
     dissolvedOxygen: getDoStatus(numVal('dissolvedOxygen')),
     salinity: getSalinityStatus(numVal('salinity')),
     alkalinity: getAlkalinityStatus(numVal('alkalinity')),
-    nh3: null as WQStatus,
-    no2: null as WQStatus,
+    nh3: getNh3Status(numVal('nh3')),
+    h2s: getH2sStatus(numVal('h2s')),
+    transparency: getTransparencyStatus(numVal('transparency')),
+    waterColor: getWaterColorStatus(form.waterColor),
   };
 
   // ── Validation ───────────────────────────────────────────────────────────────
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormValues, string>> = {};
     const numericKeys: (keyof FormValues)[] = [
-      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'no2',
+      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'h2s', 'transparency',
     ];
     numericKeys.forEach((k) => {
       const err = validateField(k, numVal(k));
@@ -377,7 +420,9 @@ export default function RecordWaterQualityScreen({
         salinity: parseFloat(form.salinity),
         alkalinity: parseFloat(form.alkalinity),
         nh3: parseFloat(form.nh3),
-        no2: parseFloat(form.no2),
+        h2s: parseFloat(form.h2s),
+        transparency: parseFloat(form.transparency),
+        waterColor: form.waterColor || undefined,
         note: form.note || undefined,
       });
 
@@ -472,6 +517,16 @@ export default function RecordWaterQualityScreen({
           <Text style={styles.sectionTitle}>📊 Thông số đo lường</Text>
 
           <NumericField
+            label="pH nước"
+            unit=""
+            fieldKey="ph"
+            value={form.ph}
+            onChange={handleChange}
+            error={errors.ph ?? null}
+            status={status.ph}
+            hint="8.2 – 8.5"
+          />
+          <NumericField
             label="Nhiệt độ"
             unit="°C"
             fieldKey="temperature"
@@ -479,42 +534,27 @@ export default function RecordWaterQualityScreen({
             onChange={handleChange}
             error={errors.temperature ?? null}
             status={status.temperature}
-          />
-          <NumericField
-            label="pH"
-            unit=""
-            fieldKey="ph"
-            value={form.ph}
-            onChange={handleChange}
-            error={errors.ph ?? null}
-            status={status.ph}
-          />
-          <NumericField
-            label="Oxy hòa tan (DO)"
-            unit="mg/L"
-            fieldKey="dissolvedOxygen"
-            value={form.dissolvedOxygen}
-            onChange={handleChange}
-            error={errors.dissolvedOxygen ?? null}
-            status={status.dissolvedOxygen}
+            hint="25°C – 30°C"
           />
           <NumericField
             label="Độ mặn"
-            unit="ppt"
+            unit="‰"
             fieldKey="salinity"
             value={form.salinity}
             onChange={handleChange}
             error={errors.salinity ?? null}
             status={status.salinity}
+            hint="10 – 25‰"
           />
           <NumericField
-            label="Độ kiềm"
-            unit="mg/L"
-            fieldKey="alkalinity"
-            value={form.alkalinity}
+            label="Độ trong"
+            unit="cm"
+            fieldKey="transparency"
+            value={form.transparency}
             onChange={handleChange}
-            error={errors.alkalinity ?? null}
-            status={status.alkalinity}
+            error={errors.transparency ?? null}
+            status={status.transparency}
+            hint="25 – 40 cm"
           />
           <NumericField
             label="NH3"
@@ -524,15 +564,52 @@ export default function RecordWaterQualityScreen({
             onChange={handleChange}
             error={errors.nh3 ?? null}
             status={status.nh3}
+            hint="≤ 0.3 mg/L"
           />
           <NumericField
-            label="NO2"
+            label="H2S"
             unit="mg/L"
-            fieldKey="no2"
-            value={form.no2}
+            fieldKey="h2s"
+            value={form.h2s}
             onChange={handleChange}
-            error={errors.no2 ?? null}
-            status={status.no2}
+            error={errors.h2s ?? null}
+            status={status.h2s}
+            hint="≤ 0.03 mg/L"
+          />
+          <NumericField
+            label="Độ kiềm"
+            unit="mg/L"
+            fieldKey="alkalinity"
+            value={form.alkalinity}
+            onChange={handleChange}
+            error={errors.alkalinity ?? null}
+            status={status.alkalinity}
+            hint="100 – 160 mg/L"
+          />
+          <NumericField
+            label="Oxy hòa tan (DO)"
+            unit="mg/L"
+            fieldKey="dissolvedOxygen"
+            value={form.dissolvedOxygen}
+            onChange={handleChange}
+            error={errors.dissolvedOxygen ?? null}
+            status={status.dissolvedOxygen}
+            hint="> 4 mg/L"
+          />
+          <Dropdown
+            label="Màu nước"
+            value={form.waterColor}
+            placeholder="Chọn màu nước thích hợp..."
+            items={[
+              { id: 'Xanh lục', name: 'Xanh lục (Thích hợp)' },
+              { id: 'Xanh vỏ đậu', name: 'Xanh vỏ đậu (Thích hợp)' },
+              { id: 'Màu nâu nhạt', name: 'Màu nâu nhạt (Thích hợp)' },
+              { id: 'Vàng nâu', name: 'Vàng nâu (Cảnh báo)' },
+              { id: 'Đỏ thẫm', name: 'Đỏ thẫm (Nguy hiểm)' },
+              { id: 'Đen', name: 'Đen (Nguy hiểm)' },
+              { id: 'Khác', name: 'Khác' },
+            ]}
+            onSelect={(id) => handleChange('waterColor', id)}
           />
         </View>
 

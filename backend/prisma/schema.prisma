@@ -69,6 +69,7 @@ model User {
   waterQualityRecords  WaterQualityRecord[]
   inventoryUsageLogs   InventoryUsageLog[]
   shrimpHealthRecords  ShrimpHealthRecord[]
+  feedingLogs          FeedingLog[]
 
   @@map("users")
 }
@@ -89,6 +90,7 @@ model Farm {
   staff               FarmStaff[]
   shrimpHealthRecords ShrimpHealthRecord[]
   notifications       Notification[]
+  feedingLogs         FeedingLog[]
   deletedAt   DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -123,6 +125,7 @@ model Pond {
   crops               Crop[]
   waterQualityRecords WaterQualityRecord[]
   shrimpHealthRecords ShrimpHealthRecord[]
+  feedingLogs         FeedingLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -140,6 +143,7 @@ model Crop {
   environmentRecords  EnvironmentRecord[]
   incidents           Incident[]
   shrimpHealthRecords ShrimpHealthRecord[]
+  feedingLogs         FeedingLog[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
@@ -249,8 +253,10 @@ model WaterQualityRecord {
   salinity        Decimal  @db.Decimal(5, 2)
   alkalinity      Decimal  @db.Decimal(6, 2)
   nh3             Decimal  @db.Decimal(6, 3)
-  no2             Decimal  @db.Decimal(6, 3)
+  no2             Decimal  @default(0) @db.Decimal(6, 3)
+  h2s             Decimal  @default(0) @db.Decimal(6, 3)
   transparency    Decimal  @default(35) @db.Decimal(5, 2)
+  waterColor      String?
   note            String?
   createdBy       String
   creator         User     @relation(fields: [createdBy], references: [id])
@@ -298,6 +304,7 @@ model Inventory {
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
   usageLogs InventoryUsageLog[]
+  feedingLogs FeedingLog[]
 
   deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")
@@ -381,4 +388,54 @@ model Notification {
 
   @@index([farmId, isRead])
   @@map("notifications")
+}
+
+enum FeedingSession {
+  SESSION_1
+  SESSION_2
+  SESSION_3
+  SESSION_4
+  SESSION_5
+  SESSION_6
+  SESSION_7
+}
+
+enum FeedingMethod {
+  MANUAL
+  AUTO
+}
+
+enum FeedingStatus {
+  COMPLETED
+  SKIPPED
+  DELAYED
+}
+
+/// Stores daily feeding activity logs for ponds and crops.
+/// Used by FE-19: Record Daily Feed Consumption.
+model FeedingLog {
+  id            String         @id @default(uuid())
+  farmId        String         @map("farm_id")
+  farm          Farm           @relation(fields: [farmId], references: [id])
+  pondId        String         @map("pond_id")
+  pond          Pond           @relation(fields: [pondId], references: [id])
+  cropId        String         @map("crop_id")
+  crop          Crop           @relation(fields: [cropId], references: [id])
+  feedProductId String         @map("feed_product_id")
+  feedProduct   Inventory      @relation(fields: [feedProductId], references: [id])
+  feedingDate   DateTime       @map("feeding_date") @db.Date
+  feedingSession FeedingSession @map("feeding_session")
+  feedingTime   String         @map("feeding_time")
+  feedAmount    Decimal        @map("feed_amount") @db.Decimal(8, 2)
+  feedingMethod FeedingMethod  @map("feeding_method")
+  feedingStatus FeedingStatus  @map("feeding_status")
+  note          String?        @db.VarChar(500)
+  createdBy     String         @map("created_by")
+  creator       User           @relation(fields: [createdBy], references: [id])
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@unique([farmId, pondId, cropId, feedingDate, feedingSession])
+  @@index([pondId, cropId, feedingDate])
+  @@map("feeding_logs")
 }

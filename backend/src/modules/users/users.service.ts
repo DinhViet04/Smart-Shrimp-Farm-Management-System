@@ -78,16 +78,32 @@ export class UsersService {
   }
 
   async updateRole(id: string, role: Role) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { role },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        isActive: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id },
+        data: { role },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          isActive: true,
+        },
+      });
+
+      if (role === Role.FARMER || role === Role.TECHNICIAN) {
+        await tx.farmStaff.updateMany({
+          where: { userId: id },
+          data: { role },
+        });
+      } else {
+        await tx.farmStaff.updateMany({
+          where: { userId: id },
+          data: { isActive: false },
+        });
+      }
+
+      return user;
     });
   }
 

@@ -30,7 +30,6 @@ export class FarmAccessService {
               where: {
                 userId: user.userId,
                 isActive: true,
-                role: user.role as any,
                 farm: { deletedAt: null },
               },
               select: { farmId: true },
@@ -76,7 +75,6 @@ export class FarmAccessService {
       where: {
         farmId,
         userId: user.userId,
-        role: 'FARMER',
         isActive: true,
       },
       select: { id: true },

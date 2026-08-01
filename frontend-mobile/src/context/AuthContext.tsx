@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 type AuthContextType = {
   userToken: string | null;
   userRole: string | null;
+  userId: string | null;
   isLoading: boolean;
   login: (token: string, user: any) => Promise<void>;
   logout: () => Promise<void>;
@@ -12,6 +13,7 @@ type AuthContextType = {
 export const AuthContext = createContext<AuthContextType>({
   userToken: null,
   userRole: null,
+  userId: null,
   isLoading: true,
   login: async () => {},
   logout: async () => {},
@@ -20,15 +22,18 @@ export const AuthContext = createContext<AuthContextType>({
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userToken, setUserToken] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadToken = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       const role = await AsyncStorage.getItem('userRole');
+      const storedUserId = await AsyncStorage.getItem('userId');
       if (token) {
         setUserToken(token);
         if (role) setUserRole(role);
+        if (storedUserId) setUserId(storedUserId);
       }
     } catch (e) {
       console.error('Failed to load token', e);
@@ -48,6 +53,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (user?.role) {
         await AsyncStorage.setItem('userRole', user.role);
         setUserRole(user.role);
+      }
+      if (user?.id) {
+        await AsyncStorage.setItem('userId', user.id);
+        setUserId(user.id);
       }
       setUserToken(token);
     } catch (e) {
@@ -74,8 +83,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userRole');
+      await AsyncStorage.removeItem('userId');
       setUserToken(null);
       setUserRole(null);
+      setUserId(null);
     } catch (e) {
       console.error('Failed to remove token', e);
     } finally {
@@ -84,7 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ userToken, userRole, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ userToken, userRole, userId, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

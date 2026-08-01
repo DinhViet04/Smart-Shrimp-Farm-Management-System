@@ -51,6 +51,21 @@ enum NotificationLevel {
   DANGER
 }
 
+enum IncidentStatus {
+  OPEN
+  TREATING
+  RESOLVED
+}
+
+enum IncidentEventType {
+  REPORTED
+  ASSIGNED
+  STARTED
+  TREATMENT
+  RESOLVED
+  REOPENED
+}
+
 model User {
   id                  String               @id @default(uuid())
   email               String               @unique
@@ -70,6 +85,9 @@ model User {
   inventoryUsageLogs   InventoryUsageLog[]
   shrimpHealthRecords  ShrimpHealthRecord[]
   feedingLogs          FeedingLog[]
+  assignedIncidents    Incident[]                @relation("IncidentAssignee")
+  reportedIncidents    Incident[]                @relation("IncidentReporter")
+  incidentUpdates      IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
 
   @@map("users")
 }
@@ -227,17 +245,45 @@ model EnvironmentRecord {
 }
 
 model Incident {
-  id          String    @id @default(uuid())
-  cropId      String
-  crop        Crop      @relation(fields: [cropId], references: [id])
-  title       String
-  description String
-  treatment   String?
-  resolvedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String         @id @default(uuid())
+  cropId       String
+  crop         Crop           @relation(fields: [cropId], references: [id])
+  title        String
+  description  String
+  treatment    String?
+  status       IncidentStatus @default(OPEN)
+  reporterId   String?
+  reporter     User?          @relation("IncidentReporter", fields: [reporterId], references: [id])
+  assignedToId String?
+  assignedTo   User?          @relation("IncidentAssignee", fields: [assignedToId], references: [id])
+  startedAt    DateTime?
+  resolvedAt   DateTime?
+  updates      IncidentTreatmentUpdate[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([cropId, status])
+  @@index([assignedToId, status])
+  @@index([reporterId])
 
   @@map("incidents")
+}
+
+model IncidentTreatmentUpdate {
+  id          String         @id @default(uuid())
+  incidentId  String
+  incident    Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User           @relation("IncidentUpdateAuthor", fields: [authorId], references: [id])
+  treatment   String
+  observation String?
+  result      String?
+  status      IncidentStatus
+  eventType   IncidentEventType @default(TREATMENT)
+  createdAt   DateTime       @default(now())
+
+  @@index([incidentId, createdAt])
+  @@map("incident_treatment_updates")
 }
 
 /// Stores periodic water quality measurements for a pond.

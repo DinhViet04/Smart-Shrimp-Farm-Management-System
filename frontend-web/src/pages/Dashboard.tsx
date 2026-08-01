@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package, AlertTriangle } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
 import FarmList from '../features/farms/FarmList';
 import PondCropDashboard from '../components/PondCropDashboard';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import InventoryManagement from '../features/inventory/InventoryManagement';
+import IncidentDashboard from '../features/incidents/IncidentDashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ export default function Dashboard() {
     { name: 'Quản lý Trang Trại', icon: <Building2 className="w-5 h-5" /> },
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
+    { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
@@ -218,6 +220,8 @@ export default function Dashboard() {
             <PondCropDashboard />
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />
+          ) : activeTab === 'Sự cố & Điều trị' ? (
+            <IncidentDashboard role="FARM_MANAGER" />
           ) : activeTab === 'Môi trường nước' ? (
             <EnvironmentDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} />
           ) : activeTab !== 'Dashboard' ? (

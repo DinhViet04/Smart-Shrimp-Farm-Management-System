@@ -16,7 +16,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, Settings } from 'lucide-react-native';
+import { LayoutDashboard, Waves, LineChart, Thermometer, Bot, Settings, AlertTriangle } from 'lucide-react-native';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import PondsScreen from '../screens/PondsScreen';
@@ -26,6 +26,7 @@ import ChatbotScreen from '../screens/ChatbotScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import RecordWaterQualityScreen from '../screens/water-quality/RecordWaterQualityScreen';
 import RecordHistoryScreen from '../screens/water-quality/RecordHistoryScreen';
+import IncidentStackNavigator from './IncidentNavigator';
 
 const Tab = createBottomTabNavigator();
 const EnvironmentStack = createNativeStackNavigator();
@@ -86,6 +87,7 @@ export default function MainNavigator() {
           if (route.name === 'Ao/Vụ') return <Waves color={color} size={size} />;
           if (route.name === '5T Care') return <LineChart color={color} size={size} />;
           if (route.name === 'Môi trường') return <Thermometer color={color} size={size} />;
+          if (route.name === 'Sự cố') return <AlertTriangle color={color} size={size} />;
           if (route.name === 'AI') return <Bot color={color} size={size} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={size} />;
         },
@@ -118,6 +120,7 @@ export default function MainNavigator() {
         component={EnvironmentStackNavigator}
         options={{ headerShown: false }}
       />
+      <Tab.Screen name="Sự cố" component={IncidentStackNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="AI" component={ChatbotScreen} />
       <Tab.Screen name="Cài đặt" component={SettingsScreen} />
     </Tab.Navigator>

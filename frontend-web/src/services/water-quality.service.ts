@@ -10,7 +10,6 @@
  *   FE-25 Monitor Water Quality Trends
  *   FE-37 Detect Environmental Risks
  *   FE-38 Generate Water Quality Alerts
- *   FE-42 Analyze Water Quality
  *   FE-49 Water Quality Dashboard
  *   FE-51 Farming Reports
  */
@@ -35,6 +34,7 @@ export interface CreateWaterQualityPayload {
   transparency: number;
   waterColor?: string;
   note?: string;
+  weatherData?: any;
 }
 
 export interface WaterQualityRecord {
@@ -89,7 +89,7 @@ export const waterQualityService = {
   /**
    * GET /api/water-quality/pond/:pondId
    * Returns all records for a pond ordered by recordTime desc.
-   * Used by History, Trend, AI Analysis.
+   * Used by History, Trend.
    */
   getByPond: async (pondId: string): Promise<WaterQualityRecord[]> => {
     const response = await apiFetch(`${apiUrl}/api/water-quality/pond/${pondId}`);
@@ -130,6 +130,7 @@ export const waterQualityService = {
       waterColor?: string;
       overallStatus: 'Optimal' | 'Warning' | 'Danger';
       note?: string;
+      weatherData?: any;
       createdAt: string;
     }[];
     page: number;

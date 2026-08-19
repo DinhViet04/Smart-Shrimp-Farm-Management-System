@@ -1,7 +1,7 @@
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export const apiFetch = async (url: string, options: RequestInit = {}) => {
-  let token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('accessToken');
   
   // Create Headers object to manipulate headers easily
   const headers = new Headers(options.headers || {});
@@ -44,7 +44,7 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
           // Refresh failed (token expired or invalid)
           handleAuthFailure();
         }
-      } catch (err) {
+      } catch {
         // Network error during refresh
         handleAuthFailure();
       }

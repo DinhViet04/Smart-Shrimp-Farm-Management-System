@@ -2,7 +2,10 @@ import { IsDateString, IsInt, IsOptional, IsIn, Min } from 'class-validator';
 
 export class UpdateCropDto {
   @IsOptional()
-  @IsDateString({}, { message: 'startDate phải là định dạng ngày hợp lệ (ISO 8601)' })
+  @IsDateString(
+    {},
+    { message: 'startDate phải là định dạng ngày hợp lệ (ISO 8601)' },
+  )
   startDate?: string;
 
   @IsOptional()

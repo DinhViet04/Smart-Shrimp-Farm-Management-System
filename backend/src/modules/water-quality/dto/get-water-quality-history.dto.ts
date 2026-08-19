@@ -1,4 +1,10 @@
-import { IsOptional, IsUUID, IsDateString, IsString, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsDateString,
+  IsString,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GetWaterQualityHistoryDto {

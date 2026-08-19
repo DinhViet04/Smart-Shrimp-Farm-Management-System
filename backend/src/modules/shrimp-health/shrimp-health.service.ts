@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateShrimpHealthDto } from './dto/create-shrimp-health.dto.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class ShrimpHealthService {
@@ -20,7 +23,9 @@ export class ShrimpHealthService {
     // 1. Validate record time is not in the future
     const recordTime = new Date(dto.recordTime);
     if (recordTime > new Date()) {
-      throw new BadRequestException('Thời gian ghi nhận không được ở tương lai');
+      throw new BadRequestException(
+        'Thời gian ghi nhận không được ở tương lai',
+      );
     }
 
     // 2. Validate farm exists and user has access
@@ -48,7 +53,9 @@ export class ShrimpHealthService {
       throw new BadRequestException('Vụ nuôi không thuộc ao nuôi đã chọn');
     }
     if (crop.status !== 'ACTIVE') {
-      throw new BadRequestException('Chỉ được ghi nhận cho vụ nuôi đang hoạt động');
+      throw new BadRequestException(
+        'Chỉ được ghi nhận cho vụ nuôi đang hoạt động',
+      );
     }
 
     // 5. Create the record

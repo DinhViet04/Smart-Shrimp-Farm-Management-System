@@ -1,4 +1,5 @@
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { Role } from '@prisma/client';
 
 export class UpdateProfileDto {
   @IsString()
@@ -20,4 +21,10 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsIn([Role.FARM_MANAGER, Role.FARMER, Role.TECHNICIAN], {
+    message: 'Vai trò chỉ được là FARM_MANAGER, FARMER hoặc TECHNICIAN',
+  })
+  role?: Role;
 }

@@ -1,4 +1,11 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateSupplierDto {
   @IsString()
@@ -13,7 +20,8 @@ export class CreateSupplierDto {
   @IsString()
   @MaxLength(10)
   @Matches(/^0\d{9}$/, {
-    message: 'Số điện thoại nhà cung cấp phải có đúng 10 chữ số và bắt đầu bằng 0',
+    message:
+      'Số điện thoại nhà cung cấp phải có đúng 10 chữ số và bắt đầu bằng 0',
   })
   phone?: string;
 

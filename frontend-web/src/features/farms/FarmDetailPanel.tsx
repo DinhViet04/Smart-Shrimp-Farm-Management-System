@@ -12,8 +12,8 @@ interface FarmDetailPanelProps {
 export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPanelProps) {
   const [viewingPond, setViewingPond] = useState<any | null>(null);
   const [staffList, setStaffList] = useState<any[]>([]);
-  const [candidates, setCandidates] = useState<any[]>([]);
-  const [selectedCandidateId, setSelectedCandidateId] = useState('');
+  const [emailToAssign, setEmailToAssign] = useState('');
+  const [roleToAssign, setRoleToAssign] = useState<'FARMER' | 'TECHNICIAN'>('FARMER');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -31,17 +31,13 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   }, []);
 
-  // Fetch staff list and candidates when farm details open
+  // Fetch staff list when farm details open
   useEffect(() => {
     if (isOpen && farm?.id) {
       fetchStaff();
-      if (isOwner) {
-        fetchCandidates();
-      }
     } else {
       setStaffList([]);
-      setCandidates([]);
-      setSelectedCandidateId('');
+      setEmailToAssign('');
       setErrorMessage(null);
     }
   }, [isOpen, farm?.id]);
@@ -60,23 +56,19 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   };
 
-  const fetchCandidates = async () => {
-    try {
-      const data = await farmService.getCandidates();
-      setCandidates(data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCandidateId) return;
+    const email = emailToAssign.trim();
+    if (!email) {
+      setErrorMessage('Vui lòng nhập địa chỉ email/gmail cần phân công');
+      return;
+    }
     setAssigning(true);
     setErrorMessage(null);
     try {
-      await farmService.assignStaff(farm.id, selectedCandidateId);
-      setSelectedCandidateId('');
+      const user = await farmService.lookupStaff(email, roleToAssign);
+      await farmService.assignStaff(farm.id, user.id);
+      setEmailToAssign('');
       fetchStaff();
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi gán thành viên');
@@ -234,30 +226,37 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
                   </div>
                 )}
 
-                {/* Form to Assign Staff */}
-                {isOwner && candidates.length > 0 && (
-                  <form onSubmit={handleAssign} className="flex gap-2">
+                {/* Form to Assign Staff by Email */}
+                {isOwner && (
+                  <form onSubmit={handleAssign} className="flex flex-col sm:flex-row gap-2">
                     <select
-                      value={selectedCandidateId}
-                      onChange={(e) => setSelectedCandidateId(e.target.value)}
-                      className="flex-1 px-4 py-2 border border-slate-200 bg-slate-50/50 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
+                      value={roleToAssign}
+                      onChange={(e) => setRoleToAssign(e.target.value as 'FARMER' | 'TECHNICIAN')}
+                      className="px-3 py-2 border border-slate-200 bg-white rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     >
-                      <option value="">-- Chọn thành viên để phân công --</option>
-                      {candidates
-                        .filter(cand => !staffList.some(s => s.userId === cand.id))
-                        .map(cand => (
-                          <option key={cand.id} value={cand.id}>
-                            {cand.fullName} ({cand.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}) - {cand.email}
-                          </option>
-                        ))
-                      }
+                      <option value="FARMER">🌱 Nông dân</option>
+                      <option value="TECHNICIAN">🔬 Kỹ thuật viên</option>
                     </select>
+                    <input
+                      type="email"
+                      value={emailToAssign}
+                      onChange={(e) => {
+                        setEmailToAssign(e.target.value);
+                        if (errorMessage) setErrorMessage(null);
+                      }}
+                      placeholder="Nhập Gmail đã đăng ký của nhân sự..."
+                      className="flex-1 px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    />
                     <button
                       type="submit"
-                      disabled={assigning || !selectedCandidateId}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      disabled={assigning || !emailToAssign.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
                     >
-                      <UserPlus className="w-4 h-4" />
+                      {assigning ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <UserPlus className="w-4 h-4" />
+                      )}
                       Phân công
                     </button>
                   </form>

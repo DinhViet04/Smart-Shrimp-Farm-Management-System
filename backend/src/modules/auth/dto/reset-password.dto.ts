@@ -1,4 +1,10 @@
-import { IsEmail, IsNotEmpty, IsString, Length, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 
 export class ResetPasswordDto {
   @IsEmail({}, { message: 'Email không hợp lệ' })

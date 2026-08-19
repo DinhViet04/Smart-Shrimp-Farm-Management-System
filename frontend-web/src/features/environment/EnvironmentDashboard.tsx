@@ -9,19 +9,28 @@ interface EnvironmentDashboardProps {
 }
 
 export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDashboardProps) {
-  const [subTab, setSubTab] = useState<'record' | 'history' | 'trend'>(viewOnly ? 'trend' : 'record');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [subTab, setSubTab] = useState<'record' | 'history' | 'trend'>(
+    viewOnly ? 'trend' : 'record'
+  );
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
-        setCurrentUser(JSON.parse(userStr));
+        const parsed = JSON.parse(userStr);
+        setCurrentUser(parsed);
+        // If user is Farmer or Manager, default to 'trend'
+        if (parsed.role === 'FARMER' || parsed.role === 'FARM_MANAGER' || viewOnly) {
+          setSubTab('trend');
+        } else {
+          setSubTab('record');
+        }
       } catch {
         /* ignore */
       }
     }
-  }, []);
+  }, [viewOnly]);
 
   const isFarmer = currentUser?.role === 'FARMER';
   const activeTabClass = isFarmer
@@ -31,11 +40,12 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
   return (
     <div className="space-y-6 flex flex-col h-full">
       {/* ── Sub Navigation Tabs ────────────────────────────────────────────── */}
-      <div className="flex border-b border-slate-200 gap-6">
-        {!viewOnly && (
+      <div className="flex border-b border-slate-200 gap-6 overflow-x-auto">
+        {/* Record parameters tab - Only for Technician / Admin (!viewOnly) */}
+        {!viewOnly && currentUser?.role !== 'FARMER' && currentUser?.role !== 'FARM_MANAGER' && (
           <button
             onClick={() => setSubTab('record')}
-            className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
+            className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
               subTab === 'record'
                 ? activeTabClass
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -48,7 +58,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
 
         <button
           onClick={() => setSubTab('trend')}
-          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
             subTab === 'trend'
               ? activeTabClass
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -60,7 +70,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
 
         <button
           onClick={() => setSubTab('history')}
-          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
             subTab === 'history'
               ? activeTabClass
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -73,7 +83,13 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
 
       {/* ── Active Component View ─────────────────────────────────────────── */}
       <div className="animate-in fade-in duration-300 flex-1 relative min-h-0">
-        {subTab === 'record' ? <RecordWaterQuality /> : subTab === 'trend' ? <EnvironmentTrendDashboard /> : <WaterQualityHistory />}
+        {subTab === 'record' && !viewOnly ? (
+          <RecordWaterQuality />
+        ) : subTab === 'trend' ? (
+          <EnvironmentTrendDashboard />
+        ) : (
+          <WaterQualityHistory />
+        )}
       </div>
     </div>
   );

@@ -300,10 +300,11 @@ model WaterQualityRecord {
   alkalinity      Decimal  @db.Decimal(6, 2)
   nh3             Decimal  @db.Decimal(6, 3)
   no2             Decimal  @default(0) @db.Decimal(6, 3)
-  h2s             Decimal  @default(0) @db.Decimal(6, 3)
+  h2s             Decimal? @db.Decimal(6, 3)
   transparency    Decimal  @default(35) @db.Decimal(5, 2)
   waterColor      String?
   note            String?
+  weatherData     Json?
   createdBy       String
   creator         User     @relation(fields: [createdBy], references: [id])
   createdAt       DateTime @default(now())

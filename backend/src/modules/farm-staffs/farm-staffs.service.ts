@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 import { CreateFarmStaffDto } from './dto/create-farm-staff.dto.js';
 import { UpdateFarmStaffDto } from './dto/update-farm-staff.dto.js';
 
@@ -27,7 +34,15 @@ export class FarmStaffsService {
       where,
       include: {
         farm: { select: { id: true, name: true } },
-        user: { select: { id: true, fullName: true, email: true, role: true, isActive: true } },
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+            isActive: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -46,7 +61,9 @@ export class FarmStaffsService {
     }
 
     if (staffUser.role !== data.role) {
-      throw new BadRequestException('Vai trò phân công phải trùng với vai trò tài khoản');
+      throw new BadRequestException(
+        'Vai trò phân công phải trùng với vai trò tài khoản',
+      );
     }
 
     return this.prisma.farmStaff.upsert({
@@ -71,7 +88,8 @@ export class FarmStaffsService {
     }
 
     await this.farmAccess.assertCanManageFarm(user, current.farmId);
-    if (data.farmId) await this.farmAccess.assertCanManageFarm(user, data.farmId);
+    if (data.farmId)
+      await this.farmAccess.assertCanManageFarm(user, data.farmId);
     if (data.role) this.assertAssignableRole(data.role);
 
     return this.prisma.farmStaff.update({
@@ -92,7 +110,9 @@ export class FarmStaffsService {
 
   private assertAssignableRole(role: Role) {
     if (role !== Role.FARMER && role !== Role.TECHNICIAN) {
-      throw new BadRequestException('Chỉ được phân công Farmer hoặc Technician vào trang trại');
+      throw new BadRequestException(
+        'Chỉ được phân công Farmer hoặc Technician vào trang trại',
+      );
     }
   }
 }

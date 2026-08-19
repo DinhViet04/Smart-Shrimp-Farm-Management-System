@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put,
+  Param,
+  Delete,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { InventoryService } from './inventory.service.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
@@ -24,7 +34,14 @@ export class InventoryController {
     @Query('skip') skip?: number,
     @Query('take') take?: number,
   ) {
-    return this.inventoryService.findAll(user, search, category, farmId, skip, take);
+    return this.inventoryService.findAll(
+      user,
+      search,
+      category,
+      farmId,
+      skip,
+      take,
+    );
   }
 
   @Get('consumption-summary')
@@ -34,7 +51,11 @@ export class InventoryController {
     @Query('farmId') farmId?: string,
     @Query('days') days?: number,
   ) {
-    return this.inventoryService.getConsumptionSummary(user, farmId, days ? Number(days) : 30);
+    return this.inventoryService.getConsumptionSummary(
+      user,
+      farmId,
+      days ? Number(days) : 30,
+    );
   }
 
   @Get('usage-logs')
@@ -46,7 +67,13 @@ export class InventoryController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.inventoryService.findUsageLogs(user, farmId, inventoryId, from, to);
+    return this.inventoryService.findUsageLogs(
+      user,
+      farmId,
+      inventoryId,
+      from,
+      to,
+    );
   }
 
   @Get('suppliers')
@@ -67,13 +94,20 @@ export class InventoryController {
 
   @Post()
   @Roles('FARM_MANAGER')
-  create(@Body() createInventoryDto: CreateInventoryDto, @CurrentUser() user: any) {
+  create(
+    @Body() createInventoryDto: CreateInventoryDto,
+    @CurrentUser() user: any,
+  ) {
     return this.inventoryService.create(createInventoryDto, user);
   }
 
   @Put(':id')
   @Roles('FARM_MANAGER')
-  update(@Param('id') id: string, @Body() updateInventoryDto: UpdateInventoryDto, @CurrentUser() user: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateInventoryDto: UpdateInventoryDto,
+    @CurrentUser() user: any,
+  ) {
     return this.inventoryService.update(id, updateInventoryDto, user);
   }
 

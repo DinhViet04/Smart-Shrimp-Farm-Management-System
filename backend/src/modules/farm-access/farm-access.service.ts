@@ -45,7 +45,9 @@ export class FarmAccessService {
 
     const allowedFarmIds = await this.getAccessibleFarmIds(user);
     if (!allowedFarmIds?.includes(farmId)) {
-      throw new ForbiddenException('Bạn không có quyền truy cập trang trại này');
+      throw new ForbiddenException(
+        'Bạn không có quyền truy cập trang trại này',
+      );
     }
   }
 
@@ -53,7 +55,9 @@ export class FarmAccessService {
     if (user.role === 'ADMIN') return;
 
     if (user.role !== 'FARM_MANAGER') {
-      throw new ForbiddenException('Chỉ quản lý trang trại được thực hiện thao tác này');
+      throw new ForbiddenException(
+        'Chỉ quản lý trang trại được thực hiện thao tác này',
+      );
     }
 
     const farm = await this.prisma.farm.findFirst({
@@ -68,7 +72,9 @@ export class FarmAccessService {
 
   async assertCanRecordUsage(user: AuthUser, farmId: string) {
     if (user.role !== 'FARMER') {
-      throw new ForbiddenException('Chỉ nông dân được ghi nhận tiêu thụ thức ăn');
+      throw new ForbiddenException(
+        'Chỉ nông dân được ghi nhận tiêu thụ thức ăn',
+      );
     }
 
     const staff = await this.prisma.farmStaff.findFirst({
@@ -81,7 +87,9 @@ export class FarmAccessService {
     });
 
     if (!staff) {
-      throw new ForbiddenException('Bạn chưa được phân công vào trang trại này');
+      throw new ForbiddenException(
+        'Bạn chưa được phân công vào trang trại này',
+      );
     }
   }
 }

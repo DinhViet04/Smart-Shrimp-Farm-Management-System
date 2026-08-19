@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put,
+  Param,
+  Delete,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { FarmsService } from './farms.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
@@ -13,8 +24,17 @@ export class FarmsController {
 
   @Get()
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN', 'TECHNICIAN')
-  findAll(@Query('search') search: string, @Query('status') status: string, @Request() req: any) {
-    return this.farmsService.findAll(search, status, req.user.userId, req.user.role);
+  findAll(
+    @Query('search') search: string,
+    @Query('status') status: string,
+    @Request() req: any,
+  ) {
+    return this.farmsService.findAll(
+      search,
+      status,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Get('my')
@@ -30,15 +50,24 @@ export class FarmsController {
   }
 
   @Post()
-  @Roles('FARM_MANAGER') 
+  @Roles('FARM_MANAGER')
   create(@Body() createFarmDto: CreateFarmDto) {
     return this.farmsService.create(createFarmDto);
   }
 
   @Put(':id')
   @Roles('FARM_MANAGER')
-  update(@Param('id') id: string, @Body() updateFarmDto: UpdateFarmDto, @Request() req: any) {
-    return this.farmsService.update(id, updateFarmDto, req.user.userId, req.user.role);
+  update(
+    @Param('id') id: string,
+    @Body() updateFarmDto: UpdateFarmDto,
+    @Request() req: any,
+  ) {
+    return this.farmsService.update(
+      id,
+      updateFarmDto,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Delete(':id')
@@ -55,13 +84,31 @@ export class FarmsController {
 
   @Post(':id/staff')
   @Roles('FARM_MANAGER', 'ADMIN')
-  assignStaff(@Param('id') id: string, @Body('userId') userIdToAssign: string, @Request() req: any) {
-    return this.farmsService.assignStaff(id, userIdToAssign, req.user.userId, req.user.role);
+  assignStaff(
+    @Param('id') id: string,
+    @Body('userId') userIdToAssign: string,
+    @Request() req: any,
+  ) {
+    return this.farmsService.assignStaff(
+      id,
+      userIdToAssign,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Delete(':id/staff/:userId')
   @Roles('FARM_MANAGER', 'ADMIN')
-  unassignStaff(@Param('id') id: string, @Param('userId') userIdToUnassign: string, @Request() req: any) {
-    return this.farmsService.unassignStaff(id, userIdToUnassign, req.user.userId, req.user.role);
+  unassignStaff(
+    @Param('id') id: string,
+    @Param('userId') userIdToUnassign: string,
+    @Request() req: any,
+  ) {
+    return this.farmsService.unassignStaff(
+      id,
+      userIdToUnassign,
+      req.user.userId,
+      req.user.role,
+    );
   }
 }

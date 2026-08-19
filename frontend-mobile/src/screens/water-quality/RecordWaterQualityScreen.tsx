@@ -308,7 +308,7 @@ const INITIAL_FORM: FormValues = {
   alkalinity: '',
   nh3: '',
   h2s: '',
-  transparency: '',
+  transparency: '35',
   waterColor: '',
   note: '',
 };
@@ -420,8 +420,8 @@ export default function RecordWaterQualityScreen({
         salinity: parseFloat(form.salinity),
         alkalinity: parseFloat(form.alkalinity),
         nh3: parseFloat(form.nh3),
-        h2s: parseFloat(form.h2s),
-        transparency: parseFloat(form.transparency),
+        h2s: parseFloat(form.h2s || '0'),
+        transparency: parseFloat(form.transparency || '35'),
         waterColor: form.waterColor || undefined,
         note: form.note || undefined,
       });

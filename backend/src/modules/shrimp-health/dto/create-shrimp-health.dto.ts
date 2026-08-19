@@ -23,12 +23,16 @@ export class CreateShrimpHealthDto {
   @IsUUID('4', { message: 'cropId phải là UUID hợp lệ' })
   cropId: string;
 
-  @IsDateString({}, { message: 'recordTime phải là chuỗi ngày/giờ hợp lệ (ISO 8601)' })
+  @IsDateString(
+    {},
+    { message: 'recordTime phải là chuỗi ngày/giờ hợp lệ (ISO 8601)' },
+  )
   recordTime: string;
 
   @IsString({ message: 'healthStatus phải là chuỗi ký tự' })
   @IsIn(['NORMAL', 'LETHARGIC', 'EDGE_GATHERING', 'LOSS_OF_APPETITE'], {
-    message: 'healthStatus phải là: NORMAL, LETHARGIC, EDGE_GATHERING hoặc LOSS_OF_APPETITE',
+    message:
+      'healthStatus phải là: NORMAL, LETHARGIC, EDGE_GATHERING hoặc LOSS_OF_APPETITE',
   })
   healthStatus: string;
 

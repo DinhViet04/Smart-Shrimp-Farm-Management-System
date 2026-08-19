@@ -5,7 +5,9 @@ import {
   IsString,
   MinLength,
   Matches,
+  IsIn,
 } from 'class-validator';
+import { Role } from '@prisma/client';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Email không hợp lệ' })
@@ -28,4 +30,10 @@ export class RegisterDto {
     message: 'Số điện thoại phải có 10 chữ số và bắt đầu bằng 0',
   })
   phone?: string;
+
+  @IsOptional()
+  @IsIn([Role.FARM_MANAGER, Role.FARMER, Role.TECHNICIAN], {
+    message: 'Vai trò phải là FARM_MANAGER, FARMER hoặc TECHNICIAN',
+  })
+  role?: Role;
 }

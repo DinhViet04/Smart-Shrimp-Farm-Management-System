@@ -2,9 +2,16 @@ import { useState } from 'react';
 import { Waves, Calendar } from 'lucide-react';
 import PondManagement from './PondManagement';
 import CropManagement from './CropManagement';
+import { type Crop } from '../services/crop.service';
 
 export default function PondCropDashboard() {
   const [activeSubTab, setActiveSubTab] = useState<'ponds' | 'crops'>('ponds');
+  const [editCropParam, setEditCropParam] = useState<Crop | null>(null);
+
+  const handleEditCrop = (crop: Crop) => {
+    setEditCropParam(crop);
+    setActiveSubTab('crops');
+  };
 
   return (
     <div className="space-y-6">
@@ -37,7 +44,14 @@ export default function PondCropDashboard() {
 
       {/* ── Tab View ──────────────────────────────────────────────────────── */}
       <div className="animate-in fade-in duration-300">
-        {activeSubTab === 'ponds' ? <PondManagement /> : <CropManagement />}
+        {activeSubTab === 'ponds' ? (
+          <PondManagement onEditCrop={handleEditCrop} />
+        ) : (
+          <CropManagement 
+            initialEditCrop={editCropParam} 
+            onClearEditCrop={() => setEditCropParam(null)} 
+          />
+        )}
       </div>
     </div>
   );

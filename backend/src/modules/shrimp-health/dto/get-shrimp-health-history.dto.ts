@@ -1,4 +1,10 @@
-import { IsOptional, IsUUID, IsDateString, IsString, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsDateString,
+  IsString,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -16,7 +22,8 @@ export class GetShrimpHealthHistoryDto {
   @IsOptional()
   @IsString()
   @IsIn(['NORMAL', 'LETHARGIC', 'EDGE_GATHERING', 'LOSS_OF_APPETITE'], {
-    message: 'healthStatus phải là: NORMAL, LETHARGIC, EDGE_GATHERING hoặc LOSS_OF_APPETITE',
+    message:
+      'healthStatus phải là: NORMAL, LETHARGIC, EDGE_GATHERING hoặc LOSS_OF_APPETITE',
   })
   healthStatus?: string;
 

@@ -17,7 +17,10 @@ import { ResetPasswordDto } from './dto/reset-password.dto.js';
 
 @Injectable()
 export class AuthService {
-  private passwordResetStore: Record<string, { otp: string; expiresAt: number; used: boolean }> = {};
+  private passwordResetStore: Record<
+    string,
+    { otp: string; expiresAt: number; used: boolean }
+  > = {};
 
   constructor(
     private readonly usersService: UsersService,
@@ -32,12 +35,18 @@ export class AuthService {
       throw new ConflictException('Email đã được sử dụng');
     }
 
+    // Determine role (allowed: FARM_MANAGER, FARMER, TECHNICIAN)
+    const allowedRoles = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'];
+    const role =
+      dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
+
     // Create new user (password is hashed inside UsersService.create)
     const user = await this.usersService.create({
       email: dto.email,
       password: dto.password,
       fullName: dto.fullName,
       phone: dto.phone,
+      role: role,
     });
 
     // Generate tokens
@@ -47,8 +56,10 @@ export class AuthService {
       role: user.role,
     });
 
+    const { password: _, ...userWithoutPassword } = user;
+
     return {
-      user,
+      user: userWithoutPassword,
       ...tokens,
     };
   }
@@ -98,17 +109,23 @@ export class AuthService {
         `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`,
       );
       if (!response.ok) {
-        throw new UnauthorizedException('Token Google không hợp lệ hoặc đã hết hạn');
+        throw new UnauthorizedException(
+          'Token Google không hợp lệ hoặc đã hết hạn',
+        );
       }
       payload = await response.json();
     } catch (error) {
-      throw new UnauthorizedException('Không thể xác thực token Google. Vui lòng thử lại.');
+      throw new UnauthorizedException(
+        'Không thể xác thực token Google. Vui lòng thử lại.',
+      );
     }
 
     const { sub: googleId, email, name, email_verified } = payload;
 
     if (!email) {
-      throw new UnauthorizedException('Không thể lấy thông tin email từ Google.');
+      throw new UnauthorizedException(
+        'Không thể lấy thông tin email từ Google.',
+      );
     }
 
     if (email_verified !== 'true' && email_verified !== true) {
@@ -187,7 +204,8 @@ export class AuthService {
     });
 
     return {
-      message: 'Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.',
+      message:
+        'Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.',
     };
   }
 
@@ -221,7 +239,10 @@ export class AuthService {
       throw new NotFoundException('Email không tồn tại trong hệ thống');
     }
 
-    await this.usersService.updatePasswordByEmail(normalizedEmail, dto.password);
+    await this.usersService.updatePasswordByEmail(
+      normalizedEmail,
+      dto.password,
+    );
     resetEntry.used = true;
 
     return {
@@ -253,7 +274,9 @@ export class AuthService {
 
       return tokens;
     } catch {
-      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
+      throw new UnauthorizedException(
+        'Refresh token không hợp lệ hoặc đã hết hạn',
+      );
     }
   }
 
@@ -269,11 +292,13 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: (this.configService.get<string>('JWT_ACCESS_EXPIRATION') ?? '15m') as any,
+        expiresIn: (this.configService.get<string>('JWT_ACCESS_EXPIRATION') ??
+          '15m') as any,
       }),
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRATION') ?? '7d') as any,
+        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRATION') ??
+          '7d') as any,
       }),
     ]);
 

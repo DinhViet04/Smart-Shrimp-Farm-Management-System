@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck, Building2, FlaskConical, Users, CheckCircle2 } from 'lucide-react';
 
 const getDashboardPath = (role?: string) => {
   switch (role) {
@@ -24,6 +24,7 @@ export default function RegisterPage() {
     phone: '',
     password: '',
     confirmPassword: '',
+    role: 'FARM_MANAGER',
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -154,6 +155,7 @@ export default function RegisterPage() {
             fullName: formData.fullName,
             email: formData.email,
             password: formData.password,
+            role: formData.role,
             ...(formData.phone && { phone: formData.phone })
           }),
         });
@@ -162,7 +164,18 @@ export default function RegisterPage() {
         if (!response.ok) {
           setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Có lỗi xảy ra'));
         } else {
-          navigate('/login');
+          // Lưu token và thông tin người dùng để tự động đăng nhập
+          if (data.accessToken && data.user) {
+            localStorage.setItem('accessToken', data.accessToken);
+            if (data.refreshToken) {
+              localStorage.setItem('refreshToken', data.refreshToken);
+            }
+            localStorage.setItem('user', JSON.stringify(data.user));
+            // Điều hướng trực tiếp vào trang theo đúng vai trò đã đăng ký
+            navigate(getDashboardPath(data.user.role || formData.role));
+          } else {
+            navigate('/login');
+          }
         }
       } catch (error) {
         setServerError('Không thể kết nối đến máy chủ.');
@@ -186,6 +199,10 @@ export default function RegisterPage() {
       }
       return nextErrors;
     });
+  };
+
+  const handleRoleSelect = (role: string) => {
+    setFormData(prev => ({ ...prev, role }));
   };
 
   return (
@@ -393,6 +410,80 @@ export default function RegisterPage() {
                   />
                 </div>
                 {errors.confirmPassword && <p className="text-[11px] text-red-600 font-bold leading-tight">{errors.confirmPassword}</p>}
+              </div>
+            </div>
+
+            {/* Role Selection */}
+            <div className="space-y-2">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest">
+                Chọn Vai Trò (Role) <span className="text-blue-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Farm Manager */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleSelect('FARM_MANAGER')}
+                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                    formData.role === 'FARM_MANAGER'
+                      ? 'bg-blue-600/15 border-blue-600 ring-2 ring-blue-500/30 shadow-sm text-blue-950'
+                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
+                  }`}
+                >
+                  {formData.role === 'FARM_MANAGER' && (
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 absolute top-2.5 right-2.5" />
+                  )}
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 flex items-center justify-center mb-1.5">
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-[12px] font-bold">Quản Lý Trang Trại</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Chủ trang trại, quản lý ao & nhân sự</div>
+                  </div>
+                </button>
+
+                {/* Technician */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleSelect('TECHNICIAN')}
+                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                    formData.role === 'TECHNICIAN'
+                      ? 'bg-cyan-600/15 border-cyan-600 ring-2 ring-cyan-500/30 shadow-sm text-cyan-950'
+                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
+                  }`}
+                >
+                  {formData.role === 'TECHNICIAN' && (
+                    <CheckCircle2 className="w-4 h-4 text-cyan-600 absolute top-2.5 right-2.5" />
+                  )}
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-600 flex items-center justify-center mb-1.5">
+                    <FlaskConical className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-[12px] font-bold">Kỹ Thuật Viên</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Đo nước, sức khỏe tôm & mẫu 5T</div>
+                  </div>
+                </button>
+
+                {/* Farmer */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleSelect('FARMER')}
+                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                    formData.role === 'FARMER'
+                      ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/30 shadow-sm text-emerald-950'
+                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
+                  }`}
+                >
+                  {formData.role === 'FARMER' && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 absolute top-2.5 right-2.5" />
+                  )}
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center mb-1.5">
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-[12px] font-bold">Nông Dân</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Ghi nhận cho ăn & nhật ký ao hằng ngày</div>
+                  </div>
+                </button>
               </div>
             </div>
 

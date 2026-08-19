@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
@@ -42,6 +47,58 @@ export class UsersService {
     });
   }
 
+  async lookupStaff(email: string, expectedRole?: string) {
+    if (!email || !email.trim()) {
+      throw new BadRequestException(
+        'Vui lòng nhập địa chỉ email/gmail cần tìm kiếm',
+      );
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: trimmedEmail, mode: 'insensitive' },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        `Không tìm thấy tài khoản hoạt động nào với email "${email}". Người dùng cần đăng ký tài khoản trước.`,
+      );
+    }
+
+    if (user.role !== Role.FARMER && user.role !== Role.TECHNICIAN) {
+      throw new BadRequestException(
+        `Tài khoản "${email}" có vai trò ${user.role}, không thể phân công làm nhân sự trang trại.`,
+      );
+    }
+
+    if (expectedRole && user.role !== expectedRole) {
+      const roleName =
+        user.role === Role.TECHNICIAN
+          ? 'Kỹ thuật viên (Technician)'
+          : 'Nông dân (Farmer)';
+      const expectedName =
+        expectedRole === Role.TECHNICIAN
+          ? 'Kỹ thuật viên (Technician)'
+          : 'Nông dân (Farmer)';
+      throw new BadRequestException(
+        `Tài khoản "${email}" là ${roleName}, không khớp với danh sách ${expectedName} bạn đang chọn!`,
+      );
+    }
+
+    return user;
+  }
+
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
       where: { email },
@@ -68,7 +125,9 @@ export class UsersService {
   }
 
   async create(data: Prisma.UserCreateInput) {
-    const hashedPassword = data.password ? await bcrypt.hash(data.password, 10) : null;
+    const hashedPassword = data.password
+      ? await bcrypt.hash(data.password, 10)
+      : null;
     return this.prisma.user.create({
       data: {
         ...data,
@@ -121,10 +180,30 @@ export class UsersService {
     });
   }
 
-  async updateProfile(id: string, data: { fullName?: string; phone?: string; address?: string; avatarUrl?: string }) {
+  async updateProfile(
+    id: string,
+    data: {
+      fullName?: string;
+      phone?: string;
+      address?: string;
+      avatarUrl?: string;
+      role?: Role;
+    },
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new BadRequestException('Người dùng không tồn tại');
+    }
+
+    let updatedRole = user.role;
+    if (
+      data.role &&
+      ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'].includes(data.role)
+    ) {
+      // Don't modify role if current user is ADMIN, otherwise allow switching non-admin roles
+      if (user.role !== Role.ADMIN) {
+        updatedRole = data.role;
+      }
     }
 
     return this.prisma.user.update({
@@ -134,6 +213,7 @@ export class UsersService {
         phone: data.phone ?? null,
         address: data.address ?? null,
         avatarUrl: data.avatarUrl ?? null,
+        role: updatedRole,
       },
       select: {
         id: true,
@@ -148,7 +228,12 @@ export class UsersService {
     });
   }
 
-  async changePassword(id: string, currentPassword: string, newPassword: string, confirmPassword: string) {
+  async changePassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || !user.password) {
       throw new BadRequestException('Tài khoản này không hỗ trợ đổi mật khẩu');

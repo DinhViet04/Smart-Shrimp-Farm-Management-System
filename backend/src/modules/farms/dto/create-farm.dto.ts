@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, IsEnum, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  Min,
+  IsEnum,
+  IsArray,
+} from 'class-validator';
 
 export class CreateFarmDto {
   @IsString()
@@ -20,7 +28,7 @@ export class CreateFarmDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  ponds_count?: number; 
+  ponds_count?: number;
 
   @IsString()
   @IsOptional()

@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { SuppliersService } from './suppliers.service.js';
 import { CreateSupplierDto } from './dto/create-supplier.dto.js';
 import { UpdateSupplierDto } from './dto/update-supplier.dto.js';
@@ -30,13 +40,20 @@ export class SuppliersController {
 
   @Post()
   @Roles('FARM_MANAGER')
-  create(@Body() createSupplierDto: CreateSupplierDto, @CurrentUser() user: any) {
+  create(
+    @Body() createSupplierDto: CreateSupplierDto,
+    @CurrentUser() user: any,
+  ) {
     return this.suppliersService.create(createSupplierDto, user);
   }
 
   @Put(':id')
   @Roles('FARM_MANAGER')
-  update(@Param('id') id: string, @Body() updateSupplierDto: UpdateSupplierDto, @CurrentUser() user: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateSupplierDto: UpdateSupplierDto,
+    @CurrentUser() user: any,
+  ) {
     return this.suppliersService.update(id, updateSupplierDto, user);
   }
 

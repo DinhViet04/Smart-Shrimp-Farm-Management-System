@@ -84,5 +84,14 @@ export const farmService = {
     if (!response.ok) throw new Error('Failed to fetch candidates');
     return response.json();
   },
+
+  lookupStaff: async (email: string, expectedRole?: string) => {
+    const params = new URLSearchParams({ email });
+    if (expectedRole) params.append('expectedRole', expectedRole);
+    const response = await apiFetch(`${apiUrl}/api/users/lookup?${params.toString()}`);
+    const resData = await response.json();
+    if (!response.ok) throw new Error(resData.message || 'Không tìm thấy tài khoản nhân sự');
+    return resData;
+  },
 };
 

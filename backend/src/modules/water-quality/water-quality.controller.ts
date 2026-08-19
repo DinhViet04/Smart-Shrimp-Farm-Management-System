@@ -49,6 +49,11 @@ export class WaterQualityController {
     @Query('fromDate') fromDate: string,
     @Query('toDate') toDate: string,
   ) {
-    return this.waterQualityService.findTrends(pondId, fromDate, toDate, req.user);
+    return this.waterQualityService.findTrends(
+      pondId,
+      fromDate,
+      toDate,
+      req.user,
+    );
   }
 }

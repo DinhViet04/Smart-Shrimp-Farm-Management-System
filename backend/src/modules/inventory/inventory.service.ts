@@ -1,10 +1,17 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
 import { CreateInventoryUsageDto } from './dto/create-inventory-usage.dto.js';
 import { InventoryCategory } from '@prisma/client';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class InventoryService {
@@ -24,7 +31,9 @@ export class InventoryService {
       where: { itemName: data.itemName, farmId: data.farmId, deletedAt: null },
     });
     if (exists) {
-      throw new BadRequestException('Tên vật tư đã tồn tại trong trang trại này!');
+      throw new BadRequestException(
+        'Tên vật tư đã tồn tại trong trang trại này!',
+      );
     }
 
     if (data.packageQty !== undefined && data.weightPerPkg !== undefined) {
@@ -47,11 +56,11 @@ export class InventoryService {
   ) {
     const where: any = { deletedAt: null };
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
-    
+
     if (search) {
       where.itemName = { contains: search, mode: 'insensitive' };
     }
-    
+
     if (category) {
       where.category = category;
     }
@@ -82,7 +91,7 @@ export class InventoryService {
       where: { id, deletedAt: null },
       include: { supplier: true },
     });
-    
+
     if (!inventory) {
       throw new NotFoundException('Không tìm thấy vật tư');
     }
@@ -97,14 +106,22 @@ export class InventoryService {
     await this.farmAccess.assertCanRecordUsage(user, inventory.farmId);
 
     if (data.quantityUsed > inventory.quantity) {
-      throw new BadRequestException('Số lượng sử dụng vượt quá tồn kho hiện có!');
+      throw new BadRequestException(
+        'Số lượng sử dụng vượt quá tồn kho hiện có!',
+      );
     }
 
     const nextQuantity = inventory.quantity - data.quantityUsed;
     const updateData: any = { quantity: nextQuantity };
 
-    if (inventory.packageQty !== null && inventory.weightPerPkg && inventory.weightPerPkg > 0) {
-      updateData.packageQty = Number((nextQuantity / inventory.weightPerPkg).toFixed(2));
+    if (
+      inventory.packageQty !== null &&
+      inventory.weightPerPkg &&
+      inventory.weightPerPkg > 0
+    ) {
+      updateData.packageQty = Number(
+        (nextQuantity / inventory.weightPerPkg).toFixed(2),
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -145,7 +162,13 @@ export class InventoryService {
     });
   }
 
-  async findUsageLogs(user: AuthUser, farmId?: string, inventoryId?: string, from?: string, to?: string) {
+  async findUsageLogs(
+    user: AuthUser,
+    farmId?: string,
+    inventoryId?: string,
+    from?: string,
+    to?: string,
+  ) {
     const where: any = {
       inventory: {
         is: {
@@ -247,7 +270,9 @@ export class InventoryService {
           deletedAt: null,
           category: InventoryCategory.FEED,
           ...(farmId ? { farmId } : {}),
-          ...(!farmId && accessibleFarmIds ? { farmId: { in: accessibleFarmIds } } : {}),
+          ...(!farmId && accessibleFarmIds
+            ? { farmId: { in: accessibleFarmIds } }
+            : {}),
         },
         orderBy: { quantity: 'asc' },
       }),
@@ -275,8 +300,12 @@ export class InventoryService {
       days,
       totalUsed,
       averageDailyUsage: days > 0 ? totalUsed / days : 0,
-      lowStockCount: lowStockItems.filter((item) => item.quantity <= item.minThreshold).length,
-      consumptionByItem: consumptionByItem.sort((a, b) => b.quantityUsed - a.quantityUsed),
+      lowStockCount: lowStockItems.filter(
+        (item) => item.quantity <= item.minThreshold,
+      ).length,
+      consumptionByItem: consumptionByItem.sort(
+        (a, b) => b.quantityUsed - a.quantityUsed,
+      ),
       recentLogs: logs.slice(0, 10),
     };
   }
@@ -291,7 +320,9 @@ export class InventoryService {
       where: {
         deletedAt: null,
         ...(farmId ? { farmId } : {}),
-        ...(!farmId && accessibleFarmIds ? { farmId: { in: accessibleFarmIds } } : {}),
+        ...(!farmId && accessibleFarmIds
+          ? { farmId: { in: accessibleFarmIds } }
+          : {}),
         ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
       },
       include: {
@@ -312,18 +343,28 @@ export class InventoryService {
     });
 
     return suppliers.map((supplier) => {
-      const latestInventory = supplier.inventories.reduce((latest: any, item: any) => {
-        if (!latest || item.updatedAt > latest.updatedAt) return item;
-        return latest;
-      }, null);
+      const latestInventory = supplier.inventories.reduce(
+        (latest: any, item: any) => {
+          if (!latest || item.updatedAt > latest.updatedAt) return item;
+          return latest;
+        },
+        null,
+      );
 
       return {
         ...supplier,
         items: supplier.inventories,
         itemCount: supplier.inventories.length,
-        totalQuantity: supplier.inventories.reduce((sum, item) => sum + item.quantity, 0),
-        lowStockCount: supplier.inventories.filter((item) => item.quantity <= item.minThreshold).length,
-        categories: Array.from(new Set(supplier.inventories.map((item) => item.category))),
+        totalQuantity: supplier.inventories.reduce(
+          (sum, item) => sum + item.quantity,
+          0,
+        ),
+        lowStockCount: supplier.inventories.filter(
+          (item) => item.quantity <= item.minThreshold,
+        ).length,
+        categories: Array.from(
+          new Set(supplier.inventories.map((item) => item.category)),
+        ),
         latestUpdatedAt: latestInventory?.updatedAt ?? supplier.updatedAt,
       };
     });
@@ -341,21 +382,27 @@ export class InventoryService {
 
     if (data.itemName) {
       const exists = await this.prisma.inventory.findFirst({
-        where: { 
-          itemName: data.itemName, 
-          farmId: inventory.farmId, 
-          id: { not: id }, 
-          deletedAt: null 
+        where: {
+          itemName: data.itemName,
+          farmId: inventory.farmId,
+          id: { not: id },
+          deletedAt: null,
         },
       });
       if (exists) {
-        throw new BadRequestException('Tên vật tư đã tồn tại trong trang trại này!');
+        throw new BadRequestException(
+          'Tên vật tư đã tồn tại trong trang trại này!',
+        );
       }
     }
 
     if (data.packageQty !== undefined || data.weightPerPkg !== undefined) {
-      const pkgQty = data.packageQty !== undefined ? data.packageQty : inventory.packageQty;
-      const weight = data.weightPerPkg !== undefined ? data.weightPerPkg : inventory.weightPerPkg;
+      const pkgQty =
+        data.packageQty !== undefined ? data.packageQty : inventory.packageQty;
+      const weight =
+        data.weightPerPkg !== undefined
+          ? data.weightPerPkg
+          : inventory.weightPerPkg;
       if (pkgQty !== null && weight !== null) {
         data.quantity = pkgQty * weight;
       }
@@ -393,7 +440,9 @@ export class InventoryService {
     });
 
     if (usageLogsCount > 0) {
-      throw new BadRequestException('Không thể xóa vật tư này vì đã có dữ liệu nhật ký sử dụng liên quan!');
+      throw new BadRequestException(
+        'Không thể xóa vật tư này vì đã có dữ liệu nhật ký sử dụng liên quan!',
+      );
     }
 
     return this.prisma.inventory.update({

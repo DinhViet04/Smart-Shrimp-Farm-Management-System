@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { FarmStaffsService } from './farm-staffs.service.js';
 import { CreateFarmStaffDto } from './dto/create-farm-staff.dto.js';
 import { UpdateFarmStaffDto } from './dto/update-farm-staff.dto.js';
@@ -26,7 +36,11 @@ export class FarmStaffsController {
 
   @Put(':id')
   @Roles('FARM_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateFarmStaffDto, @CurrentUser() user: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateFarmStaffDto,
+    @CurrentUser() user: any,
+  ) {
     return this.farmStaffsService.update(id, dto, user);
   }
 

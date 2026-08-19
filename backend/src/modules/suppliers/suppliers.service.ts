@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateSupplierDto } from './dto/create-supplier.dto.js';
 import { UpdateSupplierDto } from './dto/update-supplier.dto.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class SuppliersService {
@@ -92,7 +99,9 @@ export class SuppliersService {
     });
 
     if (inventoryCount > 0) {
-      throw new BadRequestException('Không thể xóa nhà cung cấp đang được gán cho vật tư');
+      throw new BadRequestException(
+        'Không thể xóa nhà cung cấp đang được gán cho vật tư',
+      );
     }
 
     return this.prisma.supplier.update({
@@ -101,7 +110,11 @@ export class SuppliersService {
     });
   }
 
-  private async ensureUniqueName(name: string, farmId: string, excludeId?: string) {
+  private async ensureUniqueName(
+    name: string,
+    farmId: string,
+    excludeId?: string,
+  ) {
     const exists = await this.prisma.supplier.findFirst({
       where: {
         name,
@@ -112,7 +125,9 @@ export class SuppliersService {
     });
 
     if (exists) {
-      throw new BadRequestException('Tên nhà cung cấp đã tồn tại trong trang trại này');
+      throw new BadRequestException(
+        'Tên nhà cung cấp đã tồn tại trong trang trại này',
+      );
     }
   }
 
@@ -143,8 +158,12 @@ export class SuppliersService {
     return {
       ...supplier,
       itemCount: inventories.length,
-      lowStockCount: inventories.filter((item: any) => item.quantity <= item.minThreshold).length,
-      categories: Array.from(new Set(inventories.map((item: any) => item.category))),
+      lowStockCount: inventories.filter(
+        (item: any) => item.quantity <= item.minThreshold,
+      ).length,
+      categories: Array.from(
+        new Set(inventories.map((item: any) => item.category)),
+      ),
       latestUpdatedAt: latestInventory?.updatedAt ?? supplier.updatedAt,
     };
   }

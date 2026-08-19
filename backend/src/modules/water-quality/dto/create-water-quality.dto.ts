@@ -18,7 +18,10 @@ export class CreateWaterQualityDto {
   pondId: string;
 
   /** ISO 8601 timestamp of when the measurement was taken */
-  @IsDateString({}, { message: 'recordTime phải là chuỗi ngày/giờ hợp lệ (ISO 8601)' })
+  @IsDateString(
+    {},
+    { message: 'recordTime phải là chuỗi ngày/giờ hợp lệ (ISO 8601)' },
+  )
   recordTime: string;
 
   /** Water temperature in °C — valid range: 15–40 */
@@ -82,4 +85,8 @@ export class CreateWaterQualityDto {
   @IsOptional()
   @IsString({ message: 'Ghi chú phải là chuỗi ký tự' })
   note?: string;
+
+  /** Optional snapshot of weather data at the time of recording */
+  @IsOptional()
+  weatherData?: any;
 }

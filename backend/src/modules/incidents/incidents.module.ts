@@ -6,6 +6,6 @@ import { FarmAccessModule } from '../farm-access/farm-access.module.js';
 @Module({
   imports: [FarmAccessModule],
   controllers: [IncidentsController],
-  providers: [IncidentsService]
+  providers: [IncidentsService],
 })
 export class IncidentsModule {}

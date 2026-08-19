@@ -4,7 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
 
@@ -15,10 +18,7 @@ export class CropsService {
     private readonly farmAccess: FarmAccessService,
   ) {}
 
-  async findAll(
-    user: AuthUser,
-    query: { pondId?: string; status?: string },
-  ) {
+  async findAll(user: AuthUser, query: { pondId?: string; status?: string }) {
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
     const where: any = {};
@@ -142,7 +142,8 @@ export class CropsService {
 
     const data: any = {};
     if (dto.startDate) data.startDate = new Date(dto.startDate);
-    if (dto.initialShrimpCount !== undefined) data.initialShrimpCount = dto.initialShrimpCount;
+    if (dto.initialShrimpCount !== undefined)
+      data.initialShrimpCount = dto.initialShrimpCount;
     if (dto.status) data.status = dto.status;
 
     return this.prisma.crop.update({
@@ -188,7 +189,9 @@ export class CropsService {
     await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
 
     if (crop.status !== 'ACTIVE') {
-      throw new BadRequestException('Chỉ có thể thu hoạch vụ nuôi đang hoạt động');
+      throw new BadRequestException(
+        'Chỉ có thể thu hoạch vụ nuôi đang hoạt động',
+      );
     }
 
     return this.prisma.crop.update({

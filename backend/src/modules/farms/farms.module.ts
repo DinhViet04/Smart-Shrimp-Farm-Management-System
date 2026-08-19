@@ -7,6 +7,6 @@ import { FarmAccessModule } from '../farm-access/farm-access.module.js';
 @Module({
   imports: [PrismaModule, FarmAccessModule],
   controllers: [FarmsController],
-  providers: [FarmsService]
+  providers: [FarmsService],
 })
 export class FarmsModule {}

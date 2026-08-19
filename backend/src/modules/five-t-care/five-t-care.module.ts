@@ -4,6 +4,6 @@ import { FiveTCareService } from './five-t-care.service';
 
 @Module({
   controllers: [FiveTCareController],
-  providers: [FiveTCareService]
+  providers: [FiveTCareService],
 })
 export class FiveTCareModule {}

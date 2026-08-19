@@ -61,6 +61,13 @@ describe('UsersService account settings', () => {
 
     const service = new UsersService(prisma as any);
 
-    await expect(service.changePassword('user-1', 'WrongPass123!', 'NewPass123!', 'NewPass123!')).rejects.toThrow(UnauthorizedException);
+    await expect(
+      service.changePassword(
+        'user-1',
+        'WrongPass123!',
+        'NewPass123!',
+        'NewPass123!',
+      ),
+    ).rejects.toThrow(UnauthorizedException);
   });
 });

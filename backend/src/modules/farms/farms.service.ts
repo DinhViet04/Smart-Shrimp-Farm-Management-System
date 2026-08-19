@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
@@ -13,7 +18,9 @@ export class FarmsService {
   ) {}
 
   async create(data: CreateFarmDto) {
-    const exists = await this.prisma.farm.findFirst({ where: { name: data.name } });
+    const exists = await this.prisma.farm.findFirst({
+      where: { name: data.name },
+    });
     if (exists) throw new BadRequestException('Ten nong trai da ton tai');
 
     const { ponds_count, staffIds, ...farmData } = data;
@@ -30,13 +37,21 @@ export class FarmsService {
     return farm;
   }
 
-  async findAll(search?: string, status?: string, userId?: string, role?: string) {
+  async findAll(
+    search?: string,
+    status?: string,
+    userId?: string,
+    role?: string,
+  ) {
     const where: any = { deletedAt: null };
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (status) where.status = status;
 
     if (role && role !== 'ADMIN' && userId) {
-      const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds({ userId, role });
+      const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds({
+        userId,
+        role,
+      });
       where.id = { in: accessibleFarmIds };
     }
 
@@ -69,16 +84,25 @@ export class FarmsService {
     return farm;
   }
 
-  async update(id: string, data: UpdateFarmDto, userId?: string, role?: string) {
+  async update(
+    id: string,
+    data: UpdateFarmDto,
+    userId?: string,
+    role?: string,
+  ) {
     const farm = await this.findOne(id, userId, role);
     if (userId && role) {
       await this.farmAccess.assertCanManageFarm({ userId, role }, id);
     } else if (farm.ownerId !== userId) {
-      throw new ForbiddenException('Ban khong co quyen cap nhat trang trai nay');
+      throw new ForbiddenException(
+        'Ban khong co quyen cap nhat trang trai nay',
+      );
     }
 
     if (data.name) {
-      const exists = await this.prisma.farm.findFirst({ where: { name: data.name, id: { not: id } } });
+      const exists = await this.prisma.farm.findFirst({
+        where: { name: data.name, id: { not: id } },
+      });
       if (exists) throw new BadRequestException('Ten nong trai da ton tai');
     }
 
@@ -99,7 +123,10 @@ export class FarmsService {
     const { ponds_count, staffIds, ...farmData } = data;
     void ponds_count;
 
-    const updatedFarm = await this.prisma.farm.update({ where: { id }, data: farmData });
+    const updatedFarm = await this.prisma.farm.update({
+      where: { id },
+      data: farmData,
+    });
 
     if (staffIds) {
       await this.prisma.farmStaff.deleteMany({ where: { farmId: id } });
@@ -154,13 +181,29 @@ export class FarmsService {
     });
   }
 
-  async assignStaff(farmId: string, userIdToAssign: string, requesterId: string, role: string) {
-    await this.farmAccess.assertCanManageFarm({ userId: requesterId, role }, farmId);
+  async assignStaff(
+    farmId: string,
+    userIdToAssign: string,
+    requesterId: string,
+    role: string,
+  ) {
+    await this.farmAccess.assertCanManageFarm(
+      { userId: requesterId, role },
+      farmId,
+    );
 
-    const userToAssign = await this.prisma.user.findUnique({ where: { id: userIdToAssign } });
-    if (!userToAssign) throw new NotFoundException('Khong tim thay tai khoan nhan su');
-    if (userToAssign.role !== Role.FARMER && userToAssign.role !== Role.TECHNICIAN) {
-      throw new BadRequestException('Chi co the phan cong tai khoan Farmer hoac Technician');
+    const userToAssign = await this.prisma.user.findUnique({
+      where: { id: userIdToAssign },
+    });
+    if (!userToAssign)
+      throw new NotFoundException('Khong tim thay tai khoan nhan su');
+    if (
+      userToAssign.role !== Role.FARMER &&
+      userToAssign.role !== Role.TECHNICIAN
+    ) {
+      throw new BadRequestException(
+        'Chi co the phan cong tai khoan Farmer hoac Technician',
+      );
     }
 
     const existing = await this.prisma.farmStaff.findUnique({
@@ -172,7 +215,9 @@ export class FarmsService {
       },
     });
     if (existing) {
-      throw new BadRequestException('Nhan su nay da duoc phan cong vao trang trai tu truoc');
+      throw new BadRequestException(
+        'Nhan su nay da duoc phan cong vao trang trai tu truoc',
+      );
     }
 
     return this.prisma.farmStaff.create({
@@ -194,8 +239,16 @@ export class FarmsService {
     });
   }
 
-  async unassignStaff(farmId: string, userIdToUnassign: string, requesterId: string, role: string) {
-    await this.farmAccess.assertCanManageFarm({ userId: requesterId, role }, farmId);
+  async unassignStaff(
+    farmId: string,
+    userIdToUnassign: string,
+    requesterId: string,
+    role: string,
+  ) {
+    await this.farmAccess.assertCanManageFarm(
+      { userId: requesterId, role },
+      farmId,
+    );
 
     const assignment = await this.prisma.farmStaff.findUnique({
       where: {
@@ -206,7 +259,9 @@ export class FarmsService {
       },
     });
     if (!assignment) {
-      throw new NotFoundException('Nhan su nay chua tung duoc phan cong vao trang trai');
+      throw new NotFoundException(
+        'Nhan su nay chua tung duoc phan cong vao trang trai',
+      );
     }
 
     return this.prisma.farmStaff.delete({
@@ -229,9 +284,13 @@ export class FarmsService {
       throw new BadRequestException('Danh sach nhan su khong hop le');
     }
 
-    const invalid = users.find((user) => user.role !== Role.FARMER && user.role !== Role.TECHNICIAN);
+    const invalid = users.find(
+      (user) => user.role !== Role.FARMER && user.role !== Role.TECHNICIAN,
+    );
     if (invalid) {
-      throw new BadRequestException('Chi duoc phan cong Farmer hoac Technician vao trang trai');
+      throw new BadRequestException(
+        'Chi duoc phan cong Farmer hoac Technician vao trang trai',
+      );
     }
 
     return users.map((user) => ({

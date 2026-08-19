@@ -21,6 +21,7 @@ import { FarmAccessModule } from './modules/farm-access/farm-access.module.js';
 import { FarmStaffsModule } from './modules/farm-staffs/farm-staffs.module.js';
 import { ShrimpHealthModule } from './modules/shrimp-health/shrimp-health.module.js';
 import { FeedingLogsModule } from './modules/feeding-logs/feeding-logs.module.js';
+import { WeatherModule } from './modules/weather/weather.module.js';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { FeedingLogsModule } from './modules/feeding-logs/feeding-logs.module.js
     SuppliersModule,
     ShrimpHealthModule,
     FeedingLogsModule,
+    WeatherModule,
   ],
   controllers: [AppController],
   providers: [AppService],

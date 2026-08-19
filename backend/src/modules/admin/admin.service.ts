@@ -12,19 +12,19 @@ export class AdminService {
     const activePonds = await this.prisma.pond.count({
       where: {
         crops: {
-          some: { status: 'ACTIVE' }
-        }
-      }
+          some: { status: 'ACTIVE' },
+        },
+      },
     });
     const activeCrops = await this.prisma.crop.count({
-      where: { status: 'ACTIVE' }
+      where: { status: 'ACTIVE' },
     });
 
     // 2. Growth Data (Last 7 days users count)
     const growthData: number[] = [];
     const growthLabels: string[] = [];
     const today = new Date();
-    
+
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
@@ -36,11 +36,11 @@ export class AdminService {
           createdAt: {
             gte: startOfDay,
             lte: endOfDay,
-          }
-        }
+          },
+        },
       });
       growthData.push(count);
-      
+
       const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
       growthLabels.push(dayNames[d.getDay()]);
     }
@@ -62,7 +62,7 @@ export class AdminService {
       TECHNICIAN: 'Technician',
       FARMER: 'Farmer',
     };
-    const roleDistrib = roleGroup.map(item => ({
+    const roleDistrib = roleGroup.map((item) => ({
       value: item._count,
       color: colors[item.role] || '#ccc',
       label: labels[item.role] || item.role,
@@ -73,30 +73,30 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
       take: 5,
     });
-    
+
     const recentFarms = await this.prisma.farm.findMany({
       orderBy: { createdAt: 'desc' },
       take: 5,
     });
 
     const activities = [
-      ...recentUsers.map(u => ({
+      ...recentUsers.map((u) => ({
         type: 'user',
         text: `Người dùng mới đăng ký: ${u.fullName}`,
         date: u.createdAt,
         color: 'bg-indigo-500',
       })),
-      ...recentFarms.map(f => ({
+      ...recentFarms.map((f) => ({
         type: 'farm',
         text: `Trang trại "${f.name}" được tạo`,
         date: f.createdAt,
         color: 'bg-emerald-500',
-      }))
+      })),
     ];
 
     activities.sort((a, b) => b.date.getTime() - a.date.getTime());
-    
-    const formattedActivity = activities.slice(0, 5).map(act => {
+
+    const formattedActivity = activities.slice(0, 5).map((act) => {
       const diffMs = today.getTime() - act.date.getTime();
       const diffMins = Math.floor(diffMs / 60000);
       const diffHrs = Math.floor(diffMins / 60);
@@ -115,10 +115,34 @@ export class AdminService {
 
     return {
       statCards: [
-        { label: 'Tổng Người dùng', value: totalUsers.toString(), change: 'Thực tế', up: true, color: '#6366f1' },
-        { label: 'Tổng Trang trại', value: totalFarms.toString(), change: 'Thực tế', up: true, color: '#10b981' },
-        { label: 'Ao đang hoạt động', value: activePonds.toString(), change: 'Thực tế', up: true, color: '#f59e0b' },
-        { label: 'Vụ Nuôi đang chạy', value: activeCrops.toString(), change: 'Thực tế', up: true, color: '#3b82f6' },
+        {
+          label: 'Tổng Người dùng',
+          value: totalUsers.toString(),
+          change: 'Thực tế',
+          up: true,
+          color: '#6366f1',
+        },
+        {
+          label: 'Tổng Trang trại',
+          value: totalFarms.toString(),
+          change: 'Thực tế',
+          up: true,
+          color: '#10b981',
+        },
+        {
+          label: 'Ao đang hoạt động',
+          value: activePonds.toString(),
+          change: 'Thực tế',
+          up: true,
+          color: '#f59e0b',
+        },
+        {
+          label: 'Vụ Nuôi đang chạy',
+          value: activeCrops.toString(),
+          change: 'Thực tế',
+          up: true,
+          color: '#3b82f6',
+        },
       ],
       growthData,
       growthLabels,

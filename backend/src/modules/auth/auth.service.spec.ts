@@ -56,7 +56,10 @@ describe('AuthService password reset', () => {
   });
 
   it('should send OTP for an existing email', async () => {
-    usersService.findByEmail.mockResolvedValue({ id: 'user-1', email: 'demo@example.com' });
+    usersService.findByEmail.mockResolvedValue({
+      id: 'user-1',
+      email: 'demo@example.com',
+    });
 
     const result = await service.forgotPassword({ email: 'demo@example.com' });
 
@@ -66,7 +69,10 @@ describe('AuthService password reset', () => {
   });
 
   it('should reset password with a valid OTP', async () => {
-    usersService.findByEmail.mockResolvedValue({ id: 'user-1', email: 'demo@example.com' });
+    usersService.findByEmail.mockResolvedValue({
+      id: 'user-1',
+      email: 'demo@example.com',
+    });
     usersService.updatePasswordByEmail.mockResolvedValue({ id: 'user-1' });
 
     service['passwordResetStore']['demo@example.com'] = {
@@ -83,7 +89,10 @@ describe('AuthService password reset', () => {
     });
 
     expect(result.message).toContain('thành công');
-    expect(usersService.updatePasswordByEmail).toHaveBeenCalledWith('demo@example.com', 'NewPass123!');
+    expect(usersService.updatePasswordByEmail).toHaveBeenCalledWith(
+      'demo@example.com',
+      'NewPass123!',
+    );
     expect(service['passwordResetStore']['demo@example.com'].used).toBe(true);
   });
 });

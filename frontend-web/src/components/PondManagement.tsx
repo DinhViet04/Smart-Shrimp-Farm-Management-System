@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { Plus, Map, Waves, Edit2, Trash2, Eye, Search, AlertCircle, CheckCircle2, Maximize } from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
 
-export default function PondManagement() {
+interface PondManagementProps {
+  onEditCrop?: (crop: any) => void;
+}
+
+export default function PondManagement({ onEditCrop }: PondManagementProps = {}) {
   const [ponds, setPonds] = useState<any[]>([]);
   const [farms, setFarms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -329,6 +333,7 @@ export default function PondManagement() {
         pond={viewingPond} 
         isOpen={!!viewingPond} 
         onClose={() => setViewingPond(null)} 
+        onEditCrop={onEditCrop}
       />
     </div>
   );

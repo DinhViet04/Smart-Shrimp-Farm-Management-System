@@ -2,7 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { WaterQualityResponseDto } from './dto/water-quality-response.dto.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class WaterQualityService {
@@ -11,7 +14,10 @@ export class WaterQualityService {
     private readonly farmAccess: FarmAccessService,
   ) {}
 
-  async create(user: AuthUser, dto: CreateWaterQualityDto): Promise<WaterQualityResponseDto> {
+  async create(
+    user: AuthUser,
+    dto: CreateWaterQualityDto,
+  ): Promise<WaterQualityResponseDto> {
     const pond = await this.prisma.pond.findUnique({
       where: { id: dto.pondId },
       include: { farm: true },
@@ -38,6 +44,7 @@ export class WaterQualityService {
         transparency: dto.transparency,
         waterColor: dto.waterColor ?? null,
         note: dto.note ?? null,
+        weatherData: dto.weatherData ?? null,
         createdBy: user.userId,
       },
     });
@@ -114,7 +121,11 @@ export class WaterQualityService {
     if (fromDate || toDate) {
       where.recordTime = {};
       if (fromDate) where.recordTime.gte = new Date(fromDate);
-      if (toDate) where.recordTime.lte = new Date(toDate);
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        where.recordTime.lte = end;
+      }
     }
 
     const skip = page * size;
@@ -140,7 +151,13 @@ export class WaterQualityService {
     ]);
 
     const content = records.map((record) => {
-      const h2sVal = record.h2s !== undefined && record.h2s !== null ? Number(record.h2s) : Number(record.no2);
+      const h2sVal =
+        record.h2s !== undefined && record.h2s !== null
+          ? Number(record.h2s)
+          : record.no2 !== undefined && record.no2 !== null
+          ? Number(record.no2)
+          : 0;
+
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
         ph: record.ph,
@@ -156,8 +173,8 @@ export class WaterQualityService {
       return {
         id: record.id,
         recordTime: record.recordTime.toISOString(),
-        farmName: record.pond.farm.name,
-        pondName: record.pond.name,
+        farmName: record.pond?.farm?.name ?? 'Trang trại',
+        pondName: record.pond?.name ?? 'Ao nuôi',
         temperature: Number(record.temperature),
         ph: Number(record.ph),
         dissolvedOxygen: Number(record.dissolvedOxygen),
@@ -165,11 +182,12 @@ export class WaterQualityService {
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
         h2s: h2sVal,
-        no2: Number(record.no2),
+        no2: record.no2 !== undefined && record.no2 !== null ? Number(record.no2) : 0,
         transparency: Number(record.transparency),
         waterColor: record.waterColor ?? undefined,
         overallStatus,
         note: record.note,
+        weatherData: record.weatherData,
         createdAt: record.createdAt.toISOString(),
       };
     });
@@ -182,7 +200,12 @@ export class WaterQualityService {
     };
   }
 
-  async findTrends(pondId: string, fromDate: string, toDate: string, user: AuthUser) {
+  async findTrends(
+    pondId: string,
+    fromDate: string,
+    toDate: string,
+    user: AuthUser,
+  ) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
       include: { farm: true },
@@ -205,7 +228,13 @@ export class WaterQualityService {
     });
 
     return records.map((record) => {
-      const h2sVal = record.h2s !== undefined && record.h2s !== null ? Number(record.h2s) : Number(record.no2);
+      const h2sVal =
+        record.h2s !== undefined && record.h2s !== null
+          ? Number(record.h2s)
+          : record.no2 !== undefined && record.no2 !== null
+          ? Number(record.no2)
+          : 0;
+
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
         ph: record.ph,
@@ -228,7 +257,7 @@ export class WaterQualityService {
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
         h2s: h2sVal,
-        no2: Number(record.no2),
+        no2: record.no2 !== undefined && record.no2 !== null ? Number(record.no2) : 0,
         transparency: Number(record.transparency),
         waterColor: record.waterColor ?? undefined,
         overallStatus,
@@ -316,6 +345,12 @@ export class WaterQualityService {
   private getH2sStatus(v: number): 'Optimal' | 'Warning' | 'Danger' {
     if (v <= 0.03) return 'Optimal';
     if (v > 0.03 && v <= 0.05) return 'Warning';
+    return 'Danger';
+  }
+
+  private getNo2Status(v: number): 'Optimal' | 'Warning' | 'Danger' {
+    if (v <= 0.3) return 'Optimal';
+    if (v > 0.3 && v <= 1.0) return 'Warning';
     return 'Danger';
   }
 

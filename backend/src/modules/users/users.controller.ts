@@ -1,4 +1,12 @@
-import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -20,18 +28,33 @@ export class UsersController {
   }
 
   @Patch('profile')
-  async updateProfile(@CurrentUser('userId') userId: string, @Body() updateProfileDto: UpdateProfileDto) {
+  async updateProfile(
+    @CurrentUser('userId') userId: string,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ) {
     return this.usersService.updateProfile(userId, updateProfileDto);
   }
 
   @Patch('password')
-  async changePassword(@CurrentUser('userId') userId: string, @Body() changePasswordDto: ChangePasswordDto) {
+  async changePassword(
+    @CurrentUser('userId') userId: string,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
     return this.usersService.changePassword(
       userId,
       changePasswordDto.currentPassword,
       changePasswordDto.newPassword,
       changePasswordDto.confirmPassword,
     );
+  }
+
+  @Get('lookup')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  async lookupStaff(
+    @Query('email') email: string,
+    @Query('expectedRole') expectedRole?: string,
+  ) {
+    return this.usersService.lookupStaff(email, expectedRole);
   }
 
   @Get('candidates')
@@ -48,13 +71,19 @@ export class UsersController {
 
   @Patch(':id/role')
   @Roles('ADMIN')
-  async updateUserRole(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ) {
     return this.usersService.updateRole(id, updateRoleDto.role);
   }
 
   @Patch(':id/status')
   @Roles('ADMIN')
-  async updateUserStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateStatusDto) {
+  async updateUserStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+  ) {
     return this.usersService.updateStatus(id, updateStatusDto.isActive);
   }
 }

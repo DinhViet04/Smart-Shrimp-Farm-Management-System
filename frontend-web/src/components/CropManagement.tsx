@@ -13,6 +13,7 @@ import {
   X,
   Users,
   Clock,
+  History,
 } from 'lucide-react';
 import { farmService } from '../services/farm.service';
 import { pondService } from '../services/pond.service';
@@ -51,6 +52,7 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeView, setActiveView] = useState<'active' | 'history'>('active');
 
   // ── Filters ─────────────────────────────────────────────────────────────────
   const [filterFarmId, setFilterFarmId] = useState('');
@@ -99,7 +101,7 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
         pondService.getAll(),
         cropService.getAll({
           pondId: filterPondId || undefined,
-          status: filterStatus || undefined,
+          status: activeView === 'active' ? 'ACTIVE' : filterStatus || undefined,
         }),
       ]);
       setFarms(farmsData);
@@ -110,7 +112,7 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
     } finally {
       setLoading(false);
     }
-  }, [filterPondId, filterStatus]);
+  }, [activeView, filterPondId, filterStatus]);
 
   useEffect(() => {
     fetchData();
@@ -125,6 +127,8 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
 
   // ── Filtered Crops List ─────────────────────────────────────────────────────
   const filteredCrops = crops.filter((c) => {
+    if (activeView === 'active' && c.status !== 'ACTIVE') return false;
+    if (activeView === 'history' && c.status === 'ACTIVE') return false;
     if (filterFarmId && c.pond?.farmId !== filterFarmId) return false;
     if (filterPondId && c.pondId !== filterPondId) return false;
     if (filterStatus && c.status !== filterStatus) return false;
@@ -306,6 +310,40 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
         </div>
       </div>
 
+      {/* Crop Views */}
+      <div className="inline-flex w-full sm:w-auto rounded-2xl bg-slate-100 p-1.5 border border-slate-200">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveView('active');
+            setFilterStatus('');
+          }}
+          aria-pressed={activeView === 'active'}
+          className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+            activeView === 'active'
+              ? 'bg-white text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Waves className="w-4 h-4" /> Đang nuôi
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveView('history');
+            setFilterStatus('');
+          }}
+          aria-pressed={activeView === 'history'}
+          className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+            activeView === 'history'
+              ? 'bg-white text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <History className="w-4 h-4" /> Lịch sử vụ nuôi
+        </button>
+      </div>
+
       {/* Filter Panel */}
       <div className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 p-5 space-y-4">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -350,14 +388,20 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1 uppercase">Trạng thái</label>
             <select
-              value={filterStatus}
+              value={activeView === 'active' ? 'ACTIVE' : filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
+              disabled={activeView === 'active'}
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none focus:bg-white focus:border-blue-500 transition-all"
             >
-              <option value="">Tất cả trạng thái</option>
-              <option value="ACTIVE">Đang nuôi (ACTIVE)</option>
-              <option value="HARVESTED">Đã thu hoạch (HARVESTED)</option>
-              <option value="FAILED">Thất thu (FAILED)</option>
+              {activeView === 'active' ? (
+                <option value="ACTIVE">Đang nuôi</option>
+              ) : (
+                <>
+                  <option value="">Tất cả vụ đã kết thúc</option>
+                  <option value="HARVESTED">Đã thu hoạch</option>
+                  <option value="FAILED">Thất thu</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -391,16 +435,22 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
             <Calendar className="w-8 h-8 text-slate-300" />
           </div>
-          <h3 className="text-lg font-bold text-slate-700 mb-1">Chưa có vụ nuôi nào</h3>
+          <h3 className="text-lg font-bold text-slate-700 mb-1">
+            {activeView === 'active' ? 'Chưa có vụ nuôi đang hoạt động' : 'Chưa có lịch sử vụ nuôi'}
+          </h3>
           <p className="text-slate-500 text-sm mb-4">
-            Không tìm thấy vụ nuôi phù hợp với bộ lọc. Hãy tạo vụ nuôi mới.
+            {activeView === 'active'
+              ? 'Không tìm thấy vụ đang nuôi phù hợp với bộ lọc.'
+              : 'Không tìm thấy vụ đã thu hoạch hoặc thất thu phù hợp với bộ lọc.'}
           </p>
-          <button
-            onClick={openAddModal}
-            className="text-blue-600 font-semibold text-sm hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" /> Tạo vụ nuôi ngay
-          </button>
+          {activeView === 'active' && (
+            <button
+              onClick={openAddModal}
+              className="text-blue-600 font-semibold text-sm hover:underline flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" /> Tạo vụ nuôi ngay
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

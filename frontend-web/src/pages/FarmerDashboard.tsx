@@ -13,7 +13,8 @@ import {
   Activity,
   AlertCircle,
   Package,
-  HeartPulse
+  HeartPulse,
+  AlertTriangle,
 } from 'lucide-react';
 
 // Import AccountSettings from existing component so user can still edit profile
@@ -22,6 +23,8 @@ import InventoryManagement from '../features/inventory/InventoryManagement';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
 import PondCropDashboard from '../components/PondCropDashboard';
+import FeedingLogDashboard from '../features/feeding-logs/FeedingLogDashboard';
+import IncidentDashboard from '../features/incidents/IncidentDashboard';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -56,6 +59,7 @@ export default function FarmerDashboard() {
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
+    { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
@@ -274,6 +278,10 @@ export default function FarmerDashboard() {
              <PondCropDashboard />
           ) : activeTab === 'Sức khỏe tôm' ? (
              <ShrimpHealthDashboard viewOnly={true} />
+          ) : activeTab === 'Báo cáo sự cố' ? (
+             <IncidentDashboard role="FARMER" />
+          ) : activeTab === 'Nhật ký Chăm sóc' ? (
+             <FeedingLogDashboard />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-teal-100 rounded-3xl shadow-sm max-w-lg">

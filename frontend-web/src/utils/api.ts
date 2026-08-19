@@ -15,7 +15,8 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  let response = await fetch(url, { ...options, headers });
+  const fullUrl = url.startsWith('http') ? url : `${apiUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  let response = await fetch(fullUrl, { ...options, headers });
 
   // Handle 401 Unauthorized
   if (response.status === 401) {

@@ -56,15 +56,27 @@ export class CreateWaterQualityDto {
   @Min(0, { message: 'NH3 không được âm' })
   nh3: number;
 
-  /** Nitrite (NO2) in mg/L — must be >= 0 */
+  /** Hydrogen Sulfide (H2S) in mg/L — must be >= 0 */
+  @IsOptional()
+  @IsNumber({}, { message: 'H2S phải là số' })
+  @Min(0, { message: 'H2S không được âm' })
+  h2s?: number;
+
+  /** Nitrite (NO2) in mg/L — optional for legacy support */
+  @IsOptional()
   @IsNumber({}, { message: 'NO2 phải là số' })
   @Min(0, { message: 'NO2 không được âm' })
-  no2: number;
+  no2?: number;
 
   /** Water transparency in cm — must be >= 0 */
   @IsNumber({}, { message: 'Độ trong phải là số' })
   @Min(0, { message: 'Độ trong không được âm' })
   transparency: number;
+
+  /** Water color (e.g., Xanh lục, Xanh vỏ đậu, Màu nâu nhạt...) */
+  @IsOptional()
+  @IsString({ message: 'Màu nước phải là chuỗi ký tự' })
+  waterColor?: string;
 
   /** Optional observation note */
   @IsOptional()

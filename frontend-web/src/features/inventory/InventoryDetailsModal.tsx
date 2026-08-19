@@ -84,11 +84,11 @@ export default function InventoryDetailsModal({ isOpen, item, onClose }: Invento
                   <Layers className="w-4 h-4" /> Tồn kho hiện tại
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-800">{item.packageQty}</span>
+                  <span className="text-3xl font-black text-slate-800">{Math.ceil(item.packageQty)}</span>
                   <span className="text-slate-500 font-medium">{item.packageType}</span>
                 </div>
                 <div className="text-sm text-slate-500 mt-2 font-medium">
-                  Tổng lượng: <strong className="text-slate-700">{totalWeight} {item.unit}</strong>
+                  Tổng lượng: <strong className="text-slate-700">{Math.round(totalWeight * 100) / 100} {item.unit}</strong>
                 </div>
                 {isLowStock && (
                   <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700">

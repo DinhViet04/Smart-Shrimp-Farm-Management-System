@@ -34,8 +34,10 @@ export interface CreateWaterQualityPayload {
   salinity: number;
   alkalinity: number;
   nh3: number;
-  no2: number;
-  transparency: number;
+  h2s: number;
+  no2?: number;
+  transparency?: number;
+  waterColor?: string;
   note?: string;
 }
 
@@ -126,7 +128,10 @@ export interface WaterQualityHistoryRecord {
   salinity: number;
   alkalinity: number;
   nh3: number;
-  no2: number;
+  h2s: number;
+  no2?: number;
+  transparency?: number;
+  waterColor?: string;
   overallStatus: 'Optimal' | 'Warning' | 'Danger';
   note?: string;
   createdAt: string;

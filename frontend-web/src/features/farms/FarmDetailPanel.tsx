@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2 } from 'lucide-react';
+import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2, Cpu } from 'lucide-react';
 import PondDetailPanel from '../../components/PondDetailPanel';
 import { farmService } from '../../services/farm.service';
 
@@ -143,7 +143,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
               </div>
 
               {/* Details Grid (Premium Pills) */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50 flex flex-col gap-1 items-start shadow-inner">
                   <div className="flex items-center gap-1.5 text-blue-600/80 text-xs font-bold uppercase tracking-wider">
                     <Maximize className="w-4 h-4" />
@@ -158,6 +158,16 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
                     Số lượng ao
                   </div>
                   <p className="text-xl font-black text-slate-800">{farm.ponds?.length || 0} <span className="text-sm font-bold text-slate-400">ao</span></p>
+                </div>
+
+                <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 flex flex-col gap-1 items-start shadow-inner">
+                  <div className="flex items-center gap-1.5 text-indigo-600/80 text-xs font-bold uppercase tracking-wider">
+                    <Cpu className="w-4 h-4" />
+                    Mô hình nuôi
+                  </div>
+                  <p className="text-sm font-black text-indigo-900 mt-1">
+                    {farm.farmingModel === 'TRADITIONAL' ? 'Truyền thống' : 'Công nghệ cao'}
+                  </p>
                 </div>
               </div>
 

@@ -102,6 +102,7 @@ model Farm {
   status      String      @default("ACTIVE")
   ownerId     String
   owner       User        @relation(fields: [ownerId], references: [id])
+  farmingModel String?    @default("HIGH_TECH") @map("farming_model") // Mô hình nuôi: "TRADITIONAL" (Truyền thống), "HIGH_TECH" (Công nghệ cao)
   ponds               Pond[]
   inventories         Inventory[]
   suppliers           Supplier[]
@@ -151,19 +152,36 @@ model Pond {
 }
 
 model Crop {
-  id                 String              @id @default(uuid())
-  pondId             String
-  pond               Pond                @relation(fields: [pondId], references: [id])
-  startDate          DateTime
-  initialShrimpCount Int // T_o: Số tôm thả ban đầu
-  status             CropStatus          @default(ACTIVE)
+  id                  String              @id @default(uuid())
+  pondId              String
+  pond                Pond                @relation(fields: [pondId], references: [id])
+  startDate           DateTime
+  initialShrimpCount  Int // T_o: Số tôm thả ban đầu
+  status              CropStatus          @default(ACTIVE)
+  // Mục tiêu & Kế hoạch nuôi do Quản lý (Manager) thiết lập (Dùng cho AI dự báo & đánh giá)
+  targetHarvestSize   Float?              @map("target_harvest_size") // Kích thước thu hoạch dự kiến (con/kg)
+  growthMilestones    Json?               @map("growth_milestones")   // Mảng JSON mốc tăng trưởng: [{ day: 30, weight: 10 }, ...]
+  targetSurvivalRate  Float?              @map("target_survival_rate") // Tỷ lệ sống dự kiến (%)
+  targetTotalFeedKg   Float?              @map("target_total_feed_kg") // Tổng lượng thức ăn dự kiến (kg)
+  expectedHarvestDate DateTime?           @map("expected_harvest_date") // Ngày thu hoạch dự kiến
+  expectedDurationDays Int?               @map("expected_duration_days") // Số ngày nuôi dự kiến
+  stage               String?             @default("COMMERCIAL") @map("stage") // Giai đoạn vụ nuôi: "NURSERY" (Ương dưỡng / Giai đoạn 1), "COMMERCIAL" (Nuôi thương phẩm / Giai đoạn 2)
+  expectedTransferDate DateTime?          @map("expected_transfer_date") // Ngày dự tính tách ao / chuyển qua giai đoạn thương phẩm (nếu là ao ương dưỡng)
+  parentCropId        String?             @map("parent_crop_id")
+  parentCrop          Crop?               @relation("CropSplitHistory", fields: [parentCropId], references: [id])
+  childCrops          Crop[]              @relation("CropSplitHistory")
+  transferDate        DateTime?           @map("transfer_date")
+  actualNurseryHarvest Int?               @map("actual_nursery_harvest")
+  nurserySurvivalRate Float?              @map("nursery_survival_rate")
+  transferSize        Float?              @map("transfer_size")
+  splitNote           String?             @map("split_note")
   fiveTCycles         FiveTCycle[]
   environmentRecords  EnvironmentRecord[]
   incidents           Incident[]
   shrimpHealthRecords ShrimpHealthRecord[]
   feedingLogs         FeedingLog[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@map("crops")
 }

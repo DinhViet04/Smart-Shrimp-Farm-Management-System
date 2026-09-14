@@ -38,6 +38,10 @@ export class CreateFarmDto {
   @IsOptional()
   status?: string;
 
+  @IsString()
+  @IsOptional()
+  farmingModel?: string;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

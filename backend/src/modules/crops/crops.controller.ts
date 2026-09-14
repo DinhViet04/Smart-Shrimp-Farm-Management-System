@@ -16,6 +16,7 @@ import {
 import { CropsService } from './crops.service.js';
 import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
+import { SplitCropDto } from './dto/split-crop.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -56,6 +57,17 @@ export class CropsController {
     @Body() dto: UpdateCropDto,
   ) {
     return this.cropsService.update(req.user, id, dto);
+  }
+
+  @Post(':id/split')
+  @Roles('FARM_MANAGER', 'FARMER')
+  @HttpCode(HttpStatus.OK)
+  split(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: SplitCropDto,
+  ) {
+    return this.cropsService.splitCrop(req.user, id, dto);
   }
 
   @Patch(':id/harvest')

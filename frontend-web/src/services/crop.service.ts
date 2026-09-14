@@ -9,23 +9,84 @@ import { apiFetch } from '../utils/api';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+export interface GrowthMilestone {
+  day: number;
+  weight: number;
+}
+
 export interface Crop {
   id: string;
   pondId: string;
   startDate: string;
   initialShrimpCount: number;
   status: 'ACTIVE' | 'HARVESTED' | 'FAILED';
+  targetHarvestSize?: number | null;
+  growthMilestones?: GrowthMilestone[] | null;
+  targetSurvivalRate?: number | null;
+  targetTotalFeedKg?: number | null;
+  expectedHarvestDate?: string | null;
+  expectedDurationDays?: number | null;
+  stage?: 'NURSERY' | 'COMMERCIAL' | null;
+  expectedTransferDate?: string | null;
+  parentCropId?: string | null;
+  transferDate?: string | null;
+  actualNurseryHarvest?: number | null;
+  nurserySurvivalRate?: number | null;
+  transferSize?: number | null;
+  splitNote?: string | null;
+  parentCrop?: {
+    id: string;
+    startDate: string;
+    initialShrimpCount: number;
+    stage?: string;
+    pond?: {
+      id: string;
+      name: string;
+    };
+  } | null;
+  childCrops?: Array<{
+    id: string;
+    startDate: string;
+    initialShrimpCount: number;
+    status: string;
+    stage?: string;
+    pond?: {
+      id: string;
+      name: string;
+    };
+  }> | null;
   createdAt?: string;
   updatedAt?: string;
   pond: {
     id: string;
     name: string;
+    areaSize?: number;
+    depth?: number;
     farmId: string;
     farm?: {
       id: string;
       name: string;
+      farmingModel?: string;
     };
   };
+}
+
+export interface SplitDestinationPayload {
+  pondId: string;
+  shrimpCount: number;
+  targetHarvestSize?: number;
+  targetSurvivalRate?: number;
+  targetTotalFeedKg?: number;
+  expectedHarvestDate?: string;
+  expectedDurationDays?: number;
+}
+
+export interface SplitCropPayload {
+  transferDate: string;
+  actualNurseryHarvest: number;
+  transferSize?: number;
+  splitNote?: string;
+  destinations: SplitDestinationPayload[];
 }
 
 export interface CreateCropPayload {
@@ -33,12 +94,28 @@ export interface CreateCropPayload {
   startDate: string;
   initialShrimpCount: number;
   status?: string;
+  targetHarvestSize?: number;
+  growthMilestones?: GrowthMilestone[];
+  targetSurvivalRate?: number;
+  targetTotalFeedKg?: number;
+  expectedHarvestDate?: string;
+  expectedDurationDays?: number;
+  stage?: 'NURSERY' | 'COMMERCIAL';
+  expectedTransferDate?: string;
 }
 
 export interface UpdateCropPayload {
   startDate?: string;
   initialShrimpCount?: number;
   status?: string;
+  targetHarvestSize?: number;
+  growthMilestones?: GrowthMilestone[];
+  targetSurvivalRate?: number;
+  targetTotalFeedKg?: number;
+  expectedHarvestDate?: string;
+  expectedDurationDays?: number;
+  stage?: 'NURSERY' | 'COMMERCIAL';
+  expectedTransferDate?: string;
 }
 
 export const cropService = {
@@ -101,6 +178,25 @@ export const cropService = {
       );
     }
     return data as Crop;
+  },
+
+  /**
+   * POST /api/crops/:id/split
+   */
+  split: async (id: string, payload: SplitCropPayload): Promise<{ message: string; sourceCrop: Crop; newCrops: Crop[] }> => {
+    const response = await apiFetch(`${apiUrl}/api/crops/${id}/split`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        Array.isArray(data?.message)
+          ? data.message.join(', ')
+          : data?.message || 'Không thể tách ao nuôi',
+      );
+    }
+    return data;
   },
 
   harvest: async (id: string): Promise<Crop> => {

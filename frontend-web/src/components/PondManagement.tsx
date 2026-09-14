@@ -1,5 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Plus, Map, Waves, Edit2, Trash2, Eye, Search, AlertCircle, CheckCircle2, Maximize } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, 
+  Waves, 
+  Edit2, 
+  Trash2, 
+  Search, 
+  AlertCircle, 
+  CheckCircle2, 
+  Maximize, 
+  Building2, 
+  MapPin, 
+  Cpu
+} from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
 
 interface PondManagementProps {
@@ -27,8 +39,6 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
     setTimeout(() => setToast(null), 3000);
   };
 
-  const filteredPonds = ponds.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -36,12 +46,12 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch Farms (sử dụng service chung)
+      // Fetch Farms
       const { farmService } = await import('../services/farm.service');
       try {
         const farmsData = await farmService.getMy();
         setFarms(farmsData);
-        if (farmsData.length > 0) {
+        if (farmsData.length > 0 && !formData.farmId) {
           setFormData(prev => ({ ...prev, farmId: farmsData[0].id }));
         }
       } catch (err) {
@@ -59,9 +69,15 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
     }
   };
 
-  const openAddModal = () => {
+  const openAddModal = (defaultFarmId?: string) => {
     setEditingPond(null);
-    setFormData({ name: '', areaSize: '', depth: '', farmId: farms.length > 0 ? farms[0].id : '' });
+    const chosenFarmId = defaultFarmId || (farms.length > 0 ? farms[0].id : '');
+    setFormData({ 
+      name: '', 
+      areaSize: '', 
+      depth: '', 
+      farmId: chosenFarmId 
+    });
     setShowModal(true);
   };
 
@@ -115,8 +131,36 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
     }
   };
 
+  // Group ponds by farm
+  const groupedFarms = useMemo(() => {
+    const searchLower = search.trim().toLowerCase();
+
+    // Map each farm with its matching ponds
+    return farms.map(farm => {
+      const farmPonds = ponds.filter(p => {
+        const matchesFarm = p.farmId === farm.id;
+        const matchesSearch = !searchLower || 
+          p.name.toLowerCase().includes(searchLower) || 
+          farm.name.toLowerCase().includes(searchLower);
+        return matchesFarm && matchesSearch;
+      });
+
+      const totalPondArea = farmPonds.reduce((acc, p) => acc + (Number(p.areaSize) || 0), 0);
+      const farmArea = Number(farm.area) || 0;
+      const usagePercentage = farmArea > 0 ? Math.min(100, Math.round((totalPondArea / farmArea) * 100)) : 0;
+
+      return {
+        ...farm,
+        ponds: farmPonds,
+        totalPondArea,
+        farmArea,
+        usagePercentage,
+      };
+    });
+  }, [farms, ponds, search]);
+
   return (
-    <div className="relative z-10 max-w-6xl mx-auto space-y-6">
+    <div className="relative z-10 max-w-7xl mx-auto space-y-6">
       {/* Custom Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${
@@ -135,7 +179,7 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
           </div>
           <div>
             <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">Quản Lý Ao Nuôi</h2>
-            <p className="text-sm text-slate-500 font-medium">Quản lý và theo dõi danh sách ao nuôi</p>
+            <p className="text-sm text-slate-500 font-medium">Theo dõi và quản lý danh sách ao nuôi phân chia theo từng trang trại</p>
           </div>
         </div>
 
@@ -151,7 +195,7 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
             />
           </div>
           <button
-            onClick={openAddModal}
+            onClick={() => openAddModal()}
             className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-sm font-bold rounded-xl flex items-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" /> Thêm mới
@@ -159,78 +203,242 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
         </div>
       </div>
 
-      {/* Danh sách Thẻ Ao */}
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-5 rounded-3xl border border-white/60 shadow-lg shadow-blue-900/5 flex items-center gap-4 transition-all hover:-translate-y-0.5">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-inner">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Trang Trại</p>
+            <p className="text-2xl font-black text-slate-800">{farms.length} <span className="text-xs font-bold text-slate-400 font-normal">trại</span></p>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-5 rounded-3xl border border-white/60 shadow-lg shadow-blue-900/5 flex items-center gap-4 transition-all hover:-translate-y-0.5">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-100 flex items-center justify-center text-cyan-600 shadow-inner">
+            <Waves className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Số Ao Nuôi</p>
+            <p className="text-2xl font-black text-slate-800">{ponds.length} <span className="text-xs font-bold text-slate-400 font-normal">ao</span></p>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-5 rounded-3xl border border-white/60 shadow-lg shadow-blue-900/5 flex items-center gap-4 transition-all hover:-translate-y-0.5">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-inner">
+            <Maximize className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Diện Tích Mặt Nước</p>
+            <p className="text-2xl font-black text-slate-800">
+              {ponds.reduce((sum, p) => sum + (Number(p.areaSize) || 0), 0).toLocaleString()} <span className="text-xs font-bold text-slate-400 font-normal">m²</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Loading state */}
       {loading ? (
-        <div className="flex items-center justify-center h-64 bg-white rounded-3xl border border-slate-100 shadow-sm">
+        <div className="flex items-center justify-center h-64 bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-sm">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 text-sm font-medium">Đang tải dữ liệu...</p>
+            <p className="text-slate-500 text-sm font-medium">Đang tải dữ liệu ao nuôi...</p>
           </div>
         </div>
-      ) : filteredPonds.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 bg-white rounded-3xl border border-slate-100 shadow-sm text-center px-6">
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-            <Waves className="w-8 h-8 text-slate-300" />
+      ) : farms.length === 0 ? (
+        /* No Farms State */
+        <div className="flex flex-col items-center justify-center h-64 bg-white/90 backdrop-blur-xl rounded-3xl border border-slate-200/80 shadow-sm text-center px-6">
+          <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 shadow-inner border border-blue-100/50">
+            <Building2 className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-700 mb-1">Chưa có ao nuôi nào</h3>
-          <p className="text-slate-500 text-sm mb-4">Bạn có thể thêm ao nuôi mới để bắt đầu quản lý.</p>
-          <button
-            onClick={openAddModal}
-            className="text-blue-600 font-semibold text-sm hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" /> Thêm ao ngay
-          </button>
+          <h3 className="text-lg font-bold text-slate-800 mb-1">Bạn chưa tạo Trang Trại nào</h3>
+          <p className="text-slate-500 text-sm mb-4">Vui lòng tạo trang trại trước khi bắt đầu tạo các ao nuôi.</p>
+        </div>
+      ) : groupedFarms.every(g => g.ponds.length === 0) && search ? (
+        /* No Search Results */
+        <div className="flex flex-col items-center justify-center h-64 bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-sm text-center px-6">
+          <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mb-4">
+            <Search className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-700 mb-1">Không tìm thấy ao nuôi phù hợp</h3>
+          <p className="text-slate-500 text-sm">Không có kết quả nào khớp với từ khóa "{search}".</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPonds.map(pond => (
-            <div key={pond.id} onClick={() => setViewingPond(pond)} className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all hover:-translate-y-1.5 duration-500 group flex flex-col cursor-pointer overflow-hidden relative">
-              <div className="h-24 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 relative overflow-hidden">
-                <div className="absolute inset-0 bg-white/20 backdrop-blur-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-              </div>
-              <div className="p-6 relative flex-1 flex flex-col">
-                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  <button onClick={(e) => { e.stopPropagation(); setViewingPond(pond); }} className="p-2 bg-white/90 text-blue-600 hover:bg-blue-50 rounded-xl shadow-sm transition-colors" title="Xem chi tiết"><Eye className="w-4 h-4" /></button>
-                  <button onClick={(e) => { e.stopPropagation(); openEditModal(pond); }} className="p-2 bg-white/90 text-blue-600 hover:bg-blue-50 rounded-xl shadow-sm transition-colors" title="Chỉnh sửa"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={(e) => handleDelete(e, pond.id)} className="p-2 bg-white/90 text-red-600 hover:bg-red-50 rounded-xl shadow-sm transition-colors" title="Xóa"><Trash2 className="w-4 h-4" /></button>
-                </div>
-                <div className="w-14 h-14 bg-white border border-white/80 rounded-2xl flex items-center justify-center absolute -top-10 shadow-xl shadow-blue-900/10 group-hover:scale-110 group-hover:-translate-y-1 transition-all duration-500 z-20">
-                  <Waves className="w-7 h-7 text-blue-600" />
-                </div>
-                <div className="mt-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-bold text-slate-800">{pond.name}</h3>
-                    {pond.farm?.status === 'INACTIVE' && (
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 rounded-md">
-                        Ngưng hoạt động
+        /* Grouped By Farm Sections */
+        <div className="space-y-8">
+          {groupedFarms.map(farmGroup => (
+            <div 
+              key={farmGroup.id}
+              className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/80 shadow-xl shadow-blue-900/5 overflow-hidden transition-all duration-300"
+            >
+              {/* Farm Section Header Banner */}
+              <div className="h-1.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-400"></div>
+
+              <div className="p-5 sm:p-6 space-y-5">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-inner">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-xl font-black text-slate-800 tracking-tight">
+                        {farmGroup.name}
+                      </h3>
+
+                      {/* Status badge */}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-bold rounded-full border ${
+                        farmGroup.status === 'ACTIVE'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                          : 'bg-rose-50 text-rose-700 border-rose-200/80'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          farmGroup.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                        }`} />
+                        {farmGroup.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm ngưng'}
                       </span>
-                    )}
+
+                      {/* Farming Model Badge */}
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-0.5 text-xs font-bold rounded-full border ${
+                        farmGroup.farmingModel === 'TRADITIONAL'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200/80'
+                          : 'bg-blue-50 text-blue-700 border-blue-200/80'
+                      }`}>
+                        <Cpu className="w-3.5 h-3.5" />
+                        {farmGroup.farmingModel === 'TRADITIONAL' ? 'Mô hình truyền thống' : 'Mô hình công nghệ cao'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-medium text-slate-500 pl-0 sm:pl-13">
+                      <span className="inline-flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+                        <MapPin className="w-3.5 h-3.5 text-blue-500" />
+                        {farmGroup.address}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Diện tích trại: <strong className="text-slate-700 font-bold">{farmGroup.farmArea?.toLocaleString() || 0} m²</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Mặt nước ao: <strong className="text-blue-600 font-bold">{farmGroup.totalPondArea?.toLocaleString() || 0} m²</strong> ({farmGroup.usagePercentage}% quỹ đất)
+                      </span>
+                    </div>
                   </div>
-                  <div className="space-y-4 flex-1">
-                    <div className="flex items-start gap-2 text-slate-600 text-sm bg-slate-50/80 p-3 rounded-xl border border-slate-100/50 shadow-inner">
-                      <Map className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" />
-                      <span className="line-clamp-2 font-medium leading-relaxed">{pond.farm?.name || 'Trang trại không xác định'}</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100/50 flex flex-col gap-1 items-start transition-colors group-hover:bg-blue-50">
-                        <div className="flex items-center gap-1.5 text-blue-600/80 text-xs font-bold uppercase tracking-wider">
-                          <Maximize className="w-3.5 h-3.5" />
-                          Diện tích
-                        </div>
-                        <p className="text-lg font-black text-slate-800">{pond.areaSize} <span className="text-sm font-bold text-slate-400">m²</span></p>
-                      </div>
-                      <div className="bg-cyan-50/50 p-3 rounded-2xl border border-cyan-100/50 flex flex-col gap-1 items-start transition-colors group-hover:bg-cyan-50">
-                        <div className="flex items-center gap-1.5 text-cyan-600/80 text-xs font-bold uppercase tracking-wider">
-                          <Waves className="w-3.5 h-3.5" />
-                          Độ sâu
-                        </div>
-                        <p className="text-lg font-black text-slate-800">{pond.depth} <span className="text-sm font-bold text-slate-400">m</span></p>
-                      </div>
-                    </div>
+
+                  {/* Right side controls */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/60 shadow-inner">
+                      🏊 <strong>{farmGroup.ponds.length}</strong> ao nuôi
+                    </span>
+                    <button
+                      onClick={() => openAddModal(farmGroup.id)}
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 whitespace-nowrap"
+                    >
+                      <Plus className="w-4 h-4" /> Thêm ao vào trại này
+                    </button>
                   </div>
                 </div>
+
+                {/* Ponds Grid for this farm */}
+                {farmGroup.ponds.length === 0 ? (
+                  <div className="bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200/80 p-8 text-center">
+                    <div className="w-12 h-12 bg-white text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-slate-100 shadow-sm">
+                      <Waves className="w-6 h-6 text-blue-400" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-700 mb-1">Trang trại này chưa có ao nuôi nào</p>
+                    <p className="text-xs text-slate-400 mb-4">Thêm ao nuôi để quản lý môi trường nước, mùa vụ và nhật ký chăm sóc.</p>
+                    <button
+                      onClick={() => openAddModal(farmGroup.id)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 shadow-sm transition-all hover:-translate-y-0.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Tạo ao đầu tiên
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {farmGroup.ponds.map((pond: any) => (
+                      <div 
+                        key={pond.id} 
+                        onClick={() => setViewingPond(pond)} 
+                        className="bg-white rounded-3xl border border-slate-100 shadow-md shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all hover:-translate-y-1.5 duration-300 group flex flex-col cursor-pointer overflow-hidden relative"
+                      >
+                        {/* Card Gradient Top Cover */}
+                        <div className="h-20 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 relative overflow-hidden">
+                          <div className="absolute inset-0 bg-white/20 backdrop-blur-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+                        </div>
+
+                        <div className="p-5 relative flex-1 flex flex-col">
+                          {/* Floating Icon */}
+                          <div className="w-12 h-12 bg-white border border-white/80 rounded-2xl flex items-center justify-center absolute -top-8 shadow-xl shadow-blue-900/10 group-hover:scale-110 transition-all duration-300 z-20">
+                            <Waves className="w-6 h-6 text-blue-600" />
+                          </div>
+
+                          <div className="mt-4 flex-1 flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between mb-2.5">
+                                <h4 className="text-lg font-black text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors">
+                                  {pond.name}
+                                </h4>
+                                {farmGroup.status === 'INACTIVE' && (
+                                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 rounded-md">
+                                    Trại ngưng
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Metrics 2-column pills */}
+                              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                                <div className="bg-blue-50/60 p-3 rounded-2xl border border-blue-100/60 flex flex-col gap-0.5 transition-colors group-hover:bg-blue-50">
+                                  <div className="flex items-center gap-1 text-blue-600 text-[11px] font-bold uppercase tracking-wider">
+                                    <Maximize className="w-3.5 h-3.5" />
+                                    Diện tích
+                                  </div>
+                                  <p className="text-lg font-black text-slate-800">
+                                    {Number(pond.areaSize)?.toLocaleString() || 0} <span className="text-xs font-bold text-slate-400">m²</span>
+                                  </p>
+                                </div>
+
+                                <div className="bg-cyan-50/60 p-3 rounded-2xl border border-cyan-100/60 flex flex-col gap-0.5 transition-colors group-hover:bg-cyan-50">
+                                  <div className="flex items-center gap-1 text-cyan-600 text-[11px] font-bold uppercase tracking-wider">
+                                    <Waves className="w-3.5 h-3.5" />
+                                    Độ sâu
+                                  </div>
+                                  <p className="text-lg font-black text-slate-800">
+                                    {pond.depth} <span className="text-xs font-bold text-slate-400">m</span>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Card Footer Actions */}
+                            <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
+                              <span className="text-xs font-bold text-blue-600 flex items-center gap-1 group-hover:underline">
+                                Xem chi tiết →
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openEditModal(pond); }} 
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" 
+                                  title="Chỉnh sửa"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={(e) => handleDelete(e, pond.id)} 
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors" 
+                                  title="Xóa"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}

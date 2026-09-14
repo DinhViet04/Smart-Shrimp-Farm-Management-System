@@ -28,6 +28,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     area: 0,
     description: '',
     status: 'ACTIVE',
+    farmingModel: 'HIGH_TECH',
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -56,6 +57,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         area: initialData.area || 0,
         description: initialData.description || '',
         status: initialData.status || 'ACTIVE',
+        farmingModel: initialData.farmingModel || 'HIGH_TECH',
       });
     } else {
       setFormData({
@@ -64,6 +66,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         area: 0,
         description: '',
         status: 'ACTIVE',
+        farmingModel: 'HIGH_TECH',
       });
       setAssignedStaff([]);
     }
@@ -300,6 +303,63 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                   <option value="ACTIVE">Hoạt động (Active)</option>
                   <option value="INACTIVE">Tạm ngưng (Inactive)</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Mô hình nuôi tôm */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                Mô hình nuôi tôm <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Mô hình truyền thống */}
+                <label
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                    formData.farmingModel === 'TRADITIONAL'
+                      ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/10'
+                      : 'border-slate-200 bg-slate-50/40 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="radio"
+                      name="farmingModel"
+                      value="TRADITIONAL"
+                      checked={formData.farmingModel === 'TRADITIONAL'}
+                      onChange={handleChange}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-slate-800">
+                      Mô hình truyền thống
+                    </span>
+                  </div>
+                </label>
+
+                {/* Mô hình công nghệ cao */}
+                <label
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                    formData.farmingModel === 'HIGH_TECH'
+                      ? 'border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/10'
+                      : 'border-slate-200 bg-slate-50/40 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="radio"
+                      name="farmingModel"
+                      value="HIGH_TECH"
+                      checked={formData.farmingModel === 'HIGH_TECH'}
+                      onChange={handleChange}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-slate-800">
+                      Mô hình công nghệ cao
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-200">
+                    Khuyên dùng
+                  </span>
+                </label>
               </div>
             </div>
 

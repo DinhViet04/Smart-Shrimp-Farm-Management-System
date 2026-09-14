@@ -213,6 +213,14 @@ export default function FarmList() {
                     }`}>
                       {farm.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm ngưng'}
                     </span>
+
+                    <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-lg border whitespace-nowrap ${
+                      farm.farmingModel === 'TRADITIONAL'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+                        : 'bg-blue-50 text-blue-700 border-blue-200/70'
+                    }`}>
+                      {farm.farmingModel === 'TRADITIONAL' ? 'Mô hình truyền thống' : 'Mô hình công nghệ cao'}
+                    </span>
                     
                     {user.role === 'ADMIN' && farm.owner && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border whitespace-nowrap bg-indigo-50 text-indigo-600 border-indigo-100">

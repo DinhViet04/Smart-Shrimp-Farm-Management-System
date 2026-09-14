@@ -39,7 +39,7 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
           
           // Retry the original request with new token
           headers.set('Authorization', `Bearer ${data.accessToken}`);
-          response = await fetch(url, { ...options, headers });
+          response = await fetch(fullUrl, { ...options, headers });
         } else {
           // Refresh failed (token expired or invalid)
           handleAuthFailure();

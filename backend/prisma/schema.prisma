@@ -145,10 +145,33 @@ model Pond {
   waterQualityRecords WaterQualityRecord[]
   shrimpHealthRecords ShrimpHealthRecord[]
   feedingLogs         FeedingLog[]
+  sizeSamples         ShrimpSizeSample[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
   @@map("ponds")
+}
+
+/// Ghi nhận lấy mẫu kích cỡ & trọng lượng tôm định kỳ
+model ShrimpSizeSample {
+  id               String   @id @default(uuid())
+  pondId           String   @map("pond_id")
+  pond             Pond     @relation(fields: [pondId], references: [id])
+  samplingDate     DateTime @default(now()) @map("sampling_date")
+  doc              Int?     // Days of culture (Ngày nuôi)
+  sampleCount      Int      @map("sample_count") // Số lượng tôm lấy mẫu (> 0)
+  sampleWeightGram Decimal  @map("sample_weight_g") @db.Decimal(10, 2)
+  sampleLengthCm   Decimal? @map("sample_length_cm") @db.Decimal(5, 2)
+  abwGram          Decimal  @map("abw_g") @db.Decimal(10, 2) // Trọng lượng trung bình (g/con)
+  sizePerKg        Decimal  @map("size_pieces_per_kg") @db.Decimal(10, 2) // Kích cỡ (con/kg)
+  adgGramPerDay    Decimal? @map("adg_g_per_day") @db.Decimal(10, 2) // Tăng trưởng trung bình hàng ngày
+  notes            String?  @db.VarChar(500)
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([pondId, samplingDate])
+  @@map("shrimp_size_samples")
 }
 
 model Crop {

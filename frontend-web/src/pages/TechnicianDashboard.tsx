@@ -11,6 +11,7 @@ import {
   HeartPulse,
   AlertTriangle,
   Scale,
+  Activity,
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
@@ -20,6 +21,7 @@ import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboa
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 import BiomassDashboard from '../features/biomass/BiomassDashboard';
+import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
 import { PieChart } from 'lucide-react';
 
 export default function TechnicianDashboard() {
@@ -56,6 +58,7 @@ export default function TechnicianDashboard() {
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
     { name: 'Sinh khối ao', icon: <PieChart className="w-5 h-5" /> },
+    { name: 'Theo dõi tỷ lệ sống', icon: <Activity className="w-5 h-5 text-indigo-600" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -174,6 +177,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Sinh khối ao' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <BiomassDashboard />
+            </div>
+          ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <SurvivalRateDashboard viewOnly={true} />
             </div>
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">

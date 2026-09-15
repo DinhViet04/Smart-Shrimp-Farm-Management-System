@@ -9,6 +9,7 @@ import InventoryManagement from '../features/inventory/InventoryManagement';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 import BiomassDashboard from '../features/biomass/BiomassDashboard';
+import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
 import { Scale, PieChart } from 'lucide-react';
 
 export default function Dashboard() {
@@ -55,6 +56,7 @@ export default function Dashboard() {
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
     { name: 'Sinh khối ao', icon: <PieChart className="w-5 h-5" /> },
+    { name: 'Theo dõi tỷ lệ sống', icon: <Activity className="w-5 h-5 text-orange-500" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
@@ -230,6 +232,10 @@ export default function Dashboard() {
           ) : activeTab === 'Sinh khối ao' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <BiomassDashboard viewOnly={true} />
+            </div>
+          ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <SurvivalRateDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'FARM_MANAGER'} />
             </div>
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />

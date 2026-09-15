@@ -25,6 +25,7 @@ import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboa
 import PondCropDashboard from '../components/PondCropDashboard';
 import FeedingLogDashboard from '../features/feeding-logs/FeedingLogDashboard';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
+import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -59,6 +60,7 @@ export default function FarmerDashboard() {
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
+    { name: 'Theo dõi tỷ lệ sống', icon: <Activity className="w-5 h-5 text-teal-600" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
@@ -278,6 +280,10 @@ export default function FarmerDashboard() {
              <PondCropDashboard />
           ) : activeTab === 'Sức khỏe tôm' ? (
              <ShrimpHealthDashboard viewOnly={true} />
+          ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
+             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+               <SurvivalRateDashboard viewOnly={true} />
+             </div>
           ) : activeTab === 'Báo cáo sự cố' ? (
              <IncidentDashboard role="FARMER" />
           ) : activeTab === 'Nhật ký Chăm sóc' ? (

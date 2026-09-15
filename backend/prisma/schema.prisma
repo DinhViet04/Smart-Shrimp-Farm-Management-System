@@ -88,6 +88,7 @@ model User {
   assignedIncidents    Incident[]                @relation("IncidentAssignee")
   reportedIncidents    Incident[]                @relation("IncidentReporter")
   incidentUpdates      IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
+  mortalityLogs        MortalityLog[]
 
   @@map("users")
 }
@@ -204,11 +205,15 @@ model Crop {
   nurserySurvivalRate Float?              @map("nursery_survival_rate")
   transferSize        Float?              @map("transfer_size")
   splitNote           String?             @map("split_note")
+  actualHarvestCount  Int?                @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
+  actualHarvestKg     Float?              @map("actual_harvest_kg")    // Sản lượng thu hoạch thực tế (kg)
+  actualHarvestSize   Float?              @map("actual_harvest_size")  // Kích cỡ tôm thu hoạch thực tế (con/kg)
   fiveTCycles         FiveTCycle[]
   environmentRecords  EnvironmentRecord[]
   incidents           Incident[]
   shrimpHealthRecords ShrimpHealthRecord[]
   feedingLogs         FeedingLog[]
+  mortalityLogs       MortalityLog[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -533,3 +538,22 @@ model FeedingLog {
   @@index([pondId, cropId, feedingDate])
   @@map("feeding_logs")
 }
+
+/// Stores mortality logs (dead shrimp count) for a crop.
+model MortalityLog {
+  id              String   @id @default(uuid())
+  cropId          String   @map("crop_id")
+  crop            Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  recordedDate    DateTime @default(now()) @map("recorded_date")
+  deadQuantityPcs Int      @map("dead_quantity_pcs")
+  cause           String?
+  note            String?  @db.VarChar(500)
+  createdBy       String?  @map("created_by")
+  creator         User?    @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([cropId, recordedDate])
+  @@map("mortality_logs")
+}
+

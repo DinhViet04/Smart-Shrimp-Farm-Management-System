@@ -10,6 +10,7 @@ import {
   Droplets,
   HeartPulse,
   AlertTriangle,
+  Scale,
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
@@ -17,6 +18,7 @@ import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendDashboard';
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
+import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export default function TechnicianDashboard() {
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
+    { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -160,6 +163,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Sức khỏe tôm' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <ShrimpHealthDashboard />
+            </div>
+          ) : activeTab === 'Theo dõi kích cỡ' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <ShrimpSizeDashboard />
             </div>
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">

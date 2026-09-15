@@ -6,6 +6,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
+import type { CastDto } from '../../services/shrimpSizeService';
 import { cropService } from '../../services/crop.service';
 import type { Crop } from '../../services/crop.service';
 
@@ -39,8 +40,14 @@ export default function PondSizeDetail({ pond, viewOnly = false, onBack }: PondS
   const [activeCrop, setActiveCrop] = useState<Crop | null>(null);
 
   // Form states
-  const [sampleCount, setSampleCount] = useState<number | ''>('');
-  const [sampleWeightGram, setSampleWeightGram] = useState<number | ''>('');
+  const [netAreaSqM, setNetAreaSqM] = useState<number | ''>('');
+  const [casts, setCasts] = useState<CastDto[]>([
+    { count: 0, weightGram: 0 },
+    { count: 0, weightGram: 0 },
+    { count: 0, weightGram: 0 },
+    { count: 0, weightGram: 0 },
+    { count: 0, weightGram: 0 },
+  ]);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,20 +74,26 @@ export default function PondSizeDetail({ pond, viewOnly = false, onBack }: PondS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sampleCount || !sampleWeightGram) {
-      setError('Vui lòng nhập số lượng và khối lượng');
+    const hasInvalidCast = casts.some(c => !c.count || !c.weightGram || c.count <= 0 || c.weightGram <= 0);
+    if (hasInvalidCast) {
+      setError('Vui lòng nhập đầy đủ số lượng và khối lượng (>0) cho cả 5 lần chài.');
       return;
     }
     try {
       setIsSubmitting(true);
       setError(null);
       await shrimpSizeService.createSample(pond.id, {
-        sampleCount: Number(sampleCount),
-        sampleWeightGram: Number(sampleWeightGram),
+        casts,
+        netAreaSqM: Number(netAreaSqM) || 0,
         notes: notes || undefined,
       });
-      setSampleCount('');
-      setSampleWeightGram('');
+      setCasts([
+        { count: 0, weightGram: 0 },
+        { count: 0, weightGram: 0 },
+        { count: 0, weightGram: 0 },
+        { count: 0, weightGram: 0 },
+        { count: 0, weightGram: 0 },
+      ]);
       setNotes('');
       await fetchSamples();
     } catch (err: any) {
@@ -173,80 +186,6 @@ export default function PondSizeDetail({ pond, viewOnly = false, onBack }: PondS
               </div>
             </div>
           </div>
-
-          {/* Add new sample form */}
-          {!viewOnly && (
-            activeCrop ? (
-              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-bold text-indigo-700 mb-6 flex items-center gap-2 uppercase tracking-wider border-b border-indigo-50 pb-4">
-                  <Plus className="w-4 h-4" />
-                  Ghi nhận mẫu mới
-                </h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600">
-                      Số lượng tôm mẫu (con)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={sampleCount}
-                      onChange={(e) => setSampleCount(Number(e.target.value) || '')}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all"
-                      placeholder="VD: 50"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600">
-                      Tổng khối lượng mẫu (gram)
-                    </label>
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={sampleWeightGram}
-                      onChange={(e) => setSampleWeightGram(Number(e.target.value) || '')}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all"
-                      placeholder="VD: 500"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600">
-                      Ghi chú thêm
-                    </label>
-                    <input
-                      type="text"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all"
-                      placeholder="Ghi chú về tình trạng tôm..."
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
-                  >
-                    {isSubmitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        Lưu kết quả
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-6 flex flex-col items-center justify-center text-center">
-                <AlertCircle className="w-10 h-10 text-amber-500 mb-3" />
-                <h3 className="text-lg font-semibold text-amber-800 mb-1">Ao này hiện không có vụ nuôi nào đang hoạt động</h3>
-                <p className="text-amber-700">Bạn không thể ghi nhận mẫu kích cỡ cho ao không có tôm.</p>
-              </div>
-            )
-          )}
         </div>
 
         {/* Right Column */}
@@ -302,9 +241,114 @@ export default function PondSizeDetail({ pond, viewOnly = false, onBack }: PondS
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Table */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+      {/* Add new sample form */}
+      {!viewOnly && (
+        activeCrop ? (
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-bold text-indigo-700 mb-6 flex items-center gap-2 uppercase tracking-wider border-b border-indigo-50 pb-4">
+                  <Plus className="w-4 h-4" />
+                  Ghi nhận mẫu mới
+                </h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-1.5 pb-4 border-b border-slate-100">
+                    <label className="text-xs font-bold text-slate-600">
+                      Diện tích miệng chài (S_chài - m²)
+                    </label>
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={netAreaSqM}
+                      onChange={(e) => setNetAreaSqM(Number(e.target.value) || '')}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all"
+                      placeholder="VD: 10.18"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    {casts.map((cast, index) => (
+                      <div key={index} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-500 text-center">Mẻ #{index + 1}</h4>
+                        <div className="space-y-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-600 uppercase block text-center">Số lượng (con)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={cast.count || ''}
+                              onChange={(e) => {
+                                const newCasts = [...casts];
+                                newCasts[index].count = Number(e.target.value);
+                                setCasts(newCasts);
+                              }}
+                              className="w-full px-2 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all text-center"
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-600 uppercase block text-center">Khối lượng (g)</label>
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="0.1"
+                              value={cast.weightGram || ''}
+                              onChange={(e) => {
+                                const newCasts = [...casts];
+                                newCasts[index].weightGram = Number(e.target.value);
+                                setCasts(newCasts);
+                              }}
+                              className="w-full px-2 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all text-center"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1.5 pt-2">
+                    <label className="text-xs font-bold text-slate-600">
+                      Ghi chú chung
+                    </label>
+                    <input
+                      type="text"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm font-medium transition-all"
+                      placeholder="Nhập ghi chú cho đợt lấy mẫu này..."
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Lưu kết quả
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-6 flex flex-col items-center justify-center text-center">
+                <AlertCircle className="w-10 h-10 text-amber-500 mb-3" />
+                <h3 className="text-lg font-semibold text-amber-800 mb-1">Ao này hiện không có vụ nuôi nào đang hoạt động</h3>
+                <p className="text-amber-700">Bạn không thể ghi nhận mẫu kích cỡ cho ao không có tôm.</p>
+              </div>
+            )
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-wider">
                 <FileText className="w-4 h-4 text-rose-500" />
@@ -381,9 +425,6 @@ export default function PondSizeDetail({ pond, viewOnly = false, onBack }: PondS
               </table>
             </div>
           </div>
-
-        </div>
-      </div>
     </div>
   );
 }

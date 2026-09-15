@@ -8,7 +8,8 @@ import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import InventoryManagement from '../features/inventory/InventoryManagement';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
-import { Scale } from 'lucide-react';
+import BiomassDashboard from '../features/biomass/BiomassDashboard';
+import { Scale, PieChart } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ export default function Dashboard() {
     { name: 'Quản lý Trang Trại', icon: <Building2 className="w-5 h-5" /> },
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
+    { name: 'Sinh khối ao', icon: <PieChart className="w-5 h-5" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
@@ -223,7 +225,11 @@ export default function Dashboard() {
             <PondCropDashboard />
           ) : activeTab === 'Theo dõi kích cỡ' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-              <ShrimpSizeDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} />
+              <ShrimpSizeDashboard viewOnly={true} />
+            </div>
+          ) : activeTab === 'Sinh khối ao' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <BiomassDashboard viewOnly={true} />
             </div>
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />

@@ -19,6 +19,8 @@ import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendD
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
+import BiomassDashboard from '../features/biomass/BiomassDashboard';
+import { PieChart } from 'lucide-react';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -53,6 +55,7 @@ export default function TechnicianDashboard() {
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
+    { name: 'Sinh khối ao', icon: <PieChart className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -167,6 +170,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Theo dõi kích cỡ' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <ShrimpSizeDashboard />
+            </div>
+          ) : activeTab === 'Sinh khối ao' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <BiomassDashboard />
             </div>
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">

@@ -167,6 +167,12 @@ model ShrimpSizeSample {
   adgGramPerDay    Decimal? @map("adg_g_per_day") @db.Decimal(10, 2) // Tăng trưởng trung bình hàng ngày
   notes            String?  @db.VarChar(500)
   
+  // Các trường phục vụ tính toán Sinh khối (Biomass) bằng phương pháp chài lưới
+  netAreaSqM           Float?   @map("net_area_sqm")
+  castDetails          Json?    @map("cast_details")
+  estimatedTotalShrimp Int?     @map("estimated_total_shrimp")
+  estimatedBiomassKg   Decimal? @map("estimated_biomass_kg") @db.Decimal(10, 2)
+
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

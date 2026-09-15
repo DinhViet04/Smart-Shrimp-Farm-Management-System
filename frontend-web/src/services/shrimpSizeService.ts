@@ -1,7 +1,13 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+export interface CastDto {
+  count: number;
+  weightGram: number;
+  note?: string;
+}
+
 export const shrimpSizeService = {
-  createSample: async (pondId: string, data: { sampleCount: number; sampleWeightGram: number; sampleLengthCm?: number; notes?: string }) => {
+  createSample: async (pondId: string, data: { casts: CastDto[]; netAreaSqM: number; sampleLengthCm?: number; notes?: string }) => {
     const token = localStorage.getItem('accessToken');
     const response = await fetch(`${API_URL}/api/ponds/${pondId}/size-samples`, {
       method: 'POST',

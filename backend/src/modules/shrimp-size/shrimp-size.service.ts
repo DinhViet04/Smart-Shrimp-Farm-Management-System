@@ -7,14 +7,25 @@ export class ShrimpSizeService {
   constructor(private prisma: PrismaService) {}
 
   async createSample(pondId: string, dto: CreateShrimpSizeSampleDto) {
-    // Validate numbers
-    if (dto.sampleCount <= 0 || dto.sampleWeightGram <= 0) {
-      throw new BadRequestException('Sample count and weight must be positive numbers.');
+    // 1. Validate inputs and calculate totals
+    if (!dto.casts || dto.casts.length !== 5) {
+      throw new BadRequestException('Bắt buộc phải nhập đủ 5 mẻ chài.');
     }
 
-    // 1. Calculate ABW and Size
-    const abwGram = dto.sampleWeightGram / dto.sampleCount;
-    const sizePerKg = 1000 / abwGram;
+    let totalCount = 0;
+    let totalWeight = 0;
+    
+    for (const cast of dto.casts) {
+      if (cast.count < 0 || cast.weightGram < 0) {
+         throw new BadRequestException('Số lượng và khối lượng tôm phải là số dương.');
+      }
+      totalCount += cast.count;
+      totalWeight += cast.weightGram;
+    }
+
+    if (totalCount <= 0 || totalWeight <= 0) {
+      throw new BadRequestException('Tổng số tôm và khối lượng từ 5 mẻ chài phải lớn hơn 0.');
+    }
 
     // 2. Determine DOC
     let doc: number | null = null;
@@ -25,6 +36,9 @@ export class ShrimpSizeService {
         pondId,
         status: 'ACTIVE',
       },
+      include: {
+        pond: true
+      }
     });
 
     if (!activeCrop) {
@@ -36,43 +50,57 @@ export class ShrimpSizeService {
       doc = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
-    // 3. Calculate ADG
+    // 3. Calculate ABW and Size
+    const abwGram = totalWeight / totalCount;
+    const sizePerKg = 1000 / abwGram;
+
+    // 4. Calculate ADG
     let adgGramPerDay: number | null = null;
-    
-    // Find the latest sample before this one
     const previousSample = await this.prisma.shrimpSizeSample.findFirst({
       where: {
         pondId,
-        samplingDate: {
-          lt: samplingDate,
-        },
+        samplingDate: { lt: samplingDate },
       },
-      orderBy: {
-        samplingDate: 'desc',
-      },
+      orderBy: { samplingDate: 'desc' },
     });
 
     if (previousSample) {
       const prevDate = new Date(previousSample.samplingDate);
       const diffDays = (samplingDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24);
-      
       if (diffDays > 0) {
         adgGramPerDay = (abwGram - Number(previousSample.abwGram)) / diffDays;
       }
     }
 
-    // 4. Save to DB
+    // 5. Calculate Biomass
+    let estimatedTotalShrimp: number | null = null;
+    let estimatedBiomassKg: number | null = null;
+
+    if (dto.netAreaSqM > 0) {
+      // Mật độ mẫu (con/m2) = Tổng số tôm / (Số lần chài * Diện tích chài)
+      const dMau = totalCount / (5 * dto.netAreaSqM);
+      const pondArea = activeCrop.pond.areaSize;
+      
+      estimatedTotalShrimp = Math.round(dMau * pondArea);
+      estimatedBiomassKg = (estimatedTotalShrimp * abwGram) / 1000;
+    }
+
+    // 6. Save to DB
     const sample = await this.prisma.shrimpSizeSample.create({
       data: {
         pondId,
-        sampleCount: dto.sampleCount,
-        sampleWeightGram: dto.sampleWeightGram,
+        sampleCount: totalCount,
+        sampleWeightGram: totalWeight,
         sampleLengthCm: dto.sampleLengthCm,
         abwGram,
         sizePerKg,
         adgGramPerDay,
         doc,
         samplingDate,
+        netAreaSqM: dto.netAreaSqM,
+        castDetails: JSON.stringify(dto.casts),
+        estimatedTotalShrimp,
+        estimatedBiomassKg,
         notes: dto.notes,
       },
     });

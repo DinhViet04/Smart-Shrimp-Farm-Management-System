@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Query,
+  Delete,
   UseGuards,
   Req,
   Logger,
@@ -58,6 +59,25 @@ export class FeedingLogsController {
       return await this.feedingLogsService.getDailyDetails(user, pondId, date);
     } catch (err) {
       this.logger.error(`GET /feeding-logs/details ERROR: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
+  @Delete('daily')
+  @Roles('FARMER', 'ADMIN', 'FARM_MANAGER')
+  async deleteDaily(
+    @Req() req: any,
+    @Query('farmId') farmId: string,
+    @Query('pondId') pondId: string,
+    @Query('cropId') cropId: string,
+    @Query('date') date: string,
+  ) {
+    const user = { userId: req.user.userId, role: req.user.role };
+    this.logger.log(`DELETE /feeding-logs/daily - user: ${user.userId}, farm: ${farmId}, pond: ${pondId}, crop: ${cropId}, date: ${date}`);
+    try {
+      return await this.feedingLogsService.deleteDailyLog(user, farmId, pondId, cropId, date);
+    } catch (err) {
+      this.logger.error(`DELETE /feeding-logs/daily ERROR: ${err.message}`, err.stack);
       throw err;
     }
   }

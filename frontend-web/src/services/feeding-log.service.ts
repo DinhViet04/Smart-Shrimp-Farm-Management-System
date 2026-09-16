@@ -235,4 +235,17 @@ export const feedingLogService = {
     const allList = Array.isArray(fallbackData) ? fallbackData : fallbackData.data || [];
     return allList.filter((item: any) => !item.category || item.category === 'FEED');
   },
+
+  deleteDailyLog: async (farmId: string, pondId: string, cropId: string, date: string) => {
+    const query = new URLSearchParams({ farmId, pondId, cropId, date });
+    const res = await apiFetch(`${apiUrl}/api/feeding-logs/daily?${query.toString()}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : err.message;
+      throw new Error(msg || 'Không thể xoá nhật ký cho ăn');
+    }
+    return res.json();
+  },
 };

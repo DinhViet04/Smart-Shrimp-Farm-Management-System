@@ -107,14 +107,14 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
 
               <div className="space-y-3 relative z-10">
                 <div className="flex justify-between items-center p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                  <span className="text-sm font-medium text-slate-600">Tổng tôm ước tính (con)</span>
+                  <span className="text-sm font-medium text-slate-600">Tổng lượng tôm ước tính hiện tại (Con)</span>
                   <span className="text-lg font-black text-slate-800">
                     {latestSample ? Number(latestSample.estimatedTotalShrimp).toLocaleString() : '-'}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100 shadow-sm">
-                  <span className="text-sm font-medium text-emerald-700">Sinh khối hiện tại (kg)</span>
+                  <span className="text-sm font-medium text-emerald-700">Sinh khối hiện tại (Kg)</span>
                   <span className="text-lg font-black text-emerald-700">
                     {latestSample ? Number(latestSample.estimatedBiomassKg).toLocaleString() : '-'}
                   </span>
@@ -183,7 +183,7 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
               <h3 className="text-sm font-bold text-rose-600 mb-6 flex items-center gap-2 uppercase tracking-wider border-b border-rose-50 pb-4">
                 <PieChart className="w-4 h-4" />
-                Lịch sử quăng chài
+                Lịch sử lấy mẫu
               </h3>
               
               <div className="overflow-x-auto">
@@ -191,7 +191,7 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
                   <thead>
                     <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
                       <th className="pb-3 px-4">Thời gian</th>
-                      <th className="pb-3 px-4 text-right">Tổng tôm (con)</th>
+                      <th className="pb-3 px-4 text-right">Số lượng tôm hiện tại (con)</th>
                       <th className="pb-3 px-4 text-right">Sinh khối (kg)</th>
                       <th className="pb-3 px-4 text-right">S_chài (m2)</th>
                     </tr>

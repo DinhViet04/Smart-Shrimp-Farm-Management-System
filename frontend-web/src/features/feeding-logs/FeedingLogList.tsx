@@ -8,6 +8,7 @@ import {
   Utensils,
   Calendar,
   X,
+  Trash2,
 } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import {
@@ -30,6 +31,10 @@ export default function FeedingLogList() {
 
   // Selected item for Detail Modal
   const [selectedGroup, setSelectedGroup] = useState<DailyFeedingGroup | null>(null);
+
+  // Selected item for Delete Confirmation Modal
+  const [groupToDelete, setGroupToDelete] = useState<DailyFeedingGroup | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     farmService.getAll().then(setFarms).catch(console.error);
@@ -56,6 +61,25 @@ export default function FeedingLogList() {
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  const handleDelete = async () => {
+    if (!groupToDelete) return;
+    try {
+      setIsDeleting(true);
+      await feedingLogService.deleteDailyLog(
+        groupToDelete.farmId,
+        groupToDelete.pondId,
+        groupToDelete.cropId,
+        groupToDelete.feedingDate
+      );
+      setGroupToDelete(null);
+      fetchLogs();
+    } catch (err: any) {
+      alert(err.message || 'Không thể xoá nhật ký cho ăn');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const totalPages = Math.ceil(total / size);
 
@@ -171,12 +195,21 @@ export default function FeedingLogList() {
                     </td>
                     <td className="py-4 px-6 text-xs text-slate-600 font-medium">{item.createdBy}</td>
                     <td className="py-4 px-6 text-center">
-                      <button
-                        onClick={() => setSelectedGroup(item)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5 mx-auto"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> Chi tiết 7 cử
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => setSelectedGroup(item)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Chi tiết
+                        </button>
+                        <button
+                          onClick={() => setGroupToDelete(item)}
+                          className="p-1.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
+                          title="Xoá nhật ký cho ăn"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -298,6 +331,45 @@ export default function FeedingLogList() {
                 className="px-6 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
+      {groupToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận xoá</h3>
+            <p className="text-sm text-slate-600 mb-6">
+              Bạn có chắc chắn muốn xoá nhật ký cho ăn ngày <span className="font-bold text-slate-800">{new Date(groupToDelete.feedingDate).toLocaleDateString('vi-VN')}</span> của ao <span className="font-bold text-slate-800">{groupToDelete.pondName}</span> không?
+              <br /><br />
+              <span className="text-rose-600 font-semibold">Lưu ý:</span> Tổng lượng thức ăn đã dùng ({groupToDelete.totalFeedKg} kg) sẽ được hoàn trả lại vào kho.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setGroupToDelete(null)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-colors"
+                disabled={isDeleting}
+              >
+                Huỷ bỏ
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 py-3 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors flex items-center justify-center gap-2"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" /> Xoá nhật ký
+                  </>
+                )}
               </button>
             </div>
           </div>

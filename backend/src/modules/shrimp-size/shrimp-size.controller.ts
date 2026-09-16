@@ -36,6 +36,12 @@ export class ShrimpSizeController {
     return this.shrimpSizeService.getLatestSample(pondId);
   }
 
+  @Get('fcr')
+  @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN')
+  async analyzeFCR(@Param('pondId') pondId: string) {
+    return this.shrimpSizeService.analyzeFCR(pondId);
+  }
+
   @Delete(':sampleId')
   @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN')
   async deleteSample(

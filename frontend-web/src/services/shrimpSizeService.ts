@@ -54,4 +54,16 @@ export const shrimpSizeService = {
     if (!response.ok) throw new Error('Failed to delete sample');
     return response.json();
   },
+
+  getFCRAnalysis: async (pondId: string) => {
+    const token = localStorage.getItem('accessToken');
+    const response = await fetch(`${API_URL}/api/ponds/${pondId}/size-samples/fcr`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || 'Failed to fetch FCR analysis');
+    }
+    return response.json();
+  },
 };

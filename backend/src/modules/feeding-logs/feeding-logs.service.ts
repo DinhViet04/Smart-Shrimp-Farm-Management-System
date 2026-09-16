@@ -328,4 +328,94 @@ export class FeedingLogsService {
 
     return logs;
   }
+
+  /**
+   * Delete daily feeding logs (all 7 sessions) and restore inventory
+   */
+  async deleteDailyLog(
+    user: AuthUser,
+    farmId: string,
+    pondId: string,
+    cropId: string,
+    dateStr: string,
+  ) {
+    await this.farmAccessService.assertCanAccessFarm(user, farmId);
+
+    const feedingDateObj = new Date(dateStr);
+
+    const logsToDelete = await this.prisma.feedingLog.findMany({
+      where: {
+        farmId,
+        pondId,
+        cropId,
+        feedingDate: feedingDateObj,
+      },
+      include: {
+        pond: { select: { name: true } },
+      },
+    });
+
+    if (logsToDelete.length === 0) {
+      throw new NotFoundException('Không tìm thấy nhật ký cho ăn cho ngày này');
+    }
+
+    const amountsToReturn = new Map<string, number>();
+
+    for (const log of logsToDelete) {
+      if (log.feedingStatus !== FeedingStatus.SKIPPED && Number(log.feedAmount) > 0) {
+        const amt = Number(log.feedAmount);
+        const pid = log.feedProductId;
+        if (pid) {
+          amountsToReturn.set(pid, (amountsToReturn.get(pid) || 0) + amt);
+        }
+      }
+    }
+
+    const pondName = logsToDelete[0].pond.name;
+
+    return await this.prisma.$transaction(async (tx) => {
+      await tx.feedingLog.deleteMany({
+        where: {
+          farmId,
+          pondId,
+          cropId,
+          feedingDate: feedingDateObj,
+        },
+      });
+
+      for (const [inventoryId, amount] of amountsToReturn.entries()) {
+        const inv = await tx.inventory.findUnique({
+          where: { id: inventoryId },
+        });
+
+        if (inv) {
+          const nextQuantity = inv.quantity + amount;
+          const updatePayload: any = { quantity: nextQuantity };
+
+          if (inv.packageQty !== null && inv.weightPerPkg && inv.weightPerPkg > 0) {
+            updatePayload.packageQty = Math.ceil(nextQuantity / inv.weightPerPkg);
+          }
+
+          await tx.inventory.update({
+            where: { id: inventoryId },
+            data: updatePayload,
+          });
+
+          await tx.inventoryUsageLog.create({
+            data: {
+              inventoryId,
+              quantityUsed: -amount,
+              usageDate: new Date(),
+              notes: `Hoàn trả kho do xoá nhật ký cho ăn ngày ${dateStr} - Ao ${pondName}`,
+              createdBy: user.userId,
+            },
+          });
+        }
+      }
+
+      return {
+        message: 'Xoá nhật ký cho ăn và hoàn trả kho thành công',
+      };
+    });
+  }
 }

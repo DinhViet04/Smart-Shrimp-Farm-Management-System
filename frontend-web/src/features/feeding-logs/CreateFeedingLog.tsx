@@ -114,10 +114,12 @@ export default function CreateFeedingLog() {
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastProps | null>(null);
+  const [statusBanner, setStatusBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    setStatusBanner({ message, type });
+    setTimeout(() => setToast(null), 5000);
   };
 
   // 1. Initial Load
@@ -305,7 +307,7 @@ export default function CreateFeedingLog() {
     showToast('Đã áp dụng mã thức ăn cho tất cả các cử đang bật!', 'success');
   };
 
-  // 2. Batch distribute total daily feed kg evenly across ACTIVE sessions
+  // 2. Batch distribute total daily feed kg evenly across ACTIVE sessions (exact remainder math)
   const batchDistributeFeedAmount = () => {
     const total = parseFloat(batchTotalFeedKg);
     if (isNaN(total) || total <= 0) {
@@ -313,25 +315,31 @@ export default function CreateFeedingLog() {
     }
 
     const activeList = DEFAULT_FEEDING_SESSIONS.filter((item) => activeSessions[item.session]);
-    if (activeList.length === 0) {
+    const N = activeList.length;
+    if (N === 0) {
       return showToast('Không có cử nào đang bật để chia thức ăn', 'error');
     }
 
-    const perSession = parseFloat((total / activeList.length).toFixed(2));
+    // Base amount rounded UP to 2 decimal places for the first (N - 1) sessions
+    const basePerSession = Math.ceil((total / N) * 100) / 100;
+    const sumFirst = basePerSession * (N - 1);
+    // Remainder for the last active session (evening/night)
+    const lastSessionAmount = parseFloat((total - sumFirst).toFixed(2));
 
     setSessionData((prev) => {
       const next = { ...prev };
-      activeList.forEach((item) => {
+      activeList.forEach((item, index) => {
+        const amt = index < N - 1 ? basePerSession : lastSessionAmount;
         next[item.session] = {
           ...next[item.session],
-          feedAmount: perSession,
+          feedAmount: amt,
           feedingStatus: next[item.session].feedingStatus === 'SKIPPED' ? 'COMPLETED' : next[item.session].feedingStatus,
         };
       });
       return next;
     });
 
-    showToast(`Đã chia đều ${total} kg cho ${activeList.length} cử đang bật (${perSession} kg/cử)!`, 'success');
+    showToast(`Đã chia chính xác ${total} kg cho ${N} cử đang bật!`, 'success');
   };
 
   // 3. Mark all active sessions COMPLETED
@@ -377,6 +385,7 @@ export default function CreateFeedingLog() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setStatusBanner(null);
 
     if (!selectedFarmId) return showToast('Vui lòng chọn trang trại', 'error');
     if (!selectedPondId) return showToast('Vui lòng chọn ao nuôi', 'error');
@@ -385,7 +394,7 @@ export default function CreateFeedingLog() {
     if (feedProducts.length === 0) return showToast('Kho trang trại chưa có sản phẩm thức ăn nào. Vui lòng thêm thức ăn trong Kho vật tư trước!', 'error');
 
     // Build payload array for ALL 7 sessions so DB unique constraints pass
-    const defaultProductFallback = feedProducts[0].id;
+    const defaultProductFallback = feedProducts[0]?.id || '';
 
     const sessionList: SingleSessionPayload[] = DEFAULT_FEEDING_SESSIONS.map((item) => {
       const sKey = item.session;
@@ -422,6 +431,7 @@ export default function CreateFeedingLog() {
         sessions: sessionList,
       });
 
+      setBatchTotalFeedKg('');
       showToast('Ghi nhận nhật ký cho ăn và trừ kho thành công!', 'success');
       await loadProducts();
     } catch (err: any) {
@@ -605,13 +615,14 @@ export default function CreateFeedingLog() {
               <Sliders className="w-3.5 h-3.5 text-emerald-600" /> Công cụ hỗ trợ nhập liệu nhanh (Batch Tools)
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
               {/* Batch Apply Product */}
-              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 min-w-0 shadow-sm">
                 <select
                   value={batchFeedProductId}
                   onChange={(e) => setBatchFeedProductId(e.target.value)}
-                  className="flex-1 px-2 py-1 text-xs font-semibold text-slate-700 bg-transparent border-none outline-none"
+                  className="flex-1 min-w-0 truncate px-2 py-1 text-xs font-semibold text-slate-700 bg-transparent border-none outline-none cursor-pointer"
+                  title={feedProducts.find((p) => p.id === batchFeedProductId) ? formatProductLabel(feedProducts.find((p) => p.id === batchFeedProductId)!) : ''}
                 >
                   <option value="">-- Thức ăn mẫu --</option>
                   {feedProducts.map((p) => (
@@ -623,7 +634,7 @@ export default function CreateFeedingLog() {
                 <button
                   type="button"
                   onClick={batchApplyFeedProduct}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0"
+                  className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0"
                   title="Áp dụng mã thức ăn này cho tất cả cử đang bật"
                 >
                   <Copy className="w-3 h-3" /> Gán tất cả cử
@@ -631,7 +642,7 @@ export default function CreateFeedingLog() {
               </div>
 
               {/* Batch Distribute Total Feed Amount */}
-              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 min-w-0 shadow-sm">
                 <input
                   type="number"
                   step="0.5"
@@ -644,19 +655,19 @@ export default function CreateFeedingLog() {
                 <button
                   type="button"
                   onClick={batchDistributeFeedAmount}
-                  className="px-3 py-1.5 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0"
+                  className="px-3 py-2 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0"
                   title="Chia đều lượng thức ăn cho các cử đang bật"
                 >
-                  <Calculator className="w-3 h-3" /> Chia đều {summary.activeCount} cử
+                  <Calculator className="w-3 h-3" /> Chia {summary.activeCount} cử
                 </button>
               </div>
 
               {/* Batch Mark All Completed */}
-              <div className="flex items-center justify-end">
+              <div className="flex items-center">
                 <button
                   type="button"
                   onClick={batchMarkAllCompleted}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                  className="w-full h-full min-h-[42px] py-2 px-4 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Check className="w-3.5 h-3.5 text-emerald-600" /> Đánh dấu Hoàn thành tất cả cử đang bật
                 </button>
@@ -897,8 +908,25 @@ export default function CreateFeedingLog() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+          {/* Action buttons & inline status banner */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto justify-end">
+            {statusBanner && (
+              <div
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-in fade-in duration-200 ${
+                  statusBanner.type === 'success'
+                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-red-950/80 text-red-300 border border-red-500/40'
+                }`}
+              >
+                {statusBanner.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                )}
+                <span>{statusBanner.message}</span>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={saving}

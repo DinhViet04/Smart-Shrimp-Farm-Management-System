@@ -19,7 +19,10 @@ import { format } from 'date-fns';
 import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
-import { survivalRateService, type SurvivalRateStats } from '../../services/survival-rate.service';
+import {
+  survivalRateService,
+  type SurvivalRateStats,
+} from '../../services/survival-rate.service';
 
 interface Farm {
   id: string;
@@ -246,7 +249,7 @@ export default function SurvivalRateDashboard({ viewOnly = false }: SurvivalRate
                 Theo Dõi Tỷ Lệ Sống Tôm
               </h2>
               <p className="text-sm text-slate-300 font-medium">
-                Tự động tính Tỷ lệ sống từ <strong className="text-orange-400">Số tôm thả ban đầu</strong> và <strong className="text-orange-400">Số tôm khi thu hoạch</strong>
+                Tự động tính Tỷ lệ sống từ <strong className="text-orange-400">Số tôm thả ban đầu</strong> và <strong className="text-orange-400">Số lượng tôm ước tính hiện tại</strong>
               </p>
             </div>
           </div>
@@ -387,12 +390,12 @@ export default function SurvivalRateDashboard({ viewOnly = false }: SurvivalRate
                     <Pie
                       data={gaugeData}
                       cx="50%"
-                      cy="60%"
-                      startAngle={220}
-                      endAngle={-40}
-                      innerRadius={70}
-                      outerRadius={95}
-                      paddingAngle={2}
+                      cy="58%"
+                      startAngle={210}
+                      endAngle={-30}
+                      innerRadius={82}
+                      outerRadius={104}
+                      paddingAngle={3}
                       dataKey="value"
                     >
                       {gaugeData.map((_, index) => (
@@ -403,11 +406,11 @@ export default function SurvivalRateDashboard({ viewOnly = false }: SurvivalRate
                 </ResponsiveContainer>
 
                 {/* Center Gauge Text */}
-                <div className="absolute text-center top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <p className="text-4xl font-black text-slate-900 tracking-tight">
-                    {stats.survivalRate}<span className="text-2xl font-bold text-orange-500">%</span>
+                <div className="absolute text-center top-[52%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                  <p className="text-3xl font-black text-slate-900 tracking-tight leading-none">
+                    {stats.survivalRate}<span className="text-xl font-bold text-orange-500 ml-0.5">%</span>
                   </p>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase mt-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-1.5 tracking-wider">
                     {stats.isHarvested ? 'Tỷ lệ sống thu hoạch' : 'Tỷ lệ sống ước tính'}
                   </p>
                 </div>
@@ -450,14 +453,14 @@ export default function SurvivalRateDashboard({ viewOnly = false }: SurvivalRate
                 </div>
               </div>
 
-              {/* Card 2: Harvest Count */}
+              {/* Card 2: Harvest / Current Count */}
               <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tôm Khi Thu Hoạch</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tôm Hiện Tại / Thu Hoạch</p>
                     {stats.isHarvested && (
                       <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">Đã chốt</span>
                     )}
@@ -489,24 +492,24 @@ export default function SurvivalRateDashboard({ viewOnly = false }: SurvivalRate
                   <TrendingUp className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Chi Tiết Tải Dữ Liệu Tính Tỷ Lệ Sống</h3>
-                  <p className="text-xs text-slate-500">Được đồng bộ tự động từ cơ sở dữ liệu Vụ nuôi</p>
+                  <h3 className="text-base font-bold text-slate-800">Chi Tiết Dữ Liệu Tính Tỷ Lệ Sống</h3>
+                  <p className="text-xs text-slate-500">Tái sử dụng logic Tính số lượng tôm ước tính từ tính năng Sinh khối ao nuôi</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-medium">
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                  <p className="font-bold text-slate-700 text-sm">1. Dữ liệu thả giống</p>
+                  <p className="font-bold text-slate-700 text-sm">1. Dữ liệu thả giống (stockingQuantity)</p>
                   <p className="text-slate-600">Số lượng thả: <strong className="text-slate-900">{stats.initialStocking.toLocaleString()} con</strong></p>
                   <p className="text-slate-500">Ngày bắt đầu thả: {format(new Date(stats.startDate), 'dd/MM/yyyy')}</p>
-                  <p className="text-blue-600 font-semibold pt-1">✓ Lấy tự động từ lúc khởi tạo vụ nuôi (Không cần nhập lại thủ công).</p>
+                  <p className="text-blue-600 font-semibold pt-1">✓ Lấy tự động từ Crop model khi thả giống.</p>
                 </div>
 
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                  <p className="font-bold text-slate-700 text-sm">2. Dữ liệu khi thu hoạch</p>
-                  <p className="text-slate-600">Số lượng thu hoạch: <strong className="text-emerald-700 font-bold">{stats.harvestCount.toLocaleString()} con</strong></p>
-                  <p className="text-slate-500">Trạng thái thu hoạch: {stats.isHarvested ? 'Đã ghi nhận thu hoạch' : 'Đang ước tính trong vụ'}</p>
-                  <p className="text-emerald-600 font-semibold pt-1">✓ Tính tự động theo công thức hoặc khi Quản lý chốt thu hoạch.</p>
+                  <p className="font-bold text-slate-700 text-sm">2. Dữ liệu tôm hiện tại (Current Shrimp Count)</p>
+                  <p className="text-slate-600">Ước tính hiện tại: <strong className="text-emerald-700 font-bold">{stats.harvestCount.toLocaleString()} con</strong></p>
+                  <p className="text-slate-500">Trạng thái: {stats.isHarvested ? 'Đã thu hoạch chính thức' : 'Ước tính từ chài sinh khối định kỳ'}</p>
+                  <p className="text-emerald-600 font-semibold pt-1">✓ Tái sử dụng logic tính toán sinh khối đã có sẵn.</p>
                 </div>
               </div>
 

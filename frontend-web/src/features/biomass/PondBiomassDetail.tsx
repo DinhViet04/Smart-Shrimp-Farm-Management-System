@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, Activity, 
   TrendingUp, AlertCircle, Loader2, PieChart 
@@ -6,6 +6,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
+import { cropService, type Crop } from '../../services/crop.service';
 
 interface Pond {
   id: string;
@@ -33,6 +34,7 @@ interface PondBiomassDetailProps {
 
 export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailProps) {
   const [samples, setSamples] = useState<ShrimpSizeSample[]>([]);
+  const [activeCrop, setActiveCrop] = useState<Crop | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -40,8 +42,14 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
     try {
       setIsLoading(true);
       setError(null);
-      const data = await shrimpSizeService.getSamplesByPond(pond.id);
+      const [data, crops] = await Promise.all([
+        shrimpSizeService.getSamplesByPond(pond.id),
+        cropService.getAll({ pondId: pond.id, status: 'ACTIVE' }).catch(() => []),
+      ]);
       setSamples(data);
+      if (crops.length > 0) {
+        setActiveCrop(crops[0]);
+      }
     } catch (err: any) {
       setError(err.message || 'Lỗi tải dữ liệu sinh khối');
     } finally {
@@ -56,6 +64,15 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
   // Lọc ra các mẫu có đo sinh khối (có netAreaSqM)
   const biomassSamples = samples.filter(s => s.netAreaSqM && s.estimatedTotalShrimp !== null && s.estimatedBiomassKg !== null);
   const latestSample = biomassSamples.length > 0 ? biomassSamples[biomassSamples.length - 1] : null;
+
+  // Tính tỷ lệ sống ước tính = (estimatedTotalShrimp / initialShrimpCount) * 100
+  const estimatedSurvivalRate = useMemo(() => {
+    if (!latestSample || !latestSample.estimatedTotalShrimp || !activeCrop || !activeCrop.initialShrimpCount) {
+      return null;
+    }
+    const rate = (Number(latestSample.estimatedTotalShrimp) / activeCrop.initialShrimpCount) * 100;
+    return Math.min(100, Math.max(0, Number(rate.toFixed(1))));
+  }, [latestSample, activeCrop]);
 
   const chartData = biomassSamples.map(s => ({
     date: format(new Date(s.samplingDate), 'MMM dd'),
@@ -110,6 +127,13 @@ export default function PondBiomassDetail({ pond, onBack }: PondBiomassDetailPro
                   <span className="text-sm font-medium text-slate-600">Tổng lượng tôm ước tính hiện tại (Con)</span>
                   <span className="text-lg font-black text-slate-800">
                     {latestSample ? Number(latestSample.estimatedTotalShrimp).toLocaleString() : '-'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center p-4 bg-orange-50 rounded-2xl border border-orange-100 shadow-sm">
+                  <span className="text-sm font-medium text-orange-700">Tỷ lệ sống ước tính (%)</span>
+                  <span className="text-lg font-black text-orange-700">
+                    {estimatedSurvivalRate !== null ? `${estimatedSurvivalRate}%` : '-'}
                   </span>
                 </div>
                 

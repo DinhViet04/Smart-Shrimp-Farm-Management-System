@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { FarmAccessService, AuthUser } from '../farm-access/farm-access.service.js';
+import { ShrimpSizeService } from '../shrimp-size/shrimp-size.service.js';
 import { CreateMortalityLogDto } from './dto/create-mortality-log.dto.js';
 import { UpdateHarvestCountDto } from './dto/update-harvest-count.dto.js';
 
@@ -13,16 +14,16 @@ export class SurvivalRateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly shrimpSizeService: ShrimpSizeService,
   ) {}
 
   /**
-   * Calculate survival rate percentage strictly based on Initial Stocking and Harvest Count.
+   * Calculate survival rate percentage based on Current Estimated Shrimp Count / Stocking Quantity.
    *
-   * Formula: Survival_Rate = (Harvest_Count / Initial_Stocking) * 100
+   * Formula: Survival_Rate = (Current_Shrimp_Count / stockingQuantity) * 100
    * Constraints:
-   * - Strictly uses initial stocking count (from crop creation) and harvest count.
    * - Clamped between 0% and 100%.
-   * - Throws BadRequestException("Chưa có dữ liệu thả giống") if Initial_Stocking is missing or <= 0.
+   * - Throws BadRequestException("Chưa có dữ liệu thả giống") if stockingQuantity is missing or <= 0.
    */
   async calculateSurvivalRate(user?: AuthUser, cropId?: string) {
     if (!cropId) {
@@ -46,18 +47,18 @@ export class SurvivalRateService {
       await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
     }
 
-    const initialStocking = crop.initialShrimpCount;
+    const stockingQuantity = crop.initialShrimpCount;
 
-    // Constraint: Check for missing or zero initial stocking quantity
-    if (initialStocking === undefined || initialStocking === null || initialStocking <= 0) {
+    // Constraint: Check for missing or zero stocking quantity
+    if (stockingQuantity === undefined || stockingQuantity === null || stockingQuantity <= 0) {
       throw new BadRequestException('Chưa có dữ liệu thả giống');
     }
 
-    // Determine Harvest Count strictly from crop harvest records:
-    // 1. Explicit actualHarvestCount (con)
-    // 2. Calculated from actualHarvestKg * actualHarvestSize (kg * con/kg)
-    // 3. actualNurseryHarvest if stage === 'NURSERY'
-    // 4. Default to 0 if not yet recorded
+    // Step 1: Reuse existing "Current Estimated Shrimp Count" from ShrimpSizeService if available
+    const estimatedShrimpCount = crop.pondId
+      ? await this.shrimpSizeService.getCurrentShrimpCount(crop.pondId)
+      : null;
+
     let harvestCount = 0;
     let isRecordedHarvest = false;
 
@@ -81,10 +82,13 @@ export class SurvivalRateService {
       isRecordedHarvest = true;
     }
 
-    // Formula calculation: Survival_Rate = (Harvest_Count / Initial_Stocking) * 100
-    const rawRate = initialStocking > 0 ? (harvestCount / initialStocking) * 100 : 0;
+    // Determine current estimated count: sampling > recorded harvest > stocking quantity
+    const currentShrimpCount = estimatedShrimpCount ?? (isRecordedHarvest ? harvestCount : stockingQuantity);
 
-    // Clamp between 0% and 100%
+    // Step 3: Survival_Rate = (Current_Shrimp_Count / stockingQuantity) * 100
+    const rawRate = (currentShrimpCount / stockingQuantity) * 100;
+
+    // Constraint 1: Cap maximum Survival Rate at 100% and minimum at 0%
     const survivalRate = Math.min(100, Math.max(0, Number(rawRate.toFixed(2))));
 
     const targetSurvivalRate = crop.targetSurvivalRate ?? 85;
@@ -98,8 +102,9 @@ export class SurvivalRateService {
       cropId: crop.id,
       pondName: crop.pond?.name || '',
       startDate: crop.startDate,
-      initialStocking,
-      harvestCount,
+      initialStocking: stockingQuantity,
+      currentShrimpCount,
+      harvestCount: isRecordedHarvest ? harvestCount : currentShrimpCount,
       survivalRate,
       targetSurvivalRate,
       isHarvested: crop.status === 'HARVESTED' || isRecordedHarvest,

@@ -127,6 +127,18 @@ export class ShrimpSizeService {
     return sample;
   }
 
+  /**
+   * Get the current estimated total shrimp count for a pond based on latest sampling.
+   */
+  async getCurrentShrimpCount(pondId: string): Promise<number | null> {
+    const sample = await this.prisma.shrimpSizeSample.findFirst({
+      where: { pondId, estimatedTotalShrimp: { not: null } },
+      orderBy: { samplingDate: 'desc' },
+    });
+
+    return sample?.estimatedTotalShrimp ?? null;
+  }
+
   async deleteSample(pondId: string, sampleId: string) {
     // Delete the sample
     await this.prisma.shrimpSizeSample.delete({

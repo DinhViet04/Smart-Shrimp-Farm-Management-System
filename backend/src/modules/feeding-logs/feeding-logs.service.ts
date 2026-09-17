@@ -175,20 +175,73 @@ export class FeedingLogsService {
               where: { id: inventoryId },
               data: updatePayload,
             });
-
-            // Record usage log if netDelta > 0
-            if (netDelta > 0) {
-              await tx.inventoryUsageLog.create({
-                data: {
-                  inventoryId,
-                  quantityUsed: netDelta,
-                  usageDate: feedingDateObj,
-                  notes: `Xuất kho từ Nhật ký cho ăn - Ao ${pond.name}`,
-                  createdBy: user.userId,
-                },
-              });
-            }
           }
+        }
+      }
+
+      // Calculate total actual consumption per product for this pond and date across dto.sessions
+      // and update/upsert/delete corresponding InventoryUsageLog records to prevent duplicates
+      const productTotals = new Map<string, number>();
+      for (const session of dto.sessions) {
+        if (session.feedingStatus !== FeedingStatus.SKIPPED && session.feedProductId) {
+          const amt = Number(session.feedAmount) || 0;
+          if (amt > 0) {
+            productTotals.set(session.feedProductId, (productTotals.get(session.feedProductId) || 0) + amt);
+          }
+        }
+      }
+
+      const notePrefix = `Xuất kho từ Nhật ký cho ăn - Ao ${pond.name}`;
+      const startOfDay = new Date(feedingDateObj);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(feedingDateObj);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
+      const existingUsageLogs = await tx.inventoryUsageLog.findMany({
+        where: {
+          usageDate: { gte: startOfDay, lte: endOfDay },
+          notes: { contains: notePrefix },
+        },
+      });
+
+      const existingUsageMap = new Map<string, any>();
+      existingUsageLogs.forEach((ul) => {
+        existingUsageMap.set(ul.inventoryId, ul);
+      });
+
+      const allProductIds = new Set<string>([
+        ...Array.from(productTotals.keys()),
+        ...Array.from(existingUsageMap.keys()),
+      ]);
+
+      for (const inventoryId of allProductIds) {
+        const currentTotal = productTotals.get(inventoryId) || 0;
+        const existingLog = existingUsageMap.get(inventoryId);
+
+        if (currentTotal > 0) {
+          if (existingLog) {
+            await tx.inventoryUsageLog.update({
+              where: { id: existingLog.id },
+              data: {
+                quantityUsed: currentTotal,
+                notes: notePrefix,
+              },
+            });
+          } else {
+            await tx.inventoryUsageLog.create({
+              data: {
+                inventoryId,
+                quantityUsed: currentTotal,
+                usageDate: feedingDateObj,
+                notes: notePrefix,
+                createdBy: user.userId,
+              },
+            });
+          }
+        } else if (existingLog) {
+          await tx.inventoryUsageLog.delete({
+            where: { id: existingLog.id },
+          });
         }
       }
 
@@ -400,18 +453,17 @@ export class FeedingLogsService {
             where: { id: inventoryId },
             data: updatePayload,
           });
-
-          await tx.inventoryUsageLog.create({
-            data: {
-              inventoryId,
-              quantityUsed: -amount,
-              usageDate: new Date(),
-              notes: `Hoàn trả kho do xoá nhật ký cho ăn ngày ${dateStr} - Ao ${pondName}`,
-              createdBy: user.userId,
-            },
-          });
         }
       }
+
+      // Delete auto-generated inventory usage logs for this pond and date
+      const notePrefix = `Xuất kho từ Nhật ký cho ăn - Ao ${pondName}`;
+      await tx.inventoryUsageLog.deleteMany({
+        where: {
+          usageDate: feedingDateObj,
+          notes: { contains: notePrefix },
+        },
+      });
 
       return {
         message: 'Xoá nhật ký cho ăn và hoàn trả kho thành công',

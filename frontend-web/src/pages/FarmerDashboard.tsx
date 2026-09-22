@@ -30,7 +30,13 @@ import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboa
 export default function FarmerDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const handleNavigateToGrowth = (config: { farmId: string; pondId: string; cropId?: string }) => {
+    setGrowthConfig(config);
+    setActiveTab('Theo dõi tỷ lệ sống');
+  };
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -70,8 +76,8 @@ export default function FarmerDashboard() {
   return (
     <div className="flex h-screen bg-stone-50 font-sans overflow-hidden">
       {/* Sidebar - Earthy / Nature Theme */}
-      <aside className="w-72 bg-white border-r border-teal-100 flex flex-col shadow-sm z-10">
-        <div className="h-20 flex items-center px-8 border-b border-teal-50">
+      <aside className="w-72 bg-white border-r border-teal-100 flex flex-col shadow-sm z-10 h-screen max-h-screen">
+        <div className="h-20 flex items-center px-8 border-b border-teal-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center shadow-md">
               <Leaf className="w-6 h-6 text-white" />
@@ -80,7 +86,7 @@ export default function FarmerDashboard() {
           </div>
         </div>
         
-        <div className="px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 custom-scrollbar">
           <p className="text-xs font-bold text-teal-600/70 uppercase tracking-wider mb-4">Công việc hàng ngày</p>
           <nav className="space-y-2">
             {navItems.map((item) => (
@@ -102,7 +108,7 @@ export default function FarmerDashboard() {
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-teal-50">
+        <div className="p-6 border-t border-teal-50 flex-shrink-0 bg-white">
           <div className="bg-teal-50/50 rounded-2xl p-4 border border-teal-100 flex items-center gap-3 mb-4">
             {currentUser?.avatarUrl ? (
               <img 
@@ -277,12 +283,17 @@ export default function FarmerDashboard() {
           ) : activeTab === 'Môi trường nước' ? (
              <EnvironmentDashboard viewOnly={true} />
           ) : activeTab === 'Quản lý Ao của tôi' ? (
-             <PondCropDashboard />
+             <PondCropDashboard onNavigateToGrowth={handleNavigateToGrowth} />
           ) : activeTab === 'Sức khỏe tôm' ? (
              <ShrimpHealthDashboard viewOnly={true} />
           ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
              <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-               <SurvivalRateDashboard viewOnly={true} />
+               <SurvivalRateDashboard 
+                 viewOnly={true} 
+                 initialFarmId={growthConfig?.farmId}
+                 initialPondId={growthConfig?.pondId}
+                 initialCropId={growthConfig?.cropId}
+               />
              </div>
           ) : activeTab === 'Báo cáo sự cố' ? (
              <IncidentDashboard role="FARMER" />

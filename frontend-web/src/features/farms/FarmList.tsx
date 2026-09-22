@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, CheckCircle2, Eye, Waves, User } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, CheckCircle2, Eye, Waves, User, ArrowRight } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import FarmFormModal from './FarmFormModal';
 import FarmDetailPanel from './FarmDetailPanel';
 
-export default function FarmList() {
+interface FarmListProps {
+  onNavigateToPonds?: (farmId?: string) => void;
+}
+
+export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   const [farms, setFarms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -23,7 +27,7 @@ export default function FarmList() {
   const [viewingFarm, setViewingFarm] = useState<any>(null);
 
   // Toast State
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; farmId?: string } | null>(null);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canEdit = user.role === 'FARM_MANAGER';
@@ -48,9 +52,9 @@ export default function FarmList() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  const showToast = (message: string, type: 'success' | 'error', farmId?: string) => {
+    setToast({ message, type, farmId });
+    setTimeout(() => setToast(null), farmId ? 7000 : 3500);
   };
 
   const handleDelete = async () => {
@@ -83,11 +87,26 @@ export default function FarmList() {
     <div className="max-w-7xl mx-auto space-y-6 relative">
       {/* Custom Toast */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${
-          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'
+        <div className={`fixed top-6 right-6 z-[100] px-5 py-4 rounded-2xl shadow-xl border flex items-center gap-3.5 animate-in slide-in-from-right-8 fade-in duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-50/95 border-emerald-200 text-emerald-800' : 'bg-red-50/95 border-red-200 text-red-700'
         }`}>
-          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <p className="text-sm font-semibold">{toast.message}</p>
+          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-semibold">{toast.message}</p>
+            {toast.farmId && onNavigateToPonds && (
+              <button
+                onClick={() => {
+                  onNavigateToPonds(toast.farmId);
+                  setToast(null);
+                }}
+                className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all hover:scale-105 whitespace-nowrap cursor-pointer"
+              >
+                <Waves className="w-3.5 h-3.5" />
+                <span>Tiến hành Quản lý Ao nuôi</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -251,6 +270,29 @@ export default function FarmList() {
                         <p className="text-lg font-black text-slate-800">{farm.ponds?.length || 0} <span className="text-sm font-bold text-slate-400">ao</span></p>
                       </div>
                     </div>
+
+                    {/* Sequential Navigation Button */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        {farm.ponds?.length || 0} ao đang hoạt động
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onNavigateToPonds) {
+                            onNavigateToPonds(farm.id);
+                          } else {
+                            handleViewFarm(farm);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 hover:-translate-y-0.5 transition-all cursor-pointer"
+                        title="Đến Quản lý Ao nuôi của trang trại này"
+                      >
+                        <Waves className="w-3.5 h-3.5" />
+                        <span>Quản lý Ao nuôi</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -264,8 +306,8 @@ export default function FarmList() {
         isOpen={isModalOpen}
         initialData={editingFarm}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={(msg) => {
-          showToast(msg, 'success');
+        onSuccess={(msg, newFarmId) => {
+          showToast(msg, 'success', newFarmId);
           fetchFarms();
         }}
       />

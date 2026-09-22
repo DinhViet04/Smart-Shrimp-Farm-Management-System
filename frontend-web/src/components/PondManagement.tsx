@@ -10,17 +10,28 @@ import {
   Maximize, 
   Building2, 
   MapPin, 
-  Cpu
+  Cpu,
+  Calendar,
+  ArrowRight,
+  Eye
 } from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
+import { cropService, type Crop } from '../services/crop.service';
 
 interface PondManagementProps {
+  initialFarmId?: string;
   onEditCrop?: (crop: any) => void;
+  onNavigateToCreateCrop?: (config: { farmId: string; pondId: string }) => void;
 }
 
-export default function PondManagement({ onEditCrop }: PondManagementProps = {}) {
+export default function PondManagement({ 
+  initialFarmId,
+  onEditCrop,
+  onNavigateToCreateCrop 
+}: PondManagementProps = {}) {
   const [ponds, setPonds] = useState<any[]>([]);
   const [farms, setFarms] = useState<any[]>([]);
+  const [crops, setCrops] = useState<Crop[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingPond, setEditingPond] = useState<string | null>(null);
@@ -32,11 +43,19 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
     farmId: '',
   });
   const [search, setSearch] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ 
+    message: string; 
+    type: 'success' | 'error';
+    createdPond?: { farmId: string; pondId: string; pondName: string };
+  } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  const showToast = (
+    message: string, 
+    type: 'success' | 'error',
+    createdPond?: { farmId: string; pondId: string; pondName: string }
+  ) => {
+    setToast({ message, type, createdPond });
+    setTimeout(() => setToast(null), createdPond ? 7000 : 3000);
   };
 
   useEffect(() => {
@@ -62,11 +81,32 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
       const { pondService } = await import('../services/pond.service');
       const pondsData = await pondService.getAll();
       setPonds(pondsData);
+
+      // Fetch Crops
+      try {
+        const cropsData = await cropService.getAll();
+        setCrops(cropsData);
+      } catch (cropErr) {
+        console.error('Lỗi khi lấy danh sách vụ nuôi:', cropErr);
+      }
     } catch (error) {
       console.error('Lỗi khi tải dữ liệu:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getPondCropInfo = (pondId: string) => {
+    const activeCrop = crops.find(c => c.pondId === pondId && c.status === 'ACTIVE');
+    if (activeCrop) {
+      return { hasActiveCrop: true, crop: activeCrop, label: 'Đang nuôi' };
+    }
+    const latestCrop = crops.find(c => c.pondId === pondId);
+    return { 
+      hasActiveCrop: false, 
+      crop: latestCrop || null, 
+      label: latestCrop ? (latestCrop.status === 'HARVESTED' ? 'Đã thu hoạch' : 'Thất thu') : 'Chưa thả giống' 
+    };
   };
 
   const openAddModal = (defaultFarmId?: string) => {
@@ -120,8 +160,12 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
         await pondService.update(editingPond, data);
         showToast('Cập nhật ao nuôi thành công!', 'success');
       } else {
-        await pondService.create(data);
-        showToast('Thêm ao nuôi mới thành công!', 'success');
+        const created = await pondService.create(data);
+        showToast(
+          'Thêm ao nuôi mới thành công!', 
+          'success', 
+          created ? { farmId: data.farmId, pondId: created.id, pondName: data.name } : undefined
+        );
       }
       
       setShowModal(false);
@@ -163,11 +207,26 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
     <div className="relative z-10 max-w-7xl mx-auto space-y-6">
       {/* Custom Toast */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${
-          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'
+        <div className={`fixed top-6 right-6 z-[100] px-5 py-4 rounded-2xl shadow-xl border flex items-center gap-3.5 animate-in slide-in-from-right-8 fade-in duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-50/95 border-emerald-200 text-emerald-800' : 'bg-red-50/95 border-red-200 text-red-700'
         }`}>
-          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <p className="text-sm font-semibold">{toast.message}</p>
+          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-semibold">{toast.message}</p>
+            {toast.createdPond && onNavigateToCreateCrop && (
+              <button
+                onClick={() => {
+                  onNavigateToCreateCrop({ farmId: toast.createdPond!.farmId, pondId: toast.createdPond!.pondId });
+                  setToast(null);
+                }}
+                className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all hover:scale-105 whitespace-nowrap cursor-pointer"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Khởi tạo Vụ nuôi ngay</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -267,10 +326,14 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
       ) : (
         /* Grouped By Farm Sections */
         <div className="space-y-8">
-          {groupedFarms.map(farmGroup => (
+          {groupedFarms.map(farmGroup => {
+            const isSelected = Boolean(initialFarmId && farmGroup.id === initialFarmId);
+            return (
             <div 
               key={farmGroup.id}
-              className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/80 shadow-xl shadow-blue-900/5 overflow-hidden transition-all duration-300"
+              className={`bg-white/80 backdrop-blur-xl rounded-3xl border shadow-xl shadow-blue-900/5 overflow-hidden transition-all duration-300 ${
+                isSelected ? 'border-blue-400 ring-4 ring-blue-500/10' : 'border-white/80'
+              }`}
             >
               {/* Farm Section Header Banner */}
               <div className="h-1.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-400"></div>
@@ -285,6 +348,12 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
                       <h3 className="text-xl font-black text-slate-800 tracking-tight">
                         {farmGroup.name}
                       </h3>
+
+                      {isSelected && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold rounded-full border bg-blue-50 text-blue-600 border-blue-200">
+                          ★ Trang trại vừa chọn
+                        </span>
+                      )}
 
                       {/* Status badge */}
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-bold rounded-full border ${
@@ -356,7 +425,9 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {farmGroup.ponds.map((pond: any) => (
+                    {farmGroup.ponds.map((pond: any) => {
+                      const cropInfo = getPondCropInfo(pond.id);
+                      return (
                       <div 
                         key={pond.id} 
                         onClick={() => setViewingPond(pond)} 
@@ -376,7 +447,7 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
 
                           <div className="mt-4 flex-1 flex flex-col justify-between">
                             <div>
-                              <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center justify-between mb-2">
                                 <h4 className="text-lg font-black text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors">
                                   {pond.name}
                                 </h4>
@@ -386,6 +457,22 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
                                   </span>
                                 )}
                               </div>
+
+                              {/* Crop Status Indicator */}
+                              {cropInfo.hasActiveCrop ? (
+                                <div className="flex items-center gap-1.5 mb-3 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-semibold">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  <span className="truncate">Vụ đang nuôi</span>
+                                  <span className="text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.5 rounded-md ml-auto font-bold">
+                                    {cropInfo.crop?.initialShrimpCount ? `${(cropInfo.crop.initialShrimpCount / 1000).toLocaleString()}k giống` : 'Đang nuôi'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 mb-3 px-2.5 py-1 bg-slate-50 text-slate-500 border border-slate-200/60 rounded-xl text-xs font-medium">
+                                  <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                                  <span>{cropInfo.crop ? `Vụ trước: ${cropInfo.label} (Đang trống)` : 'Ao trống (Chưa có vụ)'}</span>
+                                </div>
+                              )}
 
                               {/* Metrics 2-column pills */}
                               <div className="grid grid-cols-2 gap-2.5 mb-4">
@@ -412,11 +499,47 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
                             </div>
 
                             {/* Card Footer Actions */}
-                            <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
-                              <span className="text-xs font-bold text-blue-600 flex items-center gap-1 group-hover:underline">
-                                Xem chi tiết →
-                              </span>
+                            <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between gap-2">
+                              {cropInfo.hasActiveCrop ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onEditCrop && cropInfo.crop) {
+                                      onEditCrop(cropInfo.crop);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 hover:shadow-emerald-500/35 hover:-translate-y-0.5 transition-all whitespace-nowrap cursor-pointer"
+                                  title="Xem chi tiết vụ nuôi đang hoạt động của ao này"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Xem Vụ nuôi</span>
+                                  <ArrowRight className="w-3 h-3" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onNavigateToCreateCrop) {
+                                      onNavigateToCreateCrop({ farmId: pond.farmId, pondId: pond.id });
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all whitespace-nowrap cursor-pointer"
+                                  title="Khởi tạo Vụ nuôi mới cho ao này"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Khởi tạo Vụ</span>
+                                  <ArrowRight className="w-3 h-3" />
+                                </button>
+                              )}
+
                               <div className="flex items-center gap-1">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setViewingPond(pond); }}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                                  title="Xem chi tiết"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); openEditModal(pond); }} 
                                   className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" 
@@ -436,12 +559,14 @@ export default function PondManagement({ onEditCrop }: PondManagementProps = {})
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 )}
               </div>
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
 

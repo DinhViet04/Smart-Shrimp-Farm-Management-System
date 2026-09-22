@@ -140,17 +140,24 @@ export class ShrimpSizeService {
   }
 
   async deleteSample(pondId: string, sampleId: string) {
-    // Delete the sample
-    await this.prisma.shrimpSizeSample.delete({
+    // 1. Kiểm tra mẫu có tồn tại và thuộc ao này không
+    const sample = await this.prisma.shrimpSizeSample.findFirst({
       where: { id: sampleId, pondId },
     });
 
-    // To be perfectly accurate, deleting a sample in the middle should trigger ADG recalculation 
-    // for the sample immediately following it. 
-    // For simplicity, we just recalculate ADG for ALL samples of the pond sequentially.
+    if (!sample) {
+      throw new NotFoundException('Không tìm thấy mẫu đo đạc kích cỡ này.');
+    }
+
+    // 2. Xóa mẫu theo id duy nhất
+    await this.prisma.shrimpSizeSample.delete({
+      where: { id: sampleId },
+    });
+
+    // 3. Tính toán lại ADG cho các mẫu còn lại của ao
     await this.recalculateADG(pondId);
     
-    return { success: true };
+    return { success: true, message: 'Đã xóa mẫu đo đạc thành công' };
   }
 
   private async recalculateADG(pondId: string) {

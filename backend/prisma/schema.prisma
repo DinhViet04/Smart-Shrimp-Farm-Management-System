@@ -67,43 +67,43 @@ enum IncidentEventType {
 }
 
 model User {
-  id                  String               @id @default(uuid())
-  email               String               @unique
+  id                  String                    @id @default(uuid())
+  email               String                    @unique
   password            String?
   fullName            String
   phone               String?
   address             String?
   avatarUrl           String?
-  role                Role                 @default(FARMER)
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  role                Role                      @default(FARMER)
+  isActive            Boolean                   @default(true)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
   farms               Farm[]
   farmStaff           FarmStaff[]
-  googleId            String?              @unique
-  waterQualityRecords  WaterQualityRecord[]
-  inventoryUsageLogs   InventoryUsageLog[]
-  shrimpHealthRecords  ShrimpHealthRecord[]
-  feedingLogs          FeedingLog[]
-  assignedIncidents    Incident[]                @relation("IncidentAssignee")
-  reportedIncidents    Incident[]                @relation("IncidentReporter")
-  incidentUpdates      IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
-  mortalityLogs        MortalityLog[]
+  googleId            String?                   @unique
+  waterQualityRecords WaterQualityRecord[]
+  inventoryUsageLogs  InventoryUsageLog[]
+  shrimpHealthRecords ShrimpHealthRecord[]
+  feedingLogs         FeedingLog[]
+  assignedIncidents   Incident[]                @relation("IncidentAssignee")
+  reportedIncidents   Incident[]                @relation("IncidentReporter")
+  incidentUpdates     IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
+  mortalityLogs       MortalityLog[]
 
   @@map("users")
 }
 
 model Farm {
-  id          String      @id @default(uuid())
-  name        String      @unique
-  location    String?
-  address     String
-  area        Float
-  description String?
-  status      String      @default("ACTIVE")
-  ownerId     String
-  owner       User        @relation(fields: [ownerId], references: [id])
-  farmingModel String?    @default("HIGH_TECH") @map("farming_model") // Mô hình nuôi: "TRADITIONAL" (Truyền thống), "HIGH_TECH" (Công nghệ cao)
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  location            String?
+  address             String
+  area                Float
+  description         String?
+  status              String               @default("ACTIVE")
+  ownerId             String
+  owner               User                 @relation(fields: [ownerId], references: [id])
+  farmingModel        String?              @default("HIGH_TECH") @map("farming_model") // Mô hình nuôi: "TRADITIONAL" (Truyền thống), "HIGH_TECH" (Công nghệ cao)
   ponds               Pond[]
   inventories         Inventory[]
   suppliers           Supplier[]
@@ -111,9 +111,9 @@ model Farm {
   shrimpHealthRecords ShrimpHealthRecord[]
   notifications       Notification[]
   feedingLogs         FeedingLog[]
-  deletedAt   DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  deletedAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("farms")
 }
@@ -159,7 +159,7 @@ model ShrimpSizeSample {
   pondId           String   @map("pond_id")
   pond             Pond     @relation(fields: [pondId], references: [id])
   samplingDate     DateTime @default(now()) @map("sampling_date")
-  doc              Int?     // Days of culture (Ngày nuôi)
+  doc              Int? // Days of culture (Ngày nuôi)
   sampleCount      Int      @map("sample_count") // Số lượng tôm lấy mẫu (> 0)
   sampleWeightGram Decimal  @map("sample_weight_g") @db.Decimal(10, 2)
   sampleLengthCm   Decimal? @map("sample_length_cm") @db.Decimal(5, 2)
@@ -167,55 +167,55 @@ model ShrimpSizeSample {
   sizePerKg        Decimal  @map("size_pieces_per_kg") @db.Decimal(10, 2) // Kích cỡ (con/kg)
   adgGramPerDay    Decimal? @map("adg_g_per_day") @db.Decimal(10, 2) // Tăng trưởng trung bình hàng ngày
   notes            String?  @db.VarChar(500)
-  
+
   // Các trường phục vụ tính toán Sinh khối (Biomass) bằng phương pháp chài lưới
   netAreaSqM           Float?   @map("net_area_sqm")
   castDetails          Json?    @map("cast_details")
   estimatedTotalShrimp Int?     @map("estimated_total_shrimp")
   estimatedBiomassKg   Decimal? @map("estimated_biomass_kg") @db.Decimal(10, 2)
 
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([pondId, samplingDate])
   @@map("shrimp_size_samples")
 }
 
 model Crop {
-  id                  String              @id @default(uuid())
-  pondId              String
-  pond                Pond                @relation(fields: [pondId], references: [id])
-  startDate           DateTime
-  initialShrimpCount  Int // T_o: Số tôm thả ban đầu
-  status              CropStatus          @default(ACTIVE)
+  id                   String               @id @default(uuid())
+  pondId               String
+  pond                 Pond                 @relation(fields: [pondId], references: [id])
+  startDate            DateTime
+  initialShrimpCount   Int // T_o: Số tôm thả ban đầu
+  status               CropStatus           @default(ACTIVE)
   // Mục tiêu & Kế hoạch nuôi do Quản lý (Manager) thiết lập (Dùng cho AI dự báo & đánh giá)
-  targetHarvestSize   Float?              @map("target_harvest_size") // Kích thước thu hoạch dự kiến (con/kg)
-  growthMilestones    Json?               @map("growth_milestones")   // Mảng JSON mốc tăng trưởng: [{ day: 30, weight: 10 }, ...]
-  targetSurvivalRate  Float?              @map("target_survival_rate") // Tỷ lệ sống dự kiến (%)
-  targetTotalFeedKg   Float?              @map("target_total_feed_kg") // Tổng lượng thức ăn dự kiến (kg)
-  expectedHarvestDate DateTime?           @map("expected_harvest_date") // Ngày thu hoạch dự kiến
-  expectedDurationDays Int?               @map("expected_duration_days") // Số ngày nuôi dự kiến
-  stage               String?             @default("COMMERCIAL") @map("stage") // Giai đoạn vụ nuôi: "NURSERY" (Ương dưỡng / Giai đoạn 1), "COMMERCIAL" (Nuôi thương phẩm / Giai đoạn 2)
-  expectedTransferDate DateTime?          @map("expected_transfer_date") // Ngày dự tính tách ao / chuyển qua giai đoạn thương phẩm (nếu là ao ương dưỡng)
-  parentCropId        String?             @map("parent_crop_id")
-  parentCrop          Crop?               @relation("CropSplitHistory", fields: [parentCropId], references: [id])
-  childCrops          Crop[]              @relation("CropSplitHistory")
-  transferDate        DateTime?           @map("transfer_date")
-  actualNurseryHarvest Int?               @map("actual_nursery_harvest")
-  nurserySurvivalRate Float?              @map("nursery_survival_rate")
-  transferSize        Float?              @map("transfer_size")
-  splitNote           String?             @map("split_note")
-  actualHarvestCount  Int?                @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
-  actualHarvestKg     Float?              @map("actual_harvest_kg")    // Sản lượng thu hoạch thực tế (kg)
-  actualHarvestSize   Float?              @map("actual_harvest_size")  // Kích cỡ tôm thu hoạch thực tế (con/kg)
-  fiveTCycles         FiveTCycle[]
-  environmentRecords  EnvironmentRecord[]
-  incidents           Incident[]
-  shrimpHealthRecords ShrimpHealthRecord[]
-  feedingLogs         FeedingLog[]
-  mortalityLogs       MortalityLog[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  targetHarvestSize    Float?               @map("target_harvest_size") // Kích thước thu hoạch dự kiến (con/kg)
+  growthMilestones     Json?                @map("growth_milestones") // Mảng JSON mốc tăng trưởng: [{ day: 30, weight: 10 }, ...]
+  targetSurvivalRate   Float?               @map("target_survival_rate") // Tỷ lệ sống dự kiến (%)
+  targetTotalFeedKg    Float?               @map("target_total_feed_kg") // Tổng lượng thức ăn dự kiến (kg)
+  expectedHarvestDate  DateTime?            @map("expected_harvest_date") // Ngày thu hoạch dự kiến
+  expectedDurationDays Int?                 @map("expected_duration_days") // Số ngày nuôi dự kiến
+  stage                String?              @default("COMMERCIAL") @map("stage") // Giai đoạn vụ nuôi: "NURSERY" (Ương dưỡng / Giai đoạn 1), "COMMERCIAL" (Nuôi thương phẩm / Giai đoạn 2)
+  expectedTransferDate DateTime?            @map("expected_transfer_date") // Ngày dự tính tách ao / chuyển qua giai đoạn thương phẩm (nếu là ao ương dưỡng)
+  parentCropId         String?              @map("parent_crop_id")
+  parentCrop           Crop?                @relation("CropSplitHistory", fields: [parentCropId], references: [id])
+  childCrops           Crop[]               @relation("CropSplitHistory")
+  transferDate         DateTime?            @map("transfer_date")
+  actualNurseryHarvest Int?                 @map("actual_nursery_harvest")
+  nurserySurvivalRate  Float?               @map("nursery_survival_rate")
+  transferSize         Float?               @map("transfer_size")
+  splitNote            String?              @map("split_note")
+  actualHarvestCount   Int?                 @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
+  actualHarvestKg      Float?               @map("actual_harvest_kg") // Sản lượng thu hoạch thực tế (kg)
+  actualHarvestSize    Float?               @map("actual_harvest_size") // Kích cỡ tôm thu hoạch thực tế (con/kg)
+  fiveTCycles          FiveTCycle[]
+  environmentRecords   EnvironmentRecord[]
+  incidents            Incident[]
+  shrimpHealthRecords  ShrimpHealthRecord[]
+  feedingLogs          FeedingLog[]
+  mortalityLogs        MortalityLog[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@map("crops")
 }
@@ -297,42 +297,41 @@ model EnvironmentRecord {
 }
 
 model Incident {
-  id           String         @id @default(uuid())
+  id           String                    @id @default(uuid())
   cropId       String
-  crop         Crop           @relation(fields: [cropId], references: [id])
+  crop         Crop                      @relation(fields: [cropId], references: [id])
   title        String
   description  String
   treatment    String?
-  status       IncidentStatus @default(OPEN)
+  status       IncidentStatus            @default(OPEN)
   reporterId   String?
-  reporter     User?          @relation("IncidentReporter", fields: [reporterId], references: [id])
+  reporter     User?                     @relation("IncidentReporter", fields: [reporterId], references: [id])
   assignedToId String?
-  assignedTo   User?          @relation("IncidentAssignee", fields: [assignedToId], references: [id])
+  assignedTo   User?                     @relation("IncidentAssignee", fields: [assignedToId], references: [id])
   startedAt    DateTime?
   resolvedAt   DateTime?
   updates      IncidentTreatmentUpdate[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
 
   @@index([cropId, status])
   @@index([assignedToId, status])
   @@index([reporterId])
-
   @@map("incidents")
 }
 
 model IncidentTreatmentUpdate {
-  id          String         @id @default(uuid())
+  id          String            @id @default(uuid())
   incidentId  String
-  incident    Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident    Incident          @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   authorId    String
-  author      User           @relation("IncidentUpdateAuthor", fields: [authorId], references: [id])
+  author      User              @relation("IncidentUpdateAuthor", fields: [authorId], references: [id])
   treatment   String
   observation String?
   result      String?
   status      IncidentStatus
   eventType   IncidentEventType @default(TREATMENT)
-  createdAt   DateTime       @default(now())
+  createdAt   DateTime          @default(now())
 
   @@index([incidentId, createdAt])
   @@map("incident_treatment_updates")
@@ -402,7 +401,7 @@ model Inventory {
   supplierId String?   @map("supplier_id")
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
-  usageLogs InventoryUsageLog[]
+  usageLogs   InventoryUsageLog[]
   feedingLogs FeedingLog[]
 
   deletedAt DateTime? @map("deleted_at")
@@ -513,26 +512,26 @@ enum FeedingStatus {
 /// Stores daily feeding activity logs for ponds and crops.
 /// Used by FE-19: Record Daily Feed Consumption.
 model FeedingLog {
-  id            String         @id @default(uuid())
-  farmId        String         @map("farm_id")
-  farm          Farm           @relation(fields: [farmId], references: [id])
-  pondId        String         @map("pond_id")
-  pond          Pond           @relation(fields: [pondId], references: [id])
-  cropId        String         @map("crop_id")
-  crop          Crop           @relation(fields: [cropId], references: [id])
-  feedProductId String         @map("feed_product_id")
-  feedProduct   Inventory      @relation(fields: [feedProductId], references: [id])
-  feedingDate   DateTime       @map("feeding_date") @db.Date
+  id             String         @id @default(uuid())
+  farmId         String         @map("farm_id")
+  farm           Farm           @relation(fields: [farmId], references: [id])
+  pondId         String         @map("pond_id")
+  pond           Pond           @relation(fields: [pondId], references: [id])
+  cropId         String         @map("crop_id")
+  crop           Crop           @relation(fields: [cropId], references: [id])
+  feedProductId  String         @map("feed_product_id")
+  feedProduct    Inventory      @relation(fields: [feedProductId], references: [id])
+  feedingDate    DateTime       @map("feeding_date") @db.Date
   feedingSession FeedingSession @map("feeding_session")
-  feedingTime   String         @map("feeding_time")
-  feedAmount    Decimal        @map("feed_amount") @db.Decimal(8, 2)
-  feedingMethod FeedingMethod  @map("feeding_method")
-  feedingStatus FeedingStatus  @map("feeding_status")
-  note          String?        @db.VarChar(500)
-  createdBy     String         @map("created_by")
-  creator       User           @relation(fields: [createdBy], references: [id])
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  feedingTime    String         @map("feeding_time")
+  feedAmount     Decimal        @map("feed_amount") @db.Decimal(8, 2)
+  feedingMethod  FeedingMethod  @map("feeding_method")
+  feedingStatus  FeedingStatus  @map("feeding_status")
+  note           String?        @db.VarChar(500)
+  createdBy      String         @map("created_by")
+  creator        User           @relation(fields: [createdBy], references: [id])
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@unique([farmId, pondId, cropId, feedingDate, feedingSession])
   @@index([pondId, cropId, feedingDate])
@@ -557,3 +556,34 @@ model MortalityLog {
   @@map("mortality_logs")
 }
 
+/// Bảng lưu trữ tài liệu tri thức phục vụ Chatbot RAG
+model KnowledgeDocument {
+  id         String           @id @default(uuid())
+  title      String
+  category   String           @default("GENERAL") // GENERAL, WATER_QUALITY, SHRIMP_DISEASE, FEEDING, REGULATIONS
+  fileName   String?          @map("file_name")
+  fileType   String?          @map("file_type") // pdf, docx, txt, markdown
+  fileSize   Int?             @map("file_size")
+  content    String           @db.Text
+  uploadedBy String?          @map("uploaded_by")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  chunks     KnowledgeChunk[]
+
+  @@map("knowledge_documents")
+}
+
+/// Bảng lưu các đoạn trích (chunks) và vector embedding
+model KnowledgeChunk {
+  id         String            @id @default(uuid())
+  documentId String            @map("document_id")
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int               @map("chunk_index")
+  content    String            @db.Text
+  metadata   Json?
+  embedding  Json?             // Mảng vector Float[] dạng JSON
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@map("knowledge_chunks")
+}

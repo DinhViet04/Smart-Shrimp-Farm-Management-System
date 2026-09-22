@@ -17,7 +17,7 @@ interface AssignedStaffMember {
 interface FarmFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, createdFarmId?: string) => void;
   initialData?: any;
 }
 
@@ -196,8 +196,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         await farmService.update(initialData.id, payload);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
-        await farmService.create({ ...payload, ownerId: user.id });
-        onSuccess('Thêm trang trại mới thành công!');
+        const newFarm = await farmService.create({ ...payload, ownerId: user.id });
+        onSuccess('Thêm trang trại mới thành công!', newFarm?.id);
       }
       onClose();
     } catch (err: any) {

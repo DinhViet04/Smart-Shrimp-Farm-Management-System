@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Save, AlertCircle, Users, FlaskConical, UserCheck, Plus, Trash2 } from 'lucide-react';
+import { X, Save, AlertCircle, Users, FlaskConical, UserCheck, Plus, Trash2, Mail, CheckCircle, Clock } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 
 const PROVINCES = [
@@ -7,11 +7,12 @@ const PROVINCES = [
 ];
 
 interface AssignedStaffMember {
-  id: string;
-  fullName: string;
+  id?: string;          // undefined nếu user chưa có tài khoản
+  fullName?: string;
   email: string;
   role: 'FARMER' | 'TECHNICIAN';
   phone?: string;
+  status: 'assigned' | 'invited'; // 'assigned' = đã có TK & đã join, 'invited' = chờ đăng ký
 }
 
 interface FarmFormModalProps {
@@ -35,16 +36,20 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
 
   // Assigned staff state
   const [assignedStaff, setAssignedStaff] = useState<AssignedStaffMember[]>([]);
+  // Pending invites khi tạo farm mới (farm chưa có id)
+  const [pendingInvites, setPendingInvites] = useState<{ email: string; role: 'FARMER' | 'TECHNICIAN' }[]>([]);
 
   // Email input & search state for Farmer
   const [farmerEmailInput, setFarmerEmailInput] = useState('');
   const [isSearchingFarmer, setIsSearchingFarmer] = useState(false);
   const [farmerSearchError, setFarmerSearchError] = useState<string | null>(null);
+  const [farmerSearchSuccess, setFarmerSearchSuccess] = useState<string | null>(null);
 
   // Email input & search state for Technician
   const [techEmailInput, setTechEmailInput] = useState('');
   const [isSearchingTech, setIsSearchingTech] = useState(false);
   const [techSearchError, setTechSearchError] = useState<string | null>(null);
+  const [techSearchSuccess, setTechSearchSuccess] = useState<string | null>(null);
 
   // Load user from local storage to get ownerId
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -69,12 +74,15 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         farmingModel: 'HIGH_TECH',
       });
       setAssignedStaff([]);
+      setPendingInvites([]);
     }
     setError(null);
     setFarmerEmailInput('');
     setTechEmailInput('');
     setFarmerSearchError(null);
+    setFarmerSearchSuccess(null);
     setTechSearchError(null);
+    setTechSearchSuccess(null);
   }, [initialData, isOpen]);
 
   // Fetch current staff when editing
@@ -90,6 +98,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
               email: s.user?.email || '',
               role: s.user?.role || s.role,
               phone: s.user?.phone,
+              status: 'assigned' as const,
             }))
           );
         } catch (e) {
@@ -115,31 +124,50 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
 
   const handleAddFarmer = async () => {
     setFarmerSearchError(null);
+    setFarmerSearchSuccess(null);
     const email = farmerEmailInput.trim();
     if (!email) {
-      setFarmerSearchError('Vui lòng nhập địa chỉ email/gmail của Nông dân.');
+      setFarmerSearchError('Vui lòng nhập địa chỉ email của Nông dân.');
       return;
     }
-    if (assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())) {
-      setFarmerSearchError('Nông dân này đã có trong danh sách phân công.');
+    const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())
+      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase() && p.role === 'FARMER');
+    if (alreadyInList) {
+      setFarmerSearchError('Email này đã có trong danh sách.');
       return;
     }
     setIsSearchingFarmer(true);
     try {
-      const result = await farmService.lookupStaff(email, 'FARMER');
-      setAssignedStaff(prev => [
-        ...prev,
-        {
-          id: result.id,
-          fullName: result.fullName,
-          email: result.email,
-          role: 'FARMER',
-          phone: result.phone,
-        },
-      ]);
+      if (initialData?.id) {
+        // Đang edit farm → gọi API invite ngay
+        const result = await farmService.inviteByEmail(initialData.id, email, 'FARMER');
+        setAssignedStaff(prev => [
+          ...prev,
+          {
+            id: result.status === 'assigned' ? email : undefined,
+            fullName: result.status === 'assigned' ? result.email : undefined,
+            email: result.email,
+            role: 'FARMER',
+            status: result.status,
+          },
+        ]);
+        if (result.status === 'assigned') {
+          setFarmerSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
+        } else {
+          setFarmerSearchSuccess(`📧 Đã gửi email mời đăng ký tới ${result.email}`);
+        }
+      } else {
+        // Đang tạo farm mới → queue lại, sẽ gửi sau khi farm được tạo
+        setPendingInvites(prev => [...prev, { email, role: 'FARMER' }]);
+        setAssignedStaff(prev => [
+          ...prev,
+          { email, role: 'FARMER', status: 'invited' },
+        ]);
+        setFarmerSearchSuccess(`📧 Đã thêm vào danh sách — email mời sẽ được gửi sau khi tạo trang trại.`);
+      }
       setFarmerEmailInput('');
     } catch (err: any) {
-      setFarmerSearchError(err.message || 'Không tìm thấy tài khoản Nông dân với email này.');
+      setFarmerSearchError(err.message || 'Không thể thêm Nông dân.');
     } finally {
       setIsSearchingFarmer(false);
     }
@@ -147,38 +175,58 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
 
   const handleAddTech = async () => {
     setTechSearchError(null);
+    setTechSearchSuccess(null);
     const email = techEmailInput.trim();
     if (!email) {
-      setTechSearchError('Vui lòng nhập địa chỉ email/gmail của Kỹ thuật viên.');
+      setTechSearchError('Vui lòng nhập địa chỉ email của Kỹ thuật viên.');
       return;
     }
-    if (assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())) {
-      setTechSearchError('Kỹ thuật viên này đã có trong danh sách phân công.');
+    const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())
+      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase() && p.role === 'TECHNICIAN');
+    if (alreadyInList) {
+      setTechSearchError('Email này đã có trong danh sách.');
       return;
     }
     setIsSearchingTech(true);
     try {
-      const result = await farmService.lookupStaff(email, 'TECHNICIAN');
-      setAssignedStaff(prev => [
-        ...prev,
-        {
-          id: result.id,
-          fullName: result.fullName,
-          email: result.email,
-          role: 'TECHNICIAN',
-          phone: result.phone,
-        },
-      ]);
+      if (initialData?.id) {
+        // Đang edit farm → gọi API invite ngay
+        const result = await farmService.inviteByEmail(initialData.id, email, 'TECHNICIAN');
+        setAssignedStaff(prev => [
+          ...prev,
+          {
+            id: result.status === 'assigned' ? email : undefined,
+            fullName: result.status === 'assigned' ? result.email : undefined,
+            email: result.email,
+            role: 'TECHNICIAN',
+            status: result.status,
+          },
+        ]);
+        if (result.status === 'assigned') {
+          setTechSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
+        } else {
+          setTechSearchSuccess(`📧 Đã gửi email mời đăng ký tới ${result.email}`);
+        }
+      } else {
+        // Đang tạo farm mới → queue lại
+        setPendingInvites(prev => [...prev, { email, role: 'TECHNICIAN' }]);
+        setAssignedStaff(prev => [
+          ...prev,
+          { email, role: 'TECHNICIAN', status: 'invited' },
+        ]);
+        setTechSearchSuccess(`📧 Đã thêm vào danh sách — email mời sẽ được gửi sau khi tạo trang trại.`);
+      }
       setTechEmailInput('');
     } catch (err: any) {
-      setTechSearchError(err.message || 'Không tìm thấy tài khoản Kỹ thuật viên với email này.');
+      setTechSearchError(err.message || 'Không thể thêm Kỹ thuật viên.');
     } finally {
       setIsSearchingTech(false);
     }
   };
 
-  const handleRemoveStaff = (id: string) => {
-    setAssignedStaff(prev => prev.filter(s => s.id !== id));
+  const handleRemoveStaff = (email: string) => {
+    setAssignedStaff(prev => prev.filter(s => s.email !== email));
+    setPendingInvites(prev => prev.filter(p => p.email !== email));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -187,16 +235,20 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     setIsLoading(true);
 
     try {
-      const payload = {
-        ...formData,
-        staffIds: assignedStaff.map(s => s.id),
-      };
-
       if (initialData) {
-        await farmService.update(initialData.id, payload);
+        await farmService.update(initialData.id, formData);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
-        const newFarm = await farmService.create({ ...payload, ownerId: user.id });
+        // Tạo farm trước
+        const newFarm = await farmService.create({ ...formData, ownerId: user.id });
+        // Gửi invite cho tất cả pending sau khi có farmId
+        if (pendingInvites.length > 0 && newFarm?.id) {
+          await Promise.allSettled(
+            pendingInvites.map(invite =>
+              farmService.inviteByEmail(newFarm.id, invite.email, invite.role)
+            )
+          );
+        }
         onSuccess('Thêm trang trại mới thành công!', newFarm?.id);
       }
       onClose();
@@ -412,6 +464,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     onChange={(e) => {
                       setFarmerEmailInput(e.target.value);
                       if (farmerSearchError) setFarmerSearchError(null);
+                      if (farmerSearchSuccess) setFarmerSearchSuccess(null);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -419,7 +472,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                         handleAddFarmer();
                       }
                     }}
-                    placeholder="Nhập Gmail tài khoản Nông dân (VD: farmer@gmail.com)..."
+                    placeholder="Nhập email Nông dân (đã có TK hoặc chưa)..."
                     className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all"
                   />
                   <button
@@ -431,9 +484,9 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     {isSearchingFarmer ? (
                       <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
-                      <Plus className="w-3.5 h-3.5" />
+                      <Mail className="w-3.5 h-3.5" />
                     )}
-                    Thêm Nông Dân
+                    Mời Nông Dân
                   </button>
                 </div>
 
@@ -443,26 +496,44 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     <span>{farmerSearchError}</span>
                   </div>
                 )}
+                {farmerSearchSuccess && (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold rounded-xl flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{farmerSearchSuccess}</span>
+                  </div>
+                )}
 
                 {/* List of Added Farmers */}
                 {farmers.length === 0 ? (
                   <p className="text-[11px] text-slate-400 italic py-1">
-                    Chưa có Nông dân nào được thêm vào trang trại này.
+                    Chưa có Nông dân nào được thêm. Nhập email để mời.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-28 overflow-y-auto p-0.5">
                     {farmers.map((farmer) => (
                       <div
-                        key={farmer.id}
+                        key={farmer.email}
                         className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-emerald-200 shadow-sm"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 truncate">{farmer.fullName}</p>
+                          <p className="text-xs font-bold text-slate-800 truncate">
+                            {farmer.fullName || farmer.email}
+                          </p>
                           <span className="text-[10px] text-slate-500 truncate block">{farmer.email}</span>
+                          {/* Status badge */}
+                          {farmer.status === 'assigned' ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full mt-0.5">
+                              <CheckCircle className="w-2.5 h-2.5" /> Đã tham gia
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full mt-0.5">
+                              <Clock className="w-2.5 h-2.5" /> Chờ đăng ký
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveStaff(farmer.id)}
+                          onClick={() => handleRemoveStaff(farmer.email)}
                           className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                           title="Gỡ khỏi danh sách"
                         >
@@ -498,6 +569,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     onChange={(e) => {
                       setTechEmailInput(e.target.value);
                       if (techSearchError) setTechSearchError(null);
+                      if (techSearchSuccess) setTechSearchSuccess(null);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -505,7 +577,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                         handleAddTech();
                       }
                     }}
-                    placeholder="Nhập Gmail tài khoản Kỹ thuật viên (VD: tech@gmail.com)..."
+                    placeholder="Nhập email Kỹ thuật viên (đã có TK hoặc chưa)..."
                     className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 transition-all"
                   />
                   <button
@@ -517,9 +589,9 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     {isSearchingTech ? (
                       <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
-                      <Plus className="w-3.5 h-3.5" />
+                      <Mail className="w-3.5 h-3.5" />
                     )}
-                    Thêm Kỹ Thuật Viên
+                    Mời Kỹ Thuật Viên
                   </button>
                 </div>
 
@@ -529,26 +601,43 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                     <span>{techSearchError}</span>
                   </div>
                 )}
+                {techSearchSuccess && (
+                  <div className="p-2 bg-cyan-50 border border-cyan-200 text-cyan-700 text-[11px] font-semibold rounded-xl flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{techSearchSuccess}</span>
+                  </div>
+                )}
 
                 {/* List of Added Technicians */}
                 {technicians.length === 0 ? (
                   <p className="text-[11px] text-slate-400 italic py-1">
-                    Chưa có Kỹ thuật viên nào được thêm vào trang trại này.
+                    Chưa có Kỹ thuật viên nào được thêm. Nhập email để mời.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-28 overflow-y-auto p-0.5">
                     {technicians.map((tech) => (
                       <div
-                        key={tech.id}
+                        key={tech.email}
                         className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-cyan-200 shadow-sm"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 truncate">{tech.fullName}</p>
+                          <p className="text-xs font-bold text-slate-800 truncate">
+                            {tech.fullName || tech.email}
+                          </p>
                           <span className="text-[10px] text-slate-500 truncate block">{tech.email}</span>
+                          {tech.status === 'assigned' ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-cyan-700 bg-cyan-100 px-1.5 py-0.5 rounded-full mt-0.5">
+                              <CheckCircle className="w-2.5 h-2.5" /> Đã tham gia
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full mt-0.5">
+                              <Clock className="w-2.5 h-2.5" /> Chờ đăng ký
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveStaff(tech.id)}
+                          onClick={() => handleRemoveStaff(tech.email)}
                           className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                           title="Gỡ khỏi danh sách"
                         >

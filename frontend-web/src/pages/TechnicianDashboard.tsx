@@ -4,7 +4,6 @@ import {
   LayoutDashboard, 
   Settings, 
   LogOut, 
-  Bell, 
   Search, 
   Wrench,
   Droplets,
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
+import NotificationDropdown from '../components/NotificationDropdown';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendDashboard';
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
@@ -146,9 +146,7 @@ export default function TechnicianDashboard() {
                 className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200 outline-none transition-all w-64 text-slate-700 placeholder-slate-400 font-medium"
               />
             </div>
-            <button className="relative p-2 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-100 rounded-full hover:bg-indigo-50">
-              <Bell className="w-5 h-5" />
-            </button>
+            <NotificationDropdown role="TECHNICIAN" themeColor="indigo" onNavigateTab={(tab) => setActiveTab(tab)} />
           </div>
         </header>
 

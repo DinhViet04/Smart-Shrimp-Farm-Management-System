@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -72,5 +73,17 @@ export class AuthController {
     // Với JWT stateless, logout thường chỉ cần client xóa token.
     // Nếu có token blacklist hoặc refresh token table thì xử lý ở đây.
     return { message: 'Đăng xuất thành công' };
+  }
+
+  /**
+   * GET /api/auth/verify-invite?token=xxx
+   * Frontend gọi endpoint này để kiểm tra token mời truớc khi hiển thị form đăng ký.
+   */
+  @Get('verify-invite')
+  async verifyInvite(@Query('token') token: string) {
+    if (!token) {
+      return { valid: false, reason: 'Thiếu token' };
+    }
+    return this.authService.verifyInviteToken(token);
   }
 }

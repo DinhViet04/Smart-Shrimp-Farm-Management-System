@@ -9,11 +9,15 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as nodemailer from 'nodemailer';
+import { Role } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
+
+
 
 @Injectable()
 export class AuthService {
@@ -26,19 +30,47 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async register(dto: RegisterDto) {
+    // ── Xử LÝ INVITE TOKEN (nếu có) ──
+    let invitePayload: { email: string; farmId: string; role: string; type: string } | null = null;
+
+    if (dto.inviteToken) {
+      try {
+        invitePayload = (await this.jwtService.verifyAsync(dto.inviteToken, {
+          secret: this.configService.get<string>('JWT_SECRET'),
+        })) as { email: string; farmId: string; role: string; type: string };
+        if (invitePayload?.type !== 'farm_invite') {
+          throw new BadRequestException('Token mời không hợp lệ');
+        }
+        // Email đăng ký phải trùng với email trong token
+        if (invitePayload.email.toLowerCase() !== dto.email.toLowerCase()) {
+          throw new BadRequestException(
+            `Token mời chỉ dành cho email ${invitePayload.email}. Vui lòng đăng ký bằng đúng email đó.`,
+          );
+        }
+      } catch (err: any) {
+        if (err instanceof BadRequestException) throw err;
+        throw new BadRequestException('Token mời không hợp lệ hoặc đã hết hạn');
+      }
+    }
+
     // Check if user already exists
     const existingUser = await this.usersService.findByEmail(dto.email);
     if (existingUser) {
       throw new ConflictException('Email đã được sử dụng');
     }
 
-    // Determine role (allowed: FARM_MANAGER, FARMER, TECHNICIAN)
-    const allowedRoles = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'];
-    const role =
-      dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
+    // Determine role: invite token overrides request role
+    let role: string;
+    if (invitePayload) {
+      role = invitePayload.role; // Force role từ invitation
+    } else {
+      const allowedRoles = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'];
+      role = dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
+    }
 
     // Create new user (password is hashed inside UsersService.create)
     const user = await this.usersService.create({
@@ -46,8 +78,29 @@ export class AuthService {
       password: dto.password,
       fullName: dto.fullName,
       phone: dto.phone,
-      role: role,
+      role: role as Role,
     });
+
+    // ── Nếu có invite token: tự động join farm ──
+    let joinedFarm: { id: string; name: string } | null = null;
+    if (invitePayload) {
+      try {
+        const farm = await this.prisma.farm.findUnique({
+          where: { id: invitePayload.farmId },
+          select: { id: true, name: true },
+        });
+        if (farm) {
+          await this.prisma.farmStaff.upsert({
+            where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+            create: { farmId: farm.id, userId: user.id, role: user.role, isActive: true },
+            update: { isActive: true, role: user.role },
+          });
+          joinedFarm = farm;
+        }
+      } catch {
+        // Không dừng đăng ký nếu join farm thất bại
+      }
+    }
 
     // Generate tokens
     const tokens = await this.generateTokens({
@@ -60,6 +113,7 @@ export class AuthService {
 
     return {
       user: userWithoutPassword,
+      joinedFarm,
       ...tokens,
     };
   }
@@ -282,6 +336,42 @@ export class AuthService {
 
   private generateOtp() {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  /**
+   * Xác thực invite token và trả về thông tin farm/role.
+   * Frontend gọi trước khi hiển thị trang đăng ký.
+   */
+  async verifyInviteToken(token: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+
+      if (payload?.type !== 'farm_invite') {
+        return { valid: false, reason: 'Token không phải invitation token' };
+      }
+
+      const farm = await this.prisma.farm.findUnique({
+        where: { id: payload.farmId },
+        select: { id: true, name: true, owner: { select: { fullName: true } } },
+      });
+
+      if (!farm) {
+        return { valid: false, reason: 'Trang trại không tồn tại' };
+      }
+
+      return {
+        valid: true,
+        email: payload.email,
+        farmId: payload.farmId,
+        farmName: farm.name,
+        managerName: farm.owner?.fullName ?? 'Quản lý trang trại',
+        role: payload.role,
+      };
+    } catch {
+      return { valid: false, reason: 'Token không hợp lệ hoặc đã hết hạn' };
+    }
   }
 
   private async generateTokens(payload: {

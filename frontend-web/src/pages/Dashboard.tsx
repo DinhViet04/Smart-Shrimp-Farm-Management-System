@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Bell, Search, Activity, AlertCircle, Settings, Building2, Package, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Search, Activity, AlertCircle, Settings, Building2, Package, AlertTriangle } from 'lucide-react';
 import AccountSettings from '../components/AccountSettings';
+import NotificationDropdown from '../components/NotificationDropdown';
 import FarmList from '../features/farms/FarmList';
 import PondCropDashboard from '../components/PondCropDashboard';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
@@ -171,10 +172,7 @@ export default function Dashboard() {
                 className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-200 outline-none transition-all w-64"
               />
             </div>
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
-              <Bell className="w-6 h-6" />
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
-            </button>
+            <NotificationDropdown role="FARM_MANAGER" themeColor="blue" onNavigateTab={(tab) => setActiveTab(tab)} />
           </div>
         </header>
 

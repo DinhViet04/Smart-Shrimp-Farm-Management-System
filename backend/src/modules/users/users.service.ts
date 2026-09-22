@@ -4,13 +4,18 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcryptjs';
+import * as nodemailer from 'nodemailer';
 import { Prisma, Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async findAll() {
     return this.prisma.user.findMany({
@@ -106,7 +111,7 @@ export class UsersService {
   }
 
   async findById(id: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -119,9 +124,19 @@ export class UsersService {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        // Exclude password from default query
+        password: true,
+        googleId: true,
       },
     });
+
+    if (!user) return null;
+
+    const { password, googleId, ...rest } = user;
+    return {
+      ...rest,
+      hasPassword: Boolean(password),
+      isGoogleAccount: Boolean(googleId),
+    };
   }
 
   async create(data: Prisma.UserCreateInput) {
@@ -230,22 +245,33 @@ export class UsersService {
 
   async changePassword(
     id: string,
-    currentPassword: string,
-    newPassword: string,
-    confirmPassword: string,
+    currentPassword?: string,
+    newPassword?: string,
+    confirmPassword?: string,
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user || !user.password) {
-      throw new BadRequestException('Tài khoản này không hỗ trợ đổi mật khẩu');
+    if (!newPassword || !confirmPassword) {
+      throw new BadRequestException('Mật khẩu mới và xác nhận mật khẩu là bắt buộc');
     }
 
     if (newPassword !== confirmPassword) {
       throw new BadRequestException('Xác nhận mật khẩu không khớp');
     }
 
-    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isCurrentValid) {
-      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại');
+    }
+
+    const hasExistingPassword = Boolean(user.password);
+
+    if (hasExistingPassword) {
+      if (!currentPassword) {
+        throw new BadRequestException('Vui lòng nhập mật khẩu hiện tại');
+      }
+      const isCurrentValid = await bcrypt.compare(currentPassword, user.password!);
+      if (!isCurrentValid) {
+        throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -254,7 +280,81 @@ export class UsersService {
       data: { password: hashedPassword },
     });
 
-    return { message: 'Đổi mật khẩu thành công' };
+    // Send email notification to user's Gmail
+    await this.sendPasswordChangeNotification(user.email, user.fullName, hasExistingPassword);
+
+    return {
+      message: hasExistingPassword
+        ? 'Đổi mật khẩu thành công. Thông báo đã được gửi đến email của bạn.'
+        : 'Tạo mật khẩu mới thành công. Thông báo đã được gửi đến email của bạn.',
+    };
+  }
+
+  private async sendPasswordChangeNotification(
+    email: string,
+    fullName: string,
+    wasChanged: boolean,
+  ) {
+    try {
+      const host = this.configService?.get<string>('SMTP_HOST');
+      const user = this.configService?.get<string>('SMTP_USER')?.trim();
+      const pass = this.configService?.get<string>('SMTP_PASS')?.trim();
+
+      if (!host || !user || !pass) {
+        return;
+      }
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port: Number(this.configService.get<string>('SMTP_PORT') ?? 587),
+        secure: this.configService.get<string>('SMTP_SECURE') === 'true',
+        auth: { user, pass },
+      });
+
+      const title = wasChanged
+        ? 'Đổi mật khẩu tài khoản thành công'
+        : 'Thiết lập mật khẩu mới thành công';
+      const actionText = wasChanged
+        ? 'thay đổi mật khẩu tài khoản'
+        : 'thiết lập mật khẩu đăng nhập trực tiếp';
+      const timeString = new Date().toLocaleString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+      });
+
+      await transporter.sendMail({
+        from: this.configService.get<string>('SMTP_FROM') || user,
+        to: email,
+        subject: `[SSFM] Thông báo: ${title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <div style="text-align: center; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
+              <h2 style="color: #0284c7; margin: 0;">Smart Shrimp Farm Management (SSFM)</h2>
+              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Hệ thống Quản lý Trang trại Nuôi tôm Thông minh</p>
+            </div>
+            <div style="padding: 24px 0;">
+              <p style="font-size: 16px; color: #1e293b; margin-top: 0;">Xin chào <strong>${fullName || 'Quý khách'}</strong>,</p>
+              <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+                Hệ thống ghi nhận tài khoản của bạn (<strong>${email}</strong>) vừa <strong>${actionText}</strong> thành công vào lúc <strong>${timeString}</strong>.
+              </p>
+              <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 12px 16px; margin: 20px 0; border-radius: 4px;">
+                <p style="font-size: 13px; color: #475569; margin: 0; line-height: 1.5;">
+                  🔒 <strong>Lưu ý bảo mật:</strong> Nếu bạn KHÔNG thực hiện hành động này, tài khoản của bạn có thể đã bị truy cập trái phép. Vui lòng liên hệ ngay với Quản trị viên hệ thống để được hỗ trợ khóa tài khoản khẩn cấp.
+                </p>
+              </div>
+              <p style="font-size: 14px; color: #334155; margin-bottom: 0;">
+                Trân trọng,<br/>
+                <strong>Đội ngũ SSFM</strong>
+              </p>
+            </div>
+            <div style="text-align: center; border-top: 1px solid #e2e8f0; padding-top: 16px; color: #94a3b8; font-size: 12px;">
+              Email tự động từ hệ thống SSFM. Vui lòng không trả lời trực tiếp email này.
+            </div>
+          </div>
+        `,
+      });
+    } catch (error) {
+      console.error('Failed to send password notification email:', error);
+    }
   }
 
   async updatePasswordByEmail(email: string, newPassword: string) {

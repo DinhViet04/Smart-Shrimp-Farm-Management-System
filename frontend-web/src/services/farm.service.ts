@@ -93,5 +93,43 @@ export const farmService = {
     if (!response.ok) throw new Error(resData.message || 'Không tìm thấy tài khoản nhân sự');
     return resData;
   },
+
+  /**
+   * Mời nhân sự bằng email (2 luồng):
+   * - Đã có tài khoản → add trực tiếp + gửi email thông báo
+   * - Chưa có tài khoản → gửi email mời đăng ký (có link chứa inviteToken)
+   */
+  inviteByEmail: async (
+    farmId: string,
+    email: string,
+    role: 'FARMER' | 'TECHNICIAN',
+  ): Promise<{ status: 'assigned' | 'invited'; message: string; email: string }> => {
+    const response = await apiFetch(`${apiUrl}/api/farms/${farmId}/invite-by-email`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+    const resData = await response.json();
+    if (!response.ok) throw new Error(resData.message || 'Không thể gửi lời mời');
+    return resData;
+  },
 };
+
+/**
+ * Xác thực invitation token.
+ * Frontend gọi khi URL chứa ?inviteToken=xxx để lấy thông tin farm/role.
+ */
+export const verifyInviteToken = async (token: string) => {
+  const response = await fetch(`${apiUrl}/api/auth/verify-invite?token=${encodeURIComponent(token)}`);
+  const resData = await response.json();
+  return resData as {
+    valid: boolean;
+    reason?: string;
+    email?: string;
+    farmId?: string;
+    farmName?: string;
+    managerName?: string;
+    role?: string;
+  };
+};
+
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck, Building2, FlaskConical, Users, CheckCircle2 } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck, Building2, FlaskConical, Users, CheckCircle2, Gift, AlertTriangle } from 'lucide-react';
+import { verifyInviteToken } from '../services/farm.service';
 
 const getDashboardPath = (role?: string) => {
   switch (role) {
@@ -18,6 +19,20 @@ const getDashboardPath = (role?: string) => {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteTokenFromUrl = searchParams.get('inviteToken');
+
+  // Invitation state
+  const [inviteInfo, setInviteInfo] = useState<{
+    valid: boolean;
+    farmName?: string;
+    managerName?: string;
+    role?: string;
+    email?: string;
+    reason?: string;
+    loading: boolean;
+  }>({ valid: false, loading: !!inviteTokenFromUrl });
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -32,6 +47,27 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  // Verify invite token on mount
+  useEffect(() => {
+    if (!inviteTokenFromUrl) return;
+    let cancelled = false;
+    verifyInviteToken(inviteTokenFromUrl).then(result => {
+      if (cancelled) return;
+      if (result.valid) {
+        setInviteInfo({ valid: true, loading: false, ...result });
+        // Pre-fill email và role từ token
+        setFormData(prev => ({
+          ...prev,
+          email: result.email ?? prev.email,
+          role: result.role ?? prev.role,
+        }));
+      } else {
+        setInviteInfo({ valid: false, loading: false, reason: result.reason });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [inviteTokenFromUrl]);
 
   const getFieldError = (id: string, value: string, currentData: typeof formData): string => {
     if (id === 'fullName') {
@@ -156,7 +192,9 @@ export default function RegisterPage() {
             email: formData.email,
             password: formData.password,
             role: formData.role,
-            ...(formData.phone && { phone: formData.phone })
+            ...(formData.phone && { phone: formData.phone }),
+            // Gửi kèm invite token nếu có
+            ...(inviteTokenFromUrl && { inviteToken: inviteTokenFromUrl }),
           }),
         });
 
@@ -164,15 +202,25 @@ export default function RegisterPage() {
         if (!response.ok) {
           setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Có lỗi xảy ra'));
         } else {
-          // Lưu token và thông tin người dùng để tự động đăng nhập
           if (data.accessToken && data.user) {
             localStorage.setItem('accessToken', data.accessToken);
             if (data.refreshToken) {
               localStorage.setItem('refreshToken', data.refreshToken);
             }
             localStorage.setItem('user', JSON.stringify(data.user));
-            // Điều hướng trực tiếp vào trang theo đúng vai trò đã đăng ký
-            navigate(getDashboardPath(data.user.role || formData.role));
+
+            // Nếu đăng ký qua invitation → chào mừng + redirect đến dashboard
+            if (data.joinedFarm) {
+              setServerError('');
+              // Hiển thị welcome message ngắn, sau đó redirect
+              setIsLoading(false);
+              // Sử dụng serverError để show success (hack UI)
+              navigate(getDashboardPath(data.user.role || formData.role), {
+                state: { welcomeFarm: data.joinedFarm.name }
+              });
+            } else {
+              navigate(getDashboardPath(data.user.role || formData.role));
+            }
           } else {
             navigate('/login');
           }
@@ -296,8 +344,54 @@ export default function RegisterPage() {
           </div>
 
           <div className="mb-8">
-            <h1 className="text-[2rem] font-bold text-slate-900 mb-2 tracking-tight">Đăng Ký Mới</h1>
-            <p className="text-slate-600 text-[15px]">Điền thông tin của bạn để thiết lập trang trại.</p>
+            {inviteTokenFromUrl ? (
+              inviteInfo.loading ? (
+                <div className="flex items-center gap-3 p-4 bg-blue-50/80 rounded-2xl border border-blue-200 mb-4">
+                  <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+                  <p className="text-sm text-blue-700 font-semibold">Đang xác thực lời mời...</p>
+                </div>
+              ) : inviteInfo.valid ? (
+                <div className="p-4 bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-2xl border-2 border-emerald-300 mb-6 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                      <Gift className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-extrabold text-emerald-800 leading-snug">
+                        🎉 Bạn được mời tham gia trang trại!
+                      </p>
+                      <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
+                        <strong>{inviteInfo.managerName}</strong> mời bạn vào trang trại <strong>&ldquo;{inviteInfo.farmName}&rdquo;</strong>{' '}
+                        với vai trò <span className={`font-bold px-1.5 py-0.5 rounded-md text-[10px] ${
+                          inviteInfo.role === 'FARMER'
+                            ? 'bg-emerald-200 text-emerald-800'
+                            : 'bg-cyan-200 text-cyan-800'
+                        }`}>{inviteInfo.role === 'FARMER' ? 'Nông Dân' : 'Kỹ Thuật Viên'}</span>.
+                      </p>
+                      <p className="text-[10px] text-emerald-600 mt-1">
+                        ✅ Sau khi đăng ký, bạn sẽ tự động tham gia trang trại này.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-red-50 rounded-2xl border border-red-200 mb-4 flex items-start gap-3">
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-red-700">Link mời không hợp lệ</p>
+                    <p className="text-xs text-red-600 mt-0.5">{inviteInfo.reason || 'Token đã hết hạn hoặc bị sai.'}</p>
+                  </div>
+                </div>
+              )
+            ) : null}
+            <h1 className="text-[2rem] font-bold text-slate-900 mb-2 tracking-tight">
+              {inviteTokenFromUrl && inviteInfo.valid ? 'Tạo Tài Khoản & Gia Nhập' : 'Đăng Ký Mới'}
+            </h1>
+            <p className="text-slate-600 text-[15px]">
+              {inviteTokenFromUrl && inviteInfo.valid
+                ? `Hoàn tất đăng ký để tham gia "${inviteInfo.farmName}".`
+                : 'Điền thông tin của bạn để thiết lập trang trại.'}
+            </p>
           </div>
 
           <form className="space-y-5" onSubmit={handleSubmit}>

@@ -121,6 +121,8 @@ export default function AccountSettings() {
   const [submittingProfile, setSubmittingProfile] = useState(false);
   const [submittingPassword, setSubmittingPassword] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [hasPassword, setHasPassword] = useState<boolean>(true);
+  const [isGoogleAccount, setIsGoogleAccount] = useState<boolean>(false);
 
   // State cho Modal cảnh báo thay đổi Role
   const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
@@ -152,6 +154,8 @@ export default function AccountSettings() {
       setProfile(nextProfile);
       setCurrentSavedRole(userRole);
       setAvatarPreview(data.avatarUrl || '');
+      setHasPassword(data.hasPassword ?? true);
+      setIsGoogleAccount(data.isGoogleAccount ?? false);
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       localStorage.setItem('user', JSON.stringify({ ...currentUser, ...nextProfile }));
     } catch (error) {
@@ -179,7 +183,7 @@ export default function AccountSettings() {
   };
 
   const validatePassword = () => {
-    if (!passwordForm.currentPassword.trim()) {
+    if (hasPassword && !passwordForm.currentPassword.trim()) {
       return 'Mật khẩu hiện tại là bắt buộc';
     }
     if (passwordForm.newPassword.length < 8) {
@@ -298,7 +302,7 @@ export default function AccountSettings() {
       const response = await apiFetch(`${apiUrl}/api/users/password`, {
         method: 'PATCH',
         body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
+          currentPassword: hasPassword ? passwordForm.currentPassword : undefined,
           newPassword: passwordForm.newPassword,
           confirmPassword: passwordForm.confirmPassword,
         }),
@@ -306,11 +310,12 @@ export default function AccountSettings() {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(Array.isArray(data.message) ? data.message[0] : data.message || 'Đổi mật khẩu thất bại');
+        throw new Error(Array.isArray(data.message) ? data.message[0] : data.message || (hasPassword ? 'Đổi mật khẩu thất bại' : 'Tạo mật khẩu thất bại'));
       }
 
       setPasswordForm(initialPasswordForm);
-      setFeedback({ type: 'success', message: data.message || 'Đổi mật khẩu thành công' });
+      setHasPassword(true);
+      setFeedback({ type: 'success', message: data.message || (hasPassword ? 'Đổi mật khẩu thành công' : 'Tạo mật khẩu mới thành công') });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Đã xảy ra lỗi';
       setFeedback({ type: 'error', message });
@@ -462,7 +467,14 @@ export default function AccountSettings() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-semibold text-slate-700">Email</label>
+                      {isGoogleAccount && (
+                        <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                          Tài khoản Google
+                        </span>
+                      )}
+                    </div>
                     <input
                       value={profile.email}
                       readOnly
@@ -598,29 +610,45 @@ export default function AccountSettings() {
             </form>
           ) : (
             <form className="space-y-6" onSubmit={handlePasswordSubmit}>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">Mật khẩu hiện tại</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword.current ? 'text' : 'password'}
-                      value={passwordForm.currentPassword}
-                      onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                      placeholder="Nhập mật khẩu hiện tại"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((current) => ({ ...current, current: !current.current }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    >
-                      {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+              {!hasPassword && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 text-xs text-blue-900 flex items-start gap-3 shadow-sm">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-blue-950 text-sm">Tài khoản đăng nhập Google</div>
+                    <p className="text-blue-800 leading-relaxed">
+                      Tài khoản của bạn hiện chưa có mật khẩu trực tiếp. Bạn chỉ cần nhập <strong>Mật khẩu mới</strong> và <strong>Xác nhận mật khẩu mới</strong> để hoàn tất thiết lập. Sau khi tạo thành công, hệ thống sẽ tự động gửi email thông báo xác nhận về hộp thư Gmail của bạn.
+                    </p>
                   </div>
                 </div>
+              )}
+
+              <div className="space-y-4">
+                {hasPassword && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">Mật khẩu hiện tại</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword.current ? 'text' : 'password'}
+                        value={passwordForm.currentPassword}
+                        onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        placeholder="Nhập mật khẩu hiện tại"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((current) => ({ ...current, current: !current.current }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">Mật khẩu mới</label>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    {hasPassword ? 'Mật khẩu mới' : 'Tạo mật khẩu mới'}
+                  </label>
                   <div className="relative">
                     <input
                       type={showPassword.next ? 'text' : 'password'}
@@ -632,7 +660,7 @@ export default function AccountSettings() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((current) => ({ ...current, next: !current.next }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       {showPassword.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -652,7 +680,7 @@ export default function AccountSettings() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((current) => ({ ...current, confirm: !current.confirm }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       {showPassword.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -674,11 +702,11 @@ export default function AccountSettings() {
               <div className="flex justify-end">
                 <button
                   disabled={submittingPassword}
-                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 shadow-sm"
                   type="submit"
                 >
                   {submittingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Đổi mật khẩu
+                  {hasPassword ? 'Đổi mật khẩu' : 'Tạo mật khẩu mới'}
                 </button>
               </div>
             </form>

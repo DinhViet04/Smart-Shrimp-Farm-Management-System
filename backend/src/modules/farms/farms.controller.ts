@@ -9,6 +9,8 @@ import {
   Query,
   UseGuards,
   Request,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FarmsService } from './farms.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
@@ -107,6 +109,28 @@ export class FarmsController {
     return this.farmsService.unassignStaff(
       id,
       userIdToUnassign,
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
+  /**
+   * POST /api/farms/:farmId/invite-by-email
+   * Manager mời nhân sự bằng email (2 luồng: đã có TK / chưa có TK)
+   */
+  @Post(':farmId/invite-by-email')
+  @Roles('FARM_MANAGER')
+  @HttpCode(HttpStatus.OK)
+  inviteByEmail(
+    @Param('farmId') farmId: string,
+    @Body('email') email: string,
+    @Body('role') role: 'FARMER' | 'TECHNICIAN',
+    @Request() req: any,
+  ) {
+    return this.farmsService.inviteStaffByEmail(
+      farmId,
+      email,
+      role,
       req.user.userId,
       req.user.role,
     );

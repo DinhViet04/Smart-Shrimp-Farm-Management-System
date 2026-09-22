@@ -36,4 +36,13 @@ export class RegisterDto {
     message: 'Vai trò phải là FARM_MANAGER, FARMER hoặc TECHNICIAN',
   })
   role?: Role;
+
+  /**
+   * JWT invite token từ link mời tham gia trang trại.
+   * Khi có token này, user sẽ được tự động join vào farm sau khi đăng ký.
+   */
+  @IsOptional()
+  @IsString()
+  inviteToken?: string;
 }
+

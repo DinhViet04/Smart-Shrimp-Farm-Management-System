@@ -4,17 +4,23 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
 import { FarmAccessService } from '../farm-access/farm-access.service.js';
+import { EmailService } from '../email/email.service.js';
 
 @Injectable()
 export class FarmsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(data: CreateFarmDto) {
@@ -272,6 +278,102 @@ export class FarmsService {
         },
       },
     });
+  }
+
+  /**
+   * Mời nhân sự bằng email.
+   * - Email đã tồn tại trong hệ thống với đúng role → add trực tiếp + gửi email thông báo
+   * - Email chưa tồn tại → tạo JWT invite token, gửi email mời đăng ký với link
+   */
+  async inviteStaffByEmail(
+    farmId: string,
+    email: string,
+    role: 'FARMER' | 'TECHNICIAN',
+    requesterId: string,
+    requesterRole: string,
+  ): Promise<{ status: 'assigned' | 'invited'; message: string; email: string }> {
+    // 1. Kiểm tra quyền quản lý farm
+    await this.farmAccess.assertCanManageFarm(
+      { userId: requesterId, role: requesterRole },
+      farmId,
+    );
+
+    // 2. Lấy thông tin farm + manager
+    const farm = await this.prisma.farm.findUnique({
+      where: { id: farmId },
+      include: { owner: { select: { id: true, fullName: true, email: true } } },
+    });
+    if (!farm) throw new NotFoundException('Không tìm thấy trang trại');
+
+    const managerName = farm.owner?.fullName ?? 'Quản lý trang trại';
+
+    // 3. Tìm user theo email
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+    });
+
+    // ── NHÁNH A: User đã tồn tại ──
+    if (existingUser) {
+      // Kiểm tra role phù hợp
+      if (existingUser.role !== role) {
+        throw new BadRequestException(
+          `Tài khoản này có vai trò ${existingUser.role}, không phải ${role}. Vui lòng kiểm tra lại.`,
+        );
+      }
+
+      // Upsert FarmStaff
+      await this.prisma.farmStaff.upsert({
+        where: { farmId_userId: { farmId, userId: existingUser.id } },
+        create: { farmId, userId: existingUser.id, role: existingUser.role, isActive: true },
+        update: { isActive: true, role: existingUser.role },
+      });
+
+      // Gửi email thông báo (fire & forget)
+      this.emailService.sendFarmInvitationExistingUser({
+        toEmail: existingUser.email,
+        toName: existingUser.fullName,
+        farmName: farm.name,
+        managerName,
+        role,
+      });
+
+      return {
+        status: 'assigned',
+        email: existingUser.email,
+        message: `Đã thêm ${existingUser.fullName} vào trang trại và gửi email thông báo.`,
+      };
+    }
+
+    // ── NHÁNH B: User chưa tồn tại ──
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+
+    // Tạo JWT invite token (7 ngày)
+    const inviteToken = await this.jwtService.signAsync(
+      { email, farmId, role, type: 'farm_invite' },
+      {
+        secret: this.configService.get<string>('JWT_SECRET'),
+        expiresIn: '7d',
+      },
+    );
+
+    const inviteLink = `${frontendUrl}/register?inviteToken=${inviteToken}`;
+
+    // Gửi email mời (fire & forget)
+    this.emailService.sendFarmInvitationNewUser({
+      toEmail: email,
+      farmName: farm.name,
+      managerName,
+      role,
+      inviteLink,
+      expiresInDays: 7,
+    });
+
+    return {
+      status: 'invited',
+      email,
+      message: `Đã gửi email mời tới ${email}. Người nhận cần đăng ký tài khoản để tham gia.`,
+    };
   }
 
   private async buildStaffAssignments(farmId: string, staffIds: string[]) {

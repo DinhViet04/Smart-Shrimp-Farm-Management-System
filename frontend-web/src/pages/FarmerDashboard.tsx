@@ -7,7 +7,6 @@ import {
   ClipboardList, 
   Settings, 
   LogOut, 
-  Bell, 
   Search, 
   Leaf,
   Activity,
@@ -17,8 +16,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-// Import AccountSettings from existing component so user can still edit profile
 import AccountSettings from '../components/AccountSettings';
+import NotificationDropdown from '../components/NotificationDropdown';
 import InventoryManagement from '../features/inventory/InventoryManagement';
 import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
 import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
@@ -153,10 +152,7 @@ export default function FarmerDashboard() {
                 className="pl-10 pr-4 py-2 bg-stone-100 border-transparent rounded-full text-sm focus:bg-white focus:border-teal-300 focus:ring-2 focus:ring-teal-200 outline-none transition-all w-64 text-stone-700 placeholder-stone-400 font-medium"
               />
             </div>
-            <button className="relative p-2 text-stone-400 hover:text-teal-600 transition-colors bg-stone-100 rounded-full hover:bg-teal-50">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
-            </button>
+            <NotificationDropdown role="FARMER" themeColor="teal" onNavigateTab={(tab) => setActiveTab(tab)} />
           </div>
         </header>
 

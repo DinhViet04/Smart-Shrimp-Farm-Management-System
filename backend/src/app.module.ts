@@ -24,11 +24,15 @@ import { FeedingLogsModule } from './modules/feeding-logs/feeding-logs.module.js
 import { WeatherModule } from './modules/weather/weather.module.js';
 import { ShrimpSizeModule } from './modules/shrimp-size/shrimp-size.module.js';
 import { SurvivalRateModule } from './modules/survival-rate/survival-rate.module.js';
+import { EmailModule } from './modules/email/email.module.js';
 
 @Module({
   imports: [
     // Global config — loads .env automatically
     ConfigModule.forRoot({ isGlobal: true }),
+
+    // Global email module
+    EmailModule,
 
     // Database
     PrismaModule,

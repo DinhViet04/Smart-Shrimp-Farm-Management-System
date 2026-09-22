@@ -11,8 +11,6 @@ import {
   Trash2,
   Edit2,
   Save,
-  Check,
-  Ban,
   Loader2,
 } from 'lucide-react';
 import { farmService } from '../../services/farm.service';

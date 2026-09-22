@@ -10,9 +10,8 @@ import {
   Droplets,
   HeartPulse,
   AlertTriangle,
-  Scale,
-  Activity,
   Target,
+  TrendingUp,
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
@@ -24,11 +23,13 @@ import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 import BiomassDashboard from '../features/biomass/BiomassDashboard';
 import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
 import FcrDashboard from '../features/fcr/FcrDashboard';
-import { PieChart } from 'lucide-react';
+
+import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -58,10 +59,8 @@ export default function TechnicianDashboard() {
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
-    { name: 'Theo dõi kích cỡ', icon: <Scale className="w-5 h-5" /> },
-    { name: 'Sinh khối ao', icon: <PieChart className="w-5 h-5" /> },
+    { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5" /> },
     { name: 'Phân tích FCR', icon: <Target className="w-5 h-5 text-indigo-600" /> },
-    { name: 'Theo dõi tỷ lệ sống', icon: <Activity className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -69,8 +68,8 @@ export default function TechnicianDashboard() {
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       {/* Sidebar - Technician Theme (Indigo) */}
-      <aside className="w-72 bg-white border-r border-indigo-100 flex flex-col shadow-sm z-10">
-        <div className="h-20 flex items-center px-8 border-b border-indigo-50">
+      <aside className="w-72 bg-white border-r border-indigo-100 flex flex-col shadow-sm z-10 h-screen max-h-screen">
+        <div className="h-20 flex items-center px-8 border-b border-indigo-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center shadow-md">
               <Wrench className="w-6 h-6 text-white" />
@@ -79,16 +78,17 @@ export default function TechnicianDashboard() {
           </div>
         </div>
         
-        <div className="px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0 custom-scrollbar">
           <p className="text-xs font-bold text-indigo-600/70 uppercase tracking-wider mb-4">Điều hướng</p>
-          <nav className="space-y-2">
+          <nav className="space-y-1.5">
             {navItems.map((item) => (
               <button
                 key={item.name}
+                type="button"
                 onClick={() => setActiveTab(item.name)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-300 ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                   activeTab === item.name 
-                    ? 'bg-indigo-50 text-indigo-700 font-bold shadow-sm border border-indigo-200/60 translate-x-1' 
+                    ? 'bg-indigo-50 text-indigo-700 font-bold shadow-xs border border-indigo-200/60 translate-x-1' 
                     : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-700 font-medium'
                 }`}
               >
@@ -101,7 +101,7 @@ export default function TechnicianDashboard() {
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-indigo-50">
+        <div className="p-6 border-t border-indigo-50 flex-shrink-0 bg-white">
           <div className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100 flex items-center gap-3 mb-4">
             {currentUser?.avatarUrl ? (
               <img 
@@ -173,21 +173,19 @@ export default function TechnicianDashboard() {
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <ShrimpHealthDashboard />
             </div>
-          ) : activeTab === 'Theo dõi kích cỡ' ? (
+          ) : activeTab === 'Theo dõi tăng trưởng' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-              <ShrimpSizeDashboard />
-            </div>
-          ) : activeTab === 'Sinh khối ao' ? (
-            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-              <BiomassDashboard />
+              {growthSubTab === 'Theo dõi kích cỡ' ? (
+                <ShrimpSizeDashboard viewOnly={false} onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+              ) : growthSubTab === 'Sinh khối ao' ? (
+                <BiomassDashboard onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+              ) : (
+                <SurvivalRateDashboard viewOnly={true} onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+              )}
             </div>
           ) : activeTab === 'Phân tích FCR' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <FcrDashboard />
-            </div>
-          ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
-            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-              <SurvivalRateDashboard viewOnly={true} />
             </div>
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">

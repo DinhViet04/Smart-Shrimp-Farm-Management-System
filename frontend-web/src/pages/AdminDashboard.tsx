@@ -249,17 +249,18 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden selection:bg-blue-200">
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-20'} flex-shrink-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 shadow-sm z-20`}
+        className={`${sidebarOpen ? 'w-64' : 'w-20'} flex-shrink-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 shadow-sm z-20 h-screen max-h-screen`}
       >
         {/* Logo */}
-        <div className="flex items-center h-20 px-6 border-b border-slate-100 gap-4">
+        <div className="flex items-center h-20 px-6 border-b border-slate-100 gap-4 flex-shrink-0">
           <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm flex-shrink-0 border border-slate-200" />
           {sidebarOpen && <span className="font-bold text-slate-800 text-xl tracking-tight whitespace-nowrap">SSFM Admin</span>}
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto">
+        <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto min-h-0 custom-scrollbar">
           {navItems.map((item) => (
             <a
               key={item.label}
@@ -294,7 +295,7 @@ export default function AdminDashboard() {
         </nav>
 
         {/* Logout */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex-shrink-0">
           <button
             onClick={handleLogout}
             className={`flex items-center justify-center gap-3 w-full px-4 py-3 rounded-xl text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-100 border border-transparent transition-all text-sm font-semibold`}

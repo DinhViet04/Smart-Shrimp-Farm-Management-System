@@ -84,9 +84,21 @@ const getDaysDifference = (startDateStr: string, endDateStr: string): number => 
 interface CropManagementProps {
   initialEditCrop?: Crop | null;
   onClearEditCrop?: () => void;
+  initialCreateCropConfig?: {
+    farmId?: string;
+    pondId?: string;
+  } | null;
+  onClearCreateCropConfig?: () => void;
+  onNavigateToGrowth?: (config: { farmId: string; pondId: string; cropId?: string }) => void;
 }
 
-export default function CropManagement({ initialEditCrop, onClearEditCrop }: CropManagementProps = {}) {
+export default function CropManagement({ 
+  initialEditCrop, 
+  onClearEditCrop,
+  initialCreateCropConfig,
+  onClearCreateCropConfig,
+  onNavigateToGrowth,
+}: CropManagementProps = {}) {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -320,6 +332,13 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
     }
   }, [initialEditCrop]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (initialCreateCropConfig && ponds.length > 0) {
+      openAddModal(initialCreateCropConfig.farmId, initialCreateCropConfig.pondId);
+      onClearCreateCropConfig?.();
+    }
+  }, [initialCreateCropConfig, ponds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Grouped Farms Calculation ──────────────────────────────────────────────
   const groupedFarms = useMemo(() => {
     const searchLower = search.trim().toLowerCase();
@@ -387,15 +406,23 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
   );
 
   // ── Modal Handlers ──────────────────────────────────────────────────────────
-  const openAddModal = (defaultFarmId?: string) => {
+  const openAddModal = (defaultFarmId?: string, defaultPondId?: string) => {
     setEditingCropId(null);
     const today = new Date().toISOString().slice(0, 10);
     const defaultHarvest = addDaysToDateString(today, 95);
     const defaultTransfer = addDaysToDateString(today, 25);
 
-    const chosenFarmId = defaultFarmId || (farms.length > 0 ? farms[0].id : '');
+    let chosenFarmId = defaultFarmId;
+    if (!chosenFarmId && defaultPondId) {
+      const foundPond = ponds.find((p) => p.id === defaultPondId);
+      if (foundPond) chosenFarmId = foundPond.farmId;
+    }
+    if (!chosenFarmId) {
+      chosenFarmId = farms.length > 0 ? farms[0].id : '';
+    }
+
     const matchingPonds = chosenFarmId ? ponds.filter((p) => p.farmId === chosenFarmId) : ponds;
-    const chosenPondId = matchingPonds.length > 0 ? matchingPonds[0].id : (ponds.length > 0 ? ponds[0].id : '');
+    const chosenPondId = defaultPondId || (matchingPonds.length > 0 ? matchingPonds[0].id : (ponds.length > 0 ? ponds[0].id : ''));
 
     setFormData({
       farmId: chosenFarmId,
@@ -1137,6 +1164,24 @@ export default function CropManagement({ initialEditCrop, onClearEditCrop }: Cro
                               {/* Card Footer Actions */}
                               <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
+                                  {crop.status === 'ACTIVE' && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onNavigateToGrowth?.({
+                                          farmId: farmGroup.id,
+                                          pondId: crop.pondId || (crop.pond as any)?.id,
+                                          cropId: crop.id,
+                                        });
+                                      }}
+                                      className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
+                                      title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
+                                    >
+                                      <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
+                                    </button>
+                                  )}
+
                                   {canSplitCrop(crop) && (
                                     <button
                                       onClick={(e) => {

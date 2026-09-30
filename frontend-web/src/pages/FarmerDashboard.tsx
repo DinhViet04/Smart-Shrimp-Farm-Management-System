@@ -14,6 +14,7 @@ import {
   Package,
   HeartPulse,
   AlertTriangle,
+  TrendingUp,
 } from 'lucide-react';
 
 import AccountSettings from '../components/AccountSettings';
@@ -24,17 +25,22 @@ import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboa
 import PondCropDashboard from '../components/PondCropDashboard';
 import FeedingLogDashboard from '../features/feeding-logs/FeedingLogDashboard';
 import IncidentDashboard from '../features/incidents/IncidentDashboard';
+import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
+import BiomassDashboard from '../features/biomass/BiomassDashboard';
 import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
+import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
   const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   const handleNavigateToGrowth = (config: { farmId: string; pondId: string; cropId?: string }) => {
     setGrowthConfig(config);
-    setActiveTab('Theo dõi tỷ lệ sống');
+    setGrowthSubTab('Theo dõi kích cỡ');
+    setActiveTab('Theo dõi tăng trưởng');
   };
 
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function FarmerDashboard() {
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
-    { name: 'Theo dõi tỷ lệ sống', icon: <Activity className="w-5 h-5 text-teal-600" /> },
+    { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5 text-teal-600" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
@@ -282,14 +288,38 @@ export default function FarmerDashboard() {
              <PondCropDashboard onNavigateToGrowth={handleNavigateToGrowth} />
           ) : activeTab === 'Sức khỏe tôm' ? (
              <ShrimpHealthDashboard viewOnly={true} />
-          ) : activeTab === 'Theo dõi tỷ lệ sống' ? (
+          ) : activeTab === 'Theo dõi tăng trưởng' ? (
              <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-               <SurvivalRateDashboard 
-                 viewOnly={true} 
-                 initialFarmId={growthConfig?.farmId}
-                 initialPondId={growthConfig?.pondId}
-                 initialCropId={growthConfig?.cropId}
-               />
+               {growthSubTab === 'Theo dõi kích cỡ' ? (
+                 <ShrimpSizeDashboard 
+                   viewOnly={true} 
+                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                   initialFarmId={growthConfig?.farmId}
+                   initialPondId={growthConfig?.pondId}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                 />
+               ) : growthSubTab === 'Sinh khối ao' ? (
+                 <BiomassDashboard 
+                   viewOnly={true}
+                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                   initialFarmId={growthConfig?.farmId}
+                   initialPondId={growthConfig?.pondId}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                 />
+               ) : (
+                 <SurvivalRateDashboard 
+                   viewOnly={true} 
+                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                   initialFarmId={growthConfig?.farmId}
+                   initialPondId={growthConfig?.pondId}
+                   initialCropId={growthConfig?.cropId}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                   onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
+                 />
+               )}
              </div>
           ) : activeTab === 'Báo cáo sự cố' ? (
              <IncidentDashboard role="FARMER" />

@@ -55,7 +55,7 @@ export default function RegisterPage() {
     verifyInviteToken(inviteTokenFromUrl).then(result => {
       if (cancelled) return;
       if (result.valid) {
-        setInviteInfo({ valid: true, loading: false, ...result });
+        setInviteInfo({ loading: false, ...result });
         // Pre-fill email và role từ token
         setFormData(prev => ({
           ...prev,

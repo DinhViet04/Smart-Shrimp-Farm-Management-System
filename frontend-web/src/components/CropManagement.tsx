@@ -92,8 +92,8 @@ interface CropManagementProps {
   onNavigateToGrowth?: (config: { farmId: string; pondId: string; cropId?: string }) => void;
 }
 
-export default function CropManagement({ 
-  initialEditCrop, 
+export default function CropManagement({
+  initialEditCrop,
   onClearEditCrop,
   initialCreateCropConfig,
   onClearCreateCropConfig,
@@ -661,11 +661,10 @@ export default function CropManagement({
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${
-            toast.type === 'success'
+          className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${toast.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
               : 'bg-red-50 border-red-200 text-red-700'
-          }`}
+            }`}
         >
           {toast.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5" />
@@ -765,11 +764,10 @@ export default function CropManagement({
         <div className="flex bg-slate-100/80 p-1.5 rounded-2xl w-fit">
           <button
             onClick={() => setActiveView('active')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              activeView === 'active'
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeView === 'active'
                 ? 'bg-white text-blue-600 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <Waves className="w-3.5 h-3.5" />
             Đang nuôi (Active)
@@ -780,11 +778,10 @@ export default function CropManagement({
 
           <button
             onClick={() => setActiveView('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              activeView === 'history'
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeView === 'history'
                 ? 'bg-white text-slate-800 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <History className="w-3.5 h-3.5" />
             Lịch sử vụ nuôi
@@ -871,27 +868,24 @@ export default function CropManagement({
 
                       {/* Status badge */}
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-bold rounded-full border ${
-                          farmGroup.status === 'ACTIVE'
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-bold rounded-full border ${farmGroup.status === 'ACTIVE'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
                             : 'bg-rose-50 text-rose-700 border-rose-200/80'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            farmGroup.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
-                          }`}
+                          className={`w-1.5 h-1.5 rounded-full ${farmGroup.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                            }`}
                         />
                         {farmGroup.status === 'ACTIVE' ? 'Hoạt động' : 'Tạm ngưng'}
                       </span>
 
                       {/* Farming Model Badge */}
                       <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-0.5 text-xs font-bold rounded-full border ${
-                          farmGroup.farmingModel === 'TRADITIONAL'
+                        className={`inline-flex items-center gap-1.5 px-3 py-0.5 text-xs font-bold rounded-full border ${farmGroup.farmingModel === 'TRADITIONAL'
                             ? 'bg-amber-50 text-amber-700 border-amber-200/80'
                             : 'bg-blue-50 text-blue-700 border-blue-200/80'
-                        }`}
+                          }`}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         {farmGroup.farmingModel === 'TRADITIONAL'
@@ -1024,11 +1018,10 @@ export default function CropManagement({
 
                                     {/* Stage Badge */}
                                     <span
-                                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border ${
-                                        crop.stage === 'NURSERY'
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border ${crop.stage === 'NURSERY'
                                           ? 'bg-purple-50 text-purple-700 border-purple-200'
                                           : 'bg-blue-50 text-blue-700 border-blue-200'
-                                      }`}
+                                        }`}
                                     >
                                       <span>{crop.stage === 'NURSERY' ? '🌱' : '🦐'}</span>
                                       {crop.stage === 'NURSERY' ? 'Ao Ương dưỡng' : 'Nuôi Thương phẩm'}
@@ -1240,48 +1233,73 @@ export default function CropManagement({
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-5xl xl:max-w-6xl shadow-2xl overflow-hidden border border-slate-200/80 max-h-[90vh] flex flex-col">
-            
+
             {/* ── Header ─────────────────────────────────────────── */}
-            <div className="px-7 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 flex-shrink-0">
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 flex-shrink-0">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-lg font-bold text-slate-800">
-                      {editingCropId ? 'Cập Nhật Vụ Nuôi' : 'Tạo Vụ Nuôi Mới'}
-                    </h3>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                      formData.stage === 'NURSERY' 
-                        ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                        : 'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}>
-                      {formData.stage === 'NURSERY' ? 'Ương Dưỡng' : 'Thương Phẩm'}
-                    </span>
+            {(() => {
+              const model = farms.find(f => f.id === formData.farmId)?.farmingModel;
+              const isTraditional = model === 'TRADITIONAL';
+              const gradientClass = 'from-blue-600 via-indigo-600 to-cyan-500';
+              return (
+                <>
+                  <div className={`h-1.5 bg-gradient-to-r ${gradientClass}`} />
+                  <div className="px-7 py-4 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20 text-white flex items-center justify-center shadow-md flex-shrink-0">
+                        {isTraditional ? <Sparkles className="w-5 h-5" /> : <Waves className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-800 tracking-tight">
+                          {editingCropId ? 'Cập Nhật Vụ Nuôi' : 'Tạo Vụ Nuôi Mới'}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                          Cấu hình vị trí ao, số lượng giống và chỉ tiêu kỹ thuật vụ nuôi
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="p-2.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer border border-transparent hover:border-slate-200"
+                      title="Đóng"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Cấu hình vị trí ao, số lượng giống và chỉ tiêu kỹ thuật vụ nuôi
-                  </p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setShowModal(false)} 
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Đóng"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                </>
+              );
+            })()}
 
             {/* ── Form Body (Spacious Perfectly Symmetrical 2-Column Grid) ──────── */}
             <form id="cropForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 sm:p-7 bg-slate-50/40">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                
+
                 {/* ── CỘT TRÁI: Vị trí ao & Thả giống ────── */}
                 <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4 flex flex-col justify-between">
                   <div className="space-y-4">
+                    {(() => {
+                      const model = farms.find(f => f.id === formData.farmId)?.farmingModel;
+                      if (!model) return null;
+                      
+                      const isTraditional = model === 'TRADITIONAL';
+                      const label = isTraditional ? 'Mô Hình Truyền Thống' : 'Mô Hình Công Nghệ Cao';
+                      const subtitle = isTraditional
+                        ? 'Nuôi thương phẩm trực tiếp · Không qua giai đoạn ương'
+                        : 'Hỗ trợ ương dưỡng & thương phẩm · Tách ao linh hoạt';
+
+                      return (
+                        <div className={`p-3 rounded-2xl border bg-gradient-to-r from-blue-50 to-indigo-50/80 border-blue-200/70 flex items-center gap-3`}>
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/25 shadow-md flex items-center justify-center flex-shrink-0">
+                            {isTraditional
+                              ? <Sparkles className="w-4.5 h-4.5 text-white" />
+                              : <Target className="w-4.5 h-4.5 text-white" />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-black tracking-tight text-blue-800">{label}</p>
+                            <p className="text-[11px] font-medium text-blue-600/80">{subtitle}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
                       <FileText className="w-4.5 h-4.5 text-blue-600" />
                       <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
@@ -1303,10 +1321,12 @@ export default function CropManagement({
                             onChange={(e) => {
                               const newFarmId = e.target.value;
                               const relatedPonds = ponds.filter(p => p.farmId === newFarmId);
-                              setFormData({ 
-                                ...formData, 
-                                farmId: newFarmId, 
-                                pondId: relatedPonds.length > 0 ? relatedPonds[0].id : '' 
+                              const selectedFarm = farms.find(f => f.id === newFarmId);
+                              setFormData({
+                                ...formData,
+                                farmId: newFarmId,
+                                pondId: relatedPonds.length > 0 ? relatedPonds[0].id : '',
+                                stage: selectedFarm?.farmingModel === 'TRADITIONAL' ? 'COMMERCIAL' : formData.stage
                               });
                             }}
                             className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer pr-8 disabled:opacity-60"
@@ -1357,49 +1377,49 @@ export default function CropManagement({
                       </div>
                     </div>
 
-                    {/* Hàng 2: Giai đoạn nuôi */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        Giai đoạn nuôi <span className="text-red-500">*</span>
-                      </label>
-                      <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-slate-100/80 rounded-xl border border-slate-200/80">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              stage: 'NURSERY',
-                              expectedTransferDate: prev.expectedTransferDate || (prev.startDate ? addDaysToDateString(prev.startDate, 25) : ''),
-                            }));
-                          }}
-                          className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            formData.stage === 'NURSERY'
-                              ? 'bg-purple-600 text-white shadow-sm'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-                          }`}
-                        >
-                          <span>🌱</span> Ương Dưỡng
-                        </button>
-                        
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              stage: 'COMMERCIAL',
-                              expectedHarvestDate: prev.expectedHarvestDate || (prev.startDate ? addDaysToDateString(prev.startDate, 95) : ''),
-                            }));
-                          }}
-                          className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            formData.stage === 'COMMERCIAL'
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-                          }`}
-                        >
-                          <span>🦐</span> Thương Phẩm
-                        </button>
+                    {/* Hàng 2: Giai đoạn nuôi (Ẩn nếu là mô hình truyền thống) */}
+                    {farms.find(f => f.id === formData.farmId)?.farmingModel !== 'TRADITIONAL' && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Giai đoạn nuôi <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-slate-100/80 rounded-xl border border-slate-200/80">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                stage: 'NURSERY',
+                                expectedTransferDate: prev.expectedTransferDate || (prev.startDate ? addDaysToDateString(prev.startDate, 25) : ''),
+                              }));
+                            }}
+                            className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.stage === 'NURSERY'
+                                ? 'bg-purple-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                              }`}
+                          >
+                            <span>🌱</span> Ương Dưỡng
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                stage: 'COMMERCIAL',
+                                expectedHarvestDate: prev.expectedHarvestDate || (prev.startDate ? addDaysToDateString(prev.startDate, 95) : ''),
+                              }));
+                            }}
+                            className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.stage === 'COMMERCIAL'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                              }`}
+                          >
+                            <span>🦐</span> Thương Phẩm
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Hàng 3: Ngày thả giống & Trạng thái */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -1454,11 +1474,10 @@ export default function CropManagement({
                             placeholder="100000"
                             value={formData.initialShrimpCount}
                             onChange={(e) => setFormData({ ...formData, initialShrimpCount: e.target.value })}
-                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none pr-12 ${
-                              formErrors.initialShrimpCount
+                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none pr-12 ${formErrors.initialShrimpCount
                                 ? 'border-red-400 focus:border-red-500'
                                 : 'border-slate-200 focus:bg-white focus:border-blue-500'
-                            }`}
+                              }`}
                           />
                           <span className="text-xs font-bold text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                             con
@@ -1609,22 +1628,20 @@ export default function CropManagement({
                             type="date"
                             value={formData.expectedTransferDate}
                             onChange={(e) => setFormData((prev) => ({ ...prev, expectedTransferDate: e.target.value }))}
-                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white ${
-                              formErrors.expectedTransferDate
+                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white ${formErrors.expectedTransferDate
                                 ? 'border-red-400 focus:border-red-500'
                                 : 'border-slate-200 focus:border-purple-500'
-                            }`}
+                              }`}
                           />
                         ) : (
                           <input
                             type="date"
                             value={formData.expectedHarvestDate}
                             onChange={(e) => handleHarvestDateChange(e.target.value)}
-                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white ${
-                              formErrors.expectedHarvestDate
+                            className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white ${formErrors.expectedHarvestDate
                                 ? 'border-red-400 focus:border-red-500'
                                 : 'border-slate-200 focus:border-blue-500'
-                            }`}
+                              }`}
                           />
                         )}
                         {formData.stage === 'NURSERY' && formErrors.expectedTransferDate && (
@@ -1683,38 +1700,41 @@ export default function CropManagement({
             </form>
 
             {/* ── Fixed Footer ────────────────────────────────────── */}
-            <div className="px-7 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-white flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                disabled={saving}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors cursor-pointer"
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                form="cropForm"
-                disabled={saving || densityAssessment.isBlocked}
-                className={`px-6 py-2.5 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer ${
-                  densityAssessment.isBlocked
-                    ? 'bg-slate-300 cursor-not-allowed shadow-none'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20'
-                }`}
-              >
-                {saving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    {editingCropId ? 'Lưu Thay Đổi' : 'Tạo Vụ Nuôi Mới'}
-                  </>
-                )}
-              </button>
-            </div>
+            {(() => {
+              const submitGradient = densityAssessment.isBlocked
+                ? 'bg-slate-300 cursor-not-allowed shadow-none'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/20';
+              return (
+                <div className="px-7 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-white flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    disabled={saving}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    form="cropForm"
+                    disabled={saving || densityAssessment.isBlocked}
+                    className={`px-6 py-2.5 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer ${submitGradient}`}
+                  >
+                    {saving ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        {editingCropId ? 'Lưu Thay Đổi' : 'Tạo Vụ Nuôi Mới'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })()}
 
           </div>
         </div>

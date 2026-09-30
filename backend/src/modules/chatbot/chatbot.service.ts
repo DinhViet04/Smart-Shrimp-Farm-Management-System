@@ -195,45 +195,57 @@ export class ChatbotService implements OnModuleInit {
     return { message: 'Đã xóa tài liệu và dữ liệu vector chunks liên quan.' };
   }
 
-  // ── 4. RAG RETRIEVAL & CHATGPT GENERATION (OpenAI gpt-4o-mini) ──────────────
+  // ── 3.5. SIMILARITY SEARCH ───────────────────────────────────────────────
+  private async searchSimilarChunks(questionEmbedding: number[], topK = 3): Promise<ChunkMatch[]> {
+    try {
+      const chunks = await this.prisma.knowledgeChunk.findMany({
+        include: {
+          document: {
+            select: { title: true },
+          },
+        },
+      });
+
+      const scoredChunks: ChunkMatch[] = chunks.map((chunk) => {
+        let chunkEmbedding: number[] = [];
+        if (Array.isArray(chunk.embedding)) {
+          chunkEmbedding = chunk.embedding as number[];
+        } else if (typeof chunk.embedding === 'string') {
+          try {
+            chunkEmbedding = JSON.parse(chunk.embedding);
+          } catch {
+            chunkEmbedding = [];
+          }
+        }
+
+        const score = this.cosineSimilarity(questionEmbedding, chunkEmbedding);
+        return {
+          documentTitle: chunk.document?.title || 'Tài liệu nuôi tôm',
+          chunkIndex: chunk.chunkIndex,
+          content: chunk.content,
+          score: score,
+        };
+      });
+
+      scoredChunks.sort((a, b) => b.score - a.score);
+      return scoredChunks.slice(0, topK);
+    } catch (err) {
+      this.logger.error('Error searching similar chunks:', err);
+      return [];
+    }
+  }
+
+  // ── 4. RAG RETRIEVAL & CHATGPT GENERATION (Python AI Service + OpenAI) ──────
   async ask(dto: AskChatbotDto, currentUser?: any) {
     const question = dto.question.trim();
     if (!question) {
       return { answer: 'Vui lòng nhập câu hỏi của bạn.' };
     }
 
-    // 1. Embedding câu hỏi
-    const questionEmbedding = await this.getEmbedding(question);
-
-    // 2. Tìm kiếm Top-K chunks tương đồng nhất
-    const allChunks = await this.prisma.knowledgeChunk.findMany({
-      include: { document: true },
-    });
-
-    const matches: ChunkMatch[] = [];
-
-    for (const chunk of allChunks) {
-      if (!chunk.embedding) continue;
-      const chunkVector = Array.isArray(chunk.embedding) ? (chunk.embedding as number[]) : [];
-      if (chunkVector.length === 0) continue;
-
-      const score = this.cosineSimilarity(questionEmbedding, chunkVector);
-      if (score > 0.15) {
-        matches.push({
-          documentTitle: chunk.document.title,
-          chunkIndex: chunk.chunkIndex,
-          content: chunk.content,
-          score: Math.round(score * 100) / 100,
-        });
-      }
-    }
-
-    matches.sort((a, b) => b.score - a.score);
-    const topChunks = matches.slice(0, 3);
-
-    // 3. Nếu người dùng hỏi về ao cụ thể, lấy dữ liệu ao thực tế
-    let pondRealtimeContext = '';
+    // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
     let targetPondName = '';
+    let pondContextPayload: any = null;
+    let pondRealtimeContext = '';
 
     if (dto.pondId) {
       try {
@@ -251,9 +263,36 @@ export class ChatbotService implements OnModuleInit {
           const latestWater = pond.waterQualityRecords[0];
           const activeCrop = pond.crops[0];
 
+          let docDays = 0;
+          if (activeCrop) {
+            const start = new Date(activeCrop.startDate);
+            const now = new Date();
+            docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+          }
+
+          pondContextPayload = {
+            pondId: pond.id,
+            pondName: pond.name,
+            farmName: pond.farm?.name || '',
+            areaSize: pond.areaSize,
+            depth: pond.depth,
+            doc: activeCrop ? docDays : null,
+            initialShrimpCount: activeCrop?.initialShrimpCount || null,
+            stage: activeCrop?.stage || null,
+            latestWaterQuality: latestWater ? {
+              ph: latestWater.ph,
+              dissolvedOxygen: latestWater.dissolvedOxygen,
+              salinity: latestWater.salinity,
+              temperature: latestWater.temperature,
+              nh3: latestWater.nh3,
+              no2: latestWater.no2,
+              alkalinity: (latestWater as any).alkalinity || null,
+            } : null,
+          };
+
           pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
             `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
-            (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')}, Số lượng giống: ${activeCrop.initialShrimpCount.toLocaleString()} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
+            (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${activeCrop.initialShrimpCount.toLocaleString()} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
             (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
         }
       } catch (e) {
@@ -261,13 +300,43 @@ export class ChatbotService implements OnModuleInit {
       }
     }
 
-    // 4. Sinh câu trả lời với OpenAI ChatGPT (gpt-4o-mini)
+    // 2. Gọi sang Python AI Microservice (FastAPI on :8000)
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    try {
+      const response = await fetch(`${aiServiceUrl}/api/v1/chat/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          pondId: dto.pondId,
+          pondContext: pondContextPayload,
+        }),
+        signal: AbortSignal.timeout(12000), // Timeout sau 12 giây
+      });
+
+      if (response.ok) {
+        const aiData = await response.json();
+        return {
+          answer: aiData.answer,
+          sources: aiData.sources || [],
+          pondName: targetPondName || aiData.pondName || undefined,
+          recommendations: aiData.recommendations || [],
+          poweredBy: 'Python AI Service (FastAPI + ChromaDB)',
+        };
+      }
+    } catch (pythonErr: any) {
+      this.logger.warn('Python AI Service is currently unreachable, using built-in NestJS RAG fallback:', pythonErr?.message || pythonErr);
+    }
+
+    // 3. Fallback: Embedding câu hỏi & Cosine search nội bộ nếu Python Service chưa chạy
+    const questionEmbedding = await this.getEmbedding(question);
+    const topChunks = await this.searchSimilarChunks(questionEmbedding, 3);
     let answerText = '';
 
     if (this.openai && this.apiKey) {
       try {
         const contextDocuments = topChunks.length > 0
-          ? topChunks.map((c, i) => `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`).join('\n\n')
+          ? topChunks.map((c: ChunkMatch, i: number) => `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`).join('\n\n')
           : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
 
         const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
@@ -303,7 +372,7 @@ YÊU CẦU TRẢ LỜI:
 
     return {
       answer: answerText,
-      sources: topChunks.map(c => ({
+      sources: topChunks.map((c: ChunkMatch) => ({
         title: c.documentTitle,
         chunkIndex: c.chunkIndex,
         snippet: c.content.slice(0, 160) + '...',

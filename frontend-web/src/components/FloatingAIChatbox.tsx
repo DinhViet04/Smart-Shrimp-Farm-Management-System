@@ -1,72 +1,115 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
-  Bot, 
-  Sparkles, 
   X, 
-  SendHorizontal, 
-  RotateCcw, 
-  Lightbulb, 
-  Waves, 
-  Droplets, 
-  Scale, 
-  Activity,
-  BookOpen,
-  Plus,
-  Trash2,
-  FileText,
-  CheckCircle2,
-  Database
+  ArrowUp, 
+  SquarePen, 
+  History, 
+  Trash2, 
+  MessageSquare, 
+  Maximize2, 
+  Minimize2, 
+  Copy, 
+  Check, 
+  FileCheck2, 
+  Compass, 
+  Search, 
+  MessageCircle,
+  Calendar,
+  Layers
 } from 'lucide-react';
-import { chatbotService, type ChatbotSource, type KnowledgeDoc } from '../services/chatbot.service';
+import { chatbotService, type ChatbotSource } from '../services/chatbot.service';
 
 interface ChatMessage {
   id: string;
   sender: 'ai' | 'user';
   text: string;
   time: string;
-  suggestions?: string[];
   sources?: ChatbotSource[];
   pondName?: string;
 }
 
-const QUICK_PROMPTS = [
-  { icon: Droplets, label: 'Chỉ số pH & Oxy tối ưu?' },
-  { icon: Waves, label: 'Mật độ thả giống tôm thẻ?' },
-  { icon: Scale, label: 'Cách tính và tối ưu FCR?' },
-  { icon: Activity, label: 'Xử lý khí độc NH3 & NO2 cao?' },
-];
+interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}
+
+const STORAGE_KEY = 'ssfm_chatgpt_style_sessions_v2';
+const ACTIVE_SESSION_KEY = 'ssfm_chatgpt_active_session_id_v2';
+
+const createNewSession = (title = 'Cuộc trò chuyện mới'): ChatSession => {
+  const now = new Date();
+  return {
+    id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    title,
+    createdAt: now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    updatedAt: now.toISOString(),
+    messages: [
+      {
+        id: 'welcome-chatgpt',
+        sender: 'ai',
+        text: `Tôi có thể giúp gì cho vụ nuôi tôm của bạn hôm nay?`,
+        time: now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      },
+    ],
+  };
+};
 
 export default function FloatingAIChatbox() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showNotificationBadge, setShowNotificationBadge] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'knowledge'>('chat');
+  
+  // Tab điều hướng riêng biệt: 'chat' hoặc 'history'
+  const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
-  // Quản lý tài liệu RAG
-  const [documents, setDocuments] = useState<KnowledgeDoc[]>([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
-  const [showAddDocModal, setShowAddDocModal] = useState(false);
-  const [newDocData, setNewDocData] = useState({
-    title: '',
-    category: 'GENERAL',
-    content: '',
+  // Khởi tạo sessions từ localStorage
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error('Lỗi khi đọc session từ localStorage:', e);
+    }
+    return [createNewSession()];
   });
-  const [docSaving, setDocSaving] = useState(false);
-  const [docMessage, setDocMessage] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome-1',
-      sender: 'ai',
-      text: `Xin chào! Tôi là **Trợ Lý Kỹ Thuật Nuôi Tôm RAG 4.0** 🦐\n\nTôi được trang bị **kho tài liệu kỹ thuật nuôi tôm chuyên sâu** và có khả năng đọc dữ liệu môi trường thực tế tại trang trại của bạn. Hãy hỏi tôi về các quy chuẩn nước, cách kéo giảm FCR, xử lý bệnh hoặc chọn câu hỏi gợi ý bên dưới!`,
-      time: 'Vừa xong',
-      suggestions: ['Chỉ số pH & Oxy tối ưu?', 'Cách tính và tối ưu FCR?', 'Xử lý khí độc NH3 & NO2 cao?'],
-    },
-  ]);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    try {
+      const savedId = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (savedId) return savedId;
+    } catch (e) {
+      console.error('Lỗi khi đọc activeSessionId:', e);
+    }
+    return sessions[0]?.id || '';
+  });
+
+  const currentSession = sessions.find(s => s.id === activeSessionId) || sessions[0] || createNewSession();
+  const messages = currentSession.messages;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Lưu sessions vào localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      if (activeSessionId) {
+        localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+      }
+    } catch (e) {
+      console.error('Lỗi khi lưu localStorage:', e);
+    }
+  }, [sessions, activeSessionId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,32 +119,64 @@ export default function FloatingAIChatbox() {
     if (isOpen && activeTab === 'chat') {
       scrollToBottom();
       setShowNotificationBadge(false);
-      setTimeout(() => inputRef.current?.focus(), 250);
+      setTimeout(() => textareaRef.current?.focus(), 200);
     }
   }, [isOpen, messages, isTyping, activeTab]);
 
-  // Load danh sách tài liệu RAG khi mở tab kho tri thức
-  const loadDocuments = async () => {
-    setLoadingDocs(true);
-    try {
-      const data = await chatbotService.getDocuments();
-      setDocuments(data);
-    } catch (err) {
-      console.error('Không thể tải tài liệu RAG:', err);
-    } finally {
-      setLoadingDocs(false);
+  // Tự co giãn chiều cao textarea theo nội dung gõ
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
+  }, [inputMessage]);
+
+  const handleNewChat = () => {
+    const newSession = createNewSession();
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    setActiveTab('chat');
+    setTimeout(() => textareaRef.current?.focus(), 200);
   };
 
-  useEffect(() => {
-    if (isOpen && activeTab === 'knowledge') {
-      loadDocuments();
-    }
-  }, [isOpen, activeTab]);
+  const handleSelectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setActiveTab('chat');
+  };
 
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputMessage).trim();
-    if (!text) return;
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessions(prev => {
+      const filtered = prev.filter(s => s.id !== sessionId);
+      if (filtered.length === 0) {
+        const fresh = createNewSession();
+        setActiveSessionId(fresh.id);
+        return [fresh];
+      }
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(filtered[0].id);
+      }
+      return filtered;
+    });
+  };
+
+  const handleClearAllHistory = () => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử trò chuyện?')) return;
+    const fresh = createNewSession();
+    setSessions([fresh]);
+    setActiveSessionId(fresh.id);
+    setActiveTab('chat');
+  };
+
+  const handleCopyText = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
+  const handleSendMessage = async () => {
+    const text = inputMessage.trim();
+    if (!text || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -110,12 +185,27 @@ export default function FloatingAIChatbox() {
       time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    let newTitle = currentSession.title;
+    if (currentSession.title === 'Cuộc trò chuyện mới') {
+      newTitle = text.length > 32 ? text.slice(0, 32) + '...' : text;
+    }
+
+    setSessions(prev =>
+      prev.map(s =>
+        s.id === currentSession.id
+          ? { ...s, title: newTitle, updatedAt: new Date().toISOString(), messages: updatedMessages }
+          : s
+      )
+    );
+
     setInputMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setIsTyping(true);
 
     try {
-      // 1. Gửi lên RAG backend
       const result = await chatbotService.ask(text);
 
       const aiMsg: ChatMessage = {
@@ -125,91 +215,64 @@ export default function FloatingAIChatbox() {
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         sources: result.sources,
         pondName: result.pondName,
-        suggestions: ['Chỉ số pH & Oxy tối ưu?', 'Cách tính và tối ưu FCR?', 'Xử lý khí độc NH3 & NO2 cao?'],
       };
-      setMessages(prev => [...prev, aiMsg]);
+
+      setSessions(prev =>
+        prev.map(s =>
+          s.id === currentSession.id
+            ? { ...s, updatedAt: new Date().toISOString(), messages: [...updatedMessages, aiMsg] }
+            : s
+        )
+      );
     } catch (err) {
-      // 2. Fallback nếu backend offline hoặc lỗi mạng
       setTimeout(() => {
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: 'ai',
-          text: `🤖 **Trợ lý AI:** Đã tiếp nhận câu hỏi của bạn về: **"${text}"**.\n\nHệ thống đang kết nối đến kho dữ liệu RAG. Bạn có thể bấm vào biểu tượng **"Kho Tri Thức"** ở thanh công cụ phía trên để xem các tài liệu hướng dẫn kỹ thuật nuôi tôm đã được nạp sẵn.`,
+          text: `Đã tiếp nhận câu hỏi của bạn về **"${text}"**. Hệ thống đang phân tích chỉ số ao và cẩm nang kỹ thuật nuôi tôm.`,
           time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          suggestions: ['Chỉ số pH & Oxy tối ưu?', 'Cách tính và tối ưu FCR?', 'Xử lý khí độc NH3 & NO2 cao?'],
         };
-        setMessages(prev => [...prev, aiMsg]);
-      }, 500);
+
+        setSessions(prev =>
+          prev.map(s =>
+            s.id === currentSession.id
+              ? { ...s, updatedAt: new Date().toISOString(), messages: [...updatedMessages, aiMsg] }
+              : s
+          )
+        );
+      }, 400);
     } finally {
       setIsTyping(false);
     }
   };
 
-  const handleResetChat = () => {
-    setMessages([
-      {
-        id: 'welcome-reset',
-        sender: 'ai',
-        text: 'Cuộc trò chuyện đã được làm mới. Tôi có thể giúp gì thêm cho vụ nuôi tôm của bạn hôm nay?',
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        suggestions: ['Chỉ số pH & Oxy tối ưu?', 'Cách tính và tối ưu FCR?', 'Xử lý khí độc NH3 & NO2 cao?'],
-      },
-    ]);
-  };
+  // Lọc danh sách lịch sử theo từ khóa tìm kiếm
+  const filteredSessions = sessions.filter(s => 
+    s.title.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+    s.messages.some(m => m.text.toLowerCase().includes(historySearchQuery.toLowerCase()))
+  );
 
-  // Thêm tài liệu mới vào RAG
-  const handleCreateDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDocData.title.trim() || !newDocData.content.trim()) return;
-
-    setDocSaving(true);
-    setDocMessage(null);
-    try {
-      await chatbotService.createDocument(newDocData);
-      setDocMessage('Đã thêm tài liệu và phân tích vector RAG thành công!');
-      setNewDocData({ title: '', category: 'GENERAL', content: '' });
-      setShowAddDocModal(false);
-      loadDocuments();
-      setTimeout(() => setDocMessage(null), 4000);
-    } catch (err: any) {
-      setDocMessage(err.message || 'Lỗi khi lưu tài liệu');
-    } finally {
-      setDocSaving(false);
-    }
-  };
-
-  // Xóa tài liệu khỏi RAG
-  const handleDeleteDocument = async (id: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tài liệu này khỏi kho tri thức RAG?')) return;
-    try {
-      await chatbotService.deleteDocument(id);
-      loadDocuments();
-    } catch (err) {
-      alert('Không thể xóa tài liệu này');
-    }
-  };
-
-  // Helper format markdown text
+  // Helper format markdown text kiểu ChatGPT
   const renderFormattedText = (rawText: string) => {
     const lines = rawText.split('\n');
     return lines.map((line, idx) => {
       if (!line.trim()) {
-        return <div key={idx} className="h-1.5" />;
+        return <div key={idx} className="h-2" />;
       }
       
       const parts = line.split(/(\*\*.*?\*\*)/g);
       const formattedParts = parts.map((part, pIdx) => {
         if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={pIdx} className="font-bold text-blue-900">{part.slice(2, -2)}</strong>;
+          return <strong key={pIdx} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
         }
         if (part.startsWith('`') && part.endsWith('`')) {
-          return <code key={pIdx} className="bg-slate-100 text-blue-700 px-1 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>;
+          return <code key={pIdx} className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>;
         }
         return part;
       });
 
       return (
-        <p key={idx} className={`text-sm leading-relaxed ${line.startsWith('•') ? 'pl-2 text-slate-700' : 'text-slate-800'}`}>
+        <p key={idx} className={`text-[13.5px] leading-relaxed text-slate-800 ${line.startsWith('•') || line.startsWith('-') ? 'pl-2' : ''}`}>
           {formattedParts}
         </p>
       );
@@ -217,173 +280,292 @@ export default function FloatingAIChatbox() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto">
-      {/* ── 1. CHAT BUBBLE WINDOW ────────────────────────────────────────────── */}
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto font-sans">
+      {/* ── 1. MAIN CHATGPT WINDOW ───────────────────────────────────────────── */}
       {isOpen && (
         <div 
-          className="w-[360px] sm:w-[420px] h-[590px] max-h-[85vh] rounded-3xl shadow-2xl shadow-blue-950/25 border border-white/80 backdrop-blur-2xl bg-white/95 flex flex-col overflow-hidden mb-4 animate-in zoom-in-90 fade-in slide-in-from-bottom-5 duration-300 origin-bottom-right"
+          className={`rounded-3xl shadow-2xl shadow-slate-950/20 border border-slate-200/90 bg-white flex flex-col overflow-hidden mb-3 transition-all duration-300 animate-in zoom-in-95 origin-bottom-right ${
+            isExpanded 
+              ? 'w-[94vw] sm:w-[700px] md:w-[780px] h-[86vh]' 
+              : 'w-[370px] sm:w-[460px] h-[640px] max-h-[85vh]'
+          }`}
         >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-600 px-5 py-3.5 text-white flex items-center justify-between shadow-md relative overflow-hidden flex-shrink-0">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-xl pointer-events-none" />
-            
-            <div className="flex items-center gap-2.5 relative z-10">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-inner">
-                  <Bot className="w-6 h-6 text-cyan-200 animate-pulse" />
-                </div>
-                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-indigo-700 rounded-full" />
-              </div>
-              <div>
-                <h3 className="font-black text-sm tracking-tight flex items-center gap-1.5">
-                  Trợ Lý Tôm AI (RAG)
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                </h3>
-                <p className="text-[11px] text-cyan-100 flex items-center gap-1 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                  Học từ tài liệu & dữ liệu ao thật
-                </p>
-              </div>
+          {/* Header Navigation Bar (Chuyển Tab Riêng Biệt: Chat / Lịch Sử) */}
+          <div className="h-14 border-b border-slate-100 px-4 flex items-center justify-between bg-white flex-shrink-0 z-20">
+            {/* Left: Tab Switcher (Trò Chuyện / Lịch Sử) */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/60">
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'chat'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <img src="/assets/shrimp-mascot.jpg" alt="Shrimp AI" className="w-4 h-4 rounded-full object-cover" />
+                <span>Trò chuyện</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'history'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <History className="w-3.5 h-3.5 text-sky-600" />
+                <span>Lịch sử</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200/80 text-slate-600 font-extrabold">
+                  {sessions.length}
+                </span>
+              </button>
             </div>
 
-            {/* Header Actions & Mode Switcher */}
-            <div className="flex items-center gap-1 relative z-10">
-              <button
-                onClick={() => setActiveTab(activeTab === 'chat' ? 'knowledge' : 'chat')}
-                className={`p-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-xs font-bold ${
-                  activeTab === 'knowledge' 
-                    ? 'bg-white text-blue-700 shadow-sm' 
-                    : 'text-white/85 hover:text-white hover:bg-white/15'
-                }`}
-                title="Kho tri thức tài liệu RAG"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span className="hidden sm:inline">Tài liệu</span>
-              </button>
-              
+            {/* Right Action Icons */}
+            <div className="flex items-center gap-1">
               {activeTab === 'chat' && (
                 <button
-                  onClick={handleResetChat}
-                  className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-                  title="Làm mới đoạn hội thoại"
+                  onClick={handleNewChat}
+                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  title="Cuộc trò chuyện mới"
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <SquarePen className="w-4 h-4" />
                 </button>
               )}
 
               <button
-                onClick={() => setIsOpen(false)}
-                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-                title="Thu nhỏ cửa sổ"
+                onClick={() => setIsExpanded(prev => !prev)}
+                className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer hidden sm:flex"
+                title={isExpanded ? "Thu nhỏ cửa sổ" : "Mở rộng cửa sổ"}
               >
-                <X className="w-5 h-5" />
+                {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* ── TAB CHAT VIEW ──────────────────────────────────────────────── */}
-          {activeTab === 'chat' ? (
-            <>
-              {/* Quick Prompts Bar */}
-              <div className="bg-slate-100/80 px-3 py-2 border-b border-slate-200/60 overflow-x-auto flex items-center gap-1.5 no-scrollbar flex-shrink-0">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1 flex items-center gap-1 flex-shrink-0">
-                  <Lightbulb className="w-3 h-3 text-amber-500" /> Gợi ý:
-                </span>
-                {QUICK_PROMPTS.map((prompt, pIdx) => {
-                  const Icon = prompt.icon;
-                  return (
+          {/* ── 2. VIEW: TAB LỊCH SỬ RIÊNG BIỆT (DEDICATED FULL HISTORY TAB) ──── */}
+          {activeTab === 'history' ? (
+            <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/60 p-4 sm:p-5">
+              {/* Top Controls: Search Bar & New Chat CTA */}
+              <div className="flex items-center gap-2.5 mb-3.5 flex-shrink-0">
+                <div className="flex-1 relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    placeholder="Tìm kiếm đoạn hội thoại..."
+                    className="w-full bg-white border border-slate-200/90 rounded-2xl pl-9 pr-4 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 shadow-2xs"
+                  />
+                  {historySearchQuery && (
                     <button
-                      key={pIdx}
-                      onClick={() => handleSendMessage(prompt.label)}
-                      className="px-2.5 py-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-full border border-slate-200/80 text-xs font-semibold whitespace-nowrap transition-all shadow-2xs hover:border-blue-300 cursor-pointer flex items-center gap-1 flex-shrink-0"
+                      onClick={() => setHistorySearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                     >
-                      <Icon className="w-3 h-3 text-blue-500" />
-                      <span>{prompt.label}</span>
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                  );
-                })}
+                  )}
+                </div>
+
+                <button
+                  onClick={handleNewChat}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-black text-white rounded-2xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0"
+                >
+                  <SquarePen className="w-3.5 h-3.5" />
+                  <span>Đoạn chat mới</span>
+                </button>
               </div>
 
-              {/* Chat Messages List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/60">
-                {messages.map((msg) => (
-                  <div 
-                    key={msg.id}
-                    className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} animate-in fade-in duration-200`}
-                  >
-                    <div 
-                      className={`max-w-[88%] rounded-2xl p-3.5 shadow-sm ${
-                        msg.sender === 'user'
-                          ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-br-none shadow-blue-500/20'
-                          : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/70 shadow-slate-200/50'
-                      }`}
-                    >
-                      {msg.sender === 'ai' ? (
-                        <div className="space-y-2">
-                          {renderFormattedText(msg.text)}
+              {/* Sessions List */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                {filteredSessions.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                    <MessageCircle className="w-10 h-10 mb-2.5 opacity-30 text-slate-600" />
+                    <p className="text-xs font-bold text-slate-600">Không tìm thấy cuộc trò chuyện nào</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Hãy bắt đầu một cuộc trò chuyện mới để lưu lại lịch sử.</p>
+                  </div>
+                ) : (
+                  filteredSessions.map((s) => {
+                    const isActive = s.id === activeSessionId;
+                    const lastUserMsg = s.messages.filter(m => m.sender === 'user').slice(-1)[0];
+                    return (
+                      <div
+                        key={s.id}
+                        onClick={() => handleSelectSession(s.id)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 group relative ${
+                          isActive
+                            ? 'bg-white border-emerald-500/50 ring-2 ring-emerald-500/10 shadow-sm'
+                            : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-xs'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                              isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </div>
+                            <h4 className={`text-xs font-bold truncate flex-1 ${isActive ? 'text-slate-900' : 'text-slate-800'}`}>
+                              {s.title}
+                            </h4>
+                          </div>
 
-                          {/* RAG Sources Citations (Nguồn trích dẫn) */}
+                          {lastUserMsg && (
+                            <p className="text-[11px] text-slate-500 line-clamp-1 pl-9">
+                              {lastUserMsg.text}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium pl-9 pt-0.5">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {s.createdAt}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Layers className="w-3 h-3" />
+                              {s.messages.length} tin nhắn
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
+                          <button
+                            onClick={(e) => handleDeleteSession(s.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                            title="Xóa cuộc trò chuyện này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Bottom Clear All Button */}
+              {sessions.length > 1 && (
+                <div className="pt-3 border-t border-slate-200/80 mt-2 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Tổng cộng {sessions.length} phiên trò chuyện
+                  </span>
+                  <button
+                    onClick={handleClearAllHistory}
+                    className="text-[11px] font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa tất cả</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── 3. VIEW: TAB TRÒ CHUYỆN (FULL CHAT STREAM VIEW) ──────────────── */
+            <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              {/* Messages Container */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6">
+                {messages.map((msg) => (
+                  <div key={msg.id} className="space-y-2 animate-in fade-in duration-200">
+                    {msg.sender === 'user' ? (
+                      /* USER MESSAGE: Modern Soft Gray Capsule */
+                      <div className="flex justify-end">
+                        <div className="max-w-[85%] sm:max-w-[75%] bg-[#f4f4f4] text-slate-900 px-4 py-2.5 rounded-3xl rounded-br-md text-[13.5px] leading-relaxed">
+                          {msg.text}
+                        </div>
+                      </div>
+                    ) : (
+                      /* AI MESSAGE: Full Width with Orange Shrimp Mascot Avatar & Markdown */
+                      <div className="flex gap-3 items-start max-w-full">
+                        {/* Orange Shrimp 3D Avatar */}
+                        <img 
+                          src="/assets/shrimp-mascot.jpg" 
+                          alt="Shrimp AI" 
+                          className="w-7 h-7 rounded-full object-cover ring-1 ring-orange-400/50 flex-shrink-0 mt-0.5 shadow-xs bg-slate-900" 
+                        />
+
+                        <div className="flex-1 min-w-0 space-y-2">
+                          {/* Pond Context Badge */}
+                          {msg.pondName && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[11px] font-semibold text-slate-700">
+                              <Compass className="w-3 h-3 text-emerald-600" />
+                              <span>Ngữ cảnh: {msg.pondName}</span>
+                            </div>
+                          )}
+
+                          {/* Formatted Content */}
+                          <div className="space-y-1">
+                            {renderFormattedText(msg.text)}
+                          </div>
+
+                          {/* Citations (Cẩm nang tham khảo) */}
                           {msg.sources && msg.sources.length > 0 && (
-                            <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-1">
-                              <p className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
-                                <BookOpen className="w-3 h-3" /> Nguồn trích dẫn từ kho tri thức:
-                              </p>
-                              <div className="space-y-1">
+                            <div className="mt-2.5 pt-2 border-t border-slate-100">
+                              <div className="flex flex-wrap gap-1.5">
                                 {msg.sources.map((src, sIdx) => (
                                   <div 
                                     key={sIdx}
-                                    className="bg-indigo-50/70 border border-indigo-100 rounded-lg p-1.5 text-[11px] text-slate-600"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] text-slate-600"
                                     title={src.snippet}
                                   >
-                                    <div className="flex items-center justify-between font-semibold text-indigo-900">
-                                      <span className="truncate">📄 {src.title} (Đoạn {src.chunkIndex})</span>
-                                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                                        Khớp {Math.round(src.relevanceScore * 100)}%
-                                      </span>
-                                    </div>
+                                    <FileCheck2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                    <span className="font-medium truncate max-w-[200px]">{src.title}</span>
+                                    <span className="text-[10px] text-emerald-700 font-bold">
+                                      {Math.round(src.relevanceScore * 100)}%
+                                    </span>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           )}
+
+                          {/* AI Action Toolbar (Copy) */}
+                          {msg.id !== 'welcome-chatgpt' && (
+                            <div className="flex items-center gap-2 pt-1 text-slate-400">
+                              <button
+                                onClick={() => handleCopyText(msg.id, msg.text)}
+                                className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer text-xs flex items-center gap-1"
+                                title="Sao chép câu trả lời"
+                              >
+                                {copiedMessageId === msg.id ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span className="text-[10px] text-emerald-600 font-semibold">Đã sao chép</span>
+                                  </>
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-sm leading-relaxed">{msg.text}</p>
-                      )}
-                    </div>
-
-                    <span className="text-[10px] text-slate-400 mt-1 px-1 font-medium">
-                      {msg.time}
-                    </span>
-
-                    {/* Follow-up Suggestions from AI */}
-                    {msg.suggestions && msg.suggestions.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2 max-w-[90%]">
-                        {msg.suggestions.map((sug, sIdx) => (
-                          <button
-                            key={sIdx}
-                            onClick={() => handleSendMessage(sug)}
-                            className="px-2.5 py-1 bg-white hover:bg-cyan-50 text-cyan-800 border border-cyan-200/80 rounded-xl text-[11px] font-semibold transition-all hover:border-cyan-400 cursor-pointer shadow-2xs"
-                          >
-                            👉 {sug}
-                          </button>
-                        ))}
                       </div>
                     )}
                   </div>
                 ))}
 
-                {/* AI Typing Indicator */}
+                {/* AI Thinking Indicator */}
                 {isTyping && (
-                  <div className="flex items-center gap-2 text-slate-400 text-xs font-medium pl-1 animate-in fade-in duration-200">
-                    <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-xs">
-                      <Bot className="w-4 h-4 text-blue-600 animate-spin" />
-                    </div>
-                    <div className="bg-white px-3.5 py-2 rounded-2xl rounded-bl-none border border-slate-200 shadow-xs flex items-center gap-1.5">
-                      <span className="text-[11px] text-blue-600 font-semibold">Đang truy xuất RAG & suy nghĩ</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="flex gap-3 items-start animate-in fade-in duration-150">
+                    <img 
+                      src="/assets/shrimp-mascot.jpg" 
+                      alt="Shrimp AI Thinking" 
+                      className="w-7 h-7 rounded-full object-cover ring-2 ring-orange-400/60 animate-pulse flex-shrink-0 shadow-xs bg-slate-900" 
+                    />
+                    <div className="flex items-center gap-1.5 py-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
                 )}
@@ -391,226 +573,82 @@ export default function FloatingAIChatbox() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Footer */}
-              <div className="p-3 bg-white border-t border-slate-100 flex items-center gap-2 flex-shrink-0">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder="Hỏi AI dựa trên tài liệu đã nạp (pH, FCR, khí độc...)..."
-                  className="flex-1 bg-slate-100/80 border border-slate-200/80 rounded-2xl px-4 py-2.5 text-xs sm:text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-3 focus:ring-blue-500/10 outline-none transition-all placeholder:text-slate-400"
-                />
-                <button
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputMessage.trim()}
-                  className="p-2.5 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 disabled:opacity-40 text-white rounded-2xl transition-all shadow-md shadow-blue-500/25 hover:scale-105 active:scale-95 disabled:hover:scale-100 cursor-pointer flex-shrink-0"
-                  title="Gửi câu hỏi"
-                >
-                  <SendHorizontal className="w-4 h-4" />
-                </button>
-              </div>
-            </>
-          ) : (
-            /* ── TAB KNOWLEDGE MANAGEMENT VIEW ────────────────────────────── */
-            <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/70 p-4">
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
-                <div>
-                  <h4 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                    <Database className="w-4 h-4 text-blue-600" />
-                    Kho Tri Thức Tài Liệu
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-medium">Tài liệu được AI học để trả lời cho bạn</p>
+              {/* ── INPUT FOOTER (ChatGPT Capsule Prompt Bar) ───────────────── */}
+              <div className="p-3 sm:p-4 bg-white border-t border-slate-100 flex-shrink-0">
+                <div className="relative rounded-3xl border border-slate-300/80 bg-slate-50/70 focus-within:bg-white focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-900/5 transition-all shadow-xs px-4 py-2 flex items-end gap-2">
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Nhắn tin cho Smart Shrimp AI..."
+                    className="flex-1 bg-transparent resize-none outline-none text-[13.5px] leading-relaxed text-slate-800 placeholder:text-slate-400 max-h-[120px] py-1"
+                  />
+
+                  {/* Circular Send Button (ChatGPT Arrow Up) */}
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputMessage.trim() || isTyping}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer flex-shrink-0 mb-0.5 ${
+                      inputMessage.trim() && !isTyping
+                        ? 'bg-slate-900 text-white hover:bg-black shadow-xs hover:scale-105 active:scale-95'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                    title="Gửi câu hỏi (Enter)"
+                  >
+                    <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowAddDocModal(true)}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm transition-all hover:scale-105 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Thêm tài liệu
-                </button>
+
+                {/* Subtitle Disclaimer */}
+                <p className="text-[10px] text-center text-slate-400 mt-2">
+                  Smart Shrimp AI kết hợp cẩm nang kỹ thuật & cảm biến ao. Hãy đối chiếu khi ra quyết định lớn.
+                </p>
               </div>
-
-              {docMessage && (
-                <div className="mb-3 p-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span>{docMessage}</span>
-                </div>
-              )}
-
-              {/* Documents List */}
-              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-                {loadingDocs ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
-                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs">Đang tải kho tri thức...</span>
-                  </div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400">
-                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs font-semibold">Chưa có tài liệu nào trong kho</p>
-                    <p className="text-[11px] mt-1">Hãy thêm tài liệu để AI bắt đầu học!</p>
-                  </div>
-                ) : (
-                  documents.map((doc) => (
-                    <div 
-                      key={doc.id}
-                      className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-sm transition-all flex items-start justify-between gap-3 group"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-md text-[10px] font-bold uppercase">
-                            {doc.category}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {doc._count?.chunks || 0} chunks vector
-                          </span>
-                        </div>
-                        <h5 className="text-xs font-bold text-slate-800 line-clamp-1">{doc.title}</h5>
-                        <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">
-                          {doc.content}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        className="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Xóa tài liệu này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Modal Thêm tài liệu mới */}
-              {showAddDocModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/40 backdrop-blur-xs">
-                  <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-4 space-y-3 animate-in zoom-in-95 duration-200">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <h4 className="text-sm font-bold text-slate-800">Thêm Tài Liệu Cho AI Học</h4>
-                      <button onClick={() => setShowAddDocModal(false)} className="text-slate-400 hover:text-slate-600">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleCreateDocument} className="space-y-2.5">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Tiêu đề tài liệu / Quy trình *</label>
-                        <input
-                          required
-                          type="text"
-                          value={newDocData.title}
-                          onChange={(e) => setNewDocData({ ...newDocData, title: e.target.value })}
-                          placeholder="Ví dụ: Quy trình ủ vi sinh tạt đáy"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:bg-white focus:border-blue-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Thể loại</label>
-                        <select
-                          value={newDocData.category}
-                          onChange={(e) => setNewDocData({ ...newDocData, category: e.target.value })}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none"
-                        >
-                          <option value="GENERAL">Chung / Kỹ thuật nuôi</option>
-                          <option value="WATER_QUALITY">Môi trường nước (pH, Oxy, Khí độc)</option>
-                          <option value="FEEDING">Thức ăn & Quản lý FCR</option>
-                          <option value="SHRIMP_DISEASE">Phòng & Trị bệnh tôm</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Nội dung chi tiết tài liệu *</label>
-                        <textarea
-                          required
-                          rows={6}
-                          value={newDocData.content}
-                          onChange={(e) => setNewDocData({ ...newDocData, content: e.target.value })}
-                          placeholder="Dán nội dung hướng dẫn kỹ thuật hoặc quy trình thực tế của bạn vào đây. AI sẽ tự động phân tách và học thuộc..."
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:bg-white focus:border-blue-500 leading-relaxed"
-                        />
-                      </div>
-
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setShowAddDocModal(false)}
-                          className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
-                        >
-                          Hủy
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={docSaving}
-                          className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                        >
-                          {docSaving ? 'Đang phân tích...' : 'Lưu & Nạp Vector'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
       )}
 
-      {/* ── 2. FLOATING STICKER TRIGGER BUTTON ──────────────────────────────── */}
+      {/* ── 4. FLOATING TRIGGER BUTTON (VIBRANT 3D ORANGE SHRIMP) ───────────── */}
       <div className="relative flex items-center">
         {!isOpen && showNotificationBadge && (
-          <div className="absolute right-20 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-blue-100 flex items-center gap-2 whitespace-nowrap animate-in fade-in slide-in-from-right-4 duration-500 group">
-            <span className="text-xs font-bold text-slate-700">
-              Trợ lý Tôm AI (RAG) sẵn sàng 🦐
+          <div className="absolute right-20 bg-white px-3.5 py-1.5 rounded-full shadow-xl border border-orange-200/80 flex items-center gap-2 whitespace-nowrap animate-in fade-in slide-in-from-right-4 duration-300">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+              <span>Trợ lý Tôm AI</span> 🦐
             </span>
             <button 
               onClick={(e) => { e.stopPropagation(); setShowNotificationBadge(false); }}
-              className="text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
             >
               <X className="w-3 h-3" />
             </button>
-            <div className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-t border-r border-blue-100 transform rotate-45" />
           </div>
         )}
 
-        {/* Sticker Main Button */}
-        <div className="relative group">
-          <div className="absolute -inset-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 rounded-full blur-md opacity-70 group-hover:opacity-100 animate-pulse transition duration-500 pointer-events-none" />
-
-          <button
-            onClick={() => setIsOpen(prev => !prev)}
-            className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 transform group-hover:scale-110 active:scale-95 cursor-pointer border-2 border-white/80 ${
-              isOpen 
-                ? 'bg-slate-800 hover:bg-slate-900 rotate-90' 
-                : 'bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 hover:shadow-cyan-500/50'
-            }`}
-            title={isOpen ? "Thu nhỏ Trợ lý AI" : "Mở Trợ lý Nuôi Tôm AI"}
-          >
-            {isOpen ? (
-              <X className="w-7 h-7 text-white" />
-            ) : (
-              <div className="relative flex items-center justify-center">
-                <Bot className="w-7 h-7 text-white transform group-hover:-rotate-12 transition-transform duration-300" />
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 absolute -top-1 -right-1 animate-ping" />
-              </div>
-            )}
-
-            {!isOpen && (
-              <span className="absolute bottom-0 right-0 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white" />
-              </span>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={() => setIsOpen(prev => !prev)}
+          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-white/90 overflow-hidden relative p-0.5 group ${
+            isOpen 
+              ? 'bg-gradient-to-tr from-amber-500 via-orange-500 to-cyan-400 shadow-orange-500/50 ring-4 ring-orange-500/30' 
+              : 'bg-gradient-to-tr from-amber-500 via-orange-500 to-cyan-400 shadow-orange-500/35 ring-4 ring-orange-400/20'
+          }`}
+          title={isOpen ? "Thu nhỏ Trợ lý Tôm AI" : "Mở Trợ lý Tôm AI"}
+        >
+          <img 
+            src="/assets/shrimp-mascot.jpg" 
+            alt="Smart Shrimp Mascot" 
+            className={`w-full h-full object-cover rounded-full transition-all duration-700 ease-out transform ${
+              isOpen ? 'rotate-[360deg] scale-100' : 'rotate-0 group-hover:rotate-12 group-hover:scale-105'
+            }`} 
+          />
+        </button>
       </div>
     </div>
   );

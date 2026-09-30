@@ -38,6 +38,9 @@ interface SurvivalRateDashboardProps {
   initialFarmId?: string;
   initialPondId?: string;
   initialCropId?: string;
+  onSelectFarm?: (farmId: string) => void;
+  onSelectPond?: (pondId: string) => void;
+  onSelectCrop?: (cropId: string) => void;
 }
 
 export default function SurvivalRateDashboard({ 
@@ -46,6 +49,9 @@ export default function SurvivalRateDashboard({
   initialFarmId,
   initialPondId,
   initialCropId,
+  onSelectFarm,
+  onSelectPond,
+  onSelectCrop,
 }: SurvivalRateDashboardProps) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -103,9 +109,12 @@ export default function SurvivalRateDashboard({
       if (farmsData.length > 0) {
         setSelectedFarmId((prev) => {
           if (initialFarmId && farmsData.some((f: Farm) => f.id === initialFarmId)) {
+            onSelectFarm?.(initialFarmId);
             return initialFarmId;
           }
-          return prev || farmsData[0].id;
+          const chosen = prev || farmsData[0].id;
+          onSelectFarm?.(chosen);
+          return chosen;
         });
       }
     } catch (err: any) {
@@ -124,16 +133,21 @@ export default function SurvivalRateDashboard({
     if (farmPonds.length > 0) {
       if (initialPondId && farmPonds.some((p) => p.id === initialPondId)) {
         setSelectedPondId(initialPondId);
+        onSelectPond?.(initialPondId);
       } else {
         setSelectedPondId((prev) => {
           if (prev && farmPonds.some((p) => p.id === prev)) return prev;
-          return farmPonds[0].id;
+          const chosen = farmPonds[0].id;
+          onSelectPond?.(chosen);
+          return chosen;
         });
       }
     } else {
       setSelectedPondId('');
+      onSelectPond?.('');
       setCrops([]);
       setSelectedCropId('');
+      onSelectCrop?.('');
       setStats(null);
     }
   }, [selectedFarmId, farmPonds, initialPondId]);
@@ -143,6 +157,7 @@ export default function SurvivalRateDashboard({
     if (!pondId) {
       setCrops([]);
       setSelectedCropId('');
+      onSelectCrop?.('');
       setStats(null);
       return;
     }
@@ -152,14 +167,18 @@ export default function SurvivalRateDashboard({
       setCrops(cropsData);
       if (initialCropId && cropsData.some((c) => c.id === initialCropId)) {
         setSelectedCropId(initialCropId);
+        onSelectCrop?.(initialCropId);
       } else {
         const activeCrops = cropsData.filter((c) => c.status === 'ACTIVE');
         if (activeCrops.length > 0) {
           setSelectedCropId(activeCrops[0].id);
+          onSelectCrop?.(activeCrops[0].id);
         } else if (cropsData.length > 0) {
           setSelectedCropId(cropsData[0].id);
+          onSelectCrop?.(cropsData[0].id);
         } else {
           setSelectedCropId('');
+          onSelectCrop?.('');
           setStats(null);
         }
       }
@@ -167,6 +186,7 @@ export default function SurvivalRateDashboard({
       setError(err.message || 'Lỗi khi tải danh sách vụ nuôi');
       setCrops([]);
       setSelectedCropId('');
+      onSelectCrop?.('');
       setStats(null);
     } finally {
       setLoadingStats(false);
@@ -318,7 +338,11 @@ export default function SurvivalRateDashboard({
           </label>
           <select
             value={selectedFarmId}
-            onChange={(e) => setSelectedFarmId(e.target.value)}
+            onChange={(e) => {
+              const fId = e.target.value;
+              setSelectedFarmId(fId);
+              onSelectFarm?.(fId);
+            }}
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-xl text-sm focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer"
           >
             {farms.map((f) => (
@@ -334,7 +358,11 @@ export default function SurvivalRateDashboard({
           </label>
           <select
             value={selectedPondId}
-            onChange={(e) => setSelectedPondId(e.target.value)}
+            onChange={(e) => {
+              const pId = e.target.value;
+              setSelectedPondId(pId);
+              onSelectPond?.(pId);
+            }}
             disabled={farmPonds.length === 0}
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-xl text-sm focus:bg-white focus:border-teal-500 outline-none transition-all cursor-pointer disabled:opacity-50"
           >
@@ -355,7 +383,11 @@ export default function SurvivalRateDashboard({
           </label>
           <select
             value={selectedCropId}
-            onChange={(e) => setSelectedCropId(e.target.value)}
+            onChange={(e) => {
+              const cId = e.target.value;
+              setSelectedCropId(cId);
+              onSelectCrop?.(cId);
+            }}
             disabled={crops.length === 0}
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-xl text-sm focus:bg-white focus:border-orange-500 outline-none transition-all cursor-pointer disabled:opacity-50"
           >

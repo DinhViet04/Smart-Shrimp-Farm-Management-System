@@ -23,12 +23,16 @@ interface BiomassDashboardProps {
   onNavigateTab?: (tab: GrowthTabType) => void;
   initialFarmId?: string;
   initialPondId?: string;
+  onSelectFarm?: (farmId: string) => void;
+  onSelectPond?: (pondId: string) => void;
 }
 
 export default function BiomassDashboard({
   onNavigateTab,
   initialFarmId,
   initialPondId,
+  onSelectFarm,
+  onSelectPond,
 }: BiomassDashboardProps) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -50,9 +54,12 @@ export default function BiomassDashboard({
       if (data.length > 0) {
         setSelectedFarmId((prev) => {
           if (initialFarmId && data.some((f: Farm) => f.id === initialFarmId)) {
+            onSelectFarm?.(initialFarmId);
             return initialFarmId;
           }
-          return prev || data[0].id;
+          const chosen = prev || data[0].id;
+          onSelectFarm?.(chosen);
+          return chosen;
         });
       }
     } catch (err: any) {
@@ -88,6 +95,7 @@ export default function BiomassDashboard({
   useEffect(() => {
     if (initialFarmId && initialFarmId !== selectedFarmId) {
       setSelectedFarmId(initialFarmId);
+      onSelectFarm?.(initialFarmId);
     }
   }, [initialFarmId]);
 
@@ -96,6 +104,7 @@ export default function BiomassDashboard({
       const match = ponds.find((p) => p.id === initialPondId);
       if (match) {
         setSelectedPond(match);
+        onSelectPond?.(match.id);
       }
     }
   }, [initialPondId, ponds]);
@@ -105,7 +114,10 @@ export default function BiomassDashboard({
     return (
       <PondBiomassDetail
         pond={selectedPond}
-        onBack={() => setSelectedPond(null)}
+        onBack={() => {
+          setSelectedPond(null);
+          onSelectPond?.('');
+        }}
         onNavigateTab={onNavigateTab}
       />
     );
@@ -137,7 +149,13 @@ export default function BiomassDashboard({
           <div className="relative">
             <select
               value={selectedFarmId}
-              onChange={(e) => setSelectedFarmId(e.target.value)}
+              onChange={(e) => {
+                const fId = e.target.value;
+                setSelectedFarmId(fId);
+                setSelectedPond(null);
+                onSelectFarm?.(fId);
+                onSelectPond?.('');
+              }}
               className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 text-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none font-semibold outline-none transition-all cursor-pointer text-sm"
             >
               <option value="">-- Chọn trang trại --</option>
@@ -201,7 +219,10 @@ export default function BiomassDashboard({
               {ponds.map((pond) => (
                 <button
                   key={pond.id}
-                  onClick={() => setSelectedPond(pond)}
+                  onClick={() => {
+                    setSelectedPond(pond);
+                    onSelectPond?.(pond.id);
+                  }}
                   className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs hover:border-emerald-500 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group flex flex-col justify-between relative overflow-hidden"
                 >
                   <div className="flex items-start justify-between mb-4">

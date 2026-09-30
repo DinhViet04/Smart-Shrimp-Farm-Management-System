@@ -264,12 +264,16 @@ export default function Dashboard() {
                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
                   initialFarmId={growthConfig?.farmId}
                   initialPondId={growthConfig?.pondId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                 />
               ) : growthSubTab === 'Sinh khối ao' ? (
                 <BiomassDashboard 
                   onNavigateTab={(tab) => setGrowthSubTab(tab)} 
                   initialFarmId={growthConfig?.farmId}
                   initialPondId={growthConfig?.pondId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                 />
               ) : (
                 <SurvivalRateDashboard 
@@ -278,6 +282,9 @@ export default function Dashboard() {
                   initialFarmId={growthConfig?.farmId}
                   initialPondId={growthConfig?.pondId}
                   initialCropId={growthConfig?.cropId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                  onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
                 />
               )}
             </div>

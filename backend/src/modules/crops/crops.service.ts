@@ -110,6 +110,7 @@ export class CropsService {
   async create(user: AuthUser, dto: CreateCropDto) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: dto.pondId },
+      include: { farm: true },
     });
 
     if (!pond) {
@@ -172,9 +173,18 @@ export class CropsService {
       growthMilestones = [...dto.growthMilestones].sort((a, b) => a.day - b.day);
     }
 
+    // Validate farmingModel and stage
+    let stage = dto.stage || 'COMMERCIAL';
+
+    if (pond.farm.farmingModel === 'TRADITIONAL') {
+      if (dto.stage && dto.stage !== 'COMMERCIAL') {
+        throw new BadRequestException('Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY). Vui lòng để trống hoặc chọn COMMERCIAL.');
+      }
+      stage = 'COMMERCIAL'; // Force to COMMERCIAL for traditional
+    }
+
     // Validate expectedTransferDate (nếu là ao ương dưỡng)
     let expectedTransferDate: Date | undefined = undefined;
-    const stage = dto.stage || 'COMMERCIAL';
 
     if (stage === 'NURSERY' && dto.expectedTransferDate) {
       expectedTransferDate = new Date(dto.expectedTransferDate);
@@ -216,7 +226,7 @@ export class CropsService {
   async update(user: AuthUser, id: string, dto: UpdateCropDto) {
     const crop = await this.prisma.crop.findUnique({
       where: { id },
-      include: { pond: true },
+      include: { pond: { include: { farm: true } } },
     });
 
     if (!crop) {
@@ -255,9 +265,20 @@ export class CropsService {
       data.initialShrimpCount = dto.initialShrimpCount;
     }
     if (dto.status) data.status = dto.status;
-    if (dto.stage !== undefined) data.stage = dto.stage;
+    
+    let currentStage = dto.stage !== undefined ? dto.stage : (crop as any).stage;
 
-    const currentStage = dto.stage !== undefined ? dto.stage : (crop as any).stage;
+    if (crop.pond.farm.farmingModel === 'TRADITIONAL') {
+      if (dto.stage === 'NURSERY') {
+        throw new BadRequestException('Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY).');
+      }
+      currentStage = 'COMMERCIAL';
+      if (dto.stage !== undefined) {
+        data.stage = 'COMMERCIAL';
+      }
+    } else {
+      if (dto.stage !== undefined) data.stage = dto.stage;
+    }
 
     if (currentStage === 'NURSERY') {
       if (dto.expectedTransferDate !== undefined) {

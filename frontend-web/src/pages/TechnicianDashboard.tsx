@@ -30,6 +30,7 @@ export default function TechnicianDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
+  const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -174,11 +175,33 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Theo dõi tăng trưởng' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               {growthSubTab === 'Theo dõi kích cỡ' ? (
-                <ShrimpSizeDashboard viewOnly={false} onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+                <ShrimpSizeDashboard 
+                  viewOnly={false} 
+                  onNavigateTab={(tab) => setGrowthSubTab(tab)} 
+                  initialFarmId={growthConfig?.farmId}
+                  initialPondId={growthConfig?.pondId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                />
               ) : growthSubTab === 'Sinh khối ao' ? (
-                <BiomassDashboard onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+                <BiomassDashboard 
+                  onNavigateTab={(tab) => setGrowthSubTab(tab)} 
+                  initialFarmId={growthConfig?.farmId}
+                  initialPondId={growthConfig?.pondId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                />
               ) : (
-                <SurvivalRateDashboard viewOnly={true} onNavigateTab={(tab) => setGrowthSubTab(tab)} />
+                <SurvivalRateDashboard 
+                  viewOnly={true} 
+                  onNavigateTab={(tab) => setGrowthSubTab(tab)} 
+                  initialFarmId={growthConfig?.farmId}
+                  initialPondId={growthConfig?.pondId}
+                  initialCropId={growthConfig?.cropId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                  onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
+                />
               )}
             </div>
           ) : activeTab === 'Phân tích FCR' ? (

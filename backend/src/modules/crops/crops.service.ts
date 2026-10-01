@@ -8,6 +8,7 @@ import {
   AuthUser,
   FarmAccessService,
 } from '../farm-access/farm-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
 import { SplitCropDto } from './dto/split-crop.dto.js';
@@ -17,6 +18,7 @@ export class CropsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findAll(user: AuthUser, query: { pondId?: string; status?: string }) {
@@ -219,6 +221,17 @@ export class CropsService {
         },
       },
     });
+
+    // Thông báo realtime cho Manager
+    if (user.role === 'FARM_MANAGER') {
+      await this.notificationsService.createCropCreatedNotification(
+        user.userId,
+        crop.pondId,
+        pond.name,
+        pond.farmId,
+        pond.farm.name,
+      );
+    }
 
     return crop;
   }

@@ -89,6 +89,7 @@ model User {
   reportedIncidents   Incident[]                @relation("IncidentReporter")
   incidentUpdates     IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
   mortalityLogs       MortalityLog[]
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -475,8 +476,10 @@ model ShrimpHealthRecord {
 /// Lightweight notification model for system alerts.
 model Notification {
   id        String            @id @default(uuid())
-  farmId    String            @map("farm_id")
-  farm      Farm              @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  farmId    String?           @map("farm_id")
+  farm      Farm?             @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  userId    String?           @map("user_id")
+  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   pondId    String?           @map("pond_id")
   level     NotificationLevel
   title     String
@@ -485,6 +488,7 @@ model Notification {
   createdAt DateTime          @default(now()) @map("created_at")
 
   @@index([farmId, isRead])
+  @@index([userId, isRead])
   @@map("notifications")
 }
 

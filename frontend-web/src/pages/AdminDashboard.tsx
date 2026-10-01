@@ -315,7 +315,7 @@ export default function AdminDashboard() {
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-100/30 rounded-full blur-[120px] pointer-events-none"></div>
 
         {/* Top bar */}
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center px-8 gap-6 z-10">
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center px-8 gap-6 z-30">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-slate-100 hover:bg-blue-50 rounded-lg">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -338,7 +338,7 @@ export default function AdminDashboard() {
 
           <div className="flex items-center gap-5 ml-auto">
             {/* Notification Dropdown */}
-            <NotificationDropdown role="ADMIN" themeColor="purple" onNavigateTab={(tab) => setActiveTab(tab)} />
+            <NotificationDropdown themeColor="purple" onNavigateTab={(tab) => setActiveTab(tab)} />
 
             <div className="w-px h-8 bg-slate-200"></div>
 

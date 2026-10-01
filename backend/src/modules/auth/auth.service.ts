@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -16,11 +17,13 @@ import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private passwordResetStore: Record<
     string,
     { otp: string; expiresAt: number; used: boolean }
@@ -31,7 +34,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async register(dto: RegisterDto) {
     // ── Xử LÝ INVITE TOKEN (nếu có) ──
@@ -87,15 +91,40 @@ export class AuthService {
       try {
         const farm = await this.prisma.farm.findUnique({
           where: { id: invitePayload.farmId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, ownerId: true },
         });
         if (farm) {
+          const existingStaff = await this.prisma.farmStaff.findUnique({
+            where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+          });
+          const isNewlyJoined = !existingStaff || !existingStaff.isActive;
+
           await this.prisma.farmStaff.upsert({
             where: { farmId_userId: { farmId: farm.id, userId: user.id } },
             create: { farmId: farm.id, userId: user.id, role: user.role, isActive: true },
             update: { isActive: true, role: user.role },
           });
-          joinedFarm = farm;
+
+          if (isNewlyJoined) {
+            await this.notificationsService.createFarmJoinNotification(
+              user.id,
+              farm.id,
+              farm.name,
+              user.role,
+            );
+            if (farm.ownerId && farm.ownerId !== user.id) {
+              await this.notificationsService.createStaffJoinedNotification(
+                farm.ownerId,
+                farm.id,
+                user.fullName || user.email,
+                user.email,
+                user.role,
+                farm.name,
+              );
+            }
+          }
+
+          joinedFarm = { id: farm.id, name: farm.name };
         }
       } catch {
         // Không dừng đăng ký nếu join farm thất bại
@@ -110,6 +139,11 @@ export class AuthService {
     });
 
     const { password: _, ...userWithoutPassword } = user;
+
+    // Chỉ gửi welcome notification chung nếu user đăng ký tự do (không tham gia qua link mời trang trại)
+    if (!invitePayload) {
+      await this.notificationsService.createWelcomeNotification(user.id);
+    }
 
     return {
       user: userWithoutPassword,
@@ -140,6 +174,64 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
 
+    // ── XỬ LÝ INVITE TOKEN (nếu có) ──
+    let joinedFarm: { id: string; name: string } | null = null;
+    if (dto.inviteToken) {
+      try {
+        const invitePayload = await this.jwtService.verifyAsync<{
+          email: string;
+          farmId: string;
+          role: string;
+          type: string;
+        }>(dto.inviteToken, {
+          secret: this.configService.get<string>('JWT_SECRET'),
+        });
+
+        if (invitePayload?.type === 'farm_invite' && invitePayload.farmId) {
+          const farm = await this.prisma.farm.findUnique({
+            where: { id: invitePayload.farmId },
+            select: { id: true, name: true, ownerId: true },
+          });
+
+          if (farm) {
+            const existingStaff = await this.prisma.farmStaff.findUnique({
+              where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+            });
+            const isNewlyJoined = !existingStaff || !existingStaff.isActive;
+
+            await this.prisma.farmStaff.upsert({
+              where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+              create: { farmId: farm.id, userId: user.id, role: user.role, isActive: true },
+              update: { isActive: true, role: user.role },
+            });
+
+            if (isNewlyJoined) {
+              await this.notificationsService.createFarmJoinNotification(
+                user.id,
+                farm.id,
+                farm.name,
+                user.role,
+              );
+              if (farm.ownerId && farm.ownerId !== user.id) {
+                await this.notificationsService.createStaffJoinedNotification(
+                  farm.ownerId,
+                  farm.id,
+                  user.fullName || user.email,
+                  user.email,
+                  user.role,
+                  farm.name,
+                );
+              }
+            }
+
+            joinedFarm = { id: farm.id, name: farm.name };
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to process invite token during login: ${err}`);
+      }
+    }
+
     // Generate tokens
     const tokens = await this.generateTokens({
       sub: user.id,
@@ -152,6 +244,7 @@ export class AuthService {
 
     return {
       user: userWithoutPassword,
+      joinedFarm,
       ...tokens,
     };
   }
@@ -204,6 +297,8 @@ export class AuthService {
         fullName: name || email.split('@')[0],
         password: '', // Empty password
       });
+      // Send welcome notification for new google user
+      await this.notificationsService.createWelcomeNotification(user.id);
     }
 
     if (!user.isActive) {

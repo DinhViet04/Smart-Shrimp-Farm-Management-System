@@ -9,12 +9,14 @@ import {
   AuthUser,
   FarmAccessService,
 } from '../farm-access/farm-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class PondsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(user: AuthUser, dto: CreatePondDto) {
@@ -40,7 +42,7 @@ export class PondsService {
       );
     }
 
-    return this.prisma.pond.create({
+    const pond = await this.prisma.pond.create({
       data: {
         name: dto.name,
         areaSize: dto.areaSize,
@@ -48,6 +50,19 @@ export class PondsService {
         farmId: dto.farmId,
       },
     });
+
+    // Thông báo realtime nếu người tạo là FARM_MANAGER
+    if (user.role === 'FARM_MANAGER') {
+      await this.notificationsService.createPondCreatedNotification(
+        user.userId,
+        pond.id,
+        pond.name,
+        farm.id,
+        farm.name,
+      );
+    }
+
+    return pond;
   }
 
   async findAll(user: AuthUser) {

@@ -9,10 +9,12 @@ import FarmerDashboard from './pages/FarmerDashboard';
 import TechnicianDashboard from './pages/TechnicianDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import FloatingAIChatbox from './components/FloatingAIChatbox';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
     <>
+      <Toaster position="top-right" />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2, Cpu } from 'lucide-react';
+import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2, Cpu, UserCheck, FlaskConical, AlertCircle, CheckCircle } from 'lucide-react';
 import PondDetailPanel from '../../components/PondDetailPanel';
 import { farmService } from '../../services/farm.service';
 
@@ -12,11 +12,14 @@ interface FarmDetailPanelProps {
 export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPanelProps) {
   const [viewingPond, setViewingPond] = useState<any | null>(null);
   const [staffList, setStaffList] = useState<any[]>([]);
-  const [emailToAssign, setEmailToAssign] = useState('');
-  const [roleToAssign, setRoleToAssign] = useState<'FARMER' | 'TECHNICIAN'>('FARMER');
+  const [farmerEmailToAssign, setFarmerEmailToAssign] = useState('');
+  const [techEmailToAssign, setTechEmailToAssign] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
-  const [assigning, setAssigning] = useState(false);
+  const [assigningRole, setAssigningRole] = useState<'FARMER' | 'TECHNICIAN' | null>(null);
+  const [unassigningId, setUnassigningId] = useState<string | null>(null);
+  const [staffToUnassign, setStaffToUnassign] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Get currently logged in user info
@@ -37,8 +40,11 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
       fetchStaff();
     } else {
       setStaffList([]);
-      setEmailToAssign('');
+      setFarmerEmailToAssign('');
+      setTechEmailToAssign('');
       setErrorMessage(null);
+      setSuccessMessage(null);
+      setStaffToUnassign(null);
     }
   }, [isOpen, farm?.id]);
 
@@ -56,35 +62,62 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   };
 
-  const handleAssign = async (e: React.FormEvent) => {
+  const getStaffRole = (staff: any): 'TECHNICIAN' | 'FARMER' => {
+    const farmRole = (staff.role || '').toUpperCase();
+    if (farmRole === 'TECHNICIAN') return 'TECHNICIAN';
+    if (farmRole === 'FARMER') return 'FARMER';
+    const userRole = (staff.user?.role || '').toUpperCase();
+    if (userRole === 'TECHNICIAN') return 'TECHNICIAN';
+    return 'FARMER';
+  };
+
+  const farmers = staffList.filter((s: any) => getStaffRole(s) === 'FARMER');
+  const technicians = staffList.filter((s: any) => getStaffRole(s) === 'TECHNICIAN');
+
+  const handleAssignByRole = async (e: React.FormEvent, role: 'FARMER' | 'TECHNICIAN') => {
     e.preventDefault();
-    const email = emailToAssign.trim();
+    const email = (role === 'FARMER' ? farmerEmailToAssign : techEmailToAssign).trim();
     if (!email) {
-      setErrorMessage('Vui lòng nhập địa chỉ email/gmail cần phân công');
+      setErrorMessage(`Vui lòng nhập địa chỉ email của ${role === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'}`);
       return;
     }
-    setAssigning(true);
+    setAssigningRole(role);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
-      const user = await farmService.lookupStaff(email, roleToAssign);
-      await farmService.assignStaff(farm.id, user.id);
-      setEmailToAssign('');
+      const res = await farmService.inviteByEmail(farm.id, email, role);
+      if (role === 'FARMER') setFarmerEmailToAssign('');
+      else setTechEmailToAssign('');
+
+      if (res.status === 'assigned') {
+        setSuccessMessage(`✅ Đã thêm ${role === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'} (${res.email}) vào trang trại`);
+      } else {
+        setSuccessMessage(`📧 Đã gửi email mời tới ${res.email}`);
+      }
       fetchStaff();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi khi gán thành viên');
+      setErrorMessage(err.message || 'Lỗi khi phân công nhân sự');
     } finally {
-      setAssigning(false);
+      setAssigningRole(null);
     }
   };
 
-  const handleUnassign = async (userId: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn gỡ phân công của thành viên này khỏi trang trại?')) return;
+  const confirmUnassign = async () => {
+    if (!staffToUnassign) return;
+    const userId = staffToUnassign.userId || staffToUnassign.id;
     setErrorMessage(null);
+    setSuccessMessage(null);
+    setUnassigningId(userId);
     try {
       await farmService.unassignStaff(farm.id, userId);
+      const name = staffToUnassign.user?.fullName || staffToUnassign.user?.email || 'thành viên';
+      setSuccessMessage(`Đã gỡ ${name} khỏi trang trại thành công.`);
+      setStaffToUnassign(null);
       fetchStaff();
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi gỡ phân công');
+    } finally {
+      setUnassigningId(null);
     }
   };
 
@@ -223,101 +256,205 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
                 </div>
               )}
 
-              {/* Staff Management */}
+              {/* Staff Management - Tách thành 2 mục Farmer và Technician giống khi tạo/sửa */}
               <div className="space-y-4 pt-6 border-t border-slate-100/50">
-                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  Thành viên trang trại ({staffList.length})
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-500" />
+                    Thành viên trang trại ({staffList.length})
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      {farmers.length} Nông dân
+                    </span>
+                    <span className="text-[11px] font-bold text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-full border border-cyan-200">
+                      {technicians.length} Kỹ thuật viên
+                    </span>
+                  </div>
+                </div>
 
                 {errorMessage && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl">
-                    {errorMessage}
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                )}
+                {successMessage && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{successMessage}</span>
                   </div>
                 )}
 
-                {/* Form to Assign Staff by Email */}
-                {isOwner && (
-                  <form onSubmit={handleAssign} className="flex flex-col sm:flex-row gap-2">
-                    <select
-                      value={roleToAssign}
-                      onChange={(e) => setRoleToAssign(e.target.value as 'FARMER' | 'TECHNICIAN')}
-                      className="px-3 py-2 border border-slate-200 bg-white rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="FARMER">🌱 Nông dân</option>
-                      <option value="TECHNICIAN">🔬 Kỹ thuật viên</option>
-                    </select>
-                    <input
-                      type="email"
-                      value={emailToAssign}
-                      onChange={(e) => {
-                        setEmailToAssign(e.target.value);
-                        if (errorMessage) setErrorMessage(null);
-                      }}
-                      placeholder="Nhập Gmail đã đăng ký của nhân sự..."
-                      className="flex-1 px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                    />
-                    <button
-                      type="submit"
-                      disabled={assigning || !emailToAssign.trim()}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
-                    >
-                      {assigning ? (
-                        <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <UserPlus className="w-4 h-4" />
-                      )}
-                      Phân công
-                    </button>
-                  </form>
-                )}
-
-                {/* Staff List */}
-                {loadingStaff ? (
-                  <div className="flex justify-center py-4">
-                    <div className="w-6 h-6 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+                {/* ── MỤC 1: NÔNG DÂN (FARMER) ── */}
+                <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                        1. Nông Dân (Farmer)
+                      </span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      farmers.length > 0 ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {farmers.length} thành viên
+                    </span>
                   </div>
-                ) : staffList.length === 0 ? (
-                  <p className="text-slate-400 text-xs font-medium italic text-center py-2">Chưa có thành viên nào được phân công.</p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {staffList.map((staff: any) => (
-                      <div
-                        key={staff.id}
-                        className="p-3.5 bg-slate-50/50 border border-slate-100 rounded-2xl flex justify-between items-center group/staff"
+
+                  {/* Form phân công Nông dân (chỉ chủ trại/admin) */}
+                  {isOwner && (
+                    <form onSubmit={(e) => handleAssignByRole(e, 'FARMER')} className="flex gap-2">
+                      <input
+                        type="email"
+                        value={farmerEmailToAssign}
+                        onChange={(e) => {
+                          setFarmerEmailToAssign(e.target.value);
+                          if (errorMessage) setErrorMessage(null);
+                        }}
+                        placeholder="Nhập Gmail phân công Nông dân..."
+                        className="flex-1 px-3 py-2 border border-slate-200 bg-white rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all"
+                      />
+                      <button
+                        type="submit"
+                        disabled={assigningRole === 'FARMER' || !farmerEmailToAssign.trim()}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-blue-50/80 text-blue-600 border border-blue-100/50 shadow-sm flex items-center justify-center font-bold text-xs uppercase">
-                            {staff.user.fullName?.split(' ').pop()?.substring(0, 2) || 'TV'}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{staff.user.fullName}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider ${
-                                staff.user.role === 'TECHNICIAN'
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                                  : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                              }`}>
-                                {staff.user.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-medium">{staff.user.email}</span>
+                        {assigningRole === 'FARMER' ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <UserPlus className="w-3.5 h-3.5" />
+                        )}
+                        Thêm Nông Dân
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Danh sách Nông dân */}
+                  {loadingStaff ? (
+                    <div className="flex items-center justify-center py-3 gap-2 text-slate-400 text-xs">
+                      <div className="w-4 h-4 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
+                      <span>Đang tải danh sách Nông dân...</span>
+                    </div>
+                  ) : farmers.length === 0 ? (
+                    <p className="text-slate-400 text-xs font-medium italic py-1">Chưa có Nông dân nào được phân công.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {farmers.map((staff: any) => (
+                        <div
+                          key={staff.id}
+                          className="p-2.5 bg-white border border-emerald-200/80 rounded-xl flex justify-between items-center shadow-sm group/staff"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
+                              {staff.user?.fullName?.split(' ').pop()?.substring(0, 2) || 'ND'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate">{staff.user?.fullName || staff.user?.email || 'Nông dân'}</p>
+                              <span className="text-[10px] text-slate-500 truncate block">{staff.user?.email}</span>
                             </div>
                           </div>
-                        </div>
 
-                        {isOwner && (
-                          <button
-                            onClick={() => handleUnassign(staff.userId)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl opacity-0 group-hover/staff:opacity-100 transition-all"
-                            title="Gỡ khỏi trang trại"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                          {isOwner && (
+                            <button
+                              onClick={() => setStaffToUnassign(staff)}
+                              disabled={unassigningId === staff.userId}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all ml-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
+                              title="Gỡ khỏi trang trại"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── MỤC 2: KỸ THUẬT VIÊN (TECHNICIAN) ── */}
+                <div className="p-4 bg-cyan-50/40 rounded-2xl border border-cyan-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="w-4 h-4 text-cyan-600" />
+                      <span className="text-xs font-bold text-cyan-950 uppercase tracking-wider">
+                        2. Kỹ Thuật Viên (Technician)
+                      </span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      technicians.length > 0 ? 'bg-cyan-600 text-white' : 'bg-cyan-100 text-cyan-700'
+                    }`}>
+                      {technicians.length} thành viên
+                    </span>
                   </div>
-                )}
+
+                  {/* Form phân công Kỹ thuật viên (chỉ chủ trại/admin) */}
+                  {isOwner && (
+                    <form onSubmit={(e) => handleAssignByRole(e, 'TECHNICIAN')} className="flex gap-2">
+                      <input
+                        type="email"
+                        value={techEmailToAssign}
+                        onChange={(e) => {
+                          setTechEmailToAssign(e.target.value);
+                          if (errorMessage) setErrorMessage(null);
+                        }}
+                        placeholder="Nhập Gmail phân công Kỹ thuật viên..."
+                        className="flex-1 px-3 py-2 border border-slate-200 bg-white rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 transition-all"
+                      />
+                      <button
+                        type="submit"
+                        disabled={assigningRole === 'TECHNICIAN' || !techEmailToAssign.trim()}
+                        className="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
+                      >
+                        {assigningRole === 'TECHNICIAN' ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <UserPlus className="w-3.5 h-3.5" />
+                        )}
+                        Thêm Kỹ Thuật Viên
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Danh sách Kỹ thuật viên */}
+                  {loadingStaff ? (
+                    <div className="flex items-center justify-center py-3 gap-2 text-slate-400 text-xs">
+                      <div className="w-4 h-4 border-2 border-slate-200 border-t-cyan-600 rounded-full animate-spin" />
+                      <span>Đang tải danh sách Kỹ thuật viên...</span>
+                    </div>
+                  ) : technicians.length === 0 ? (
+                    <p className="text-slate-400 text-xs font-medium italic py-1">Chưa có Kỹ thuật viên nào được phân công.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {technicians.map((staff: any) => (
+                        <div
+                          key={staff.id}
+                          className="p-2.5 bg-white border border-cyan-200/80 rounded-xl flex justify-between items-center shadow-sm group/staff"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 border border-cyan-200 shadow-sm flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
+                              {staff.user?.fullName?.split(' ').pop()?.substring(0, 2) || 'KT'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate">{staff.user?.fullName || staff.user?.email || 'Kỹ thuật viên'}</p>
+                              <span className="text-[10px] text-slate-500 truncate block">{staff.user?.email}</span>
+                            </div>
+                          </div>
+
+                          {isOwner && (
+                            <button
+                              onClick={() => setStaffToUnassign(staff)}
+                              disabled={unassigningId === staff.userId}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all ml-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
+                              title="Gỡ khỏi trang trại"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
             </div>
@@ -329,6 +466,58 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
                 className="w-full py-3 bg-slate-200/70 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors shadow-sm"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác Nhận Gỡ Nhân Sự Khỏi Trang Trại */}
+      {staffToUnassign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner border border-red-100">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-black text-slate-800 mb-2">
+              Xác nhận gỡ nhân sự
+            </h3>
+            <p className="text-slate-600 text-xs mb-4 leading-relaxed">
+              Bạn có chắc chắn muốn gỡ{' '}
+              <span className="font-bold text-slate-900">
+                {staffToUnassign.user?.fullName || staffToUnassign.user?.email || 'thành viên này'}
+              </span>{' '}
+              khỏi trang trại <span className="font-bold text-blue-700">{farm.name}</span> không?
+            </p>
+            <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-2xl text-[11px] text-amber-800 font-medium mb-5 text-left flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <span>
+                Sau khi gỡ, nhân sự này sẽ không còn quyền truy cập dữ liệu và nhật ký của trang trại.
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStaffToUnassign(null)}
+                disabled={unassigningId === (staffToUnassign.userId || staffToUnassign.id)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs cursor-pointer disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={confirmUnassign}
+                disabled={unassigningId === (staffToUnassign.userId || staffToUnassign.id)}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-md shadow-red-500/20 text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {unassigningId === (staffToUnassign.userId || staffToUnassign.id) ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Gỡ ngay</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

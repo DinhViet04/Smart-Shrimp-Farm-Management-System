@@ -23,10 +23,17 @@ interface FarmFormModalProps {
 }
 
 export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData }: FarmFormModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    address: string;
+    area: number | string;
+    description: string;
+    status: string;
+    farmingModel: string;
+  }>({
     name: '',
     address: '',
-    area: 0,
+    area: '',
     description: '',
     status: 'ACTIVE',
     farmingModel: 'HIGH_TECH',
@@ -54,21 +61,79 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
   // Load user from local storage to get ownerId
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [removingStaffEmail, setRemovingStaffEmail] = useState<string | null>(null);
+  const [staffToUnassign, setStaffToUnassign] = useState<AssignedStaffMember | null>(null);
+
+  const resolveStaffRole = (s: any): 'FARMER' | 'TECHNICIAN' => {
+    // 1. Ưu tiên vai trò phân công trong trang trại (FarmStaff.role)
+    const farmRole = (s.role || '').toUpperCase();
+    if (farmRole === 'TECHNICIAN') return 'TECHNICIAN';
+    if (farmRole === 'FARMER') return 'FARMER';
+
+    // 2. Vai trò của tài khoản người dùng (User.role)
+    const userRole = (s.user?.role || '').toUpperCase();
+    if (userRole === 'TECHNICIAN') return 'TECHNICIAN';
+
+    // 3. Mặc định là FARMER
+    return 'FARMER';
+  };
+
+  // Fetch current staff when editing
+  const loadCurrentStaff = async (farmId?: string) => {
+    const id = farmId || initialData?.id;
+    if (id) {
+      setLoadingStaff(true);
+      try {
+        const staff = await farmService.getStaff(id);
+        setAssignedStaff(
+          staff.map((s: any) => ({
+            id: s.user?.id || s.userId,
+            fullName: s.user?.fullName || 'Thành viên',
+            email: s.user?.email || '',
+            role: resolveStaffRole(s),
+            phone: s.user?.phone,
+            status: 'assigned' as const,
+          }))
+        );
+      } catch (e) {
+        console.error("Failed to load farm staff", e);
+      } finally {
+        setLoadingStaff(false);
+      }
+    }
+  };
+
   useEffect(() => {
-    if (initialData) {
+    if (!isOpen) {
+      setAssignedStaff([]);
+      setPendingInvites([]);
+      setFarmerEmailInput('');
+      setTechEmailInput('');
+      setFarmerSearchError(null);
+      setFarmerSearchSuccess(null);
+      setTechSearchError(null);
+      setTechSearchSuccess(null);
+      setError(null);
+      setStaffToUnassign(null);
+      return;
+    }
+
+    if (initialData?.id) {
       setFormData({
         name: initialData.name || '',
         address: initialData.address || '',
-        area: initialData.area || 0,
+        area: initialData.area !== undefined && initialData.area !== null ? initialData.area : '',
         description: initialData.description || '',
         status: initialData.status || 'ACTIVE',
         farmingModel: initialData.farmingModel || 'HIGH_TECH',
       });
+      loadCurrentStaff(initialData.id);
     } else {
       setFormData({
         name: '',
         address: '',
-        area: 0,
+        area: '',
         description: '',
         status: 'ACTIVE',
         farmingModel: 'HIGH_TECH',
@@ -85,40 +150,13 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     setTechSearchSuccess(null);
   }, [initialData, isOpen]);
 
-  // Fetch current staff when editing
-  useEffect(() => {
-    const loadCurrentStaff = async () => {
-      if (initialData && isOpen) {
-        try {
-          const staff = await farmService.getStaff(initialData.id);
-          setAssignedStaff(
-            staff.map((s: any) => ({
-              id: s.user?.id || s.userId,
-              fullName: s.user?.fullName || 'Thành viên',
-              email: s.user?.email || '',
-              role: s.user?.role || s.role,
-              phone: s.user?.phone,
-              status: 'assigned' as const,
-            }))
-          );
-        } catch (e) {
-          console.error("Failed to load farm staff", e);
-        }
-      }
-    };
-
-    if (isOpen) {
-      loadCurrentStaff();
-    }
-  }, [initialData, isOpen]);
-
   if (!isOpen) return null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ 
       ...prev, 
-      [name]: name === 'area' ? parseFloat(value) || 0 : value 
+      [name]: value 
     }));
   };
 
@@ -141,16 +179,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       if (initialData?.id) {
         // Đang edit farm → gọi API invite ngay
         const result = await farmService.inviteByEmail(initialData.id, email, 'FARMER');
-        setAssignedStaff(prev => [
-          ...prev,
-          {
-            id: result.status === 'assigned' ? email : undefined,
-            fullName: result.status === 'assigned' ? result.email : undefined,
-            email: result.email,
-            role: 'FARMER',
-            status: result.status,
-          },
-        ]);
+        await loadCurrentStaff();
         if (result.status === 'assigned') {
           setFarmerSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
         } else {
@@ -192,16 +221,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       if (initialData?.id) {
         // Đang edit farm → gọi API invite ngay
         const result = await farmService.inviteByEmail(initialData.id, email, 'TECHNICIAN');
-        setAssignedStaff(prev => [
-          ...prev,
-          {
-            id: result.status === 'assigned' ? email : undefined,
-            fullName: result.status === 'assigned' ? result.email : undefined,
-            email: result.email,
-            role: 'TECHNICIAN',
-            status: result.status,
-          },
-        ]);
+        await loadCurrentStaff();
         if (result.status === 'assigned') {
           setTechSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
         } else {
@@ -224,23 +244,59 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     }
   };
 
-  const handleRemoveStaff = (email: string) => {
-    setAssignedStaff(prev => prev.filter(s => s.email !== email));
-    setPendingInvites(prev => prev.filter(p => p.email !== email));
+  const handleRemoveStaff = (staffMember: AssignedStaffMember) => {
+    const isEditing = !!initialData?.id;
+    const isJoined = staffMember.status === 'assigned' && !!staffMember.id;
+
+    if (isEditing && isJoined) {
+      setStaffToUnassign(staffMember);
+    } else {
+      // Đang tạo farm mới hoặc pending invite
+      setAssignedStaff(prev => prev.filter(s => s.email !== staffMember.email));
+      setPendingInvites(prev => prev.filter(p => p.email !== staffMember.email));
+    }
+  };
+
+  const confirmUnassignStaff = async () => {
+    if (!staffToUnassign || !initialData?.id || !staffToUnassign.id) return;
+    setRemovingStaffEmail(staffToUnassign.email);
+    setError(null);
+    try {
+      await farmService.unassignStaff(initialData.id, staffToUnassign.id);
+      await loadCurrentStaff();
+      setStaffToUnassign(null);
+    } catch (err: any) {
+      setError(err.message || 'Không thể gỡ phân công nhân sự này.');
+    } finally {
+      setRemovingStaffEmail(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const parsedArea = parseFloat(String(formData.area));
+    if (isNaN(parsedArea) || parsedArea <= 0) {
+      setError('Vui lòng nhập diện tích trang trại hợp lệ (lớn hơn 0 m²).');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      const submitData = {
+        ...formData,
+        area: parsedArea,
+      };
+
       if (initialData) {
-        await farmService.update(initialData.id, formData);
+        await farmService.update(initialData.id, submitData);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
         // Tạo farm trước
-        const newFarm = await farmService.create({ ...formData, ownerId: user.id });
+        const ownerId = user?.id || user?.userId || user?.sub;
+        const newFarm = await farmService.create({ ...submitData, ...(ownerId && { ownerId }) });
         // Gửi invite cho tất cả pending sau khi có farmId
         if (pendingInvites.length > 0 && newFarm?.id) {
           await Promise.allSettled(
@@ -338,10 +394,10 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                   value={formData.area}
                   onChange={handleChange}
                   min="0"
-                  step="0.01"
+                  step="any"
                   required
                   className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-slate-700 bg-slate-50/50 focus:bg-white"
-                  placeholder="0.00"
+                  placeholder="VD: 5000"
                 />
               </div>
               <div className="space-y-1">
@@ -433,10 +489,10 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-blue-600" />
-                  Phân công nhân sự theo Gmail đã đăng ký
+                  {initialData ? 'Quản lý nhân sự theo Gmail đã đăng ký' : 'Phân công nhân sự theo Gmail đã đăng ký'}
                 </label>
                 <span className="text-[11px] font-semibold text-slate-500">
-                  Tổng nhân sự đã thêm: <strong className="text-blue-600">{assignedStaff.length}</strong>
+                  Tổng nhân sự: <strong className="text-blue-600">{assignedStaff.length}</strong>
                 </span>
               </div>
 
@@ -446,7 +502,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                   <div className="flex items-center gap-2">
                     <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
                     <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
-                      1. Thêm Nông Dân (Farmer)
+                      1. Nông Dân (Farmer)
                     </span>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -504,7 +560,12 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                 )}
 
                 {/* List of Added Farmers */}
-                {farmers.length === 0 ? (
+                {loadingStaff ? (
+                  <div className="flex items-center justify-center py-3 gap-2 text-slate-400 text-xs">
+                    <div className="w-4 h-4 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
+                    <span>Đang tải danh sách Nông dân...</span>
+                  </div>
+                ) : farmers.length === 0 ? (
                   <p className="text-[11px] text-slate-400 italic py-1">
                     Chưa có Nông dân nào được thêm. Nhập email để mời.
                   </p>
@@ -533,11 +594,16 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveStaff(farmer.email)}
-                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                          title="Gỡ khỏi danh sách"
+                          disabled={removingStaffEmail === farmer.email}
+                          onClick={() => handleRemoveStaff(farmer)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Gỡ khỏi trang trại"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {removingStaffEmail === farmer.email ? (
+                            <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </button>
                       </div>
                     ))}
@@ -551,7 +617,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                   <div className="flex items-center gap-2">
                     <FlaskConical className="w-3.5 h-3.5 text-cyan-600" />
                     <span className="text-xs font-bold text-cyan-950 uppercase tracking-wider">
-                      2. Thêm Kỹ Thuật Viên (Technician)
+                      2. Kỹ Thuật Viên (Technician)
                     </span>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -609,7 +675,12 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                 )}
 
                 {/* List of Added Technicians */}
-                {technicians.length === 0 ? (
+                {loadingStaff ? (
+                  <div className="flex items-center justify-center py-3 gap-2 text-slate-400 text-xs">
+                    <div className="w-4 h-4 border-2 border-slate-200 border-t-cyan-600 rounded-full animate-spin" />
+                    <span>Đang tải danh sách Kỹ thuật viên...</span>
+                  </div>
+                ) : technicians.length === 0 ? (
                   <p className="text-[11px] text-slate-400 italic py-1">
                     Chưa có Kỹ thuật viên nào được thêm. Nhập email để mời.
                   </p>
@@ -637,11 +708,16 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveStaff(tech.email)}
-                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                          title="Gỡ khỏi danh sách"
+                          disabled={removingStaffEmail === tech.email}
+                          onClick={() => handleRemoveStaff(tech)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Gỡ khỏi trang trại"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {removingStaffEmail === tech.email ? (
+                            <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </button>
                       </div>
                     ))}
@@ -676,6 +752,59 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
           </button>
         </div>
       </div>
+
+      {/* Modal Xác Nhận Gỡ Nhân Sự Khỏi Trang Trại */}
+      {staffToUnassign && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner border border-red-100">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-black text-slate-800 mb-2">
+              Xác nhận gỡ nhân sự
+            </h3>
+            <p className="text-slate-600 text-xs mb-4 leading-relaxed">
+              Bạn có chắc chắn muốn gỡ{' '}
+              <span className="font-bold text-slate-900">
+                {staffToUnassign.fullName || staffToUnassign.email}
+              </span>{' '}
+              ({staffToUnassign.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}) khỏi trang trại{' '}
+              <span className="font-bold text-blue-700">{initialData?.name || 'này'}</span> không?
+            </p>
+            <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-2xl text-[11px] text-amber-800 font-medium mb-5 text-left flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <span>
+                Sau khi gỡ, nhân sự này sẽ không còn quyền truy cập dữ liệu và nhật ký của trang trại.
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStaffToUnassign(null)}
+                disabled={removingStaffEmail === staffToUnassign.email}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs cursor-pointer disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={confirmUnassignStaff}
+                disabled={removingStaffEmail === staffToUnassign.email}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all shadow-md shadow-red-500/20 text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {removingStaffEmail === staffToUnassign.email ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Gỡ ngay</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

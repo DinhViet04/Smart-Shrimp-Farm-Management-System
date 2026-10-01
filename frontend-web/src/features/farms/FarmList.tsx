@@ -329,7 +329,8 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
             <h3 className="text-lg font-bold text-slate-800 mb-2">Xác nhận xóa</h3>
             <p className="text-slate-500 text-sm mb-6">
               Bạn có chắc chắn muốn xóa trang trại <span className="font-semibold text-slate-700">{farmToDelete?.name}</span>? 
-              Thao tác này không thể hoàn tác nếu không có liên kết với ao nuôi.
+              <br/><br/>
+              <span className="text-red-500 font-medium">⚠️ Cảnh báo: Việc xoá trang trại sẽ làm MẤT TOÀN BỘ dữ liệu liên quan (tất cả các ao nuôi, vụ nuôi, thông số môi trường, nhật ký...) và không thể khôi phục!</span>
             </p>
             <div className="flex gap-3">
               <button

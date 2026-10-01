@@ -490,7 +490,7 @@ export default function CropManagement({
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!window.confirm('Bạn có chắc chắn muốn xóa vụ nuôi này?')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa vụ nuôi này? ⚠️ CẢNH BÁO: Hành động này sẽ xóa toàn bộ dữ liệu liên quan (nhật ký, thông số...) và không thể khôi phục!')) return;
     try {
       await cropService.remove(id);
       showToast('Xóa vụ nuôi thành công!', 'success');

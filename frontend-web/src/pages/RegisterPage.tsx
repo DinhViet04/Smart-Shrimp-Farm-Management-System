@@ -622,7 +622,10 @@ export default function RegisterPage() {
 
           <p className="mt-7 text-center text-[14px] text-slate-600 font-medium">
             Đã có tài khoản?{' '}
-            <Link to="/login" className="font-bold text-blue-600 hover:text-blue-800 transition-colors">
+            <Link
+              to={inviteTokenFromUrl ? `/login?inviteToken=${inviteTokenFromUrl}` : '/login'}
+              className="font-bold text-blue-600 hover:text-blue-800 transition-colors"
+            >
               Đăng nhập ngay
             </Link>
           </p>

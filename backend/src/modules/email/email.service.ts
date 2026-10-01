@@ -6,7 +6,7 @@ import * as nodemailer from 'nodemailer';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   private createTransporter() {
     return nodemailer.createTransport({
@@ -34,8 +34,9 @@ export class EmailService {
     farmName: string;
     managerName: string;
     role: string;
+    inviteLink: string;
   }) {
-    const { toEmail, toName, farmName, managerName, role } = params;
+    const { toEmail, toName, farmName, managerName, role, inviteLink } = params;
     const roleLabel = role === 'FARMER' ? 'Nông Dân (Farmer)' : 'Kỹ Thuật Viên (Technician)';
     const roleColor = role === 'FARMER' ? '#16a34a' : '#0891b2';
     const roleBg = role === 'FARMER' ? '#dcfce7' : '#cffafe';
@@ -75,6 +76,13 @@ export class EmailService {
               <span style="display:inline-block;background:${roleBg};color:${roleColor};font-size:15px;font-weight:700;padding:10px 28px;border-radius:100px;border:2px solid ${roleColor};">
                 ${roleLabel}
               </span>
+            </div>
+
+            <!-- Action Button -->
+            <div style="text-align:center;margin-bottom:32px;">
+              <a href="${inviteLink}" style="display:inline-block;background:#0ea5e9;color:#ffffff;font-size:15px;font-weight:600;padding:14px 32px;text-decoration:none;border-radius:10px;box-shadow:0 4px 12px rgba(14,165,233,0.3);">
+                Xác nhận Đăng nhập
+              </a>
             </div>
 
             <!-- Info Box -->

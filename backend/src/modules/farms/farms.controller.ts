@@ -24,6 +24,10 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 export class FarmsController {
   constructor(private readonly farmsService: FarmsService) {}
 
+  private getUserId(req: any): string {
+    return req.user.userId || req.user.sub || req.user.id;
+  }
+
   @Get()
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN', 'TECHNICIAN')
   findAll(
@@ -34,7 +38,7 @@ export class FarmsController {
     return this.farmsService.findAll(
       search,
       status,
-      req.user.userId,
+      this.getUserId(req),
       req.user.role,
     );
   }
@@ -42,18 +46,22 @@ export class FarmsController {
   @Get('my')
   @Roles('FARM_MANAGER')
   findMyFarms(@Request() req: any) {
-    return this.farmsService.findAllByManager(req.user.userId);
+    return this.farmsService.findAllByManager(this.getUserId(req));
   }
 
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'ADMIN', 'TECHNICIAN')
   findOne(@Param('id') id: string, @Request() req: any) {
-    return this.farmsService.findOne(id, req.user.userId, req.user.role);
+    return this.farmsService.findOne(id, this.getUserId(req), req.user.role);
   }
 
   @Post()
   @Roles('FARM_MANAGER')
-  create(@Body() createFarmDto: CreateFarmDto) {
+  create(@Body() createFarmDto: CreateFarmDto, @Request() req: any) {
+    // Nếu createFarmDto chưa có ownerId thì tự gán bằng user đang đăng nhập
+    if (!createFarmDto.ownerId) {
+      createFarmDto.ownerId = this.getUserId(req);
+    }
     return this.farmsService.create(createFarmDto);
   }
 
@@ -67,7 +75,7 @@ export class FarmsController {
     return this.farmsService.update(
       id,
       updateFarmDto,
-      req.user.userId,
+      this.getUserId(req),
       req.user.role,
     );
   }
@@ -75,13 +83,13 @@ export class FarmsController {
   @Delete(':id')
   @Roles('FARM_MANAGER')
   remove(@Param('id') id: string, @Request() req: any) {
-    return this.farmsService.remove(id, req.user.userId, req.user.role);
+    return this.farmsService.remove(id, this.getUserId(req), req.user.role);
   }
 
   @Get(':id/staff')
   @Roles('FARM_MANAGER', 'ADMIN')
   getStaff(@Param('id') id: string, @Request() req: any) {
-    return this.farmsService.getStaff(id, req.user.userId, req.user.role);
+    return this.farmsService.getStaff(id, this.getUserId(req), req.user.role);
   }
 
   @Post(':id/staff')
@@ -94,7 +102,7 @@ export class FarmsController {
     return this.farmsService.assignStaff(
       id,
       userIdToAssign,
-      req.user.userId,
+      this.getUserId(req),
       req.user.role,
     );
   }
@@ -109,7 +117,7 @@ export class FarmsController {
     return this.farmsService.unassignStaff(
       id,
       userIdToUnassign,
-      req.user.userId,
+      this.getUserId(req),
       req.user.role,
     );
   }
@@ -131,7 +139,7 @@ export class FarmsController {
       farmId,
       email,
       role,
-      req.user.userId,
+      this.getUserId(req),
       req.user.role,
     );
   }

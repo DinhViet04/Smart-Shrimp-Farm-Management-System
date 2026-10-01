@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { NotificationLevel } from '@prisma/client';
 
 // Vietnam province/city coordinates fallback dictionary for fast & reliable lookup
 const VIETNAM_PROVINCES_COORDS: Record<
@@ -71,7 +73,10 @@ export interface WeatherData {
 export class WeatherService {
   private readonly logger = new Logger(WeatherService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService
+  ) {}
 
   /**
    * Translates WMO weather codes to Vietnamese description and UI icon type
@@ -214,7 +219,10 @@ export class WeatherService {
       try {
         const farm = await this.prisma.farm.findUnique({
           where: { id: options.farmId },
-          select: { name: true, address: true, location: true },
+          include: {
+        owner: { select: { id: true, isActive: true } },
+        staff: { include: { user: { select: { id: true, isActive: true } } } },
+      },
         });
 
         if (farm) {
@@ -293,6 +301,98 @@ export class WeatherService {
         forecastHint:
           'Thời tiết nắng nhẹ ráo nước, thích hợp cho tôm ăn và sinh trưởng.',
       };
+    }
+  }
+
+  /**
+   * Syncs 14-day weather forecast and creates Disaster Alerts for the farm if thresholds are met.
+   */
+  async syncDisasterAlerts(farmId: string, userId: string) {
+    const farm = await this.prisma.farm.findUnique({
+      where: { id: farmId },
+      select: { name: true, address: true, location: true, owner: true, staff: { include: { user: true } } },
+    });
+
+    if (!farm) return;
+
+    const targetUserIds = new Set<string>();
+    if (farm.owner && farm.owner.isActive) targetUserIds.add(farm.owner.id);
+    farm.staff.forEach(staff => {
+      if (staff.isActive && staff.user && staff.user.isActive) targetUserIds.add(staff.user.id);
+    });
+
+    if (targetUserIds.size === 0) return;
+
+    const farmAddr = farm.address || farm.location || farm.name;
+    const geo = await this.geocodeAddress(farmAddr);
+    
+    // Default to Ben Tre if resolution fails
+    const lat = geo.lat || 10.2415;
+    const lon = geo.lon || 106.3759;
+
+    try {
+      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,precipitation_sum,wind_gusts_10m_max&timezone=Asia%2FHo_Chi_Minh&forecast_days=14`;
+      const res = await fetch(weatherUrl);
+
+      if (!res.ok) {
+        throw new Error(`Open-Meteo HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const daily = data.daily;
+      if (!daily || !daily.time) return;
+
+      let alertedStorm = false;
+      let alertedRain = false;
+      let alertedHeat = false;
+
+      for (let i = 0; i < daily.time.length; i++) {
+        const dateStr = daily.time[i];
+        const dateObj = new Date(dateStr);
+        const formattedDate = `${dateObj.getDate()}/${dateObj.getMonth() + 1}`;
+
+        const maxTemp = daily.temperature_2m_max[i];
+        const precip = daily.precipitation_sum[i];
+        const windGusts = daily.wind_gusts_10m_max[i];
+
+        let title = '';
+        let message = '';
+        let level = 2; // Default to WARNING which is enum value
+
+        // Thresholds
+        if (windGusts > 60 && !alertedStorm) {
+          title = 'Cảnh báo Bão / Lốc xoáy';
+          message = `Dự báo có bão/lốc xoáy (gió giật ${windGusts} km/h) bắt đầu từ ngày ${formattedDate} tại ${geo.locationName}. Hãy chủ động gia cố bờ ao.`;
+          level = 3; // DANGER
+          alertedStorm = true;
+        } else if (precip > 50 && !alertedRain) {
+          title = 'Cảnh báo Mưa Lớn / Ngập lụt';
+          message = `Dự báo mưa lớn kéo dài (lượng mưa ${precip}mm) bắt đầu từ ngày ${formattedDate} tại ${geo.locationName}. Chuẩn bị rải vôi để ổn định pH.`;
+          level = 3; // DANGER
+          alertedRain = true;
+        } else if (maxTemp > 37 && !alertedHeat) {
+          title = 'Cảnh báo Nắng nóng cực đoan';
+          message = `Dự báo nắng nóng gay gắt (${maxTemp}°C) bắt đầu từ ngày ${formattedDate} tại ${geo.locationName}. Tăng thời gian chạy quạt nước.`;
+          level = 2; // WARNING
+          alertedHeat = true;
+        }
+
+        if (title && message) {
+          for (const uid of targetUserIds) {
+            // Need to map level enum correctly or use string if Prisma expects string
+            const levelEnum = level === 3 ? 'DANGER' : 'WARNING';
+            await this.notificationsService.createDisasterNotification(
+              uid,
+              farmId,
+              levelEnum as any,
+              title,
+              message
+            );
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to sync disaster alerts for farm ${farmId}: ${err.message}`);
     }
   }
 }

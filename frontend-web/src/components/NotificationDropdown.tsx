@@ -1,4 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { io, Socket } from 'socket.io-client';
+import toast from 'react-hot-toast';
+import { notificationService } from '../services/notification.service';
 import {
   Bell,
   CheckCheck,
@@ -31,7 +35,7 @@ export interface NotificationItem {
   title: string;
   message: string;
   level: NotificationLevel;
-  category: NotificationCategory;
+  category?: NotificationCategory;
   createdAt: string;
   isRead: boolean;
   targetLink?: string;
@@ -39,160 +43,10 @@ export interface NotificationItem {
 }
 
 interface NotificationDropdownProps {
-  role?: string;
   themeColor?: 'blue' | 'indigo' | 'teal' | 'purple';
   onNavigateTab?: (tabName: string) => void;
 }
 
-const getRoleInitialNotifications = (role?: string): NotificationItem[] => {
-  const now = new Date();
-  const getAgo = (minutes: number) => {
-    const d = new Date(now.getTime() - minutes * 60 * 1000);
-    return d.toISOString();
-  };
-
-  switch (role) {
-    case 'ADMIN':
-      return [
-        {
-          id: 'adm-1',
-          title: 'Yêu cầu phê duyệt trang trại mới',
-          message: 'Trang trại "Hải Hà BioTech - Bạc Liêu" vừa được tạo và đang chờ kích hoạt tài nguyên.',
-          level: 'WARNING',
-          category: 'SYSTEM',
-          createdAt: getAgo(12),
-          isRead: false,
-        },
-        {
-          id: 'adm-2',
-          title: 'Sao lưu cơ sở dữ liệu hoàn tất',
-          message: 'Hệ thống tự động sao lưu Postgres & Redis định kỳ lúc 00:00 thành công (Dung lượng: 1.2 GB).',
-          level: 'SUCCESS',
-          category: 'SYSTEM',
-          createdAt: getAgo(180),
-          isRead: false,
-        },
-        {
-          id: 'adm-3',
-          title: 'Người dùng mới đăng ký',
-          message: 'Tài khoản kythuat.minh@gmail.com vừa hoàn tất đăng ký với vai trò Kỹ thuật viên.',
-          level: 'INFO',
-          category: 'SYSTEM',
-          createdAt: getAgo(360),
-          isRead: true,
-        },
-      ];
-
-    case 'TECHNICIAN':
-      return [
-        {
-          id: 'tech-1',
-          title: 'Cảnh báo: Oxy hòa tan (DO) thấp',
-          message: 'Ao Nuôi A1 có chỉ số DO giảm xuống 3.2 mg/L (ngưỡng an toàn >= 4.0 mg/L). Cần bật quạt nước khẩn cấp.',
-          level: 'DANGER',
-          category: 'ENVIRONMENT',
-          pondName: 'Ao Nuôi A1',
-          createdAt: getAgo(5),
-          isRead: false,
-        },
-        {
-          id: 'tech-2',
-          title: 'Lịch đo mẫu tôm 5T định kỳ',
-          message: 'Ao Ương 02 đạt mốc Ngày nuôi thứ 20 (DOC 20). Vui lòng bắt mẫu cân Gm và đếm Nđ.',
-          level: 'WARNING',
-          category: 'FIVE_T',
-          pondName: 'Ao Ương 02',
-          createdAt: getAgo(45),
-          isRead: false,
-        },
-        {
-          id: 'tech-3',
-          title: 'Độ kiềm & pH Ao B3 ổn định',
-          message: 'Kết quả đo kiểm lúc 07:00: pH = 7.8, Độ kiềm = 135 mg/L nằm trong ngưỡng tối ưu.',
-          level: 'SUCCESS',
-          category: 'ENVIRONMENT',
-          pondName: 'Ao Nuôi B3',
-          createdAt: getAgo(240),
-          isRead: true,
-        },
-      ];
-
-    case 'FARMER':
-      return [
-        {
-          id: 'farm-1',
-          title: 'Nhắc nhở: Cữ ăn Chiều (Cữ 3)',
-          message: 'Đến giờ cho ăn Cữ 3 (14:00 - 15:30). Khẩu phần đề xuất: Ao A1: 42 kg, Ao A2: 38 kg.',
-          level: 'INFO',
-          category: 'FEEDING',
-          createdAt: getAgo(15),
-          isRead: false,
-        },
-        {
-          id: 'farm-2',
-          title: 'Cảnh báo thời tiết: Mưa giông lớn',
-          message: 'Dự báo khu vực sắp có mưa lớn từ 16:30. Chú ý kiểm tra rãnh thoát nước mặt và rải vôi quanh bờ ao.',
-          level: 'WARNING',
-          category: 'ENVIRONMENT',
-          createdAt: getAgo(60),
-          isRead: false,
-        },
-        {
-          id: 'farm-3',
-          title: 'Đã xác nhận nhật ký cữ sáng',
-          message: 'Kỹ thuật viên đã duyệt nhật ký cho ăn Cữ 1 (Sáng) của bạn.',
-          level: 'SUCCESS',
-          category: 'FEEDING',
-          createdAt: getAgo(300),
-          isRead: true,
-        },
-      ];
-
-    case 'FARM_MANAGER':
-    default:
-      return [
-        {
-          id: 'mgr-1',
-          title: 'Đến hạn đánh giá Vòng lặp 5T Care',
-          message: 'Ao Nuôi A1 vừa kết thúc chu kỳ 5 ngày. Hệ thống đã tổng hợp FCR = 1.15 và tạo đề xuất lượng ăn mới.',
-          level: 'WARNING',
-          category: 'FIVE_T',
-          pondName: 'Ao Nuôi A1',
-          createdAt: getAgo(8),
-          isRead: false,
-        },
-        {
-          id: 'mgr-2',
-          title: 'Cảnh báo tồn kho thức ăn số 2',
-          message: 'Thức ăn CP 5002 chỉ còn 150 kg (dưới ngưỡng tối thiểu 300 kg). Cần tạo đơn nhập hàng.',
-          level: 'DANGER',
-          category: 'INVENTORY',
-          createdAt: getAgo(75),
-          isRead: false,
-        },
-        {
-          id: 'mgr-3',
-          title: 'Sự cố môi trường đã được xử lý',
-          message: 'Kỹ thuật viên Nguyễn Văn A đã bổ sung vi sinh xử lý khí độc NH3 thành công tại Ao B2.',
-          level: 'SUCCESS',
-          category: 'INCIDENT',
-          pondName: 'Ao Nuôi B2',
-          createdAt: getAgo(190),
-          isRead: true,
-        },
-        {
-          id: 'mgr-4',
-          title: 'Dự báo tỷ lệ sống tăng trưởng tốt',
-          message: 'Ao Ương 01 đạt tỷ lệ sống ước tính 91.5%, vượt mục tiêu kế hoạch ban đầu (+2.5%).',
-          level: 'INFO',
-          category: 'FIVE_T',
-          pondName: 'Ao Ương 01',
-          createdAt: getAgo(420),
-          isRead: true,
-        },
-      ];
-  }
-};
 
 const formatTimeAgo = (isoString: string) => {
   const diffMs = Date.now() - new Date(isoString).getTime();
@@ -206,18 +60,69 @@ const formatTimeAgo = (isoString: string) => {
 };
 
 export default function NotificationDropdown({
-  role = 'FARM_MANAGER',
   themeColor = 'blue',
   onNavigateTab,
 }: NotificationDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'UNREAD' | 'ALERT'>('ALL');
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    getRoleInitialNotifications(role),
-  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  // Fetch initial notifications
+  const fetchNotifications = () => {
+    notificationService.getNotifications()
+      .then((data) => {
+        setNotifications(data || []);
+      })
+      .catch((err) => console.error('Failed to fetch notifications', err));
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  // Socket connection
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const socket = io(`${apiUrl}/notifications`, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('Connected to notifications WebSocket, socketId:', socket.id);
+    });
+
+    socket.on('newNotification', (notification: NotificationItem) => {
+      console.log('Received realtime notification:', notification);
+      setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
+      
+      // Show toast
+      toast.success(notification.title, {
+        icon: '🔔',
+        style: {
+          borderRadius: '12px',
+          background: '#1e293b',
+          color: '#fff',
+          fontWeight: 600,
+          fontSize: '14px',
+        },
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Close when clicking outside
   useEffect(() => {
@@ -235,6 +140,7 @@ export default function NotificationDropdown({
     };
 
     if (isOpen) {
+      fetchNotifications();
       document.addEventListener('mousedown', handlePointerDown);
       document.addEventListener('keydown', handleKeyDown);
     }
@@ -252,32 +158,66 @@ export default function NotificationDropdown({
     return true;
   });
 
-  const markAsRead = (id: string, e?: React.MouseEvent) => {
+  const markAsRead = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
-    );
+    try {
+      await notificationService.markAsRead(id);
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)),
+      );
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+  const markAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const deleteNotification = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const deleteNotification = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    // Optimistic UI update
     setNotifications((prev) => prev.filter((item) => item.id !== id));
     if (selectedItem?.id === id) {
       setSelectedItem(null);
     }
+
+    try {
+      await notificationService.deleteNotification(id);
+    } catch (err) {
+      console.error('Failed to delete notification', err);
+      toast.error('Không thể xóa thông báo, vui lòng thử lại');
+      fetchNotifications();
+    }
   };
 
-  const clearAllNotifications = () => {
+  const clearAllNotifications = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tất cả thông báo không?')) {
+      return;
+    }
+    const previous = [...notifications];
     setNotifications([]);
     setSelectedItem(null);
+
+    try {
+      await notificationService.clearAllNotifications();
+      toast.success('Đã xóa tất cả thông báo');
+    } catch (err) {
+      console.error('Failed to clear all notifications', err);
+      toast.error('Không thể xóa tất cả thông báo');
+      setNotifications(previous);
+    }
   };
 
   const handleItemClick = (item: NotificationItem) => {
-    markAsRead(item.id);
+    if (!item.isRead) {
+      markAsRead(item.id);
+    }
     setSelectedItem(item);
   };
 
@@ -313,7 +253,7 @@ export default function NotificationDropdown({
     },
   }[themeColor];
 
-  const getLevelIcon = (level: NotificationLevel, category: NotificationCategory) => {
+  const getLevelIcon = (level: NotificationLevel, category?: NotificationCategory) => {
     if (category === 'ENVIRONMENT') {
       return <Droplets className="w-4 h-4 text-cyan-600" />;
     }
@@ -366,7 +306,7 @@ export default function NotificationDropdown({
   };
 
   return (
-    <div className="relative inline-block" ref={containerRef}>
+    <div className="relative inline-block z-40" ref={containerRef}>
       {/* Notification Bell Button */}
       <button
         type="button"
@@ -554,60 +494,70 @@ export default function NotificationDropdown({
       )}
 
       {/* Quick Modal Preview when clicking a Notification */}
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-white shadow-sm flex items-center justify-center">
-                  {getLevelIcon(selectedItem.level, selectedItem.category)}
-                </div>
-                <div>
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${getLevelBadge(selectedItem.level)}`}>
-                    {getLevelName(selectedItem.level)}
-                  </span>
-                  <div className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {new Date(selectedItem.createdAt).toLocaleString('vi-VN')}
+      {selectedItem &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+              <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white shadow-sm flex items-center justify-center">
+                    {getLevelIcon(selectedItem.level, selectedItem.category)}
+                  </div>
+                  <div>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${getLevelBadge(selectedItem.level)}`}>
+                      {getLevelName(selectedItem.level)}
+                    </span>
+                    <div className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {new Date(selectedItem.createdAt).toLocaleString('vi-VN')}
+                    </div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItem(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-3">
-              <h3 className="text-base font-extrabold text-slate-900 leading-snug">
-                {selectedItem.title}
-              </h3>
-              {selectedItem.pondName && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
-                  <Activity className="w-3.5 h-3.5 text-blue-600" />
-                  Đối tượng: {selectedItem.pondName}
-                </div>
-              )}
-              <p className="text-sm text-slate-600 leading-relaxed bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                {selectedItem.message}
-              </p>
-            </div>
+              <div className="p-6 space-y-3">
+                <h3 className="text-base font-extrabold text-slate-900 leading-snug">
+                  {selectedItem.title}
+                </h3>
+                {selectedItem.pondName && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
+                    <Activity className="w-3.5 h-3.5 text-blue-600" />
+                    Đối tượng: {selectedItem.pondName}
+                  </div>
+                )}
+                <p className="text-sm text-slate-600 leading-relaxed bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                  {selectedItem.message}
+                </p>
+              </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
-                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm"
-              >
-                Đã hiểu (Đóng)
-              </button>
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => deleteNotification(selectedItem.id)}
+                  className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Xóa thông báo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItem(null)}
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm"
+                >
+                  Đã hiểu (Đóng)
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

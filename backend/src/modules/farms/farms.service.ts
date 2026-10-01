@@ -12,6 +12,7 @@ import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
 import { FarmAccessService } from '../farm-access/farm-access.service.js';
 import { EmailService } from '../email/email.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class FarmsService {
@@ -21,7 +22,8 @@ export class FarmsService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
-  ) {}
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async create(data: CreateFarmDto) {
     const exists = await this.prisma.farm.findFirst({
@@ -29,15 +31,39 @@ export class FarmsService {
     });
     if (exists) throw new BadRequestException('Ten nong trai da ton tai');
 
+    if (!data.ownerId) {
+      throw new BadRequestException('Vui lòng chỉ định chủ trang trại (ownerId)');
+    }
+
     const { ponds_count, staffIds, ...farmData } = data;
     void ponds_count;
 
-    const farm = await this.prisma.farm.create({ data: farmData });
+    const farm = await this.prisma.farm.create({
+      data: {
+        ...farmData,
+        ownerId: data.ownerId,
+      },
+    });
 
     if (staffIds?.length) {
       await this.prisma.farmStaff.createMany({
         data: await this.buildStaffAssignments(farm.id, staffIds),
       });
+    }
+
+    // Thông báo realtime cho Manager
+    if (farm.ownerId) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: farm.ownerId },
+        select: { role: true },
+      });
+      if (owner?.role === 'FARM_MANAGER') {
+        await this.notificationsService.createFarmCreatedNotification(
+          farm.ownerId,
+          farm.id,
+          farm.name,
+        );
+      }
     }
 
     return farm;
@@ -221,7 +247,7 @@ export class FarmsService {
       );
     }
 
-    return this.prisma.farmStaff.create({
+    const farmStaff = await this.prisma.farmStaff.create({
       data: {
         farmId,
         userId: userIdToAssign,
@@ -238,6 +264,19 @@ export class FarmsService {
         },
       },
     });
+
+    // Gửi thông báo cho nhân sự vừa được phân công
+    const farm = await this.prisma.farm.findUnique({ where: { id: farmId } });
+    if (farm) {
+      await this.notificationsService.createFarmJoinNotification(
+        userIdToAssign,
+        farmId,
+        farm.name,
+        userToAssign.role,
+      );
+    }
+
+    return farmStaff;
   }
 
   async unassignStaff(
@@ -307,41 +346,8 @@ export class FarmsService {
       where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
     });
 
-    // ── NHÁNH A: User đã tồn tại ──
-    if (existingUser) {
-      // Kiểm tra role phù hợp
-      if (existingUser.role !== role) {
-        throw new BadRequestException(
-          `Tài khoản này có vai trò ${existingUser.role}, không phải ${role}. Vui lòng kiểm tra lại.`,
-        );
-      }
-
-      // Upsert FarmStaff
-      await this.prisma.farmStaff.upsert({
-        where: { farmId_userId: { farmId, userId: existingUser.id } },
-        create: { farmId, userId: existingUser.id, role: existingUser.role, isActive: true },
-        update: { isActive: true, role: existingUser.role },
-      });
-
-      // Gửi email thông báo (fire & forget)
-      this.emailService.sendFarmInvitationExistingUser({
-        toEmail: existingUser.email,
-        toName: existingUser.fullName,
-        farmName: farm.name,
-        managerName,
-        role,
-      });
-
-      return {
-        status: 'assigned',
-        email: existingUser.email,
-        message: `Đã thêm ${existingUser.fullName} vào trang trại và gửi email thông báo.`,
-      };
-    }
-
-    // ── NHÁNH B: User chưa tồn tại ──
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+    // Lấy URL frontend
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
 
     // Tạo JWT invite token (7 ngày)
     const inviteToken = await this.jwtService.signAsync(
@@ -352,6 +358,45 @@ export class FarmsService {
       },
     );
 
+    // ── NHÁNH A: User đã tồn tại ──
+    if (existingUser) {
+      // Kiểm tra role phù hợp
+      if (existingUser.role !== role) {
+        throw new BadRequestException(
+          `Tài khoản này có vai trò ${existingUser.role}, không phải ${role}. Vui lòng kiểm tra lại.`,
+        );
+      }
+
+      // Tạo link đăng nhập chứa token
+      const inviteLink = `${frontendUrl}/login?inviteToken=${inviteToken}`;
+
+      // Gửi email thông báo với nút xác nhận đăng nhập (fire & forget)
+      this.emailService.sendFarmInvitationExistingUser({
+        toEmail: existingUser.email,
+        toName: existingUser.fullName,
+        farmName: farm.name,
+        managerName,
+        role,
+        inviteLink,
+      });
+
+      // Gửi thông báo chuông cho nhân sự trên hệ thống
+      await this.notificationsService.createFarmInviteNotification(
+        existingUser.id,
+        farm.id,
+        farm.name,
+        managerName,
+        role,
+      );
+
+      return {
+        status: 'invited',
+        email: existingUser.email,
+        message: `Đã gửi email yêu cầu xác nhận tới ${existingUser.fullName}. Người dùng cần đăng nhập để tham gia.`,
+      };
+    }
+
+    // ── NHÁNH B: User chưa tồn tại ──
     const inviteLink = `${frontendUrl}/register?inviteToken=${inviteToken}`;
 
     // Gửi email mời (fire & forget)

@@ -277,7 +277,7 @@ export default function HomePage() {
       <section id="bản-đồ" className="py-24 bg-white relative overflow-hidden">
         {/* Hiệu ứng mờ chuyển cảnh từ màu xám nhạt của section trên xuống */}
         <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none z-0"></div>
-        
+
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: false, amount: 0.2 }} variants={fadeInUp}
@@ -403,7 +403,7 @@ export default function HomePage() {
       <section id="tính-năng" className="relative py-24 bg-[#EAF5F8] overflow-hidden">
         {/* Hiệu ứng mờ chuyển cảnh từ màu trắng của section trên xuống */}
         <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-white to-transparent pointer-events-none"></div>
-        
+
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
 
           {/* Header */}
@@ -481,7 +481,7 @@ export default function HomePage() {
       <section id="trợ-lý-ai" className="py-24 bg-white relative overflow-hidden">
         {/* Hiệu ứng mờ chuyển cảnh từ màu xanh lợt của section trên xuống */}
         <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-[#EAF5F8] to-transparent pointer-events-none z-0"></div>
-        
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <motion.div
@@ -499,7 +499,6 @@ export default function HomePage() {
                   </span>
                   <span className="text-sm font-bold tracking-wider uppercase text-emerald-300">Hoạt động 24/7</span>
                 </div>
-                <p className="text-2xl md:text-3xl font-bold leading-snug">Tra cứu kiến thức kỹ thuật nuôi tôm ngay tại ao.</p>
               </div>
             </motion.div>
 

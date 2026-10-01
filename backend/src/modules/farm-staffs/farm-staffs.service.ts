@@ -11,13 +11,15 @@ import {
 } from '../farm-access/farm-access.service.js';
 import { CreateFarmStaffDto } from './dto/create-farm-staff.dto.js';
 import { UpdateFarmStaffDto } from './dto/update-farm-staff.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class FarmStaffsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
-  ) {}
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async findAll(user: AuthUser, farmId?: string) {
     const where: any = {};
@@ -66,7 +68,15 @@ export class FarmStaffsService {
       );
     }
 
-    return this.prisma.farmStaff.upsert({
+    const farm = await this.prisma.farm.findUnique({
+      where: { id: data.farmId },
+    });
+
+    const existingStaff = await this.prisma.farmStaff.findUnique({
+      where: { farmId_userId: { farmId: data.farmId, userId: data.userId } },
+    });
+
+    const staff = await this.prisma.farmStaff.upsert({
       where: { farmId_userId: { farmId: data.farmId, userId: data.userId } },
       create: {
         farmId: data.farmId,
@@ -79,6 +89,18 @@ export class FarmStaffsService {
         isActive: data.isActive ?? true,
       },
     });
+
+    // Notify if they are newly added
+    if (!existingStaff && farm) {
+      await this.notificationsService.createFarmJoinNotification(
+        data.userId,
+        data.farmId,
+        farm.name,
+        data.role,
+      );
+    }
+
+    return staff;
   }
 
   async update(id: string, data: UpdateFarmStaffDto, user: AuthUser) {

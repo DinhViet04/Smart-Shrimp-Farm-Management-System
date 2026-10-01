@@ -21,9 +21,9 @@ export class CreateFarmDto {
   @Min(0)
   area: number;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  ownerId: string;
+  ownerId?: string;
 
   @IsNumber()
   @Min(0)

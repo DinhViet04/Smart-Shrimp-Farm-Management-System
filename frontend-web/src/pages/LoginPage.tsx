@@ -1,15 +1,50 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Activity, LineChart } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Mail, Lock, ArrowRight, Activity, LineChart, UserCheck } from 'lucide-react';
+import { verifyInviteToken } from '../services/farm.service';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteTokenFromUrl = searchParams.get('inviteToken');
+
+  // Invitation info state
+  const [inviteInfo, setInviteInfo] = useState<{
+    valid: boolean;
+    farmName?: string;
+    managerName?: string;
+    role?: string;
+    email?: string;
+    reason?: string;
+    loading: boolean;
+  }>({ valid: false, loading: !!inviteTokenFromUrl });
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  // Verify invite token if provided in URL
+  useEffect(() => {
+    if (!inviteTokenFromUrl) return;
+    let cancelled = false;
+    verifyInviteToken(inviteTokenFromUrl).then((result) => {
+      if (cancelled) return;
+      if (result.valid) {
+        setInviteInfo({ loading: false, ...result });
+        if (result.email) {
+          setEmail(result.email);
+        }
+      } else {
+        setInviteInfo({ valid: false, loading: false, reason: result.reason });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteTokenFromUrl]);
 
   const handleGoogleLogin = async (response: any) => {
     setServerError('');
@@ -31,12 +66,12 @@ export default function LoginPage() {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
+
         let redirectPath = '/dashboard';
         if (data.user.role === 'ADMIN') redirectPath = '/admin/dashboard';
         else if (data.user.role === 'FARMER') redirectPath = '/farmer/dashboard';
         else if (data.user.role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
-        
+
         navigate(redirectPath);
       }
     } catch (error) {
@@ -50,7 +85,7 @@ export default function LoginPage() {
     const initGoogle = () => {
       if ((window as any).google?.accounts?.id) {
         const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id-here.apps.googleusercontent.com';
-        
+
         if (googleClientId && !googleClientId.includes('your-google-client-id-here')) {
           (window as any).google.accounts.id.initialize({
             client_id: googleClientId,
@@ -93,7 +128,11 @@ export default function LoginPage() {
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          ...(inviteTokenFromUrl ? { inviteToken: inviteTokenFromUrl } : {}),
+        }),
       });
 
       const data = await response.json();
@@ -103,13 +142,15 @@ export default function LoginPage() {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
+
         let redirectPath = '/dashboard';
         if (data.user.role === 'ADMIN') redirectPath = '/admin/dashboard';
         else if (data.user.role === 'FARMER') redirectPath = '/farmer/dashboard';
         else if (data.user.role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
-        
-        navigate(redirectPath);
+
+        navigate(redirectPath, {
+          state: data.joinedFarm ? { welcomeFarm: data.joinedFarm.name } : undefined,
+        });
       }
     } catch (error) {
       setServerError('Không thể kết nối đến máy chủ.');
@@ -133,7 +174,7 @@ export default function LoginPage() {
         .animate-float { animation: float 6s ease-in-out infinite; }
         .animate-slow-zoom { animation: slowZoom 25s ease-in-out infinite; }
       `}</style>
-      
+
       {/* Deep Ocean Background with Enhanced Saturation and Caustics */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <img
@@ -145,7 +186,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-cyan-400/10 mix-blend-color-dodge"></div>
         {/* Deep vignette shadow */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-900/60"></div>
-        
+
         {/* Lively glowing orbs representing underwater light rays */}
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-300/10 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
         <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[120px] animate-pulse mix-blend-screen" style={{ animationDelay: '2s' }}></div>
@@ -153,10 +194,10 @@ export default function LoginPage() {
 
       {/* Centered Frosted Glass Panel */}
       <div className="relative z-10 w-full max-w-4xl bg-white/5 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] shadow-[0_35px_60px_-15px_rgba(0,10,30,0.6)] flex flex-col md:flex-row overflow-hidden animate-float">
-        
+
         {/* Left Side: System Information */}
         <div className="hidden md:flex flex-col justify-between w-5/12 p-10 bg-cyan-900/30 backdrop-blur-md border-r border-white/10 relative">
-          
+
           <div className="relative z-10">
             {/* Image Logo */}
             <Link to="/" className="flex items-center gap-3 group inline-flex mb-14">
@@ -165,8 +206,8 @@ export default function LoginPage() {
             </Link>
 
             {/* Serif Typography for elegance */}
-            <h2 className="text-[2.25rem] font-serif font-semibold text-white mb-5 leading-snug drop-shadow-sm">Chào mừng<br/>trở lại</h2>
-            
+            <h2 className="text-[2.25rem] font-serif font-semibold text-white mb-5 leading-snug drop-shadow-sm">Chào mừng<br />trở lại</h2>
+
             {/* High-end Sans-serif description */}
             <p className="text-slate-100 font-sans text-[15px] leading-relaxed tracking-wide mb-10 opacity-90">
               Đăng nhập để truy cập trang điều khiển, theo dõi môi trường nước và quản lý hoạt động sản xuất của trang trại một cách toàn diện.
@@ -202,11 +243,43 @@ export default function LoginPage() {
             <span className="text-2xl font-bold text-slate-900">SSFM</span>
           </div>
 
-          <div className="mb-10">
+          <div className="mb-8">
             {/* Bold, modern title */}
             <h1 className="text-[2rem] font-bold text-slate-900 mb-2 tracking-tight">Đăng Nhập</h1>
             <p className="text-slate-600 text-[15px]">Nhập thông tin tài khoản của bạn để tiếp tục.</p>
           </div>
+
+          {/* Invitation Banner if arriving via email invite link */}
+          {inviteTokenFromUrl && (
+            <div className="mb-6 p-4 rounded-2xl border transition-all animate-in fade-in duration-200 bg-blue-50/90 border-blue-200 shadow-sm">
+              {inviteInfo.loading ? (
+                <div className="flex items-center gap-3 text-blue-700 text-sm font-semibold">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  Đang kiểm tra lời mời tham gia...
+                </div>
+              ) : inviteInfo.valid ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-blue-900 font-extrabold text-sm">
+                    <UserCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    Lời mời tham gia trang trại
+                  </div>
+                  <p className="text-xs text-blue-800 leading-relaxed pl-6">
+                    Bạn được mời gia nhập trang trại <strong className="font-bold text-blue-950">{inviteInfo.farmName}</strong> với vai trò{' '}
+                    <span className="inline-block px-2 py-0.5 rounded-md font-bold text-[11px] bg-blue-200 text-blue-900">
+                      {inviteInfo.role === 'TECHNICIAN' ? 'Kỹ Thuật Viên' : 'Nông Dân'}
+                    </span>.
+                  </p>
+                  <p className="text-[11px] text-blue-600 pl-6 font-medium">
+                    Vui lòng đăng nhập để hoàn tất xác nhận và nhận thông báo quyền hạn trên hệ thống.
+                  </p>
+                </div>
+              ) : (
+                <div className="text-xs text-rose-600 font-semibold">
+                  {inviteInfo.reason || 'Liên kết mời không hợp lệ hoặc đã hết hạn.'}
+                </div>
+              )}
+            </div>
+          )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Email */}
@@ -317,7 +390,10 @@ export default function LoginPage() {
 
           <p className="mt-8 text-center text-[14px] text-slate-600 font-medium">
             Chưa có tài khoản?{' '}
-            <Link to="/register" className="font-bold text-blue-600 hover:text-blue-800 transition-colors">
+            <Link
+              to={inviteTokenFromUrl ? `/register?inviteToken=${inviteTokenFromUrl}` : '/register'}
+              className="font-bold text-blue-600 hover:text-blue-800 transition-colors"
+            >
               Đăng ký ngay
             </Link>
           </p>

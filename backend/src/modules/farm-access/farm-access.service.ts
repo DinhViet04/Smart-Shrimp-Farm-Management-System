@@ -8,7 +8,7 @@ export interface AuthUser {
 
 @Injectable()
 export class FarmAccessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async getAccessibleFarmIds(user: AuthUser) {
     if (user.role === 'ADMIN') return undefined;
@@ -16,25 +16,25 @@ export class FarmAccessService {
     const ownedFarmIds =
       user.role === 'FARM_MANAGER'
         ? (
-            await this.prisma.farm.findMany({
-              where: { ownerId: user.userId, deletedAt: null },
-              select: { id: true },
-            })
-          ).map((farm) => farm.id)
+          await this.prisma.farm.findMany({
+            where: { ownerId: user.userId, deletedAt: null },
+            select: { id: true },
+          })
+        ).map((farm) => farm.id)
         : [];
 
     const assignedFarmIds =
       user.role === 'FARMER' || user.role === 'TECHNICIAN'
         ? (
-            await this.prisma.farmStaff.findMany({
-              where: {
-                userId: user.userId,
-                isActive: true,
-                farm: { deletedAt: null },
-              },
-              select: { farmId: true },
-            })
-          ).map((staff) => staff.farmId)
+          await this.prisma.farmStaff.findMany({
+            where: {
+              userId: user.userId,
+              isActive: true,
+              farm: { deletedAt: null },
+            },
+            select: { farmId: true },
+          })
+        ).map((staff) => staff.farmId)
         : [];
 
     return Array.from(new Set([...ownedFarmIds, ...assignedFarmIds]));

@@ -25,6 +25,7 @@ import { WeatherModule } from './modules/weather/weather.module.js';
 import { ShrimpSizeModule } from './modules/shrimp-size/shrimp-size.module.js';
 import { SurvivalRateModule } from './modules/survival-rate/survival-rate.module.js';
 import { EmailModule } from './modules/email/email.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { EmailModule } from './modules/email/email.module.js';
     WeatherModule,
     ShrimpSizeModule,
     SurvivalRateModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

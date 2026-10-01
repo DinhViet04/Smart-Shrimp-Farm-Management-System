@@ -141,7 +141,7 @@ model Pond {
   areaSize            Float // in square meters
   depth               Float // in meters
   farmId              String
-  farm                Farm                 @relation(fields: [farmId], references: [id])
+  farm                Farm                 @relation(fields: [farmId], references: [id], onDelete: Cascade)
   crops               Crop[]
   waterQualityRecords WaterQualityRecord[]
   shrimpHealthRecords ShrimpHealthRecord[]
@@ -157,7 +157,7 @@ model Pond {
 model ShrimpSizeSample {
   id               String   @id @default(uuid())
   pondId           String   @map("pond_id")
-  pond             Pond     @relation(fields: [pondId], references: [id])
+  pond             Pond     @relation(fields: [pondId], references: [id], onDelete: Cascade)
   samplingDate     DateTime @default(now()) @map("sampling_date")
   doc              Int? // Days of culture (Ngày nuôi)
   sampleCount      Int      @map("sample_count") // Số lượng tôm lấy mẫu (> 0)
@@ -184,7 +184,7 @@ model ShrimpSizeSample {
 model Crop {
   id                   String               @id @default(uuid())
   pondId               String
-  pond                 Pond                 @relation(fields: [pondId], references: [id])
+  pond                 Pond                 @relation(fields: [pondId], references: [id], onDelete: Cascade)
   startDate            DateTime
   initialShrimpCount   Int // T_o: Số tôm thả ban đầu
   status               CropStatus           @default(ACTIVE)
@@ -223,7 +223,7 @@ model Crop {
 model FiveTCycle {
   id                    String                 @id @default(uuid())
   cropId                String
-  crop                  Crop                   @relation(fields: [cropId], references: [id])
+  crop                  Crop                   @relation(fields: [cropId], references: [id], onDelete: Cascade)
   startDayIndex         Int // Ngày bắt đầu vòng lặp
   endDayIndex           Int // Ngày kết thúc vòng lặp
   dailyRecords          DailyRecord[]
@@ -238,7 +238,7 @@ model FiveTCycle {
 model DailyRecord {
   id             String       @id @default(uuid())
   cycleId        String
-  cycle          FiveTCycle   @relation(fields: [cycleId], references: [id])
+  cycle          FiveTCycle   @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   recordDate     DateTime
   dayIndex       Int // Ngày nuôi thứ mấy (1, 2, 3...)
   actualFeedKg   Float // Lượng thức ăn thực tế (Food_i)
@@ -255,7 +255,7 @@ model DailyRecord {
 model SizeMeasurement {
   id                  String     @id @default(uuid())
   cycleId             String     @unique
-  cycle               FiveTCycle @relation(fields: [cycleId], references: [id])
+  cycle               FiveTCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   measurementDate     DateTime
   dayIndex            Int // Phải chia hết cho 5 theo quy trình 5T
   sampleWeightGram    Float // G_m: Trọng lượng mẫu
@@ -270,7 +270,7 @@ model SizeMeasurement {
 model FeedingRecommendation {
   id                  String     @id @default(uuid())
   cycleId             String     @unique
-  cycle               FiveTCycle @relation(fields: [cycleId], references: [id])
+  cycle               FiveTCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   recommendedFeedKg   Float[] // Mảng 5 phần tử: Lượng thức ăn đề xuất 5 ngày tới
   adjustmentReasoning String? // Lý do hiệu chỉnh (ví dụ: "Giảm 10% do nhiệt độ thấp")
   applied             Boolean    @default(false)
@@ -283,7 +283,7 @@ model FeedingRecommendation {
 model EnvironmentRecord {
   id         String   @id @default(uuid())
   cropId     String
-  crop       Crop     @relation(fields: [cropId], references: [id])
+  crop       Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
   recordDate DateTime @default(now())
   ph         Float?
   do         Float? // Dissolved Oxygen
@@ -299,7 +299,7 @@ model EnvironmentRecord {
 model Incident {
   id           String                    @id @default(uuid())
   cropId       String
-  crop         Crop                      @relation(fields: [cropId], references: [id])
+  crop         Crop                      @relation(fields: [cropId], references: [id], onDelete: Cascade)
   title        String
   description  String
   treatment    String?
@@ -342,7 +342,7 @@ model IncidentTreatmentUpdate {
 model WaterQualityRecord {
   id              String   @id @default(uuid())
   pondId          String
-  pond            Pond     @relation(fields: [pondId], references: [id])
+  pond            Pond     @relation(fields: [pondId], references: [id], onDelete: Cascade)
   recordTime      DateTime
   temperature     Decimal  @db.Decimal(5, 2)
   ph              Decimal  @db.Decimal(4, 2)
@@ -397,7 +397,7 @@ model Inventory {
   sizeSpec     String?           @map("size_spec")
 
   farmId     String    @map("farm_id")
-  farm       Farm      @relation(fields: [farmId], references: [id])
+  farm       Farm      @relation(fields: [farmId], references: [id], onDelete: Cascade)
   supplierId String?   @map("supplier_id")
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
@@ -421,7 +421,7 @@ model Supplier {
   note    String?
 
   farmId      String      @map("farm_id")
-  farm        Farm        @relation(fields: [farmId], references: [id])
+  farm        Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
   inventories Inventory[]
 
   deletedAt DateTime? @map("deleted_at")
@@ -435,7 +435,7 @@ model Supplier {
 model InventoryUsageLog {
   id           String    @id @default(uuid())
   inventoryId  String    @map("inventory_id")
-  inventory    Inventory @relation(fields: [inventoryId], references: [id])
+  inventory    Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
   quantityUsed Float     @map("quantity_used")
   usageDate    DateTime  @default(now()) @map("usage_date")
   notes        String?
@@ -453,11 +453,11 @@ model InventoryUsageLog {
 model ShrimpHealthRecord {
   id                 String               @id @default(uuid())
   farmId             String               @map("farm_id")
-  farm               Farm                 @relation(fields: [farmId], references: [id])
+  farm               Farm                 @relation(fields: [farmId], references: [id], onDelete: Cascade)
   pondId             String               @map("pond_id")
-  pond               Pond                 @relation(fields: [pondId], references: [id])
+  pond               Pond                 @relation(fields: [pondId], references: [id], onDelete: Cascade)
   cropId             String               @map("crop_id")
-  crop               Crop                 @relation(fields: [cropId], references: [id])
+  crop               Crop                 @relation(fields: [cropId], references: [id], onDelete: Cascade)
   recordedBy         String               @map("recorded_by")
   recorder           User                 @relation(fields: [recordedBy], references: [id])
   recordTime         DateTime             @map("record_time")
@@ -476,7 +476,7 @@ model ShrimpHealthRecord {
 model Notification {
   id        String            @id @default(uuid())
   farmId    String            @map("farm_id")
-  farm      Farm              @relation(fields: [farmId], references: [id])
+  farm      Farm              @relation(fields: [farmId], references: [id], onDelete: Cascade)
   pondId    String?           @map("pond_id")
   level     NotificationLevel
   title     String
@@ -514,11 +514,11 @@ enum FeedingStatus {
 model FeedingLog {
   id             String         @id @default(uuid())
   farmId         String         @map("farm_id")
-  farm           Farm           @relation(fields: [farmId], references: [id])
+  farm           Farm           @relation(fields: [farmId], references: [id], onDelete: Cascade)
   pondId         String         @map("pond_id")
-  pond           Pond           @relation(fields: [pondId], references: [id])
+  pond           Pond           @relation(fields: [pondId], references: [id], onDelete: Cascade)
   cropId         String         @map("crop_id")
-  crop           Crop           @relation(fields: [cropId], references: [id])
+  crop           Crop           @relation(fields: [cropId], references: [id], onDelete: Cascade)
   feedProductId  String         @map("feed_product_id")
   feedProduct    Inventory      @relation(fields: [feedProductId], references: [id])
   feedingDate    DateTime       @map("feeding_date") @db.Date
@@ -581,7 +581,7 @@ model KnowledgeChunk {
   chunkIndex Int               @map("chunk_index")
   content    String            @db.Text
   metadata   Json?
-  embedding  Json?             // Mảng vector Float[] dạng JSON
+  embedding  Json? // Mảng vector Float[] dạng JSON
   createdAt  DateTime          @default(now()) @map("created_at")
 
   @@index([documentId])

@@ -134,7 +134,7 @@ export default function PondManagement({
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!window.confirm('Bạn có chắc chắn muốn xóa ao này?')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa ao này? \n\n⚠️ CẢNH BÁO: Việc xoá ao nuôi sẽ làm MẤT TOÀN BỘ dữ liệu liên quan (các vụ nuôi, nhật ký, thông số...) và không thể khôi phục!')) return;
     try {
       const { pondService } = await import('../services/pond.service');
       await pondService.remove(id);

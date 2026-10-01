@@ -154,13 +154,8 @@ export class FarmsService {
       throw new ForbiddenException('Ban khong co quyen xoa trang trai nay');
     }
 
-    if (farm.ponds && farm.ponds.length > 0) {
-      throw new BadRequestException('Khong the xoa nong trai dang co ao nuoi');
-    }
-
-    return this.prisma.farm.update({
+    return this.prisma.farm.delete({
       where: { id },
-      data: { deletedAt: new Date() },
     });
   }
 

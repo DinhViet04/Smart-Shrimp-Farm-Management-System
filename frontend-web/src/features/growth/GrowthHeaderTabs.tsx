@@ -1,7 +1,7 @@
 import React from 'react';
-import { Scale, PieChart, Activity, ShieldCheck, Wrench, User } from 'lucide-react';
+import { Scale, PieChart, Activity, ShieldCheck, Wrench, User, Target } from 'lucide-react';
 
-export type GrowthTabType = 'Theo dõi kích cỡ' | 'Sinh khối ao' | 'Theo dõi tỷ lệ sống';
+export type GrowthTabType = 'Theo dõi kích cỡ' | 'Sinh khối ao' | 'Theo dõi tỷ lệ sống' | 'Phân tích FCR';
 
 interface GrowthHeaderTabsProps {
   activeTab: GrowthTabType;
@@ -15,7 +15,7 @@ export default function GrowthHeaderTabs({
   activeTab,
   onTabChange,
   title = 'Trung Tâm Theo Dõi Tăng Trưởng',
-  subtitle = 'Kiểm soát kích cỡ, sinh khối và tỷ lệ sống theo quy trình 5T',
+  subtitle = 'Kiểm soát kích cỡ, sinh khối, tỷ lệ sống và phân tích FCR',
   role,
 }: GrowthHeaderTabsProps) {
   // Lấy role từ prop hoặc localStorage nếu chưa có
@@ -76,6 +76,12 @@ export default function GrowthHeaderTabs({
       icon: <Activity className="w-4 h-4" />,
       shortDesc: 'Survival rate & Tôm chết',
     },
+    {
+      id: 'Phân tích FCR',
+      label: 'Phân tích FCR',
+      icon: <Target className="w-4 h-4" />,
+      shortDesc: 'Hệ số FCR & Thức ăn',
+    },
   ];
 
   return (
@@ -99,7 +105,7 @@ export default function GrowthHeaderTabs({
       </div>
 
       {/* Tabs Selector */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-4">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (

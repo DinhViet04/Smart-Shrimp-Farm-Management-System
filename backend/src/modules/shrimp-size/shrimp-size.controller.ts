@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Param, Body, UseGuards, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, UseGuards, InternalServerErrorException, Request } from '@nestjs/common';
 import { ShrimpSizeService } from './shrimp-size.service.js';
 import { CreateShrimpSizeSampleDto } from './dto/create-shrimp-size-sample.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -15,9 +15,10 @@ export class ShrimpSizeController {
   async createSample(
     @Param('pondId') pondId: string,
     @Body() dto: CreateShrimpSizeSampleDto,
+    @Request() req: any,
   ) {
     try {
-      return await this.shrimpSizeService.createSample(pondId, dto);
+      return await this.shrimpSizeService.createSample(pondId, dto, req.user);
     } catch (error: any) {
       console.error('CREATE_SAMPLE_ERROR:', error);
       throw new InternalServerErrorException(error.message || 'Unknown error');
@@ -37,7 +38,7 @@ export class ShrimpSizeController {
   }
 
   @Get('fcr')
-  @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN')
+  @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN', 'FARMER')
   async analyzeFCR(@Param('pondId') pondId: string) {
     return this.shrimpSizeService.analyzeFCR(pondId);
   }

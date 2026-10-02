@@ -28,6 +28,7 @@ import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 import BiomassDashboard from '../features/biomass/BiomassDashboard';
 import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
+import FcrDashboard from '../features/fcr/FcrDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 export default function FarmerDashboard() {
@@ -35,6 +36,8 @@ export default function FarmerDashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
   const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
+  const [envConfig, setEnvConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
+  const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   const handleNavigateToGrowth = (config: { farmId: string; pondId: string; cropId?: string }) => {
@@ -158,7 +161,26 @@ export default function FarmerDashboard() {
                 className="pl-10 pr-4 py-2 bg-stone-100 border-transparent rounded-full text-sm focus:bg-white focus:border-teal-300 focus:ring-2 focus:ring-teal-200 outline-none transition-all w-64 text-stone-700 placeholder-stone-400 font-medium"
               />
             </div>
-            <NotificationDropdown themeColor="teal" onNavigateTab={(tab) => setActiveTab(tab)} />
+            <NotificationDropdown 
+              themeColor="teal" 
+              onNavigateTab={(tab, config) => {
+                if (tab === 'Môi trường nước') {
+                  if (config) setEnvConfig(config);
+                  setActiveTab('Môi trường nước');
+                } else if (tab === 'Sức khỏe tôm') {
+                  if (config) setHealthConfig(config);
+                  setActiveTab('Sức khỏe tôm');
+                } else if (tab === 'Theo dõi tăng trưởng') {
+                  if (config) {
+                    setGrowthConfig({ farmId: config.farmId, pondId: config.pondId });
+                    setGrowthSubTab('Theo dõi kích cỡ');
+                  }
+                  setActiveTab('Theo dõi tăng trưởng');
+                } else {
+                  setActiveTab(tab);
+                }
+              }} 
+            />
           </div>
         </header>
 
@@ -283,11 +305,19 @@ export default function FarmerDashboard() {
           ) : activeTab === 'Kho thức ăn' ? (
              <InventoryManagement />
           ) : activeTab === 'Môi trường nước' ? (
-             <EnvironmentDashboard viewOnly={true} />
+             <EnvironmentDashboard 
+               viewOnly={true} 
+               initialFarmId={envConfig?.farmId}
+               initialPondId={envConfig?.pondId}
+             />
           ) : activeTab === 'Quản lý Ao của tôi' ? (
              <PondCropDashboard onNavigateToGrowth={handleNavigateToGrowth} />
           ) : activeTab === 'Sức khỏe tôm' ? (
-             <ShrimpHealthDashboard viewOnly={true} />
+             <ShrimpHealthDashboard 
+               viewOnly={true} 
+               initialFarmId={healthConfig?.farmId}
+               initialPondId={healthConfig?.pondId}
+             />
           ) : activeTab === 'Theo dõi tăng trưởng' ? (
              <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
                {growthSubTab === 'Theo dõi kích cỡ' ? (
@@ -308,7 +338,7 @@ export default function FarmerDashboard() {
                    onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
                    onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                  />
-               ) : (
+               ) : growthSubTab === 'Theo dõi tỷ lệ sống' ? (
                  <SurvivalRateDashboard 
                    viewOnly={true} 
                    onNavigateTab={(tab) => setGrowthSubTab(tab)}
@@ -318,6 +348,14 @@ export default function FarmerDashboard() {
                    onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
                    onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                    onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
+                 />
+               ) : (
+                 <FcrDashboard 
+                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                   initialFarmId={growthConfig?.farmId}
+                   initialPondId={growthConfig?.pondId}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                  />
                )}
              </div>

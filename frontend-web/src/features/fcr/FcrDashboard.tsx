@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, Waves, AlertCircle, Loader2, Target } from 'lucide-react';
+import { ChevronDown, Waves, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import FcrAnalysisDetail from './FcrAnalysisDetail';
+import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
 
 interface Farm {
   id: string;
@@ -15,10 +16,24 @@ interface Pond {
   farmId: string;
 }
 
-export default function FcrDashboard() {
+interface FcrDashboardProps {
+  onNavigateTab?: (tab: GrowthTabType) => void;
+  initialFarmId?: string;
+  initialPondId?: string;
+  onSelectFarm?: (farmId: string) => void;
+  onSelectPond?: (pondId: string) => void;
+}
+
+export default function FcrDashboard({
+  onNavigateTab,
+  initialFarmId,
+  initialPondId,
+  onSelectFarm,
+  onSelectPond,
+}: FcrDashboardProps) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState('');
+  const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
   const [selectedPond, setSelectedPond] = useState<Pond | null>(null);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +49,15 @@ export default function FcrDashboard() {
       const data = await farmService.getAll();
       setFarms(data);
       if (data.length > 0) {
-        setSelectedFarmId(data[0].id);
+        setSelectedFarmId((prev) => {
+          if (initialFarmId && data.some((f: Farm) => f.id === initialFarmId)) {
+            onSelectFarm?.(initialFarmId);
+            return initialFarmId;
+          }
+          const chosen = prev || data[0].id;
+          onSelectFarm?.(chosen);
+          return chosen;
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Lỗi tải danh sách trang trại');
@@ -66,26 +89,53 @@ export default function FcrDashboard() {
     }
   }, [selectedFarmId, fetchPonds]);
 
+  useEffect(() => {
+    if (initialFarmId && initialFarmId !== selectedFarmId) {
+      setSelectedFarmId(initialFarmId);
+      onSelectFarm?.(initialFarmId);
+    }
+  }, [initialFarmId]);
+
+  useEffect(() => {
+    if (initialPondId && ponds.length > 0) {
+      const match = ponds.find((p) => p.id === initialPondId);
+      if (match) {
+        setSelectedPond(match);
+        onSelectPond?.(match.id);
+      }
+    }
+  }, [initialPondId, ponds]);
+
   if (selectedPond) {
     return (
-      <FcrAnalysisDetail 
-        pond={selectedPond} 
-        onBack={() => setSelectedPond(null)} 
-      />
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <GrowthHeaderTabs
+          activeTab="Phân tích FCR"
+          onTabChange={onNavigateTab}
+          title="Phân Tích Hệ Số Chuyển Đổi Thức Ăn (FCR)"
+          subtitle="Đánh giá hiệu quả sử dụng thức ăn và chi phí trên từng ao nuôi theo chu kỳ tăng trưởng"
+        />
+        <FcrAnalysisDetail 
+          pond={selectedPond} 
+          onBack={() => {
+            setSelectedPond(null);
+            onSelectPond?.('');
+          }} 
+          onNavigateTab={onNavigateTab}
+        />
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-100">
-        <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
-          <Target className="w-6 h-6" />
-        </div>
-        <div>
-          <h2 className="text-xl font-black text-slate-800">Phân tích FCR</h2>
-          <p className="text-slate-500 text-sm mt-1">Chọn trang trại và ao để xem phân tích hệ số chuyển đổi thức ăn</p>
-        </div>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
+      {/* Shared Header Navigation */}
+      <GrowthHeaderTabs
+        activeTab="Phân tích FCR"
+        onTabChange={onNavigateTab}
+        title="Phân Tích Hệ Số Chuyển Đổi Thức Ăn (FCR)"
+        subtitle="Đánh giá hiệu quả sử dụng thức ăn và chi phí trên từng ao nuôi theo chu kỳ tăng trưởng"
+      />
 
       {error && (
         <div className="p-4 bg-red-50 text-red-700 rounded-2xl flex items-center gap-3 border border-red-100">
@@ -95,13 +145,16 @@ export default function FcrDashboard() {
       )}
 
       {/* Farm Selection */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm w-full md:w-96">
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs w-full md:w-96">
         <label className="text-sm font-bold text-slate-700 block mb-2">Trang trại</label>
         <div className="relative">
           <select
             value={selectedFarmId}
-            onChange={(e) => setSelectedFarmId(e.target.value)}
-            className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none font-medium outline-none transition-all cursor-pointer"
+            onChange={(e) => {
+              setSelectedFarmId(e.target.value);
+              onSelectFarm?.(e.target.value);
+            }}
+            className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none font-medium outline-none transition-all cursor-pointer"
           >
             <option value="">-- Chọn trang trại --</option>
             {farms.map((f) => (
@@ -125,7 +178,7 @@ export default function FcrDashboard() {
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
           ) : ponds.length === 0 ? (
-            <div className="text-center p-12 bg-white border border-slate-100 rounded-3xl shadow-sm">
+            <div className="text-center p-12 bg-white border border-slate-200/80 rounded-3xl shadow-xs">
               <p className="text-slate-500 text-sm">Không tìm thấy ao nuôi nào trong trang trại này.</p>
             </div>
           ) : (
@@ -133,17 +186,21 @@ export default function FcrDashboard() {
               {ponds.map(pond => (
                 <button
                   key={pond.id}
-                  onClick={() => setSelectedPond(pond)}
-                  className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all text-left group flex items-center justify-between"
+                  onClick={() => {
+                    setSelectedPond(pond);
+                    onSelectPond?.(pond.id);
+                  }}
+                  className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs hover:border-indigo-400 hover:shadow-md transition-all text-left group flex items-center justify-between cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                       <Waves className="w-5 h-5" />
                     </div>
                     <span className="font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">
                       {pond.name}
                     </span>
                   </div>
+                  <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
                 </button>
               ))}
             </div>

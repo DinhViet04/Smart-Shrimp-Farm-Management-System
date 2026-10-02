@@ -116,7 +116,15 @@ function getWaterColorStatus(v?: string): 'optimal' | 'warning' | 'danger' {
   return 'warning';
 }
 
-export default function WaterQualityHistory() {
+interface WaterQualityHistoryProps {
+  initialFarmId?: string;
+  initialPondId?: string;
+}
+
+export default function WaterQualityHistory({
+  initialFarmId,
+  initialPondId,
+}: WaterQualityHistoryProps = {}) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   
   useEffect(() => {
@@ -150,8 +158,8 @@ export default function WaterQualityHistory() {
 
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState('');
-  const [selectedPondId, setSelectedPondId] = useState('');
+  const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
+  const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [records, setRecords] = useState<HistoryRecord[]>([]);
@@ -178,11 +186,28 @@ export default function WaterQualityHistory() {
         ]);
         setFarms(farmsData);
         setPonds(pondsData);
+
+        if (initialPondId) {
+          const found = pondsData.find((p) => p.id === initialPondId);
+          if (found) {
+            setSelectedFarmId(found.farmId);
+            setSelectedPondId(initialPondId);
+            return;
+          }
+        }
+        if (initialFarmId) {
+          setSelectedFarmId(initialFarmId);
+        }
       } catch {
         setErrorMsg('Không thể tải thông tin trang trại và ao nuôi');
       }
     })();
-  }, []);
+  }, [initialFarmId, initialPondId]);
+
+  useEffect(() => {
+    if (initialFarmId) setSelectedFarmId(initialFarmId);
+    if (initialPondId) setSelectedPondId(initialPondId);
+  }, [initialFarmId, initialPondId]);
 
   useEffect(() => {
     if (showDetailDialog && selectedRecord) {

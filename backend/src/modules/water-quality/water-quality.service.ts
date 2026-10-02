@@ -6,22 +6,40 @@ import {
   AuthUser,
   FarmAccessService,
 } from '../farm-access/farm-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { NotificationLevel } from '@prisma/client';
 
 @Injectable()
 export class WaterQualityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
     user: AuthUser,
     dto: CreateWaterQualityDto,
   ): Promise<WaterQualityResponseDto> {
-    const pond = await this.prisma.pond.findUnique({
-      where: { id: dto.pondId },
-      include: { farm: true },
-    });
+    // Tối ưu DB: Query thông tin Ao nuôi và Kỹ thuật viên đồng thời bằng Promise.all
+    const [pond, technician] = await Promise.all([
+      this.prisma.pond.findUnique({
+        where: { id: dto.pondId },
+        include: {
+          farm: {
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
+            },
+          },
+        },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { fullName: true },
+      }),
+    ]);
 
     if (!pond) {
       throw new NotFoundException('Khong tim thay ao nuoi');
@@ -49,10 +67,121 @@ export class WaterQualityService {
       },
     });
 
+    // TỐI ƯU HIỆU NĂNG: Gửi thông báo realtime bất đồng bộ (fire-and-forget)
+    // Giúp API response trả về tức thì cho KTV mà không bị nghẽn
+    this.dispatchWaterQualityNotification(
+      pond,
+      technician?.fullName,
+      dto,
+      user.userId,
+    ).catch((err) => {
+      console.error(
+        '[WaterQualityService] Lỗi gửi thông báo môi trường nước:',
+        err,
+      );
+    });
+
     return {
       id: record.id,
       message: 'Ghi nhan thong so moi truong nuoc thanh cong.',
     };
+  }
+
+  /**
+   * Thuật toán phân định đối tượng nhận thông báo & gửi thông báo môi trường nước:
+   * - Đối tượng nhận: Chủ trang trại (FARM_MANAGER) + Tất cả Nông dân (FARMER) đang hoạt động thuộc ao/trại này.
+   * - Loại trừ: Kỹ thuật viên vừa nhập liệu (tránh spam chính mình).
+   */
+  private async dispatchWaterQualityNotification(
+    pond: {
+      id: string;
+      name: string;
+      farmId: string;
+      farm?: { id: string; name: string; ownerId: string } | null;
+    },
+    technicianName: string | undefined,
+    dto: CreateWaterQualityDto,
+    authorUserId: string,
+  ) {
+    // 1. Tìm tất cả nhân viên thuộc trang trại có role là FARMER hoặc FARM_MANAGER
+    const staffMembers = await this.prisma.farmStaff.findMany({
+      where: {
+        farmId: pond.farmId,
+        isActive: true,
+        role: { in: ['FARMER', 'FARM_MANAGER'] },
+        userId: { not: authorUserId },
+      },
+      select: { userId: true },
+    });
+
+    const recipientSet = new Set<string>();
+    // Chủ sở hữu trang trại (FARM_MANAGER)
+    if (pond.farm?.ownerId && pond.farm.ownerId !== authorUserId) {
+      recipientSet.add(pond.farm.ownerId);
+    }
+    // Các nhân viên Nông dân / Quản lý
+    staffMembers.forEach((s) => recipientSet.add(s.userId));
+
+    const recipientUserIds = Array.from(recipientSet);
+    if (recipientUserIds.length === 0) return;
+
+    // 2. Tính toán trạng thái tổng quan theo thuật toán chuẩn của hệ thống
+    const overallStatus = this.calculateOverallStatus({
+      temperature: dto.temperature,
+      ph: dto.ph,
+      dissolvedOxygen: dto.dissolvedOxygen,
+      salinity: dto.salinity,
+      alkalinity: dto.alkalinity,
+      nh3: dto.nh3,
+      h2s: dto.h2s ?? dto.no2 ?? 0,
+      transparency: dto.transparency,
+      waterColor: dto.waterColor,
+    });
+
+    let level: NotificationLevel = NotificationLevel.INFO;
+    let statusText = 'chỉ số ổn định';
+    let title = `Cập nhật môi trường nước: ${pond.name}`;
+
+    if (overallStatus === 'Danger') {
+      level = NotificationLevel.DANGER;
+      statusText = 'NGUY HIỂM';
+      title = `⚠️ [NGUY HIỂM] Môi trường nước ${pond.name}`;
+    } else if (overallStatus === 'Warning') {
+      level = NotificationLevel.WARNING;
+      statusText = 'CẦN CHÚ Ý';
+      title = `⚡ [CHÚ Ý] Môi trường nước ${pond.name}`;
+    }
+
+    // 3. Phân tích các chỉ số vượt ngưỡng để đưa vào tóm tắt thông báo
+    const alertPoints: string[] = [];
+    if (Number(dto.dissolvedOxygen) <= 3.0) {
+      alertPoints.push(`DO tụt thấp (${dto.dissolvedOxygen} mg/L)`);
+    } else if (Number(dto.dissolvedOxygen) <= 4.0) {
+      alertPoints.push(`DO hơi thấp (${dto.dissolvedOxygen} mg/L)`);
+    }
+    if (Number(dto.ph) < 7.5 || Number(dto.ph) > 8.5) {
+      alertPoints.push(`pH biến động (${dto.ph})`);
+    }
+    if (Number(dto.nh3) > 0.3) {
+      alertPoints.push(`Khí độc NH3 cao (${dto.nh3} mg/L)`);
+    }
+
+    const alertSummary =
+      alertPoints.length > 0 ? ` [Cảnh báo: ${alertPoints.join(', ')}]` : '';
+    const techDisplayName = technicianName || 'Kỹ thuật viên';
+    const message = `KTV ${techDisplayName} vừa đo thông số ao "${pond.name}": DO ${dto.dissolvedOxygen} mg/L, pH ${dto.ph}, Temp ${dto.temperature}°C, Mặn ${dto.salinity}‰ (${statusText})${alertSummary}. Nhấn để xem chi tiết ao.`;
+
+    await this.notificationsService.notifyWaterQualityUpdate({
+      farmId: pond.farmId,
+      pondId: pond.id,
+      pondName: pond.name,
+      farmName: pond.farm?.name || 'Trang trại',
+      technicianName: techDisplayName,
+      recipientUserIds,
+      level,
+      title,
+      message,
+    });
   }
 
   async findAllByPond(pondId: string, user: AuthUser) {

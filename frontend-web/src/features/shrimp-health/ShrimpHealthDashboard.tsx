@@ -5,22 +5,40 @@ import ShrimpHealthList from './ShrimpHealthList';
 
 interface ShrimpHealthDashboardProps {
   viewOnly?: boolean;
+  initialFarmId?: string;
+  initialPondId?: string;
 }
 
-export default function ShrimpHealthDashboard({ viewOnly = false }: ShrimpHealthDashboardProps) {
-  const [subTab, setSubTab] = useState<'record' | 'history'>(viewOnly ? 'history' : 'record');
+export default function ShrimpHealthDashboard({
+  viewOnly = false,
+  initialFarmId,
+  initialPondId,
+}: ShrimpHealthDashboardProps) {
+  const [subTab, setSubTab] = useState<'record' | 'history'>(
+    viewOnly || initialPondId ? 'history' : 'record',
+  );
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (initialPondId) {
+      setSubTab('history');
+    }
+  }, [initialPondId]);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
-        setCurrentUser(JSON.parse(userStr));
+        const parsed = JSON.parse(userStr);
+        setCurrentUser(parsed);
+        if (parsed.role === 'FARMER' || parsed.role === 'FARM_MANAGER' || viewOnly || initialPondId) {
+          setSubTab('history');
+        }
       } catch {
         /* ignore */
       }
     }
-  }, []);
+  }, [viewOnly, initialPondId]);
 
   const isFarmer = currentUser?.role === 'FARMER';
   const activeTabClass = isFarmer
@@ -30,7 +48,7 @@ export default function ShrimpHealthDashboard({ viewOnly = false }: ShrimpHealth
   return (
     <div className="space-y-6">
       {/* ── Sub Navigation Tabs ────────────────────────────────────────────── */}
-      {!viewOnly && (
+      {!viewOnly && currentUser?.role !== 'FARMER' && currentUser?.role !== 'FARM_MANAGER' && (
         <div className="flex border-b border-slate-200 gap-6">
           <button
             onClick={() => setSubTab('record')}
@@ -60,7 +78,14 @@ export default function ShrimpHealthDashboard({ viewOnly = false }: ShrimpHealth
 
       {/* ── Active Component View ─────────────────────────────────────────── */}
       <div className="animate-in fade-in duration-300">
-        {subTab === 'record' ? <CreateShrimpHealth /> : <ShrimpHealthList />}
+        {subTab === 'record' && !viewOnly ? (
+          <CreateShrimpHealth />
+        ) : (
+          <ShrimpHealthList
+            initialFarmId={initialFarmId}
+            initialPondId={initialPondId}
+          />
+        )}
       </div>
     </div>
   );

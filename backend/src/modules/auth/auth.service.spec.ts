@@ -53,6 +53,7 @@ describe('AuthService password reset', () => {
       jwtService as unknown as JwtService,
       configService as unknown as ConfigService,
       { farm: { findUnique: jest.fn() }, farmStaff: { upsert: jest.fn() } } as any,
+      { createWelcomeNotification: jest.fn(), createFarmJoinNotification: jest.fn(), createStaffJoinedNotification: jest.fn() } as any,
     );
   });
 

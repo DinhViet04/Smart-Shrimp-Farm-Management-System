@@ -18,12 +18,16 @@ import {
   ExternalLink,
   X,
   Clock,
+  HeartPulse,
+  TrendingUp,
 } from 'lucide-react';
 
 export type NotificationLevel = 'INFO' | 'WARNING' | 'DANGER' | 'SUCCESS';
 
 export type NotificationCategory =
   | 'ENVIRONMENT'
+  | 'SHRIMP_HEALTH'
+  | 'GROWTH'
   | 'FEEDING'
   | 'FIVE_T'
   | 'INCIDENT'
@@ -39,12 +43,15 @@ export interface NotificationItem {
   createdAt: string;
   isRead: boolean;
   targetLink?: string;
+  pondId?: string;
+  farmId?: string;
   pondName?: string;
+  farmName?: string;
 }
 
 interface NotificationDropdownProps {
   themeColor?: 'blue' | 'indigo' | 'teal' | 'purple';
-  onNavigateTab?: (tabName: string) => void;
+  onNavigateTab?: (tabName: string, config?: { farmId?: string; pondId?: string }) => void;
 }
 
 
@@ -106,15 +113,49 @@ export default function NotificationDropdown({
       console.log('Received realtime notification:', notification);
       setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
       
-      // Show toast
-      toast.success(notification.title, {
-        icon: '🔔',
+      // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
+      const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
+      const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
+      const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+      const promptText = isGrowth 
+        ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này' 
+        : isShrimpHealth 
+          ? '👉 Nhấn để xem ngay sức khỏe tôm ao này' 
+          : '👉 Nhấn để xem ngay môi trường ao này';
+      const iconEmoji = isGrowth ? '📈' : isShrimpHealth ? '🦐' : '🔔';
+
+      toast((t) => (
+        <div
+          onClick={() => {
+            toast.dismiss(t.id);
+            if (notification.pondId && onNavigateTab) {
+              onNavigateTab(targetTab, {
+                farmId: notification.farmId,
+                pondId: notification.pondId,
+              });
+            }
+          }}
+          className="cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-base">{iconEmoji}</span>
+            <span className="font-bold text-white text-sm">{notification.title}</span>
+          </div>
+          <p className="text-xs text-slate-300 mt-1 line-clamp-2">{notification.message}</p>
+          {notification.pondId && (
+            <div className="text-[11px] text-cyan-400 mt-1 font-semibold flex items-center gap-1">
+              {promptText}
+            </div>
+          )}
+        </div>
+      ), {
+        duration: 7000,
         style: {
-          borderRadius: '12px',
-          background: '#1e293b',
+          borderRadius: '16px',
+          background: '#0f172a',
           color: '#fff',
-          fontWeight: 600,
-          fontSize: '14px',
+          border: '1px solid #334155',
+          maxWidth: '420px',
         },
       });
     });
@@ -122,7 +163,7 @@ export default function NotificationDropdown({
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [onNavigateTab]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -218,6 +259,20 @@ export default function NotificationDropdown({
     if (!item.isRead) {
       markAsRead(item.id);
     }
+    // Nếu thông báo gắn với Ao nuôi cụ thể (môi trường nước, sức khỏe tôm hoặc tăng trưởng KTV vừa nhập),
+    // chuyển trực tiếp tới trang Quản lý tương ứng của Ao đó
+    if (item.pondId && onNavigateTab) {
+      setIsOpen(false);
+      setSelectedItem(null);
+      const isGrowth = item.category === 'GROWTH' || item.title?.toLowerCase().includes('tăng trưởng') || item.title?.toLowerCase().includes('kích cỡ') || item.title?.toLowerCase().includes('fcr');
+      const isShrimpHealth = item.category === 'SHRIMP_HEALTH' || item.title?.toLowerCase().includes('sức khỏe tôm');
+      const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+      onNavigateTab(targetTab, {
+        farmId: item.farmId,
+        pondId: item.pondId,
+      });
+      return;
+    }
     setSelectedItem(item);
   };
 
@@ -256,6 +311,12 @@ export default function NotificationDropdown({
   const getLevelIcon = (level: NotificationLevel, category?: NotificationCategory) => {
     if (category === 'ENVIRONMENT') {
       return <Droplets className="w-4 h-4 text-cyan-600" />;
+    }
+    if (category === 'SHRIMP_HEALTH') {
+      return <HeartPulse className="w-4 h-4 text-rose-500" />;
+    }
+    if (category === 'GROWTH') {
+      return <TrendingUp className="w-4 h-4 text-emerald-600" />;
     }
     if (category === 'FEEDING') {
       return <Utensils className="w-4 h-4 text-amber-600" />;
@@ -537,7 +598,7 @@ export default function NotificationDropdown({
                 </p>
               </div>
 
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => deleteNotification(selectedItem.id)}
@@ -546,13 +607,64 @@ export default function NotificationDropdown({
                   <Trash2 className="w-3.5 h-3.5" />
                   Xóa thông báo
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedItem(null)}
-                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm"
-                >
-                  Đã hiểu (Đóng)
-                </button>
+                <div className="flex items-center gap-2">
+                  {selectedItem.pondId && onNavigateTab && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pondId = selectedItem.pondId;
+                        const farmId = selectedItem.farmId;
+                        const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ');
+                        const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
+                        const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+                        setSelectedItem(null);
+                        setIsOpen(false);
+                        onNavigateTab(targetTab, { farmId, pondId });
+                      }}
+                      className={`px-4 py-2 rounded-xl text-white font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
+                        selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ')
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
+                          : selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm')
+                            ? 'bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500'
+                            : 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500'
+                      }`}
+                    >
+                      {(() => {
+                        const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ') || selectedItem.title?.toLowerCase().includes('fcr');
+                        const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
+                        if (isGrowth) {
+                          return (
+                            <>
+                              <TrendingUp className="w-3.5 h-3.5" />
+                              Đến theo dõi tăng trưởng & FCR ao này
+                            </>
+                          );
+                        }
+                        if (isShrimpHealth) {
+                          return (
+                            <>
+                              <HeartPulse className="w-3.5 h-3.5" />
+                              Đến quản lý sức khỏe tôm ao này
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <Droplets className="w-3.5 h-3.5" />
+                            Đến quản lý môi trường ao này
+                          </>
+                        );
+                      })()}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItem(null)}
+                    className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm"
+                  >
+                    Đóng
+                  </button>
+                </div>
               </div>
             </div>
           </div>,

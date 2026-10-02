@@ -101,7 +101,15 @@ function getPercentageColor(pct: number): string {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function ShrimpHealthList() {
+interface ShrimpHealthListProps {
+  initialFarmId?: string;
+  initialPondId?: string;
+}
+
+export default function ShrimpHealthList({
+  initialFarmId,
+  initialPondId,
+}: ShrimpHealthListProps = {}) {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -136,8 +144,8 @@ export default function ShrimpHealthList() {
   // ─── Filter States ─────────────────────────────────────────────────────────
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState('');
-  const [selectedPondId, setSelectedPondId] = useState('');
+  const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
+  const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
   const [selectedHealthStatus, setSelectedHealthStatus] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -169,11 +177,28 @@ export default function ShrimpHealthList() {
         ]);
         setFarms(farmsData);
         setPonds(pondsData);
+
+        if (initialPondId) {
+          const found = pondsData.find((p) => p.id === initialPondId);
+          if (found) {
+            setSelectedFarmId(found.farmId);
+            setSelectedPondId(initialPondId);
+            return;
+          }
+        }
+        if (initialFarmId) {
+          setSelectedFarmId(initialFarmId);
+        }
       } catch {
         setErrorMsg('Không thể tải thông tin trang trại và ao nuôi');
       }
     })();
-  }, []);
+  }, [initialFarmId, initialPondId]);
+
+  useEffect(() => {
+    if (initialFarmId) setSelectedFarmId(initialFarmId);
+    if (initialPondId) setSelectedPondId(initialPondId);
+  }, [initialFarmId, initialPondId]);
 
   // ─── Fetch Records ─────────────────────────────────────────────────────────
   const fetchHistory = useCallback(async () => {

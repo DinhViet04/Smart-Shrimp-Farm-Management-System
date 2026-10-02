@@ -6,13 +6,25 @@ import EnvironmentTrendDashboard from './EnvironmentTrendDashboard';
 
 interface EnvironmentDashboardProps {
   viewOnly?: boolean;
+  initialFarmId?: string;
+  initialPondId?: string;
 }
 
-export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDashboardProps) {
+export default function EnvironmentDashboard({
+  viewOnly = false,
+  initialFarmId,
+  initialPondId,
+}: EnvironmentDashboardProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [subTab, setSubTab] = useState<'record' | 'history' | 'trend'>(
-    viewOnly ? 'trend' : 'record'
+    viewOnly || initialPondId ? 'trend' : 'record',
   );
+
+  useEffect(() => {
+    if (initialPondId) {
+      setSubTab('trend');
+    }
+  }, [initialPondId]);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -21,7 +33,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
         const parsed = JSON.parse(userStr);
         setCurrentUser(parsed);
         // If user is Farmer or Manager, default to 'trend'
-        if (parsed.role === 'FARMER' || parsed.role === 'FARM_MANAGER' || viewOnly) {
+        if (parsed.role === 'FARMER' || parsed.role === 'FARM_MANAGER' || viewOnly || initialPondId) {
           setSubTab('trend');
         } else {
           setSubTab('record');
@@ -30,7 +42,7 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
         /* ignore */
       }
     }
-  }, [viewOnly]);
+  }, [viewOnly, initialPondId]);
 
   const isFarmer = currentUser?.role === 'FARMER';
   const activeTabClass = isFarmer
@@ -86,9 +98,15 @@ export default function EnvironmentDashboard({ viewOnly = false }: EnvironmentDa
         {subTab === 'record' && !viewOnly ? (
           <RecordWaterQuality />
         ) : subTab === 'trend' ? (
-          <EnvironmentTrendDashboard />
+          <EnvironmentTrendDashboard
+            initialFarmId={initialFarmId}
+            initialPondId={initialPondId}
+          />
         ) : (
-          <WaterQualityHistory />
+          <WaterQualityHistory
+            initialFarmId={initialFarmId}
+            initialPondId={initialPondId}
+          />
         )}
       </div>
     </div>

@@ -43,11 +43,19 @@ const PARAM_CONFIG = {
 
 type ParamKey = keyof typeof PARAM_CONFIG;
 
-export default function EnvironmentTrendDashboard() {
+interface EnvironmentTrendDashboardProps {
+  initialFarmId?: string;
+  initialPondId?: string;
+}
+
+export default function EnvironmentTrendDashboard({
+  initialFarmId,
+  initialPondId,
+}: EnvironmentTrendDashboardProps = {}) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [selectedFarm, setSelectedFarm] = useState('');
-  const [selectedPond, setSelectedPond] = useState('');
+  const [selectedFarm, setSelectedFarm] = useState(initialFarmId || '');
+  const [selectedPond, setSelectedPond] = useState(initialPondId || '');
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [loading, setLoading] = useState(false);
   const [trendData, setTrendData] = useState<TrendData[]>([]);
@@ -58,9 +66,37 @@ export default function EnvironmentTrendDashboard() {
     Promise.all([farmService.getAll(), pondService.getAll()]).then(([f, p]) => {
       setFarms(f);
       setPonds(p);
-      if (f.length > 0) setSelectedFarm(f[0].id);
+
+      let targetFarm = initialFarmId;
+      let targetPond = initialPondId;
+
+      if (targetPond) {
+        const found = p.find((item) => item.id === targetPond);
+        if (found) {
+          targetFarm = found.farmId;
+          setSelectedFarm(targetFarm);
+          setSelectedPond(targetPond);
+          return;
+        }
+      }
+
+      if (targetFarm && f.some((farm) => farm.id === targetFarm)) {
+        setSelectedFarm(targetFarm);
+      } else if (f.length > 0 && !selectedFarm) {
+        setSelectedFarm(f[0].id);
+      }
+
+      if (targetPond && p.some((pond) => pond.id === targetPond)) {
+        setSelectedPond(targetPond);
+      }
     });
-  }, []);
+  }, [initialFarmId, initialPondId]);
+
+  // Cập nhật khi props thay đổi từ thông báo (Deep link từ notification)
+  useEffect(() => {
+    if (initialFarmId) setSelectedFarm(initialFarmId);
+    if (initialPondId) setSelectedPond(initialPondId);
+  }, [initialFarmId, initialPondId]);
 
   // Fetch trend data when pond or time range changes
   useEffect(() => {

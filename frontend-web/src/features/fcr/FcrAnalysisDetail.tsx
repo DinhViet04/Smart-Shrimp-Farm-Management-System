@@ -6,6 +6,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
 
+import { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+
 interface Pond {
   id: string;
   name: string;
@@ -35,6 +37,7 @@ interface FCRAnalysisData {
 interface FcrAnalysisDetailProps {
   pond: Pond;
   onBack: () => void;
+  onNavigateTab?: (tab: GrowthTabType) => void;
 }
 
 export default function FcrAnalysisDetail({ pond, onBack }: FcrAnalysisDetailProps) {

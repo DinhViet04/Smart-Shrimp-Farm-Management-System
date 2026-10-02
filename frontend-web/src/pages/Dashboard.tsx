@@ -12,7 +12,8 @@ import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
 import BiomassDashboard from '../features/biomass/BiomassDashboard';
 import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
 import FcrDashboard from '../features/fcr/FcrDashboard';
-import { Target, TrendingUp } from 'lucide-react';
+import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
+import { TrendingUp, HeartPulse } from 'lucide-react';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 export default function Dashboard() {
@@ -30,6 +31,16 @@ export default function Dashboard() {
     farmId?: string;
     pondId?: string;
     cropId?: string;
+  } | null>(null);
+
+  const [envConfig, setEnvConfig] = useState<{
+    farmId?: string;
+    pondId?: string;
+  } | null>(null);
+
+  const [healthConfig, setHealthConfig] = useState<{
+    farmId?: string;
+    pondId?: string;
   } | null>(null);
 
   const handleNavigateToPonds = (farmId?: string) => {
@@ -84,11 +95,11 @@ export default function Dashboard() {
     { name: 'Quản lý Trang Trại', icon: <Building2 className="w-5 h-5" /> },
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5" /> },
-    { name: 'Phân tích FCR', icon: <Target className="w-5 h-5" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: '5T Care Loop', icon: <LineChart className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
+    { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -172,7 +183,26 @@ export default function Dashboard() {
                 className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-200 outline-none transition-all w-64"
               />
             </div>
-            <NotificationDropdown themeColor="blue" onNavigateTab={(tab) => setActiveTab(tab)} />
+            <NotificationDropdown 
+              themeColor="blue" 
+              onNavigateTab={(tab, config) => {
+                if (tab === 'Môi trường nước') {
+                  if (config) setEnvConfig(config);
+                  setActiveTab('Môi trường nước');
+                } else if (tab === 'Sức khỏe tôm') {
+                  if (config) setHealthConfig(config);
+                  setActiveTab('Sức khỏe tôm');
+                } else if (tab === 'Theo dõi tăng trưởng') {
+                  if (config) {
+                    setGrowthConfig({ farmId: config.farmId, pondId: config.pondId });
+                    setGrowthSubTab('Theo dõi kích cỡ');
+                  }
+                  setActiveTab('Theo dõi tăng trưởng');
+                } else {
+                  setActiveTab(tab);
+                }
+              }} 
+            />
           </div>
         </header>
 
@@ -275,7 +305,7 @@ export default function Dashboard() {
                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                 />
-              ) : (
+              ) : growthSubTab === 'Theo dõi tỷ lệ sống' ? (
                 <SurvivalRateDashboard 
                   viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'FARM_MANAGER'} 
                   onNavigateTab={(tab) => setGrowthSubTab(tab)}
@@ -286,18 +316,32 @@ export default function Dashboard() {
                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                   onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
                 />
+              ) : (
+                <FcrDashboard 
+                  onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                  initialFarmId={growthConfig?.farmId}
+                  initialPondId={growthConfig?.pondId}
+                  onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                  onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
+                />
               )}
-            </div>
-          ) : activeTab === 'Phân tích FCR' ? (
-            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
-              <FcrDashboard />
             </div>
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <IncidentDashboard role="FARM_MANAGER" />
           ) : activeTab === 'Môi trường nước' ? (
-            <EnvironmentDashboard viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} />
+            <EnvironmentDashboard 
+              viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} 
+              initialFarmId={envConfig?.farmId}
+              initialPondId={envConfig?.pondId}
+            />
+          ) : activeTab === 'Sức khỏe tôm' ? (
+            <ShrimpHealthDashboard 
+              viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} 
+              initialFarmId={healthConfig?.farmId}
+              initialPondId={healthConfig?.pondId}
+            />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

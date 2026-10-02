@@ -1,12 +1,17 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { CreateShrimpSizeSampleDto } from './dto/create-shrimp-size-sample.dto.js';
 
 @Injectable()
 export class ShrimpSizeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationsService: NotificationsService,
+  ) {}
 
-  async createSample(pondId: string, dto: CreateShrimpSizeSampleDto) {
+  async createSample(pondId: string, dto: CreateShrimpSizeSampleDto, user?: any) {
     // 1. Validate inputs and calculate totals
     if (!dto.casts || dto.casts.length !== 5) {
       throw new BadRequestException('Bắt buộc phải nhập đủ 5 mẻ chài.');
@@ -105,7 +110,131 @@ export class ShrimpSizeService {
       },
     });
 
+    // 7. Phát thông báo Realtime cho Manager và Farmer (Bất đồng bộ - Không chặn luồng response)
+    void this.dispatchGrowthNotification(pondId, sample, activeCrop, user);
+
     return sample;
+  }
+
+  /**
+   * Phân tích và phát thông báo Realtime cập nhật tăng trưởng tôm
+   * Tối ưu hiệu năng: Xử lý song song, bulk insert, không block request người dùng
+   */
+  private async dispatchGrowthNotification(
+    pondId: string,
+    sample: any,
+    activeCrop: any,
+    technicianUser?: any,
+  ) {
+    try {
+      const pond = await this.prisma.pond.findUnique({
+        where: { id: pondId },
+        select: { id: true, name: true, farmId: true },
+      });
+      if (!pond) return;
+
+      // Truy vấn song song farm, staff và thông tin kỹ thuật viên
+      const [farm, staffMembers, technician] = await Promise.all([
+        this.prisma.farm.findUnique({
+          where: { id: pond.farmId },
+          select: { id: true, name: true, ownerId: true },
+        }),
+        this.prisma.farmStaff.findMany({
+          where: {
+            farmId: pond.farmId,
+            isActive: true,
+            role: { in: ['FARMER', 'FARM_MANAGER'] },
+          },
+          select: { userId: true },
+        }),
+        technicianUser?.fullName
+          ? Promise.resolve(technicianUser)
+          : technicianUser?.id
+            ? this.prisma.user.findUnique({
+                where: { id: technicianUser.id },
+                select: { id: true, fullName: true },
+              })
+            : Promise.resolve(null),
+      ]);
+
+      if (!farm) return;
+
+      const technicianId = technicianUser?.id || null;
+      const technicianName = technician?.fullName || 'Kỹ thuật viên';
+
+      // Tập hợp người nhận: Chủ trang trại / Quản lý + Nông dân / Quản lý trong FarmStaff (loại trừ KTV vừa nhập)
+      const recipientSet = new Set<string>();
+      if (farm.ownerId && farm.ownerId !== technicianId) {
+        recipientSet.add(farm.ownerId);
+      }
+      for (const staff of staffMembers) {
+        if (staff.userId && staff.userId !== technicianId) {
+          recipientSet.add(staff.userId);
+        }
+      }
+
+      const recipientUserIds = Array.from(recipientSet);
+      if (recipientUserIds.length === 0) return;
+
+      // Tự động phân tích FCR ngay sau khi có mẫu đo mới
+      const fcrData = await this.analyzeFCR(pond.id).catch(() => null);
+      const currentFCR = fcrData?.currentFCR ?? null;
+      const fcrTarget = fcrData?.fcrTarget ?? 1.2;
+
+      // Thuật toán đánh giá mức độ cảnh báo tăng trưởng & hiệu quả sử dụng thức ăn FCR
+      let level: NotificationLevel = NotificationLevel.INFO;
+      let statusComment = 'Tăng trưởng & chuyển hóa thức ăn ổn định';
+
+      const initialCount = activeCrop?.initialShrimpCount || 0;
+      let survivalRate: number | null = null;
+      if (sample.estimatedTotalShrimp && initialCount > 0) {
+        survivalRate = (Number(sample.estimatedTotalShrimp) / initialCount) * 100;
+      }
+
+      // Đánh giá dựa trên tốc độ lớn ADG, tỷ lệ sống ước tính và hệ số FCR
+      if (sample.adgGramPerDay !== null && Number(sample.adgGramPerDay) < 0) {
+        level = NotificationLevel.DANGER;
+        statusComment = 'Cảnh báo: Tôm sụt cân bất thường (ADG âm)';
+      } else if (survivalRate !== null && survivalRate < 70) {
+        level = NotificationLevel.DANGER;
+        statusComment = `Tỷ lệ sống sụt giảm đáng báo động (${survivalRate.toFixed(1)}%)`;
+      } else if (currentFCR !== null && currentFCR > 1.5) {
+        level = NotificationLevel.DANGER;
+        statusComment = `Cảnh báo: FCR quá cao (${currentFCR} so với mục tiêu ${fcrTarget}), nguy cơ lãng phí & ô nhiễm`;
+      } else if (
+        (sample.adgGramPerDay !== null && Number(sample.adgGramPerDay) < 0.1 && (sample.doc || 0) > 30) ||
+        (survivalRate !== null && survivalRate < 85) ||
+        (currentFCR !== null && currentFCR > 1.35)
+      ) {
+        level = NotificationLevel.WARNING;
+        statusComment = currentFCR !== null && currentFCR > 1.35
+          ? `Hệ số FCR tăng nhẹ (${currentFCR}), cần cân đối lượng cám cho ăn`
+          : 'Tốc độ tăng trọng chậm hoặc tỷ lệ sống dưới mức tối ưu';
+      }
+
+      const abwStr = Number(sample.abwGram).toFixed(2);
+      const sizeStr = Number(sample.sizePerKg).toFixed(1);
+      const adgStr = sample.adgGramPerDay !== null ? `${Number(sample.adgGramPerDay).toFixed(2)} g/ngày` : 'Lần đo đầu';
+      const biomassStr = sample.estimatedBiomassKg ? `${Math.round(Number(sample.estimatedBiomassKg)).toLocaleString()} kg` : '--';
+      const fcrStr = currentFCR !== null ? `${currentFCR} (Mục tiêu: ${fcrTarget})` : 'Đang tính toán';
+
+      const title = `Tăng trưởng & FCR ${pond.name} (DOC ${sample.doc || '--'}): Size ${sizeStr} con/kg - FCR ${currentFCR !== null ? currentFCR : '--'}`;
+      const message = `${technicianName} vừa cập nhật mẫu đo tại ao ${pond.name} (${farm.name}). Trọng lượng: ${abwStr}g/con, ADG: ${adgStr}, Sinh khối: ${biomassStr}, FCR: ${fcrStr}. Đánh giá: ${statusComment}.`;
+
+      await this.notificationsService.notifyGrowthUpdate({
+        farmId: farm.id,
+        pondId: pond.id,
+        pondName: pond.name,
+        farmName: farm.name,
+        technicianName,
+        recipientUserIds,
+        level,
+        title,
+        message,
+      });
+    } catch (err) {
+      console.error('Lỗi khi gửi thông báo tăng trưởng (non-blocking):', err);
+    }
   }
 
   async getSamplesByPond(pondId: string) {
@@ -226,8 +355,21 @@ export class ShrimpSizeService {
       };
     }
 
+    // Tối ưu hóa hiệu năng: Tải toàn bộ feeding logs của vụ nuôi trong 1 query duy nhất thay vì lặp N query
+    const feedingLogs = await this.prisma.feedingLog.findMany({
+      where: {
+        cropId: activeCrop.id,
+        feedingStatus: { not: 'SKIPPED' },
+      },
+      select: {
+        feedingDate: true,
+        feedAmount: true,
+      },
+      orderBy: { feedingDate: 'asc' },
+    });
+
     const history = [];
-    let previousDate = activeCrop.startDate || new Date(0);
+    let previousDate = activeCrop.startDate ? new Date(activeCrop.startDate) : new Date(0);
     let previousBiomass = 0;
     
     let cumulativeFeedAll = 0;
@@ -235,20 +377,17 @@ export class ShrimpSizeService {
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
       const currentBiomass = Number(sample.estimatedBiomassKg);
+      const sampleDate = new Date(sample.samplingDate);
       
-      const feedResult = await this.prisma.feedingLog.aggregate({
-        _sum: { feedAmount: true },
-        where: {
-          cropId: activeCrop.id,
-          feedingStatus: { not: 'SKIPPED' },
-          feedingDate: i === 0 ? { lte: sample.samplingDate } : {
-            gt: previousDate,
-            lte: sample.samplingDate,
-          }
+      const periodLogs = feedingLogs.filter((log) => {
+        const logDate = new Date(log.feedingDate);
+        if (i === 0) {
+          return logDate <= sampleDate;
         }
+        return logDate > previousDate && logDate <= sampleDate;
       });
 
-      const periodFeed = Number(feedResult._sum.feedAmount) || 0;
+      const periodFeed = periodLogs.reduce((sum, log) => sum + (Number(log.feedAmount) || 0), 0);
       cumulativeFeedAll += periodFeed;
       
       const biomassGain = currentBiomass - previousBiomass;
@@ -272,7 +411,7 @@ export class ShrimpSizeService {
         status
       });
 
-      previousDate = sample.samplingDate;
+      previousDate = sampleDate;
       previousBiomass = currentBiomass;
     }
 

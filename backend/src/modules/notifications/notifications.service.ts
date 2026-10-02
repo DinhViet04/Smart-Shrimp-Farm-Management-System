@@ -205,13 +205,294 @@ export class NotificationsService {
     return notification;
   }
 
+  /**
+   * Tạo và gửi thông báo cập nhật môi trường nước thời gian thực tới Manager và Farmer
+   * Tối ưu DB bằng cách bulk-insert trong 1 query duy nhất và emit realtime qua WebSocket.
+   */
+  async notifyWaterQualityUpdate(params: {
+    farmId: string;
+    pondId: string;
+    pondName: string;
+    farmName: string;
+    technicianName: string;
+    recipientUserIds: string[];
+    level: NotificationLevel;
+    title: string;
+    message: string;
+  }) {
+    const {
+      farmId,
+      pondId,
+      pondName,
+      farmName,
+      recipientUserIds,
+      level,
+      title,
+      message,
+    } = params;
+
+    if (!recipientUserIds || recipientUserIds.length === 0) return [];
+
+    // Tối ưu DB: Bulk insert 1 query duy nhất O(1)
+    const notificationsData: Prisma.NotificationUncheckedCreateInput[] =
+      recipientUserIds.map((userId) => ({
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+      }));
+
+    await this.prisma.notification.createMany({
+      data: notificationsData,
+    });
+
+    // Lấy lại các bản ghi vừa tạo để có id chuẩn
+    const createdNotifications = await this.prisma.notification.findMany({
+      where: {
+        pondId,
+        userId: { in: recipientUserIds },
+        title,
+        message,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: recipientUserIds.length,
+    });
+
+    const notifMap = new Map(createdNotifications.map((n) => [n.userId, n]));
+
+    // Phát tín hiệu Real-time qua WebSocket tới phòng riêng của từng người nhận
+    for (const userId of recipientUserIds) {
+      const notif = notifMap.get(userId) || {
+        id: `temp_${Date.now()}_${userId}`,
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.gateway.sendNotificationToUser(userId, {
+        ...notif,
+        farmId,
+        pondId,
+        pondName,
+        farmName,
+      });
+    }
+
+    return createdNotifications;
+  }
+
+  /**
+   * Tạo và gửi thông báo cập nhật sức khỏe tôm thời gian thực tới Manager và Farmer
+   * Tối ưu DB bằng cách bulk-insert trong 1 query duy nhất và emit realtime qua WebSocket.
+   */
+  async notifyShrimpHealthUpdate(params: {
+    farmId: string;
+    pondId: string;
+    pondName: string;
+    farmName: string;
+    technicianName: string;
+    recipientUserIds: string[];
+    level: NotificationLevel;
+    title: string;
+    message: string;
+  }) {
+    const {
+      farmId,
+      pondId,
+      pondName,
+      farmName,
+      recipientUserIds,
+      level,
+      title,
+      message,
+    } = params;
+
+    if (!recipientUserIds || recipientUserIds.length === 0) return [];
+
+    // Tối ưu DB: Bulk insert 1 query duy nhất O(1)
+    const notificationsData: Prisma.NotificationUncheckedCreateInput[] =
+      recipientUserIds.map((userId) => ({
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+      }));
+
+    await this.prisma.notification.createMany({
+      data: notificationsData,
+    });
+
+    // Lấy lại các bản ghi vừa tạo để có id chuẩn
+    const createdNotifications = await this.prisma.notification.findMany({
+      where: {
+        pondId,
+        userId: { in: recipientUserIds },
+        title,
+        message,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: recipientUserIds.length,
+    });
+
+    const notifMap = new Map(createdNotifications.map((n) => [n.userId, n]));
+
+    // Phát tín hiệu Real-time qua WebSocket tới phòng riêng của từng người nhận
+    for (const userId of recipientUserIds) {
+      const notif = notifMap.get(userId) || {
+        id: `temp_${Date.now()}_${userId}`,
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.gateway.sendNotificationToUser(userId, {
+        ...notif,
+        farmId,
+        pondId,
+        pondName,
+        farmName,
+        category: 'SHRIMP_HEALTH',
+      });
+    }
+
+    return createdNotifications;
+  }
+
+  /**
+   * Tạo và gửi thông báo cập nhật theo dõi tăng trưởng thời gian thực tới Manager và Farmer
+   * Tối ưu DB bằng cách bulk-insert trong 1 query duy nhất và emit realtime qua WebSocket.
+   */
+  async notifyGrowthUpdate(params: {
+    farmId: string;
+    pondId: string;
+    pondName: string;
+    farmName: string;
+    technicianName: string;
+    recipientUserIds: string[];
+    level: NotificationLevel;
+    title: string;
+    message: string;
+  }) {
+    const {
+      farmId,
+      pondId,
+      pondName,
+      farmName,
+      recipientUserIds,
+      level,
+      title,
+      message,
+    } = params;
+
+    if (!recipientUserIds || recipientUserIds.length === 0) return [];
+
+    // Tối ưu DB: Bulk insert 1 query duy nhất O(1)
+    const notificationsData: Prisma.NotificationUncheckedCreateInput[] =
+      recipientUserIds.map((userId) => ({
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+      }));
+
+    await this.prisma.notification.createMany({
+      data: notificationsData,
+    });
+
+    // Lấy lại các bản ghi vừa tạo để có id chuẩn
+    const createdNotifications = await this.prisma.notification.findMany({
+      where: {
+        pondId,
+        userId: { in: recipientUserIds },
+        title,
+        message,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: recipientUserIds.length,
+    });
+
+    const notifMap = new Map(createdNotifications.map((n) => [n.userId, n]));
+
+    // Phát tín hiệu Real-time qua WebSocket tới phòng riêng của từng người nhận
+    for (const userId of recipientUserIds) {
+      const notif = notifMap.get(userId) || {
+        id: `temp_${Date.now()}_${userId}`,
+        userId,
+        farmId,
+        pondId,
+        level,
+        title,
+        message,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.gateway.sendNotificationToUser(userId, {
+        ...notif,
+        farmId,
+        pondId,
+        pondName,
+        farmName,
+        category: 'GROWTH',
+      });
+    }
+
+    return createdNotifications;
+  }
+
   async getUserNotifications(userId: string) {
     const where: Prisma.NotificationWhereInput = { userId };
-    return this.prisma.notification.findMany({
+    const notifications = await this.prisma.notification.findMany({
       where,
+      include: {
+        farm: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+
+    const pondIds = Array.from(
+      new Set(notifications.map((n) => n.pondId).filter(Boolean) as string[]),
+    );
+
+    let pondMap = new Map<string, string>();
+    if (pondIds.length > 0) {
+      const ponds = await this.prisma.pond.findMany({
+        where: { id: { in: pondIds } },
+        select: { id: true, name: true },
+      });
+      pondMap = new Map(ponds.map((p) => [p.id, p.name]));
+    }
+
+    return notifications.map((n) => ({
+      ...n,
+      pondName: n.pondId ? pondMap.get(n.pondId) : undefined,
+      farmName: n.farm?.name,
+    }));
   }
 
   async getUnreadCount(userId: string) {

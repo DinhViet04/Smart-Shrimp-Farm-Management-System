@@ -33,6 +33,12 @@ export class PondsController {
     return this.pondsService.findAll(req.user);
   }
 
+  @Get('overview')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  findOverview(@Request() req: any) {
+    return this.pondsService.findOverview(req.user);
+  }
+
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
   findOne(@Request() req: any, @Param('id') id: string) {

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, ClipboardList, CalendarDays, MinusCircle, Truck, X } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
-import { farmService } from '../../services/farm.service';
 import { supplierService } from '../../services/supplier.service';
 import { pondService } from '../../services/pond.service';
 import InventoryFormModal from './InventoryFormModal';
@@ -69,15 +68,6 @@ export default function InventoryManagement() {
   const canManageInventory = user.role === 'FARM_MANAGER';
   const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(user.role || '');
 
-  const fetchPonds = async () => {
-    try {
-      const list = await pondService.getAll();
-      setPonds(list);
-    } catch (err) {
-      console.error('Error fetching ponds:', err);
-    }
-  };
-
   const fetchInventories = async (farmId: string) => {
     if (!farmId) return;
     setIsLoading(true);
@@ -115,31 +105,35 @@ export default function InventoryManagement() {
     }
   };
 
-  const fetchFarms = async () => {
+  const fetchOverview = async () => {
     try {
-      const data = await farmService.getAll();
-      setFarms(data);
-      if (data.length > 0 && !selectedFarmId) {
-        setSelectedFarmId(data[0].id);
+      const overview = await pondService.getOverview();
+      setFarms(overview.farms);
+      setPonds(overview.ponds);
+      if (overview.farms.length > 0 && !selectedFarmId) {
+        setSelectedFarmId(overview.farms[0].id);
       }
     } catch (error) {
-      showToast('Không thể tải danh sách trang trại', 'error');
+      showToast('Không thể tải dữ liệu trang trại và ao nuôi', 'error');
     }
   };
 
   useEffect(() => {
-    fetchFarms();
-    fetchPonds();
+    fetchOverview();
   }, []);
+
+  useEffect(() => {
+    fetchInventories(selectedFarmId);
+    fetchConsumptionData(selectedFarmId);
+    fetchSuppliers(selectedFarmId);
+  }, [selectedFarmId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchInventories(selectedFarmId);
-      fetchConsumptionData(selectedFarmId);
-      fetchSuppliers(selectedFarmId);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, categoryFilter, selectedFarmId]);
+  }, [search, categoryFilter]);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });

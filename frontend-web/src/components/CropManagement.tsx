@@ -28,7 +28,6 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
-import { farmService } from '../services/farm.service';
 import { pondService } from '../services/pond.service';
 import { cropService, type Crop } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
@@ -39,7 +38,7 @@ interface Farm {
   address?: string;
   area?: number;
   status?: string;
-  farmingModel?: string;
+  farmingModel?: string | null;
 }
 
 interface Pond {
@@ -304,15 +303,14 @@ export default function CropManagement({
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [farmsData, pondsData, cropsData] = await Promise.all([
-        farmService.getMy().catch(() => farmService.getAll()),
-        pondService.getAll(),
+      const [overview, cropsData] = await Promise.all([
+        pondService.getOverview(),
         cropService.getAll({
           status: activeView === 'active' ? 'ACTIVE' : filterStatus || undefined,
         }),
       ]);
-      setFarms(farmsData);
-      setPonds(pondsData);
+      setFarms(overview.farms);
+      setPonds(overview.ponds);
       setCrops(cropsData);
     } catch (err: any) {
       showToast(err.message || 'Lỗi khi tải dữ liệu vụ nuôi', 'error');

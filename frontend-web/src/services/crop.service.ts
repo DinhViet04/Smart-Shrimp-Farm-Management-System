@@ -6,6 +6,7 @@
  */
 
 import { apiFetch } from '../utils/api';
+import { invalidatePondOverviewCache } from './pond.service';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -122,10 +123,15 @@ export const cropService = {
   /**
    * GET /api/crops
    */
-  getAll: async (filters?: { pondId?: string; status?: string }): Promise<Crop[]> => {
+  getAll: async (filters?: {
+    pondId?: string;
+    status?: string;
+    summary?: boolean;
+  }): Promise<Crop[]> => {
     const params = new URLSearchParams();
     if (filters?.pondId) params.append('pondId', filters.pondId);
     if (filters?.status) params.append('status', filters.status);
+    if (filters?.summary) params.append('summary', 'true');
 
     const response = await apiFetch(`${apiUrl}/api/crops?${params.toString()}`);
     const data = await response.json();
@@ -158,6 +164,7 @@ export const cropService = {
           : data?.message || 'Không thể tạo vụ nuôi mới',
       );
     }
+    invalidatePondOverviewCache();
     return data as Crop;
   },
 
@@ -177,6 +184,7 @@ export const cropService = {
           : data?.message || 'Không thể cập nhật vụ nuôi',
       );
     }
+    invalidatePondOverviewCache();
     return data as Crop;
   },
 
@@ -196,6 +204,7 @@ export const cropService = {
           : data?.message || 'Không thể tách ao nuôi',
       );
     }
+    invalidatePondOverviewCache();
     return data;
   },
 
@@ -207,6 +216,7 @@ export const cropService = {
     if (!response.ok) {
       throw new Error(data?.message || 'Không thể đóng vụ nuôi');
     }
+    invalidatePondOverviewCache();
     return data as Crop;
   },
 
@@ -221,6 +231,7 @@ export const cropService = {
     if (!response.ok) {
       throw new Error(data?.message || 'Không thể xóa vụ nuôi');
     }
+    invalidatePondOverviewCache();
     return data;
   },
 };

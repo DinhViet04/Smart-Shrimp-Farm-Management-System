@@ -32,8 +32,13 @@ export class CropsController {
     @Request() req: any,
     @Query('pondId') pondId?: string,
     @Query('status') status?: string,
+    @Query('summary') summary?: string,
   ) {
-    return this.cropsService.findAll(req.user, { pondId, status });
+    return this.cropsService.findAll(req.user, {
+      pondId,
+      status,
+      summary: summary === 'true',
+    });
   }
 
   @Get(':id')

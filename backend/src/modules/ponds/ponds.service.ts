@@ -81,6 +81,94 @@ export class PondsService {
     });
   }
 
+  async findOverview(user: AuthUser) {
+    const accessWhere =
+      user.role === 'ADMIN'
+        ? {}
+        : user.role === 'FARM_MANAGER'
+          ? { ownerId: user.userId }
+          : {
+              staff: {
+                some: { userId: user.userId, isActive: true },
+              },
+            };
+
+    const farmWhere = { deletedAt: null, ...accessWhere };
+    const [farms, ponds, crops] = await Promise.all([
+      this.prisma.farm.findMany({
+        where: farmWhere,
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          address: true,
+          area: true,
+          description: true,
+          status: true,
+          ownerId: true,
+          farmingModel: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.pond.findMany({
+        where: { farm: farmWhere },
+        select: {
+          id: true,
+          name: true,
+          areaSize: true,
+          depth: true,
+          farmId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.crop.findMany({
+        where: { pond: { farm: farmWhere } },
+        distinct: ['pondId'],
+        orderBy: [{ pondId: 'asc' }, { startDate: 'desc' }],
+        select: {
+          id: true,
+          pondId: true,
+          startDate: true,
+          initialShrimpCount: true,
+          status: true,
+          targetHarvestSize: true,
+          growthMilestones: true,
+          targetSurvivalRate: true,
+          targetTotalFeedKg: true,
+          expectedHarvestDate: true,
+          expectedDurationDays: true,
+          stage: true,
+          expectedTransferDate: true,
+          parentCropId: true,
+          transferDate: true,
+          actualNurseryHarvest: true,
+          nurserySurvivalRate: true,
+          transferSize: true,
+          splitNote: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const farmById = new Map(farms.map((farm) => [farm.id, farm]));
+    const overviewPonds = ponds.map((pond) => ({
+      ...pond,
+      farm: farmById.get(pond.farmId),
+    }));
+    const pondById = new Map(overviewPonds.map((pond) => [pond.id, pond]));
+    const overviewCrops = crops.map((crop) => ({
+      ...crop,
+      pond: pondById.get(crop.pondId),
+    }));
+
+    return { farms, ponds: overviewPonds, crops: overviewCrops };
+  }
+
   async findAllByManager(userId: string) {
     return this.prisma.pond.findMany({
       where: {

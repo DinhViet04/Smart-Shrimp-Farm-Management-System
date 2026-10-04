@@ -21,7 +21,10 @@ export class CropsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async findAll(user: AuthUser, query: { pondId?: string; status?: string }) {
+  async findAll(
+    user: AuthUser,
+    query: { pondId?: string; status?: string; summary?: boolean },
+  ) {
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
     const where: any = {};
@@ -40,6 +43,41 @@ export class CropsService {
         ...(where.pond || {}),
         farmId: { in: accessibleFarmIds },
       };
+    }
+
+    if (query.summary) {
+      return (this.prisma.crop as any).findMany({
+        where,
+        select: {
+          id: true,
+          pondId: true,
+          startDate: true,
+          initialShrimpCount: true,
+          status: true,
+          targetHarvestSize: true,
+          growthMilestones: true,
+          targetSurvivalRate: true,
+          targetTotalFeedKg: true,
+          expectedHarvestDate: true,
+          expectedDurationDays: true,
+          stage: true,
+          expectedTransferDate: true,
+          parentCropId: true,
+          createdAt: true,
+          updatedAt: true,
+          pond: {
+            select: {
+              id: true,
+              name: true,
+              areaSize: true,
+              depth: true,
+              farmId: true,
+              farm: { select: { id: true, name: true, farmingModel: true } },
+            },
+          },
+        },
+        orderBy: { startDate: 'desc' },
+      });
     }
 
     return (this.prisma.crop as any).findMany({

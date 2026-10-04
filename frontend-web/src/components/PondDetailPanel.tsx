@@ -1,36 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { X, MapPin, Maximize, Calendar, Activity, Info, Droplets, Target } from 'lucide-react';
 import { cropService, type Crop } from '../services/crop.service';
 
 interface PondDetailPanelProps {
   pond: any | null;
   isOpen: boolean;
+  initialCrops?: Crop[];
   onClose: () => void;
   onEditCrop?: (crop: Crop) => void;
 }
 
-export default function PondDetailPanel({ pond, isOpen, onClose, onEditCrop }: PondDetailPanelProps) {
-  const [crops, setCrops] = useState<Crop[]>([]);
-  const [loadingCrops, setLoadingCrops] = useState(false);
+export default function PondDetailPanel({ pond, isOpen, initialCrops = [], onClose, onEditCrop }: PondDetailPanelProps) {
+  const [loadedHistory, setLoadedHistory] = useState<{ pondId: string; crops: Crop[] } | null>(null);
 
   useEffect(() => {
-    if (isOpen && pond?.id) {
-      const fetchCrops = async () => {
-        setLoadingCrops(true);
-        try {
-          const data = await cropService.getByPond(pond.id);
-          setCrops(data);
-        } catch (error) {
-          console.error('Failed to fetch crops', error);
-        } finally {
-          setLoadingCrops(false);
-        }
-      };
-      fetchCrops();
-    }
+    if (!isOpen || !pond?.id) return;
+
+    let cancelled = false;
+    cropService.getByPond(pond.id)
+      .then((crops) => {
+        if (!cancelled) setLoadedHistory({ pondId: pond.id, crops });
+      })
+      .catch((error) => {
+        console.error('Lỗi khi tải lịch sử vụ nuôi:', error);
+        if (!cancelled) setLoadedHistory({ pondId: pond.id, crops: [] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, pond?.id]);
 
   if (!pond) return null;
+
+  const crops = loadedHistory && loadedHistory.pondId === pond.id
+    ? loadedHistory.crops
+    : initialCrops;
+  const isLoadingHistory = loadedHistory?.pondId !== pond.id;
 
   return (
     <>
@@ -149,7 +155,7 @@ export default function PondDetailPanel({ pond, isOpen, onClose, onEditCrop }: P
                   <h4 className="text-lg font-bold text-slate-800">Danh sách Vụ Nuôi</h4>
                 </div>
                 
-                {loadingCrops ? (
+                {isLoadingHistory && crops.length === 0 ? (
                   <div className="text-sm text-slate-500 animate-pulse text-center py-4">Đang tải dữ liệu vụ nuôi...</div>
                 ) : crops.length > 0 ? (
                   <div className="space-y-3">

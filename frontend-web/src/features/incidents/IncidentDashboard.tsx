@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Clock3, Plus, RefreshCw, Search, Stethoscope, X } from 'lucide-react';
 import { incidentService, type Incident, type IncidentStatus, type IncidentTechnician } from '../../services/incident.service';
-import { cropService, type Crop } from '../../services/crop.service';
+import { type Crop } from '../../services/crop.service';
+import { pondService } from '../../services/pond.service';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Chờ xử lý',
@@ -84,7 +85,8 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
     if (!canCreate) return;
     setLoadingCrops(true);
     try {
-      const crops = await cropService.getAll({ status: 'ACTIVE' });
+      const overview = await pondService.getOverview();
+      const crops = overview.crops.filter((crop) => crop.status === 'ACTIVE');
       setActiveCrops(crops);
       setCreateForm((current) => ({
         ...current,

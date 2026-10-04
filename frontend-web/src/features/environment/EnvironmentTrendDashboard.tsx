@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 import { subDays, subHours, format } from 'date-fns';
 import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Loader2, Minus } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 
@@ -63,7 +62,7 @@ export default function EnvironmentTrendDashboard({
 
   // Load farms & ponds
   useEffect(() => {
-    Promise.all([farmService.getAll(), pondService.getAll()]).then(([f, p]) => {
+    pondService.getOverview().then(({ farms: f, ponds: p }) => {
       setFarms(f);
       setPonds(p);
 

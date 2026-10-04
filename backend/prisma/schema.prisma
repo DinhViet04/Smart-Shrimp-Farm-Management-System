@@ -116,6 +116,7 @@ model Farm {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  @@index([ownerId, deletedAt])
   @@map("farms")
 }
 
@@ -132,7 +133,7 @@ model FarmStaff {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([farmId, userId])
-  @@index([userId])
+  @@index([userId, isActive])
   @@map("farm_staffs")
 }
 
@@ -151,6 +152,7 @@ model Pond {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  @@index([farmId])
   @@map("ponds")
 }
 
@@ -218,6 +220,8 @@ model Crop {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
+  @@index([pondId, status, startDate])
+  @@index([status, startDate])
   @@map("crops")
 }
 
@@ -316,7 +320,7 @@ model Incident {
   updatedAt    DateTime                  @updatedAt
 
   @@index([cropId, status])
-  @@index([assignedToId, status])
+  @@index([assignedToId, status, updatedAt])
   @@index([reporterId])
   @@map("incidents")
 }
@@ -410,6 +414,7 @@ model Inventory {
   updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@unique([itemName, farmId])
+  @@index([farmId, deletedAt, category, createdAt])
   @@map("inventories")
 }
 
@@ -429,7 +434,7 @@ model Supplier {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  @@index([name, farmId])
+  @@index([farmId, deletedAt, name])
   @@map("suppliers")
 }
 
@@ -446,6 +451,7 @@ model InventoryUsageLog {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([inventoryId, usageDate])
   @@map("inventory_usage_logs")
 }
 
@@ -470,6 +476,7 @@ model ShrimpHealthRecord {
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
   @@index([pondId, cropId, recordTime])
+  @@index([farmId, recordTime])
   @@map("shrimp_health_records")
 }
 
@@ -488,7 +495,7 @@ model Notification {
   createdAt DateTime          @default(now()) @map("created_at")
 
   @@index([farmId, isRead])
-  @@index([userId, isRead])
+  @@index([userId, isRead, createdAt])
   @@map("notifications")
 }
 
@@ -539,6 +546,7 @@ model FeedingLog {
 
   @@unique([farmId, pondId, cropId, feedingDate, feedingSession])
   @@index([pondId, cropId, feedingDate])
+  @@index([farmId, feedingDate])
   @@map("feeding_logs")
 }
 

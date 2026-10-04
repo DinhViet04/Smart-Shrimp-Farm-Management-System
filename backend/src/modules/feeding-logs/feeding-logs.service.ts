@@ -277,8 +277,40 @@ export class FeedingLogsService {
       ];
     }
 
+    const page = query.page ?? 0;
+    const size = query.size ?? 10;
+    const [groupKeys, allGroupKeys] = await Promise.all([
+      this.prisma.feedingLog.groupBy({
+        by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
+        where,
+        orderBy: { feedingDate: 'desc' },
+        skip: page * size,
+        take: size,
+      }),
+      this.prisma.feedingLog.groupBy({
+        by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
+        where,
+      }),
+    ]);
+
+    if (groupKeys.length === 0) {
+      return { data: [], total: allGroupKeys.length, page, size };
+    }
+
     const allLogs = await this.prisma.feedingLog.findMany({
-      where,
+      where: {
+        AND: [
+          where,
+          {
+            OR: groupKeys.map((key) => ({
+              feedingDate: key.feedingDate,
+              farmId: key.farmId,
+              pondId: key.pondId,
+              cropId: key.cropId,
+            })),
+          },
+        ],
+      },
       include: {
         farm: { select: { id: true, name: true } },
         pond: { select: { id: true, name: true } },
@@ -338,13 +370,20 @@ export class FeedingLogsService {
     }
 
     const groupedList = Array.from(groupedMap.values());
-    const page = query.page ?? 0;
-    const size = query.size ?? 10;
-    const paginated = groupedList.slice(page * size, (page + 1) * size);
+    const groupOrder = new Map(
+      groupKeys.map((key, index) => [
+        `${key.feedingDate.toISOString().slice(0, 10)}_${key.pondId}_${key.cropId}`,
+        index,
+      ]),
+    );
+    groupedList.sort((a, b) =>
+      (groupOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (groupOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
 
     return {
-      data: paginated,
-      total: groupedList.length,
+      data: groupedList,
+      total: allGroupKeys.length,
       page,
       size,
     };

@@ -75,23 +75,56 @@ export class FarmsService {
     userId?: string,
     role?: string,
   ) {
-    const where: any = { deletedAt: null };
+    const accessWhere =
+      role === 'ADMIN'
+        ? {}
+        : role === 'FARM_MANAGER' && userId
+          ? { ownerId: userId }
+          : userId
+            ? { staff: { some: { userId, isActive: true } } }
+            : { id: { in: [] } };
+    const where: any = { deletedAt: null, ...accessWhere };
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (status) where.status = status;
 
-    if (role && role !== 'ADMIN' && userId) {
-      const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds({
-        userId,
-        role,
-      });
-      where.id = { in: accessibleFarmIds };
-    }
+    const [farms, ponds, owners] = await Promise.all([
+      this.prisma.farm.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.pond.findMany({
+        where: { farm: where },
+        select: {
+          id: true,
+          name: true,
+          areaSize: true,
+          depth: true,
+          farmId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      role === 'ADMIN'
+        ? this.prisma.user.findMany({
+            select: { id: true, fullName: true, email: true },
+          })
+        : Promise.resolve([]),
+    ]);
 
-    return this.prisma.farm.findMany({
-      where,
-      include: { owner: true, ponds: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const pondsByFarm = new Map<string, typeof ponds>();
+    for (const pond of ponds) {
+      const farmPonds = pondsByFarm.get(pond.farmId) ?? [];
+      farmPonds.push(pond);
+      pondsByFarm.set(pond.farmId, farmPonds);
+    }
+    const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
+
+    return farms.map((farm) => ({
+      ...farm,
+      owner: ownerById.get(farm.ownerId),
+      ponds: pondsByFarm.get(farm.id) ?? [],
+    }));
   }
 
   async findAllByManager(userId: string) {

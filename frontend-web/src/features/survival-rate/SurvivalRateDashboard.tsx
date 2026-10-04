@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import { survivalRateService, type SurvivalRateStats } from '../../services/survival-rate.service';
@@ -100,10 +99,7 @@ export default function SurvivalRateDashboard({
   const fetchFarmsAndPonds = async () => {
     setError(null);
     try {
-      const [farmsData, pondsData] = await Promise.all([
-        farmService.getMy().catch(() => farmService.getAll()),
-        pondService.getAll(),
-      ]);
+      const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
       setFarms(farmsData);
       setPonds(pondsData);
       if (farmsData.length > 0) {
@@ -163,7 +159,7 @@ export default function SurvivalRateDashboard({
     }
     setLoadingStats(true);
     try {
-      const cropsData = await cropService.getAll({ pondId });
+      const cropsData = await cropService.getAll({ pondId, summary: true });
       setCrops(cropsData);
       if (initialCropId && cropsData.some((c) => c.id === initialCropId)) {
         setSelectedCropId(initialCropId);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -17,19 +17,20 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-import AccountSettings from '../components/AccountSettings';
 import NotificationDropdown from '../components/NotificationDropdown';
-import InventoryManagement from '../features/inventory/InventoryManagement';
-import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
-import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
-import PondCropDashboard from '../components/PondCropDashboard';
-import FeedingLogDashboard from '../features/feeding-logs/FeedingLogDashboard';
-import IncidentDashboard from '../features/incidents/IncidentDashboard';
-import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
-import BiomassDashboard from '../features/biomass/BiomassDashboard';
-import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
-import FcrDashboard from '../features/fcr/FcrDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+
+const AccountSettings = lazy(() => import('../components/AccountSettings'));
+const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
+const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
+const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
+const PondCropDashboard = lazy(() => import('../components/PondCropDashboard'));
+const FeedingLogDashboard = lazy(() => import('../features/feeding-logs/FeedingLogDashboard'));
+const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
+const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
+const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
+const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
+const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 
 export default function FarmerDashboard() {
   const navigate = useNavigate();
@@ -300,6 +301,7 @@ export default function FarmerDashboard() {
             </div>
           )}
 
+          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" /></div>}>
           {activeTab === 'Cài đặt' ? (
              <AccountSettings />
           ) : activeTab === 'Kho thức ăn' ? (
@@ -381,6 +383,7 @@ export default function FarmerDashboard() {
               </div>
             </div>
           ) : null}
+          </Suspense>
         </div>
       </main>
     </div>

@@ -32,7 +32,6 @@ import {
   RotateCw,
   Lightbulb,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import { weatherService, type WeatherInfo } from '../../services/weather.service';
@@ -43,7 +42,7 @@ import type { CreateWaterQualityPayload } from '../../services/water-quality.ser
 interface Farm {
   id: string;
   name: string;
-  location?: string;
+  location?: string | null;
   address?: string;
   ponds?: Pond[];
 }
@@ -385,10 +384,7 @@ export default function RecordWaterQuality() {
   useEffect(() => {
     (async () => {
       try {
-        const [farmsData, pondsData] = await Promise.all([
-          farmService.getAll(),
-          pondService.getAll(),
-        ]);
+        const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
         setFarms(farmsData || []);
         setPonds(pondsData || []);
 

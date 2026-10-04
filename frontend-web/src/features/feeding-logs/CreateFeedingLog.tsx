@@ -15,9 +15,7 @@ import {
   Calculator,
   Copy,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
-import { cropService } from '../../services/crop.service';
 import {
   feedingLogService,
   DEFAULT_FEEDING_SESSIONS,
@@ -127,11 +125,7 @@ export default function CreateFeedingLog() {
     const loadInit = async () => {
       try {
         setLoadingData(true);
-        const [fList, pList, cList] = await Promise.all([
-          farmService.getAll(),
-          pondService.getAll(),
-          cropService.getAll(),
-        ]);
+        const { farms: fList, ponds: pList, crops: cList } = await pondService.getOverview();
         setFarms(fList);
         setPonds(pList);
         setCrops(cList);

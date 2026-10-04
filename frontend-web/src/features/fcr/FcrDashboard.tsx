@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Waves, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import FcrAnalysisDetail from './FcrAnalysisDetail';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
@@ -32,29 +31,34 @@ export default function FcrDashboard({
   onSelectPond,
 }: FcrDashboardProps) {
   const [farms, setFarms] = useState<Farm[]>([]);
-  const [ponds, setPonds] = useState<Pond[]>([]);
+  const [allPonds, setAllPonds] = useState<Pond[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
   const [selectedPond, setSelectedPond] = useState<Pond | null>(null);
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ponds = useMemo(
+    () => selectedFarmId ? allPonds.filter((p) => p.farmId === selectedFarmId) : [],
+    [selectedFarmId, allPonds],
+  );
 
   useEffect(() => {
-    fetchFarms();
+    fetchOverview();
   }, []);
 
-  const fetchFarms = async () => {
+  const fetchOverview = async () => {
     try {
       setIsLoading(true);
-      const data = await farmService.getAll();
-      setFarms(data);
-      if (data.length > 0) {
+      const overview = await pondService.getOverview();
+      setFarms(overview.farms);
+      setAllPonds(overview.ponds);
+      if (overview.farms.length > 0) {
         setSelectedFarmId((prev) => {
-          if (initialFarmId && data.some((f: Farm) => f.id === initialFarmId)) {
+          if (initialFarmId && overview.farms.some((f) => f.id === initialFarmId)) {
             onSelectFarm?.(initialFarmId);
             return initialFarmId;
           }
-          const chosen = prev || data[0].id;
+          const chosen = prev || overview.farms[0].id;
           onSelectFarm?.(chosen);
           return chosen;
         });
@@ -65,29 +69,6 @@ export default function FcrDashboard({
       setIsLoading(false);
     }
   };
-
-  const fetchPonds = useCallback(async (farmId: string) => {
-    if (!farmId) {
-      setPonds([]);
-      return;
-    }
-    try {
-      setIsLoading(true);
-      const data = await pondService.getAll();
-      const farmPonds = data.filter((p: Pond) => p.farmId === farmId);
-      setPonds(farmPonds);
-    } catch (err: any) {
-      setError(err.message || 'Lỗi tải danh sách ao');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedFarmId) {
-      fetchPonds(selectedFarmId);
-    }
-  }, [selectedFarmId, fetchPonds]);
 
   useEffect(() => {
     if (initialFarmId && initialFarmId !== selectedFarmId) {

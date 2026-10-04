@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Plus, 
   Waves, 
@@ -16,7 +16,8 @@ import {
   Eye
 } from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
-import { cropService, type Crop } from '../services/crop.service';
+import { type Crop } from '../services/crop.service';
+import { pondService } from '../services/pond.service';
 
 interface PondManagementProps {
   initialFarmId?: string;
@@ -58,50 +59,55 @@ export default function PondManagement({
     setTimeout(() => setToast(null), createdPond ? 7000 : 3000);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch Farms
-      const { farmService } = await import('../services/farm.service');
-      try {
-        const farmsData = await farmService.getMy();
-        setFarms(farmsData);
-        if (farmsData.length > 0 && !formData.farmId) {
-          setFormData(prev => ({ ...prev, farmId: farmsData[0].id }));
-        }
-      } catch (err) {
-        console.error('Lỗi khi lấy trang trại:', err);
-      }
-
-      // Fetch Ponds
-      const { pondService } = await import('../services/pond.service');
-      const pondsData = await pondService.getAll();
-      setPonds(pondsData);
-
-      // Fetch Crops
-      try {
-        const cropsData = await cropService.getAll();
-        setCrops(cropsData);
-      } catch (cropErr) {
-        console.error('Lỗi khi lấy danh sách vụ nuôi:', cropErr);
+      const overview = await pondService.getOverview();
+      setFarms(overview.farms);
+      setPonds(overview.ponds);
+      setCrops(overview.crops);
+      if (overview.farms.length > 0) {
+        setFormData((prev) =>
+          prev.farmId ? prev : { ...prev, farmId: overview.farms[0].id },
+        );
       }
     } catch (error) {
       console.error('Lỗi khi tải dữ liệu:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Initial remote data synchronization for the screen.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, [fetchData]);
+
+  const cropByPond = useMemo(() => {
+    const active = new Map<string, Crop>();
+    const latest = new Map<string, Crop>();
+    const all = new Map<string, Crop[]>();
+
+    for (const crop of crops) {
+      if (!latest.has(crop.pondId)) latest.set(crop.pondId, crop);
+      if (crop.status === 'ACTIVE' && !active.has(crop.pondId)) {
+        active.set(crop.pondId, crop);
+      }
+      const pondCrops = all.get(crop.pondId) || [];
+      pondCrops.push(crop);
+      all.set(crop.pondId, pondCrops);
+    }
+
+    return { active, latest, all };
+  }, [crops]);
 
   const getPondCropInfo = (pondId: string) => {
-    const activeCrop = crops.find(c => c.pondId === pondId && c.status === 'ACTIVE');
+    const activeCrop = cropByPond.active.get(pondId);
     if (activeCrop) {
       return { hasActiveCrop: true, crop: activeCrop, label: 'Đang nuôi' };
     }
-    const latestCrop = crops.find(c => c.pondId === pondId);
+    const latestCrop = cropByPond.latest.get(pondId);
     return { 
       hasActiveCrop: false, 
       crop: latestCrop || null, 
@@ -136,7 +142,6 @@ export default function PondManagement({
     e.stopPropagation();
     if (!window.confirm('Bạn có chắc chắn muốn xóa ao này? \n\n⚠️ CẢNH BÁO: Việc xoá ao nuôi sẽ làm MẤT TOÀN BỘ dữ liệu liên quan (các vụ nuôi, nhật ký, thông số...) và không thể khôi phục!')) return;
     try {
-      const { pondService } = await import('../services/pond.service');
       await pondService.remove(id);
       showToast('Xóa ao nuôi thành công!', 'success');
       fetchData();
@@ -148,7 +153,6 @@ export default function PondManagement({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { pondService } = await import('../services/pond.service');
       const data = {
         name: formData.name,
         areaSize: Number(formData.areaSize),
@@ -665,6 +669,7 @@ export default function PondManagement({
       <PondDetailPanel 
         pond={viewingPond} 
         isOpen={!!viewingPond} 
+        initialCrops={viewingPond ? cropByPond.all.get(viewingPond.id) || [] : []}
         onClose={() => setViewingPond(null)} 
         onEditCrop={onEditCrop}
       />

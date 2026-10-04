@@ -67,7 +67,7 @@ export default function PondBiomassDetail({
       setError(null);
       const [data, crops] = await Promise.all([
         shrimpSizeService.getSamplesByPond(pond.id),
-        cropService.getAll({ pondId: pond.id, status: 'ACTIVE' }).catch(() => []),
+        cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true }).catch(() => []),
       ]);
       setSamples(Array.isArray(data) ? data : []);
       if (crops && crops.length > 0) {

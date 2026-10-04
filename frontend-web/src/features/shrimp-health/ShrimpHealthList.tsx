@@ -21,7 +21,6 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { shrimpHealthService } from '../../services/shrimp-health.service';
 import type {
@@ -171,10 +170,7 @@ export default function ShrimpHealthList({
   useEffect(() => {
     (async () => {
       try {
-        const [farmsData, pondsData] = await Promise.all([
-          farmService.getAll(),
-          pondService.getAll(),
-        ]);
+        const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
         setFarms(farmsData);
         setPonds(pondsData);
 

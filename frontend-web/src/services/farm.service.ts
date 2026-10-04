@@ -1,4 +1,5 @@
 import { apiFetch } from '../utils/api';
+import { invalidatePondOverviewCache } from './pond.service';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -32,6 +33,7 @@ export const farmService = {
     });
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Failed to create farm');
+    invalidatePondOverviewCache();
     return resData;
   },
 
@@ -42,6 +44,7 @@ export const farmService = {
     });
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Failed to update farm');
+    invalidatePondOverviewCache();
     return resData;
   },
 
@@ -51,6 +54,7 @@ export const farmService = {
     });
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Failed to delete farm');
+    invalidatePondOverviewCache();
     return resData;
   },
 

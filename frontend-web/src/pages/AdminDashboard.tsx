@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AccountSettings from '../components/AccountSettings';
 import NotificationDropdown from '../components/NotificationDropdown';
-import FarmList from '../features/farms/FarmList';
-import IncidentDashboard from '../features/incidents/IncidentDashboard';
 import { apiFetch } from '../utils/api';
+
+const AccountSettings = lazy(() => import('../components/AccountSettings'));
+const FarmList = lazy(() => import('../features/farms/FarmList'));
+const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
 
 const userStr = localStorage.getItem('user');
 const currentUser = userStr ? JSON.parse(userStr) : { fullName: 'Admin', email: 'admin@ssfm.com' };
@@ -373,6 +374,7 @@ export default function AdminDashboard() {
               )}
             </div>
 
+            <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" /></div>}>
             {activeTab === 'Cài đặt' ? (
               <AccountSettings />
             ) : activeTab === 'Trang trại' ? (
@@ -442,6 +444,7 @@ export default function AdminDashboard() {
                 </div>
               </>
             )}
+            </Suspense>
 
             {activeTab === 'Người dùng' && (
               <div className="flex flex-col gap-8">

@@ -16,7 +16,6 @@ import {
   Activity,
   Percent,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import { shrimpHealthService } from '../../services/shrimp-health.service';
@@ -132,10 +131,7 @@ export default function CreateShrimpHealth() {
   useEffect(() => {
     (async () => {
       try {
-        const [farmsData, pondsData] = await Promise.all([
-          farmService.getAll(),
-          pondService.getAll(),
-        ]);
+        const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
         setFarms(farmsData);
         setPonds(pondsData);
       } catch {

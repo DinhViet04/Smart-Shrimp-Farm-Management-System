@@ -104,7 +104,7 @@ export default function PondSizeDetail({
       const data = await shrimpSizeService.getSamplesByPond(pond.id);
       setSamples(Array.isArray(data) ? data : []);
       
-      const cropsData = await cropService.getAll({ pondId: pond.id, status: 'ACTIVE' });
+      const cropsData = await cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true });
       if (Array.isArray(cropsData) && cropsData.length > 0) {
         setActiveCrop(cropsData[0]);
       } else {

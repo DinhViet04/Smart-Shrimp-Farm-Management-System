@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -12,18 +12,18 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-import AccountSettings from '../components/AccountSettings';
 import NotificationDropdown from '../components/NotificationDropdown';
-import EnvironmentDashboard from '../features/environment/EnvironmentDashboard';
-import EnvironmentTrendDashboard from '../features/environment/EnvironmentTrendDashboard';
-import ShrimpHealthDashboard from '../features/shrimp-health/ShrimpHealthDashboard';
-import IncidentDashboard from '../features/incidents/IncidentDashboard';
-import ShrimpSizeDashboard from '../features/shrimp-size/ShrimpSizeDashboard';
-import BiomassDashboard from '../features/biomass/BiomassDashboard';
-import SurvivalRateDashboard from '../features/survival-rate/SurvivalRateDashboard';
-import FcrDashboard from '../features/fcr/FcrDashboard';
-
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+
+const AccountSettings = lazy(() => import('../components/AccountSettings'));
+const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
+const EnvironmentTrendDashboard = lazy(() => import('../features/environment/EnvironmentTrendDashboard'));
+const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
+const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
+const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
+const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
+const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
+const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -175,6 +175,7 @@ export default function TechnicianDashboard() {
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-400/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
+          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" /></div>}>
           {activeTab === 'Cài đặt' ? (
             <div className="w-full max-w-6xl h-full flex flex-col justify-start">
               <AccountSettings />
@@ -252,6 +253,7 @@ export default function TechnicianDashboard() {
               </p>
             </div>
           )}
+          </Suspense>
         </div>
       </main>
     </div>

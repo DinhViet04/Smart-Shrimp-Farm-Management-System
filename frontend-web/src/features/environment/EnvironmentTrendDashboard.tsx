@@ -71,22 +71,22 @@ export default function EnvironmentTrendDashboard({
       let targetPond = initialPondId;
 
       if (targetPond) {
-        const found = p.find((item) => item.id === targetPond);
+        const found = p.find((item: any) => item.id === targetPond);
         if (found) {
           targetFarm = found.farmId;
-          setSelectedFarm(targetFarm);
+          if (targetFarm) setSelectedFarm(targetFarm);
           setSelectedPond(targetPond);
           return;
         }
       }
 
-      if (targetFarm && f.some((farm) => farm.id === targetFarm)) {
+      if (targetFarm && f.some((farm: any) => farm.id === targetFarm)) {
         setSelectedFarm(targetFarm);
       } else if (f.length > 0 && !selectedFarm) {
         setSelectedFarm(f[0].id);
       }
 
-      if (targetPond && p.some((pond) => pond.id === targetPond)) {
+      if (targetPond && p.some((pond: any) => pond.id === targetPond)) {
         setSelectedPond(targetPond);
       }
     });

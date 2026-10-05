@@ -3,17 +3,24 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
-  ConnectedSocket,
-  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
+const allowedOrigins = (
+  process.env.CORS_ORIGINS ??
+  process.env.FRONTEND_URL ??
+  'http://localhost:5173'
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: allowedOrigins,
+    credentials: true,
   },
   namespace: '/notifications',
 })
@@ -53,9 +60,7 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       }
       this.userSockets.get(userId)!.add(client.id);
 
-      console.log(`Client connected: ${client.id} (User: ${userId})`);
-    } catch (error) {
-      console.log('Socket connection auth failed:', error.message);
+    } catch {
       client.disconnect();
     }
   }
@@ -68,7 +73,6 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
         this.userSockets.delete(userId);
       }
     }
-    console.log(`Client disconnected: ${client.id}`);
   }
 
   /**
@@ -76,6 +80,5 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
    */
   sendNotificationToUser(userId: string, notification: any) {
     this.server.to(`user_${userId}`).emit('newNotification', notification);
-    console.log(`[NotificationGateway] Sent notification to user_${userId}:`, notification?.title);
   }
 }

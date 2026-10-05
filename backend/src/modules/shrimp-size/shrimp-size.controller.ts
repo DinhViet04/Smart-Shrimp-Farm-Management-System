@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Param, Body, UseGuards, InternalServerErrorException, Request } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { ShrimpSizeService } from './shrimp-size.service.js';
 import { CreateShrimpSizeSampleDto } from './dto/create-shrimp-size-sample.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -17,30 +17,25 @@ export class ShrimpSizeController {
     @Body() dto: CreateShrimpSizeSampleDto,
     @Request() req: any,
   ) {
-    try {
-      return await this.shrimpSizeService.createSample(pondId, dto, req.user);
-    } catch (error: any) {
-      console.error('CREATE_SAMPLE_ERROR:', error);
-      throw new InternalServerErrorException(error.message || 'Unknown error');
-    }
+    return this.shrimpSizeService.createSample(pondId, dto, req.user);
   }
 
   @Get()
   @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN', 'FARMER')
-  async getSamplesByPond(@Param('pondId') pondId: string) {
-    return this.shrimpSizeService.getSamplesByPond(pondId);
+  async getSamplesByPond(@Param('pondId') pondId: string, @Request() req: any) {
+    return this.shrimpSizeService.getSamplesByPond(pondId, req.user);
   }
 
   @Get('latest')
   @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN', 'FARMER')
-  async getLatestSample(@Param('pondId') pondId: string) {
-    return this.shrimpSizeService.getLatestSample(pondId);
+  async getLatestSample(@Param('pondId') pondId: string, @Request() req: any) {
+    return this.shrimpSizeService.getLatestSample(pondId, req.user);
   }
 
   @Get('fcr')
   @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN', 'FARMER')
-  async analyzeFCR(@Param('pondId') pondId: string) {
-    return this.shrimpSizeService.analyzeFCR(pondId);
+  async analyzeFCR(@Param('pondId') pondId: string, @Request() req: any) {
+    return this.shrimpSizeService.analyzeFCR(pondId, req.user);
   }
 
   @Delete(':sampleId')
@@ -48,7 +43,8 @@ export class ShrimpSizeController {
   async deleteSample(
     @Param('pondId') pondId: string,
     @Param('sampleId') sampleId: string,
+    @Request() req: any,
   ) {
-    return this.shrimpSizeService.deleteSample(pondId, sampleId);
+    return this.shrimpSizeService.deleteSample(pondId, sampleId, req.user);
   }
 }

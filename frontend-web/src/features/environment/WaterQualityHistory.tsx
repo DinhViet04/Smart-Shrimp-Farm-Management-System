@@ -184,7 +184,7 @@ export default function WaterQualityHistory({
         setPonds(pondsData);
 
         if (initialPondId) {
-          const found = pondsData.find((p) => p.id === initialPondId);
+          const found = pondsData.find((p: any) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);

@@ -1,4 +1,26 @@
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+let refreshRequest: Promise<string | null> | null = null;
+
+const refreshAccessToken = () => {
+  if (!refreshRequest) {
+    refreshRequest = fetch(`${apiUrl}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-SSFM-CSRF': '1' },
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json();
+        localStorage.setItem('accessToken', data.accessToken);
+        return data.accessToken as string;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshRequest = null;
+      });
+  }
+  return refreshRequest;
+};
 
 export const apiFetch = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('accessToken');
@@ -16,40 +38,23 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
   }
 
   const fullUrl = url.startsWith('http') ? url : `${apiUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-  let response = await fetch(fullUrl, { ...options, headers });
+  let response = await fetch(fullUrl, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
 
   // Handle 401 Unauthorized
   if (response.status === 401) {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) {
-      try {
-        const refreshResponse = await fetch(`${apiUrl}/api/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (refreshResponse.ok) {
-          const data = await refreshResponse.json();
-          // Save new tokens
-          localStorage.setItem('accessToken', data.accessToken);
-          if (data.refreshToken) {
-            localStorage.setItem('refreshToken', data.refreshToken);
-          }
-          
-          // Retry the original request with new token
-          headers.set('Authorization', `Bearer ${data.accessToken}`);
-          response = await fetch(fullUrl, { ...options, headers });
-        } else {
-          // Refresh failed (token expired or invalid)
-          handleAuthFailure();
-        }
-      } catch {
-        // Network error during refresh
-        handleAuthFailure();
-      }
+    const nextAccessToken = await refreshAccessToken();
+    if (nextAccessToken) {
+      headers.set('Authorization', `Bearer ${nextAccessToken}`);
+      response = await fetch(fullUrl, {
+        ...options,
+        headers,
+        credentials: 'include',
+      });
     } else {
-      // No refresh token available
       handleAuthFailure();
     }
   }
@@ -58,8 +63,28 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 const handleAuthFailure = () => {
+  void fetch(`${apiUrl}/api/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-SSFM-CSRF': '1' },
+    keepalive: true,
+  });
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
   window.location.href = '/';
+};
+
+export const logoutSession = async () => {
+  try {
+    await fetch(`${apiUrl}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-SSFM-CSRF': '1' },
+    });
+  } finally {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+  }
 };

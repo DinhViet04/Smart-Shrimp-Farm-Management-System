@@ -8,7 +8,6 @@ import { UsersModule } from './modules/users/users.module.js';
 import { FarmsModule } from './modules/farms/farms.module.js';
 import { PondsModule } from './modules/ponds/ponds.module.js';
 import { CropsModule } from './modules/crops/crops.module.js';
-import { FiveTCareModule } from './modules/five-t-care/five-t-care.module.js';
 import { EnvironmentModule } from './modules/environment/environment.module.js';
 import { IncidentsModule } from './modules/incidents/incidents.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
@@ -26,11 +25,21 @@ import { ShrimpSizeModule } from './modules/shrimp-size/shrimp-size.module.js';
 import { SurvivalRateModule } from './modules/survival-rate/survival-rate.module.js';
 import { EmailModule } from './modules/email/email.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
     // Global config — loads .env automatically
     ConfigModule.forRoot({ isGlobal: true }),
+
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
 
     // Global email module
     EmailModule,
@@ -46,7 +55,6 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     FarmsModule,
     PondsModule,
     CropsModule,
-    FiveTCareModule,
     EnvironmentModule,
     IncidentsModule,
     ReportsModule,
@@ -65,6 +73,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     NotificationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

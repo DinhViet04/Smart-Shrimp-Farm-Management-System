@@ -1,16 +1,29 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  if (process.env.TRUST_PROXY === 'true') {
+    app.set('trust proxy', 1);
+  }
 
   // Global prefix
   app.setGlobalPrefix('api');
 
-  // Enable CORS
+  const allowedOrigins = (
+    process.env.CORS_ORIGINS ??
+    process.env.FRONTEND_URL ??
+    'http://localhost:5173'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  // Only allow configured frontends to send credentialed browser requests.
   app.enableCors({
-    origin: true, // Allow all origins in dev; configure specific origins in production
+    origin: allowedOrigins,
     credentials: true,
   });
 

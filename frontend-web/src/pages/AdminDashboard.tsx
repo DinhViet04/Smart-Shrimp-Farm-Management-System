@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NotificationDropdown from '../components/NotificationDropdown';
-import { apiFetch } from '../utils/api';
+import { apiFetch, logoutSession } from '../utils/api';
 import LoadingMotion from '../components/LoadingMotion';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
@@ -242,10 +242,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await logoutSession();
     navigate('/');
   };
 

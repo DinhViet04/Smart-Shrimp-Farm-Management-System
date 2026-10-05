@@ -90,6 +90,7 @@ model User {
   incidentUpdates     IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
   mortalityLogs       MortalityLog[]
   notifications       Notification[]
+  refreshSessions     RefreshSession[]
 
   @@map("users")
 }
@@ -211,7 +212,6 @@ model Crop {
   actualHarvestCount   Int?                 @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
   actualHarvestKg      Float?               @map("actual_harvest_kg") // Sản lượng thu hoạch thực tế (kg)
   actualHarvestSize    Float?               @map("actual_harvest_size") // Kích cỡ tôm thu hoạch thực tế (con/kg)
-  fiveTCycles          FiveTCycle[]
   environmentRecords   EnvironmentRecord[]
   incidents            Incident[]
   shrimpHealthRecords  ShrimpHealthRecord[]
@@ -225,64 +225,33 @@ model Crop {
   @@map("crops")
 }
 
-model FiveTCycle {
-  id                    String                 @id @default(uuid())
-  cropId                String
-  crop                  Crop                   @relation(fields: [cropId], references: [id], onDelete: Cascade)
-  startDayIndex         Int // Ngày bắt đầu vòng lặp
-  endDayIndex           Int // Ngày kết thúc vòng lặp
-  dailyRecords          DailyRecord[]
-  sizeMeasurement       SizeMeasurement?
-  feedingRecommendation FeedingRecommendation?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+model RefreshSession {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  replacedBy String?   @map("replaced_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-  @@map("five_t_cycles")
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
 }
 
-model DailyRecord {
-  id             String       @id @default(uuid())
-  cycleId        String
-  cycle          FiveTCycle   @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  recordDate     DateTime
-  dayIndex       Int // Ngày nuôi thứ mấy (1, 2, 3...)
-  actualFeedKg   Float // Lượng thức ăn thực tế (Food_i)
-  mortalityCount Int // Số tôm hao
-  healthStatus   HealthStatus
-  waterTemp      Float // Nhiệt độ nước để hiệu chỉnh lượng ăn
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+model PasswordResetOtp {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  otpHash    String    @map("otp_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  lastSentAt DateTime  @default(now()) @map("last_sent_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  @@unique([cycleId, recordDate])
-  @@map("daily_records")
-}
-
-model SizeMeasurement {
-  id                  String     @id @default(uuid())
-  cycleId             String     @unique
-  cycle               FiveTCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  measurementDate     DateTime
-  dayIndex            Int // Phải chia hết cho 5 theo quy trình 5T
-  sampleWeightGram    Float // G_m: Trọng lượng mẫu
-  shrimpCountInSample Int // N_đ: Số tôm đếm được
-  calculatedSize      Float // Size_m = N_đ / (G_m / 1000)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-
-  @@map("size_measurements")
-}
-
-model FeedingRecommendation {
-  id                  String     @id @default(uuid())
-  cycleId             String     @unique
-  cycle               FiveTCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  recommendedFeedKg   Float[] // Mảng 5 phần tử: Lượng thức ăn đề xuất 5 ngày tới
-  adjustmentReasoning String? // Lý do hiệu chỉnh (ví dụ: "Giảm 10% do nhiệt độ thấp")
-  applied             Boolean    @default(false)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-
-  @@map("feeding_recommendations")
+  @@index([expiresAt])
+  @@map("password_reset_otps")
 }
 
 model EnvironmentRecord {
@@ -369,15 +338,6 @@ model WaterQualityRecord {
   @@map("water_quality_records")
 }
 
-model Standard5T {
-  id         Int      @id @default(autoincrement())
-  dayMark    Int      @unique // 20, 35, 45, 60...
-  targetSize Float // e.g. < 1000
-  targetFcr  Float // e.g. < 1.0
-  createdAt  DateTime @default(now())
-
-  @@map("standard_5t")
-}
 
 enum InventoryCategory {
   FEED

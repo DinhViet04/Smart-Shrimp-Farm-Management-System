@@ -41,6 +41,25 @@ export class CropsController {
     });
   }
 
+  @Get('analytics/growth-trajectory')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  getGrowthTrajectory(
+    @Request() req: any,
+    @Query('farmId') farmId?: string,
+    @Query('pondId') pondId?: string,
+    @Query('cropId') cropId?: string,
+    @Query('timeRange') timeRange?: string,
+    @Query('year') year?: string,
+  ) {
+    return this.cropsService.getGrowthTrajectory90d(req.user, {
+      farmId,
+      pondId,
+      cropId,
+      timeRange,
+      year,
+    });
+  }
+
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
   findOne(@Request() req: any, @Param('id') id: string) {

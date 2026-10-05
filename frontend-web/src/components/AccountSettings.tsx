@@ -10,14 +10,9 @@ import {
   Building2, 
   FlaskConical, 
   Users, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ArrowRight, 
-  X, 
-  ShieldAlert,
   Info
 } from 'lucide-react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, logoutSession } from '../utils/api';
 
 type TabKey = 'profile' | 'security';
 
@@ -45,35 +40,6 @@ const initialPasswordForm: PasswordForm = {
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
-};
-
-const getDashboardPath = (role?: string) => {
-  switch (role) {
-    case 'ADMIN':
-      return '/admin/dashboard';
-    case 'FARMER':
-      return '/farmer/dashboard';
-    case 'TECHNICIAN':
-      return '/technician/dashboard';
-    case 'FARM_MANAGER':
-    default:
-      return '/dashboard';
-  }
-};
-
-const getRoleName = (role?: string) => {
-  switch (role) {
-    case 'ADMIN':
-      return 'Quản trị viên hệ thống';
-    case 'FARM_MANAGER':
-      return 'Quản lý trang trại';
-    case 'TECHNICIAN':
-      return 'Kỹ thuật viên';
-    case 'FARMER':
-      return 'Nông dân';
-    default:
-      return role || 'Người dùng';
-  }
 };
 
 const getRoleBadgeInfo = (role?: string) => {
@@ -123,10 +89,6 @@ export default function AccountSettings() {
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [hasPassword, setHasPassword] = useState<boolean>(true);
   const [isGoogleAccount, setIsGoogleAccount] = useState<boolean>(false);
-
-  // State cho Modal cảnh báo thay đổi Role
-  const [showRoleModal, setShowRoleModal] = useState<boolean>(false);
-  const [roleAgreementAccepted, setRoleAgreementAccepted] = useState<boolean>(false);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -215,18 +177,10 @@ export default function AccountSettings() {
       return;
     }
 
-    // Nếu người dùng có thay đổi role khác với role hiện tại đã lưu, mở Modal cảnh báo
-    if (currentSavedRole !== 'ADMIN' && profile.role && profile.role !== currentSavedRole) {
-      setRoleAgreementAccepted(false);
-      setShowRoleModal(true);
-      return;
-    }
-
-    // Nếu không thay đổi role, thực hiện lưu bình thường
-    await executeSaveProfile(profile.role || currentSavedRole);
+    await executeSaveProfile();
   };
 
-  const executeSaveProfile = async (targetRole: string) => {
+  const executeSaveProfile = async () => {
     try {
       setSubmittingProfile(true);
       setFeedback(null);
@@ -237,7 +191,6 @@ export default function AccountSettings() {
           phone: profile.phone.trim() || undefined,
           address: profile.address.trim() || undefined,
           avatarUrl: avatarPreview || profile.avatarUrl || undefined,
-          role: targetRole,
         }),
       });
 
@@ -246,46 +199,20 @@ export default function AccountSettings() {
         throw new Error(Array.isArray(data.message) ? data.message[0] : data.message || 'Cập nhật hồ sơ thất bại');
       }
 
-      const newRole = data.role || targetRole;
-      const isRoleChanged = currentSavedRole && newRole && currentSavedRole !== newRole && currentSavedRole !== 'ADMIN';
+      const savedRole = data.role || currentSavedRole;
 
-      setProfile((current) => ({ ...current, role: newRole, avatarUrl: avatarPreview || current.avatarUrl || '' }));
-      setCurrentSavedRole(newRole);
+      setProfile((current) => ({ ...current, role: savedRole, avatarUrl: avatarPreview || current.avatarUrl || '' }));
+      setCurrentSavedRole(savedRole);
 
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...profile, role: newRole, avatarUrl: avatarPreview || profile.avatarUrl || '' }));
-
-      if (isRoleChanged) {
-        setFeedback({
-          type: 'success',
-          message: `Đã đổi vai trò sang "${getRoleName(newRole)}". Hệ thống đang chuyển đến trang mới...`,
-        });
-        setTimeout(() => {
-          const targetPath = getDashboardPath(newRole);
-          window.location.href = targetPath;
-        }, 1200);
-      } else {
-        setFeedback({ type: 'success', message: 'Cập nhật hồ sơ thành công' });
-      }
+      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...profile, role: savedRole, avatarUrl: avatarPreview || profile.avatarUrl || '' }));
+      setFeedback({ type: 'success', message: 'Cập nhật hồ sơ thành công' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Đã xảy ra lỗi';
       setFeedback({ type: 'error', message });
     } finally {
       setSubmittingProfile(false);
-      setShowRoleModal(false);
     }
-  };
-
-  const handleConfirmRoleChange = async () => {
-    if (!roleAgreementAccepted) return;
-    await executeSaveProfile(profile.role || currentSavedRole);
-  };
-
-  const handleCancelRoleChange = () => {
-    // Đặt lại role về role hiện tại
-    setProfile(prev => ({ ...prev, role: currentSavedRole }));
-    setShowRoleModal(false);
-    setRoleAgreementAccepted(false);
   };
 
   const handlePasswordSubmit = async (event: FormEvent) => {
@@ -315,7 +242,11 @@ export default function AccountSettings() {
 
       setPasswordForm(initialPasswordForm);
       setHasPassword(true);
-      setFeedback({ type: 'success', message: data.message || (hasPassword ? 'Đổi mật khẩu thành công' : 'Tạo mật khẩu mới thành công') });
+      setFeedback({ type: 'success', message: data.message || 'Cập nhật mật khẩu thành công. Vui lòng đăng nhập lại.' });
+      setTimeout(async () => {
+        await logoutSession();
+        window.location.href = '/login';
+      }, 1200);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Đã xảy ra lỗi';
       setFeedback({ type: 'error', message });
@@ -503,97 +434,6 @@ export default function AccountSettings() {
                     </div>
                   </div>
 
-                  {/* ── Role Management Section ─────────────────────────────────── */}
-                  <div className="space-y-4 pt-2 border-t border-slate-100">
-                    {/* Change Role Section (Excluded for ADMIN) */}
-                    {currentSavedRole === 'ADMIN' ? (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                        Tài khoản Quản trị viên hệ thống (ADMIN) có cấp bậc cao nhất và không chuyển đổi vai trò tại đây.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-sm font-semibold text-slate-700">
-                            Chuyển đổi vai trò tài khoản <span className="text-slate-400 font-normal text-xs">(Không bao gồm Admin)</span>
-                          </label>
-                          {profile.role !== currentSavedRole && (
-                            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 animate-pulse">
-                              Đã chọn vai trò mới
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {/* Farm Manager */}
-                          <button
-                            type="button"
-                            onClick={() => setProfile((current) => ({ ...current, role: 'FARM_MANAGER' }))}
-                            className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                              profile.role === 'FARM_MANAGER'
-                                ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20 text-blue-950 shadow-sm'
-                                : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {profile.role === 'FARM_MANAGER' && (
-                              <CheckCircle2 className="w-4 h-4 text-blue-600 absolute top-3 right-3" />
-                            )}
-                            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-2">
-                              <Building2 className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">Quản Lý Trang Trại</div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">Quản lý ao nuôi, nhân sự & chi phí vụ nuôi</div>
-                            </div>
-                          </button>
-
-                          {/* Technician */}
-                          <button
-                            type="button"
-                            onClick={() => setProfile((current) => ({ ...current, role: 'TECHNICIAN' }))}
-                            className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                              profile.role === 'TECHNICIAN'
-                                ? 'bg-cyan-50 border-cyan-600 ring-2 ring-cyan-500/20 text-cyan-950 shadow-sm'
-                                : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {profile.role === 'TECHNICIAN' && (
-                              <CheckCircle2 className="w-4 h-4 text-cyan-600 absolute top-3 right-3" />
-                            )}
-                            <div className="w-8 h-8 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center mb-2">
-                              <FlaskConical className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">Kỹ Thuật Viên</div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">Đo chất lượng nước, sức khỏe tôm & mẫu 5T</div>
-                            </div>
-                          </button>
-
-                          {/* Farmer */}
-                          <button
-                            type="button"
-                            onClick={() => setProfile((current) => ({ ...current, role: 'FARMER' }))}
-                            className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                              profile.role === 'FARMER'
-                                ? 'bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/20 text-emerald-950 shadow-sm'
-                                : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {profile.role === 'FARMER' && (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 absolute top-3 right-3" />
-                            )}
-                            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
-                              <Users className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-900">Nông Dân</div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">Ghi nhận lượng thức ăn & nhật ký ao hằng ngày</div>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
 
@@ -714,111 +554,6 @@ export default function AccountSettings() {
         </div>
       </div>
 
-      {/* ── Role Change Confirmation Modal ────────────────────────────────────── */}
-      {showRoleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="bg-rose-50 border-b border-rose-100 p-6 flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0 shadow-inner">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-900 leading-tight">
-                  Xác Nhận Thay Đổi Vai Trò Tài Khoản
-                </h3>
-                <p className="text-xs text-rose-700 font-medium mt-1">
-                  Hành động này sẽ thay đổi phân quyền và phạm vi dữ liệu quản lý của bạn.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelRoleChange}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-4">
-              {/* Transition Overview */}
-              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-                <div className="text-center flex-1">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Hiện tại</div>
-                  <div className="text-sm font-bold text-slate-700 mt-0.5">{getRoleName(currentSavedRole)}</div>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-2 flex-shrink-0">
-                  <ArrowRight className="w-4 h-4" />
-                </div>
-                <div className="text-center flex-1">
-                  <div className="text-[11px] font-bold text-blue-500 uppercase tracking-wider">Vai trò mới</div>
-                  <div className="text-sm font-bold text-blue-700 mt-0.5">{getRoleName(profile.role)}</div>
-                </div>
-              </div>
-
-              {/* Warning explanation */}
-              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs space-y-2">
-                <div className="font-bold flex items-center gap-1.5 text-amber-800">
-                  <ShieldAlert className="w-4 h-4 text-amber-600" />
-                  Lưu ý quan trọng trước khi chuyển đổi:
-                </div>
-                <ul className="list-disc list-inside space-y-1 text-amber-800/90 leading-relaxed">
-                  <li>Tất cả giao diện làm việc, báo cáo và dữ liệu chuyên biệt của vai trò cũ sẽ được chuyển sang giao diện của vai trò mới.</li>
-                  <li>Các liên kết phân công nhân sự tại trang trại sẽ được đồng bộ theo vai trò mới.</li>
-                  <li>Hệ thống sẽ tự động chuyển hướng bạn đến Dashboard tương ứng ngay sau khi xác nhận.</li>
-                </ul>
-              </div>
-
-              {/* Agreement Checkbox */}
-              <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100/60 cursor-pointer transition-colors select-none">
-                <input
-                  type="checkbox"
-                  checked={roleAgreementAccepted}
-                  onChange={(e) => setRoleAgreementAccepted(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-xs font-semibold text-slate-800 leading-snug">
-                  Tôi đã đọc, hiểu rõ các thay đổi và xác nhận đồng ý chuyển đổi sang vai trò <span className="text-blue-600 font-bold">"{getRoleName(profile.role)}"</span>.
-                </span>
-              </label>
-            </div>
-
-            {/* Modal Footer Actions */}
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={handleCancelRoleChange}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors shadow-sm"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                disabled={!roleAgreementAccepted || submittingProfile}
-                onClick={handleConfirmRoleChange}
-                className={`px-6 py-2.5 rounded-xl text-white font-bold text-xs shadow-md flex items-center gap-2 transition-all ${
-                  roleAgreementAccepted && !submittingProfile
-                    ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/25 hover:-translate-y-0.5 cursor-pointer'
-                    : 'bg-slate-300 cursor-not-allowed opacity-70'
-                }`}
-              >
-                {submittingProfile ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Đang xử lý...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    Xác Nhận & Hoàn Tất (OK)
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

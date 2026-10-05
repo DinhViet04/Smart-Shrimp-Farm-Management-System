@@ -8,7 +8,6 @@ import { UsersModule } from './modules/users/users.module.js';
 import { FarmsModule } from './modules/farms/farms.module.js';
 import { PondsModule } from './modules/ponds/ponds.module.js';
 import { CropsModule } from './modules/crops/crops.module.js';
-import { FiveTCareModule } from './modules/five-t-care/five-t-care.module.js';
 import { EnvironmentModule } from './modules/environment/environment.module.js';
 import { IncidentsModule } from './modules/incidents/incidents.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
@@ -46,7 +45,6 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     FarmsModule,
     PondsModule,
     CropsModule,
-    FiveTCareModule,
     EnvironmentModule,
     IncidentsModule,
     ReportsModule,

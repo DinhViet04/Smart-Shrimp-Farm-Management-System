@@ -13,6 +13,7 @@ import { InventoryService } from './inventory.service.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { UpdateInventoryDto } from './dto/update-inventory.dto.js';
 import { CreateInventoryUsageDto } from './dto/create-inventory-usage.dto.js';
+import { CreateInventoryImportDto } from './dto/create-inventory-import.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -50,11 +51,13 @@ export class InventoryController {
     @CurrentUser() user: any,
     @Query('farmId') farmId?: string,
     @Query('days') days?: number,
+    @Query('category') category?: InventoryCategory,
   ) {
     return this.inventoryService.getConsumptionSummary(
       user,
       farmId,
-      days ? Number(days) : 30,
+      days ? Number(days) : undefined,
+      category,
     );
   }
 
@@ -66,6 +69,9 @@ export class InventoryController {
     @Query('inventoryId') inventoryId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('category') category?: InventoryCategory,
+    @Query('take') take?: number,
+    @Query('type') type?: 'ALL' | 'IMPORT' | 'EXPORT',
   ) {
     return this.inventoryService.findUsageLogs(
       user,
@@ -73,6 +79,9 @@ export class InventoryController {
       inventoryId,
       from,
       to,
+      category,
+      take ? Number(take) : undefined,
+      type,
     );
   }
 
@@ -119,6 +128,16 @@ export class InventoryController {
     @CurrentUser() user: any,
   ) {
     return this.inventoryService.recordUsage(id, createUsageDto, user);
+  }
+
+  @Post(':id/import')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  recordImport(
+    @Param('id') id: string,
+    @Body() createImportDto: CreateInventoryImportDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.inventoryService.recordImport(id, createImportDto, user);
   }
 
   @Delete(':id')

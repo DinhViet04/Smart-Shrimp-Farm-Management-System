@@ -20,20 +20,34 @@ export const inventoryService = {
     return response.json();
   },
 
-  getConsumptionSummary: async (farmId?: string, days = 30) => {
+  getConsumptionSummary: async (farmId?: string, days?: number, category?: string) => {
     const params = new URLSearchParams();
     if (farmId) params.append('farmId', farmId);
-    params.append('days', String(days));
+    if (days !== undefined && days !== null && days > 0) {
+      params.append('days', String(days));
+    } else {
+      params.append('days', '99999');
+    }
+    if (category && category !== 'ALL') params.append('category', category);
 
     const response = await apiFetch(`${apiUrl}/api/inventory/consumption-summary?${params.toString()}`);
     if (!response.ok) throw new Error('Không thể tải tổng quan tiêu thụ');
     return response.json();
   },
 
-  getUsageLogs: async (farmId?: string, inventoryId?: string) => {
+  getUsageLogs: async (
+    farmId?: string,
+    inventoryId?: string,
+    category?: string,
+    take = 500,
+    type?: string,
+  ) => {
     const params = new URLSearchParams();
     if (farmId) params.append('farmId', farmId);
     if (inventoryId) params.append('inventoryId', inventoryId);
+    if (category && category !== 'ALL') params.append('category', category);
+    if (take) params.append('take', String(take));
+    if (type && type !== 'ALL') params.append('type', type);
 
     const response = await apiFetch(`${apiUrl}/api/inventory/usage-logs?${params.toString()}`);
     if (!response.ok) throw new Error('Không thể tải nhật ký tiêu thụ');
@@ -77,6 +91,16 @@ export const inventoryService = {
     });
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Không thể ghi nhận tiêu thụ tồn kho');
+    return resData;
+  },
+
+  recordImport: async (id: string, data: any) => {
+    const response = await apiFetch(`${apiUrl}/api/inventory/${id}/import`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const resData = await response.json();
+    if (!response.ok) throw new Error(resData.message || 'Không thể ghi nhận nhập kho');
     return resData;
   },
 

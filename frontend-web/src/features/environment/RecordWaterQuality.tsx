@@ -36,6 +36,7 @@ import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import { weatherService, type WeatherInfo } from '../../services/weather.service';
 import type { CreateWaterQualityPayload } from '../../services/water-quality.service';
+import LoadingMotion from '../../components/LoadingMotion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -611,12 +612,13 @@ export default function RecordWaterQuality() {
 
   if (loadingData) {
     return (
-      <div className="flex items-center justify-center h-80">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-slate-500">Đang tải dữ liệu trang trại và ao nuôi...</p>
-        </div>
-      </div>
+      <LoadingMotion
+        mode="card"
+        title="Đang tải dữ liệu biểu mẫu môi trường..."
+        subtitle="Hệ thống đang chuẩn bị danh sách trang trại, ao nuôi và các cảm biến đo lường..."
+        icon={<Droplets className="w-10 h-10 text-indigo-600 animate-pulse" />}
+        color="indigo"
+      />
     );
   }
 

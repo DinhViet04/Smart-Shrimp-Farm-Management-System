@@ -3,6 +3,7 @@ import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, 
 import { farmService } from '../../services/farm.service';
 import FarmFormModal from './FarmFormModal';
 import FarmDetailPanel from './FarmDetailPanel';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface FarmListProps {
   onNavigateToPonds?: (farmId?: string) => void;
@@ -45,10 +46,13 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   };
 
   useEffect(() => {
-    // Debounce search slightly
+    if (!search) {
+      fetchFarms();
+      return;
+    }
     const timer = setTimeout(() => {
       fetchFarms();
-    }, 300);
+    }, 150);
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -82,6 +86,20 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
     setViewingFarm(farm);
     setIsViewOpen(true);
   };
+
+  if (isLoading && farms.length === 0) {
+    return (
+      <LoadingMotion
+        title="Đang tải dữ liệu Trang trại..."
+        subtitle="Hệ thống đang đồng bộ danh sách trang trại và dữ liệu nuôi trồng..."
+        icon={<Building2 className="w-11 h-11 text-blue-600 animate-pulse" />}
+        headerTitle="Danh Sách Trang Trại"
+        headerSubtitle="Quản lý thông tin và các ao nuôi trong từng trang trại"
+        headerIcon={<Building2 className="w-7 h-7 text-blue-600" />}
+        color="cyan"
+      />
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 relative">
@@ -146,12 +164,13 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
 
       {/* List / Loading state */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-64 bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 text-sm font-medium">Đang tải dữ liệu...</p>
-          </div>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tìm kiếm trang trại..."
+          subtitle="Đang lọc danh sách trang trại theo từ khóa..."
+          icon={<Building2 className="w-10 h-10 text-cyan-600 animate-pulse" />}
+          color="cyan"
+        />
       ) : farms.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 bg-white rounded-3xl border border-slate-100 shadow-sm text-center px-6">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">

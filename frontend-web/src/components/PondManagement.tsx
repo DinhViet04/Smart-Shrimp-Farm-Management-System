@@ -16,6 +16,7 @@ import {
   Eye
 } from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
+import LoadingMotion from './LoadingMotion';
 import { type Crop } from '../services/crop.service';
 import { pondService } from '../services/pond.service';
 
@@ -207,6 +208,20 @@ export default function PondManagement({
     });
   }, [farms, ponds, search]);
 
+  if (loading && farms.length === 0) {
+    return (
+      <LoadingMotion
+        title="Đang tải dữ liệu Ao nuôi..."
+        subtitle="Hệ thống đang đồng bộ danh sách ao nuôi phân chia theo từng trang trại..."
+        icon={<Waves className="w-11 h-11 text-blue-600 animate-pulse" />}
+        headerTitle="Quản Lý Ao Nuôi"
+        headerSubtitle="Theo dõi và quản lý danh sách ao nuôi phân chia theo từng trang trại"
+        headerIcon={<Waves className="w-7 h-7 text-blue-600" />}
+        color="blue"
+      />
+    );
+  }
+
   return (
     <div className="relative z-10 max-w-7xl mx-auto space-y-6">
       {/* Custom Toast */}
@@ -303,12 +318,13 @@ export default function PondManagement({
 
       {/* Loading state */}
       {loading ? (
-        <div className="flex items-center justify-center h-64 bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-sm">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 text-sm font-medium">Đang tải dữ liệu ao nuôi...</p>
-          </div>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải danh sách ao nuôi..."
+          subtitle="Đang đồng bộ dữ liệu diện tích và tình trạng vụ mùa của các ao..."
+          icon={<Waves className="w-10 h-10 text-blue-600 animate-pulse" />}
+          color="blue"
+        />
       ) : farms.length === 0 ? (
         /* No Farms State */
         <div className="flex flex-col items-center justify-center h-64 bg-white/90 backdrop-blur-xl rounded-3xl border border-slate-200/80 shadow-sm text-center px-6">

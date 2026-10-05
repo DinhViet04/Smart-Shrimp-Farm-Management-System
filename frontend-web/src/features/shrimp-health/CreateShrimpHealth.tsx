@@ -19,6 +19,7 @@ import {
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import { shrimpHealthService } from '../../services/shrimp-health.service';
+import LoadingMotion from '../../components/LoadingMotion';
 import type {
   ShrimpHealthStatusType,
   ShrimpSeverityType,
@@ -248,12 +249,13 @@ export default function CreateShrimpHealth() {
 
   if (loadingData) {
     return (
-      <div className="flex items-center justify-center h-80">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-slate-500">Đang tải dữ liệu...</p>
-        </div>
-      </div>
+      <LoadingMotion
+        mode="card"
+        title="Đang tải dữ liệu biểu mẫu sức khỏe..."
+        subtitle="Hệ thống đang chuẩn bị danh sách ao nuôi, vụ nuôi và các danh mục kiểm tra..."
+        icon={<HeartPulse className="w-10 h-10 text-indigo-600 animate-pulse" />}
+        color="indigo"
+      />
     );
   }
 

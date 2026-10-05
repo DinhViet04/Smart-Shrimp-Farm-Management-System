@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, Waves, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { ChevronDown, Waves, AlertCircle, ArrowRight } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import PondSizeDetail from './PondSizeDetail';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Farm {
   id: string;
@@ -106,6 +107,26 @@ export default function ShrimpSizeDashboard({
     );
   }
 
+  if (isLoading && farms.length === 0) {
+    return (
+      <div className="space-y-6 max-w-7xl pb-10">
+        <GrowthHeaderTabs
+          activeTab="Theo dõi kích cỡ"
+          onTabChange={onNavigateTab}
+          title="Theo Dõi Kích Cỡ & Trọng Lượng Tôm"
+          subtitle="Đánh giá tốc độ tăng trọng hàng ngày (ADG), trọng lượng trung bình (ABW) và phân hạng kích cỡ theo chuẩn 5T"
+        />
+        <LoadingMotion
+          mode="page"
+          title="Đang tải dữ liệu Kích cỡ tôm..."
+          subtitle="Hệ thống đang đồng bộ danh sách ao nuôi và mẫu kích cỡ từ trang trại..."
+          icon={<Waves className="w-12 h-12 text-cyan-600" />}
+          color="cyan"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
       {/* Shared Header Navigation */}
@@ -189,9 +210,13 @@ export default function ShrimpSizeDashboard({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center p-16 text-blue-600 bg-white rounded-3xl border border-slate-100">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
+            <LoadingMotion
+              mode="card"
+              title="Đang làm mới dữ liệu ao nuôi..."
+              subtitle="Đang lấy dữ liệu kích cỡ và trọng lượng tôm mới nhất..."
+              icon={<Waves className="w-10 h-10 text-cyan-600 animate-pulse" />}
+              color="cyan"
+            />
           ) : ponds.length === 0 ? (
             <div className="text-center p-12 bg-white border border-slate-200/80 rounded-3xl shadow-xs">
               <Waves className="w-12 h-12 text-slate-300 mx-auto mb-3" />

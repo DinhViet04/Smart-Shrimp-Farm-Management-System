@@ -27,6 +27,7 @@ import {
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import { weatherService, type WeatherInfo } from '../../services/weather.service';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Farm {
   id: string;
@@ -149,7 +150,6 @@ export default function WaterQualityHistory({
   const themeFocusRing = isFarmer 
     ? 'focus:border-teal-500 focus:ring-teal-500/10' 
     : 'focus:border-indigo-500 focus:ring-indigo-500/10';
-  const themeSpinner = isFarmer ? 'border-t-teal-600' : 'border-t-indigo-600';
   const themeText500 = isFarmer ? 'text-teal-500' : 'text-indigo-500';
   const themeBg = isFarmer ? 'bg-teal-600' : 'bg-indigo-600';
   const themeBgHover = isFarmer ? 'hover:bg-teal-700' : 'hover:bg-indigo-700';
@@ -353,10 +353,13 @@ export default function WaterQualityHistory({
 
       {/* ─── Cards Grid Section ────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="bg-white p-12 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3">
-          <div className={`w-8 h-8 border-4 border-slate-200 ${themeSpinner} rounded-full animate-spin`} />
-          <p className="text-xs font-bold text-slate-500">Đang tải dữ liệu lịch sử đo...</p>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải dữ liệu lịch sử đo môi trường..."
+          subtitle="Đang đồng bộ dữ liệu các lần đo chỉ số nước từ trang trại..."
+          icon={<Waves className="w-10 h-10 text-teal-600 animate-pulse" />}
+          color="teal"
+        />
       ) : errorMsg ? (
         <div className="bg-red-50 p-6 rounded-3xl border border-red-200 text-red-700 text-center space-y-2">
           <AlertCircle className="w-8 h-8 mx-auto text-red-500" />

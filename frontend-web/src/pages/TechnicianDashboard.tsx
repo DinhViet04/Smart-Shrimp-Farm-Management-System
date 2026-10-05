@@ -10,11 +10,13 @@ import {
   HeartPulse,
   AlertTriangle,
   TrendingUp,
+  Package,
 } from 'lucide-react';
 
 import NotificationDropdown from '../components/NotificationDropdown';
 import TechnicianOverviewDashboard from '../features/growth/TechnicianOverviewDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import LoadingMotion from '../components/LoadingMotion';
 import { logoutSession } from '../utils/api';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
@@ -25,6 +27,7 @@ const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSiz
 const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
+const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
 
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
@@ -62,6 +65,7 @@ export default function TechnicianDashboard() {
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5" /> },
     { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
+    { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -174,7 +178,16 @@ export default function TechnicianDashboard() {
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-400/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
-          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" /></div>}>
+          <Suspense fallback={
+            <div className="py-8 w-full max-w-4xl">
+              <LoadingMotion
+                mode="card"
+                title="Đang tải giao diện chức năng..."
+                subtitle="Hệ thống đang chuẩn bị các mô-đun và đồng bộ dữ liệu..."
+                color="indigo"
+              />
+            </div>
+          }>
           {activeTab === 'Cài đặt' ? (
             <div className="w-full max-w-6xl h-full flex flex-col justify-start">
               <AccountSettings />
@@ -244,6 +257,10 @@ export default function TechnicianDashboard() {
           ) : activeTab === 'Sự cố & Điều trị' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               <IncidentDashboard role="TECHNICIAN" />
+            </div>
+          ) : activeTab === 'Kho thức ăn' ? (
+            <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
+              <InventoryManagement />
             </div>
           ) : (
             <div className="text-center p-12 bg-white border border-indigo-100 rounded-3xl shadow-sm max-w-xl">

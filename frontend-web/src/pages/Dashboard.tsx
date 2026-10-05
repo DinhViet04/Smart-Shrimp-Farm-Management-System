@@ -4,6 +4,7 @@ import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Search, Settings, Buildi
 import NotificationDropdown from '../components/NotificationDropdown';
 import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import LoadingMotion from '../components/LoadingMotion';
 import { logoutSession } from '../utils/api';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
@@ -213,7 +214,16 @@ export default function Dashboard() {
             <ManagerDashboardHome onNavigateTab={setActiveTab} />
           )}
 
-          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" /></div>}>
+          <Suspense fallback={
+            <div className="py-8">
+              <LoadingMotion
+                mode="card"
+                title="Đang tải giao diện chức năng..."
+                subtitle="Hệ thống đang chuẩn bị các mô-đun và đồng bộ dữ liệu..."
+                color="blue"
+              />
+            </div>
+          }>
           {activeTab === 'Cài đặt' ? (
             <AccountSettings />
           ) : activeTab === 'Quản lý Trang Trại' ? (

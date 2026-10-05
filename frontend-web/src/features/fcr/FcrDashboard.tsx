@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, Waves, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { ChevronDown, Waves, AlertCircle, ArrowRight } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import FcrAnalysisDetail from './FcrAnalysisDetail';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Farm {
   id: string;
@@ -108,6 +109,26 @@ export default function FcrDashboard({
     );
   }
 
+  if (isLoading && farms.length === 0) {
+    return (
+      <div className="space-y-6 max-w-7xl pb-10">
+        <GrowthHeaderTabs
+          activeTab="Phân tích FCR"
+          onTabChange={onNavigateTab}
+          title="Phân Tích Hệ Số Chuyển Đổi Thức Ăn (FCR)"
+          subtitle="Đánh giá hiệu quả sử dụng thức ăn và chi phí trên từng ao nuôi theo chu kỳ tăng trưởng"
+        />
+        <LoadingMotion
+          mode="page"
+          title="Đang tải dữ liệu Phân tích FCR..."
+          subtitle="Hệ thống đang đồng bộ danh sách ao nuôi, lượng tiêu thụ thức ăn và hệ số chuyển đổi..."
+          icon={<Waves className="w-12 h-12 text-indigo-600" />}
+          color="indigo"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
       {/* Shared Header Navigation */}
@@ -155,9 +176,13 @@ export default function FcrDashboard({
           </h3>
           
           {isLoading ? (
-            <div className="flex items-center justify-center p-12 text-indigo-500">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
+            <LoadingMotion
+              mode="card"
+              title="Đang làm mới danh sách ao nuôi..."
+              subtitle="Đang lấy dữ liệu FCR cho từng ao nuôi..."
+              icon={<Waves className="w-10 h-10 text-indigo-500 animate-pulse" />}
+              color="indigo"
+            />
           ) : ponds.length === 0 ? (
             <div className="text-center p-12 bg-white border border-slate-200/80 rounded-3xl shadow-xs">
               <p className="text-slate-500 text-sm">Không tìm thấy ao nuôi nào trong trang trại này.</p>

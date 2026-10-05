@@ -4,9 +4,10 @@ import {
   ResponsiveContainer, ReferenceArea
 } from 'recharts';
 import { subDays, subHours, format } from 'date-fns';
-import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Loader2, Minus } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Minus } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
+import LoadingMotion from '../../components/LoadingMotion';
 
 type TimeRange = '24h' | '7d' | '30d';
 type WQStatus = 'Optimal' | 'Warning' | 'Danger';
@@ -281,12 +282,13 @@ export default function EnvironmentTrendDashboard({
           </div>
 
           {loading ? (
-            <div className="h-[450px] flex items-center justify-center bg-white/80 backdrop-blur-md rounded-3xl border border-slate-100 shadow-sm">
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                <span className="text-sm font-bold text-slate-500">Đang tải dữ liệu biểu đồ...</span>
-              </div>
-            </div>
+            <LoadingMotion
+              mode="card"
+              title="Đang tải dữ liệu biểu đồ môi trường..."
+              subtitle="Hệ thống đang đồng bộ dữ liệu cảm biến và các thông số chất lượng nước..."
+              icon={<Droplets className="w-10 h-10 text-indigo-500 animate-pulse" />}
+              color="indigo"
+            />
           ) : trendData.length === 0 ? (
             <div className="h-[450px] flex flex-col items-center justify-center bg-white/80 backdrop-blur-md rounded-3xl border border-slate-100 shadow-sm">
               <Activity className="w-12 h-12 text-slate-200 mb-4" />

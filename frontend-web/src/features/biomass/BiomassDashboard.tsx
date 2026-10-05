@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, Waves, AlertCircle, Loader2, PieChart, ArrowRight } from 'lucide-react';
+import { ChevronDown, Waves, AlertCircle, PieChart, ArrowRight } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import PondBiomassDetail from './PondBiomassDetail';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Farm {
   id: string;
@@ -104,6 +105,26 @@ export default function BiomassDashboard({
     );
   }
 
+  if (isLoading && farms.length === 0) {
+    return (
+      <div className="space-y-6 max-w-7xl pb-10">
+        <GrowthHeaderTabs
+          activeTab="Sinh khối ao"
+          onTabChange={onNavigateTab}
+          title="Theo Dõi Sinh Khối & Mật Độ Ao Nuôi"
+          subtitle="Ước tính tổng khối lượng tôm thịt trong ao (Biomass) và mật độ tôm (con/m²) bằng phương pháp chài mẫu"
+        />
+        <LoadingMotion
+          mode="page"
+          title="Đang tải dữ liệu Sinh khối ao..."
+          subtitle="Hệ thống đang đồng bộ danh sách ao nuôi, mẫu chài và khối lượng sinh khối..."
+          icon={<PieChart className="w-12 h-12 text-emerald-600" />}
+          color="emerald"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
       {/* Shared Header Navigation */}
@@ -187,9 +208,13 @@ export default function BiomassDashboard({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center p-16 text-emerald-600 bg-white rounded-3xl border border-slate-100">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
+            <LoadingMotion
+              mode="card"
+              title="Đang làm mới dữ liệu ao nuôi..."
+              subtitle="Đang lấy dữ liệu sinh khối và mật độ tôm mới nhất..."
+              icon={<PieChart className="w-10 h-10 text-emerald-600 animate-pulse" />}
+              color="emerald"
+            />
           ) : ponds.length === 0 ? (
             <div className="text-center p-12 bg-white border border-slate-200/80 rounded-3xl shadow-xs">
               <Waves className="w-12 h-12 text-slate-300 mx-auto mb-3" />

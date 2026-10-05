@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
@@ -7,12 +7,14 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private readonly logger = new Logger(PrismaService.name);
+
   constructor() {
     const adapter = new PrismaPg({
       connectionString: process.env.DATABASE_URL!,
       max: 10,
-      min: 5,
-      idleTimeoutMillis: 300_000,
+      min: 2,
+      idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10_000,
@@ -22,15 +24,11 @@ export class PrismaService
 
   async onModuleInit() {
     await this.$connect();
-    // PrismaPg opens sockets lazily. Warm the five connections used by
-    // overview and relation-heavy list queries so requests avoid TLS handshakes.
-    await Promise.all([
-      this.$queryRaw`SELECT 1`,
-      this.$queryRaw`SELECT 1`,
-      this.$queryRaw`SELECT 1`,
-      this.$queryRaw`SELECT 1`,
-      this.$queryRaw`SELECT 1`,
-    ]);
+    try {
+      await this.$queryRaw`SELECT 1`;
+    } catch (err: any) {
+      this.logger.warn(`Warm-up query warning: ${err?.message || err}`);
+    }
   }
 
   async onModuleDestroy() {

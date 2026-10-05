@@ -19,6 +19,7 @@ import NotificationDropdown from '../components/NotificationDropdown';
 import FarmerDashboardHome from '../features/farmer/FarmerDashboardHome';
 import { logoutSession } from '../utils/api';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import LoadingMotion from '../components/LoadingMotion';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
@@ -192,7 +193,16 @@ export default function FarmerDashboard() {
             <FarmerDashboardHome onNavigateTab={setActiveTab} currentUser={currentUser} />
           )}
 
-          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" /></div>}>
+          <Suspense fallback={
+            <div className="py-8">
+              <LoadingMotion
+                mode="card"
+                title="Đang tải giao diện chức năng..."
+                subtitle="Hệ thống đang chuẩn bị các mô-đun và đồng bộ dữ liệu..."
+                color="teal"
+              />
+            </div>
+          }>
           {activeTab === 'Cài đặt' ? (
              <AccountSettings />
           ) : activeTab === 'Kho thức ăn' ? (

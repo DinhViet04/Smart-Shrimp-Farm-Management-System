@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  ArrowLeft, Download, AlertCircle, Loader2, Target,
+  ArrowLeft, Download, AlertCircle, Target,
   TrendingDown, TrendingUp, Minus
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
+import LoadingMotion from '../../components/LoadingMotion';
 
 import { type GrowthTabType } from '../growth/GrowthHeaderTabs';
 
@@ -64,8 +65,14 @@ export default function FcrAnalysisDetail({ pond, onBack }: FcrAnalysisDetailPro
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12 h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      <div className="py-6">
+        <LoadingMotion
+          mode="page"
+          title={`Đang tải phân tích FCR cho ${pond.name}...`}
+          subtitle="Hệ thống đang tổng hợp dữ liệu cho ăn, tăng trưởng sinh khối và tính toán hệ số FCR..."
+          icon={<TrendingUp className="w-12 h-12 text-indigo-600" />}
+          color="indigo"
+        />
       </div>
     );
   }

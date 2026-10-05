@@ -119,6 +119,7 @@ export default function RegisterPage() {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const res = await fetch(`${apiUrl}/api/auth/google`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: response.credential }),
       });
@@ -128,8 +129,8 @@ export default function RegisterPage() {
       if (!res.ok) {
         setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Lỗi kết nối Google'));
       } else {
+        localStorage.removeItem('refreshToken');
         localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
         navigate(getDashboardPath(data.user.role));
       }
@@ -186,6 +187,7 @@ export default function RegisterPage() {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
         const response = await fetch(`${apiUrl}/api/auth/register`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fullName: formData.fullName,
@@ -203,10 +205,8 @@ export default function RegisterPage() {
           setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Có lỗi xảy ra'));
         } else {
           if (data.accessToken && data.user) {
+            localStorage.removeItem('refreshToken');
             localStorage.setItem('accessToken', data.accessToken);
-            if (data.refreshToken) {
-              localStorage.setItem('refreshToken', data.refreshToken);
-            }
             localStorage.setItem('user', JSON.stringify(data.user));
 
             // Nếu đăng ký qua invitation → chào mừng + redirect đến dashboard

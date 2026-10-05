@@ -3,15 +3,19 @@ import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { CreateShrimpSizeSampleDto } from './dto/create-shrimp-size-sample.dto.js';
+import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class ShrimpSizeService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private farmAccess: FarmAccessService,
   ) {}
 
-  async createSample(pondId: string, dto: CreateShrimpSizeSampleDto, user?: any) {
+  async createSample(pondId: string, dto: CreateShrimpSizeSampleDto, user: AuthUser) {
+    await this.assertCanAccessPond(user, pondId);
+
     // 1. Validate inputs and calculate totals
     if (!dto.casts || dto.casts.length !== 5) {
       throw new BadRequestException('Bắt buộc phải nhập đủ 5 mẻ chài.');
@@ -237,14 +241,16 @@ export class ShrimpSizeService {
     }
   }
 
-  async getSamplesByPond(pondId: string) {
+  async getSamplesByPond(pondId: string, user: AuthUser) {
+    await this.assertCanAccessPond(user, pondId);
     return this.prisma.shrimpSizeSample.findMany({
       where: { pondId },
       orderBy: { samplingDate: 'asc' },
     });
   }
 
-  async getLatestSample(pondId: string) {
+  async getLatestSample(pondId: string, user: AuthUser) {
+    await this.assertCanAccessPond(user, pondId);
     const sample = await this.prisma.shrimpSizeSample.findFirst({
       where: { pondId },
       orderBy: { samplingDate: 'desc' },
@@ -268,7 +274,8 @@ export class ShrimpSizeService {
     return sample?.estimatedTotalShrimp ?? null;
   }
 
-  async deleteSample(pondId: string, sampleId: string) {
+  async deleteSample(pondId: string, sampleId: string, user: AuthUser) {
+    await this.assertCanAccessPond(user, pondId);
     // 1. Kiểm tra mẫu có tồn tại và thuộc ao này không
     const sample = await this.prisma.shrimpSizeSample.findFirst({
       where: { id: sampleId, pondId },
@@ -314,7 +321,11 @@ export class ShrimpSizeService {
     }
   }
 
-  async analyzeFCR(pondId: string) {
+  async analyzeFCR(pondId: string, user?: AuthUser) {
+    if (user) {
+      await this.assertCanAccessPond(user, pondId);
+    }
+
     const activeCrop = await this.prisma.crop.findFirst({
       where: {
         pondId,
@@ -440,5 +451,16 @@ export class ShrimpSizeService {
       targetTotalFeedKg: activeCrop.targetTotalFeedKg || null,
       history,
     };
+  }
+
+  private async assertCanAccessPond(user: AuthUser, pondId: string) {
+    const pond = await this.prisma.pond.findUnique({
+      where: { id: pondId },
+      select: { farmId: true },
+    });
+    if (!pond) {
+      throw new NotFoundException('Không tìm thấy ao nuôi');
+    }
+    await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
   }
 }

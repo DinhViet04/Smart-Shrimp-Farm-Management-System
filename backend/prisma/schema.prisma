@@ -90,6 +90,7 @@ model User {
   incidentUpdates     IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
   mortalityLogs       MortalityLog[]
   notifications       Notification[]
+  refreshSessions     RefreshSession[]
 
   @@map("users")
 }
@@ -224,6 +225,34 @@ model Crop {
   @@map("crops")
 }
 
+model RefreshSession {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  replacedBy String?   @map("replaced_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
+
+model PasswordResetOtp {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  otpHash    String    @map("otp_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  lastSentAt DateTime  @default(now()) @map("last_sent_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("password_reset_otps")
+}
 
 model EnvironmentRecord {
   id         String   @id @default(uuid())

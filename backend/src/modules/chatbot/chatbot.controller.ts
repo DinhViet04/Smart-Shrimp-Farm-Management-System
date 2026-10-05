@@ -14,8 +14,10 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('chatbot')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 
@@ -24,9 +26,10 @@ export class ChatbotController {
    * Endpoint: POST /api/chatbot/ask
    */
   @Post('ask')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async askChatbot(@Body() dto: AskChatbotDto, @Request() req: any) {
-    const user = req?.user || null;
-    return this.chatbotService.ask(dto, user);
+    return this.chatbotService.ask(dto, req.user);
   }
 
   /**
@@ -34,6 +37,7 @@ export class ChatbotController {
    * Endpoint: GET /api/chatbot/documents
    */
   @Get('documents')
+  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
   async getAllDocuments() {
     return this.chatbotService.getAllDocuments();
   }
@@ -43,6 +47,7 @@ export class ChatbotController {
    * Endpoint: GET /api/chatbot/documents/:id
    */
   @Get('documents/:id')
+  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
   async getDocumentById(@Param('id') id: string) {
     return this.chatbotService.getDocumentById(id);
   }
@@ -52,7 +57,6 @@ export class ChatbotController {
    * Endpoint: POST /api/chatbot/documents
    */
   @Post('documents')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
   async createDocument(@Body() dto: CreateDocumentDto, @Request() req: any) {
     return this.chatbotService.createDocument(dto, req.user?.id);
@@ -63,7 +67,6 @@ export class ChatbotController {
    * Endpoint: DELETE /api/chatbot/documents/:id
    */
   @Delete('documents/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'FARM_MANAGER')
   async deleteDocument(@Param('id') id: string) {
     return this.chatbotService.deleteDocument(id);

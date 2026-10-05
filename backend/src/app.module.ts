@@ -25,11 +25,21 @@ import { ShrimpSizeModule } from './modules/shrimp-size/shrimp-size.module.js';
 import { SurvivalRateModule } from './modules/survival-rate/survival-rate.module.js';
 import { EmailModule } from './modules/email/email.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
     // Global config — loads .env automatically
     ConfigModule.forRoot({ isGlobal: true }),
+
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
 
     // Global email module
     EmailModule,
@@ -63,6 +73,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     NotificationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

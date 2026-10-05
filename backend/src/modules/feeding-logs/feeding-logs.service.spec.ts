@@ -38,6 +38,7 @@ describe('FeedingLogsService grouped list', () => {
     };
     const farmAccess = {
       getAccessibleFarmIds: jest.fn().mockResolvedValue(undefined),
+      assertCanAccessFarm: jest.fn(),
     };
     const service = new FeedingLogsService(prisma as any, farmAccess as any);
 
@@ -59,5 +60,28 @@ describe('FeedingLogsService grouped list', () => {
       totalFeedKg: 2,
       completedSessions: 1,
     });
+  });
+
+  it('validates an explicit farm filter before querying logs', async () => {
+    const prisma = {
+      feedingLog: {
+        groupBy: jest.fn(),
+        findMany: jest.fn(),
+      },
+    };
+    const farmAccess = {
+      getAccessibleFarmIds: jest.fn().mockResolvedValue(['farm-1']),
+      assertCanAccessFarm: jest.fn().mockRejectedValue(new Error('forbidden')),
+    };
+    const service = new FeedingLogsService(prisma as any, farmAccess as any);
+
+    await expect(
+      service.findAllGrouped(
+        { userId: 'farmer-1', role: 'FARMER' },
+        { farmId: 'farm-2', page: 0, size: 10 },
+      ),
+    ).rejects.toThrow('forbidden');
+
+    expect(prisma.feedingLog.groupBy).not.toHaveBeenCalled();
   });
 });

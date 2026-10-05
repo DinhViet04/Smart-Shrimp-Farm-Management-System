@@ -71,9 +71,16 @@ export class FarmAccessService {
   }
 
   async assertCanRecordUsage(user: AuthUser, farmId: string) {
-    if (user.role !== 'FARMER') {
+    if (user.role === 'ADMIN') return;
+
+    if (user.role === 'FARM_MANAGER') {
+      await this.assertCanManageFarm(user, farmId);
+      return;
+    }
+
+    if (user.role !== 'FARMER' && user.role !== 'TECHNICIAN') {
       throw new ForbiddenException(
-        'Chỉ nông dân được ghi nhận tiêu thụ thức ăn',
+        'Bạn không có quyền ghi nhận sử dụng vật tư',
       );
     }
 

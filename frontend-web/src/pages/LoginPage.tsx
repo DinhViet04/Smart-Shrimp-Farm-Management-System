@@ -54,6 +54,7 @@ export default function LoginPage() {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const res = await fetch(`${apiUrl}/api/auth/google`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: response.credential }),
       });
@@ -63,8 +64,8 @@ export default function LoginPage() {
       if (!res.ok) {
         setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Đăng nhập Google thất bại'));
       } else {
+        localStorage.removeItem('refreshToken');
         localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
 
         let redirectPath = '/dashboard';
@@ -127,6 +128,7 @@ export default function LoginPage() {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
@@ -139,8 +141,8 @@ export default function LoginPage() {
       if (!response.ok) {
         setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Sai email hoặc mật khẩu'));
       } else {
+        localStorage.removeItem('refreshToken');
         localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
         localStorage.setItem('user', JSON.stringify(data.user));
 
         let redirectPath = '/dashboard';

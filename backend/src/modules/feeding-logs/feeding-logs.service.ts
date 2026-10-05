@@ -266,7 +266,10 @@ export class FeedingLogsService {
       where.farmId = { in: accessibleFarmIds };
     }
 
-    if (query.farmId) where.farmId = query.farmId;
+    if (query.farmId) {
+      await this.farmAccessService.assertCanAccessFarm(user, query.farmId);
+      where.farmId = query.farmId;
+    }
     if (query.pondId) where.pondId = query.pondId;
     if (query.cropId) where.cropId = query.cropId;
 

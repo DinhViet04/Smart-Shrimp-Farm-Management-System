@@ -1,8 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service';
 
 interface ChunkMatch {
   documentTitle: string;
@@ -17,7 +18,10 @@ export class ChatbotService implements OnModuleInit {
   private openai: OpenAI | null = null;
   private apiKey: string | null = null;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly farmAccess: FarmAccessService,
+  ) {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
       this.openai = new OpenAI({ apiKey: this.apiKey });
@@ -236,7 +240,7 @@ export class ChatbotService implements OnModuleInit {
   }
 
   // ── 4. RAG RETRIEVAL & CHATGPT GENERATION (Python AI Service + OpenAI) ──────
-  async ask(dto: AskChatbotDto, currentUser?: any) {
+  async ask(dto: AskChatbotDto, currentUser: AuthUser) {
     const question = dto.question.trim();
     if (!question) {
       return { answer: 'Vui lòng nhập câu hỏi của bạn.' };
@@ -258,7 +262,11 @@ export class ChatbotService implements OnModuleInit {
           },
         });
 
-        if (pond) {
+        if (!pond) {
+          throw new NotFoundException('Không tìm thấy ao nuôi');
+        }
+
+        await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
           targetPondName = pond.name;
           const latestWater = pond.waterQualityRecords[0];
           const activeCrop = pond.crops[0];
@@ -294,8 +302,8 @@ export class ChatbotService implements OnModuleInit {
             `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
             (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${activeCrop.initialShrimpCount.toLocaleString()} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
             (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
-        }
       } catch (e) {
+        if (e instanceof HttpException) throw e;
         this.logger.warn('Failed to fetch pond realtime context:', e);
       }
     }
@@ -308,7 +316,7 @@ export class ChatbotService implements OnModuleInit {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          pondId: dto.pondId,
+          pondId: pondContextPayload?.pondId,
           pondContext: pondContextPayload,
         }),
         signal: AbortSignal.timeout(12000), // Timeout sau 12 giây

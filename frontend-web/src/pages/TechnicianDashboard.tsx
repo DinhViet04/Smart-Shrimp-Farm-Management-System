@@ -15,6 +15,7 @@ import {
 import NotificationDropdown from '../components/NotificationDropdown';
 import TechnicianOverviewDashboard from '../features/growth/TechnicianOverviewDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import { logoutSession } from '../utils/api';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
@@ -50,10 +51,8 @@ export default function TechnicianDashboard() {
     return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await logoutSession();
     navigate('/');
   };
 

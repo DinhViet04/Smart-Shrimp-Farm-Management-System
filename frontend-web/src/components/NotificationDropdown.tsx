@@ -105,12 +105,7 @@ export default function NotificationDropdown({
 
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      console.log('Connected to notifications WebSocket, socketId:', socket.id);
-    });
-
     socket.on('newNotification', (notification: NotificationItem) => {
-      console.log('Received realtime notification:', notification);
       setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
       
       // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao

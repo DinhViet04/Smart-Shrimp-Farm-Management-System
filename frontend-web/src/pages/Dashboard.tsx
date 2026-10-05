@@ -4,6 +4,7 @@ import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Search, Settings, Buildi
 import NotificationDropdown from '../components/NotificationDropdown';
 import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import { logoutSession } from '../utils/api';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -84,10 +85,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await logoutSession();
     navigate('/');
   };
 

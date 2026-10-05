@@ -17,6 +17,7 @@ import {
 
 import NotificationDropdown from '../components/NotificationDropdown';
 import FarmerDashboardHome from '../features/farmer/FarmerDashboardHome';
+import { logoutSession } from '../utils/api';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
@@ -62,10 +63,8 @@ export default function FarmerDashboard() {
     return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await logoutSession();
     navigate('/');
   };
 

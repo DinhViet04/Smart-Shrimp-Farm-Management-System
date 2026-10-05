@@ -202,23 +202,11 @@ export class UsersService {
       phone?: string;
       address?: string;
       avatarUrl?: string;
-      role?: Role;
     },
   ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new BadRequestException('Người dùng không tồn tại');
-    }
-
-    let updatedRole = user.role;
-    if (
-      data.role &&
-      ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'].includes(data.role)
-    ) {
-      // Don't modify role if current user is ADMIN, otherwise allow switching non-admin roles
-      if (user.role !== Role.ADMIN) {
-        updatedRole = data.role;
-      }
     }
 
     return this.prisma.user.update({
@@ -228,7 +216,6 @@ export class UsersService {
         phone: data.phone ?? null,
         address: data.address ?? null,
         avatarUrl: data.avatarUrl ?? null,
-        role: updatedRole,
       },
       select: {
         id: true,
@@ -279,14 +266,18 @@ export class UsersService {
       where: { id },
       data: { password: hashedPassword },
     });
+    await this.prisma.refreshSession.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
 
     // Send email notification to user's Gmail
     await this.sendPasswordChangeNotification(user.email, user.fullName, hasExistingPassword);
 
     return {
       message: hasExistingPassword
-        ? 'Đổi mật khẩu thành công. Thông báo đã được gửi đến email của bạn.'
-        : 'Tạo mật khẩu mới thành công. Thông báo đã được gửi đến email của bạn.',
+        ? 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.'
+        : 'Tạo mật khẩu mới thành công. Vui lòng đăng nhập lại.',
     };
   }
 

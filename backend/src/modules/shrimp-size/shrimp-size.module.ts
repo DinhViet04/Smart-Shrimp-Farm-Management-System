@@ -3,9 +3,10 @@ import { ShrimpSizeController } from './shrimp-size.controller.js';
 import { ShrimpSizeService } from './shrimp-size.service.js';
 import { PrismaModule } from '../../prisma/prisma.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
+import { FarmAccessModule } from '../farm-access/farm-access.module.js';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule],
+  imports: [PrismaModule, NotificationsModule, FarmAccessModule],
   controllers: [ShrimpSizeController],
   providers: [ShrimpSizeService],
   exports: [ShrimpSizeService],

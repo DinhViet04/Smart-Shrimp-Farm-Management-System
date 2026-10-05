@@ -92,6 +92,9 @@ describe('UsersService account settings', () => {
         }),
         update: jest.fn().mockResolvedValue({ id: 'user-google-1' }),
       },
+      refreshSession: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
     };
     const mockConfigService = {
       get: jest.fn().mockReturnValue(null),
@@ -112,6 +115,36 @@ describe('UsersService account settings', () => {
         where: { id: 'user-google-1' },
       }),
     );
+    expect(prisma.refreshSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-google-1', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it('does not allow profile updates to change the account role', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          role: Role.FARMER,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          role: Role.FARMER,
+        }),
+      },
+    };
+    const service = new UsersService(
+      prisma as any,
+      { get: jest.fn() } as any,
+    );
+
+    await service.updateProfile('user-1', {
+      fullName: 'Farmer User',
+      role: Role.FARM_MANAGER,
+    } as any);
+
+    expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('role');
   });
 
   it('returns hasPassword=false and isGoogleAccount=true in findById for Google users', async () => {

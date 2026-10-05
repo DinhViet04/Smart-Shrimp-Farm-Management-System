@@ -9,8 +9,6 @@ import {
   LogOut, 
   Search, 
   Leaf,
-  Activity,
-  AlertCircle,
   Package,
   HeartPulse,
   AlertTriangle,
@@ -18,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import NotificationDropdown from '../components/NotificationDropdown';
+import FarmerDashboardHome from '../features/farmer/FarmerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
@@ -191,114 +190,7 @@ export default function FarmerDashboard() {
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
           {activeTab === 'Dashboard' && (
-            <div className="max-w-6xl mx-auto space-y-8">
-              
-              {/* Stat Cards - Nature Theme */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-teal-100 hover:shadow-md hover:border-teal-200 transition-all duration-300 group relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Waves className="w-24 h-24 text-teal-600" />
-                  </div>
-                  <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center group-hover:bg-teal-600 group-hover:text-white transition-colors">
-                      <Waves className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 bg-teal-50 text-teal-700 text-xs font-bold rounded-lg border border-teal-100">Của tôi</span>
-                  </div>
-                  <h3 className="text-stone-500 text-sm font-semibold mb-1 relative z-10">Tổng số Ao phụ trách</h3>
-                  <div className="flex items-end gap-2 relative z-10">
-                    <p className="text-4xl font-black text-teal-900">4<span className="text-xl text-stone-400 font-bold ml-1">Ao</span></p>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-teal-100 hover:shadow-md hover:border-teal-200 transition-all duration-300 group relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Activity className="w-24 h-24 text-emerald-600" />
-                  </div>
-                  <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      <Activity className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">Bình thường</span>
-                  </div>
-                  <h3 className="text-stone-500 text-sm font-semibold mb-1 relative z-10">Sức khỏe tôm (Ước tính)</h3>
-                  <div className="flex items-end gap-2 relative z-10">
-                    <p className="text-4xl font-black text-teal-900">92<span className="text-xl text-stone-400 font-bold ml-1">%</span></p>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-teal-600 to-emerald-600 p-6 rounded-3xl shadow-lg shadow-teal-600/20 border border-teal-500 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group text-white relative overflow-hidden">
-                  <div className="absolute -right-4 -top-4 opacity-20">
-                    <AlertCircle className="w-32 h-32 text-white" />
-                  </div>
-                  <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center backdrop-blur-md border border-white/30">
-                      <AlertCircle className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 bg-white/20 text-white text-xs font-bold rounded-lg border border-white/30 backdrop-blur-md">Chú ý</span>
-                  </div>
-                  <h3 className="text-teal-50 text-sm font-semibold mb-1 relative z-10">Cảnh báo môi trường</h3>
-                  <div className="flex items-end gap-2 relative z-10">
-                    <p className="text-2xl font-black text-white leading-tight">Cần đo lại pH<br/>Ao số 3</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Actions & Recent Logs */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* Quick Actions */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-teal-100">
-                  <h2 className="text-xl font-bold text-teal-900 mb-6 flex items-center gap-2">
-                    <LayoutDashboard className="w-5 h-5 text-teal-500" />
-                    Thao tác nhanh
-                  </h2>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setActiveTab('Ghi chép Môi trường')} className="flex flex-col items-center justify-center p-6 bg-teal-50/50 border border-teal-100 rounded-2xl hover:bg-teal-50 hover:border-teal-200 transition-colors group">
-                      <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm text-teal-600 mb-3 group-hover:scale-110 transition-transform">
-                        <Droplets className="w-6 h-6" />
-                      </div>
-                      <span className="font-bold text-teal-800 text-sm text-center">Ghi nhận thông số Nước</span>
-                    </button>
-                    <button onClick={() => setActiveTab('Nhật ký Chăm sóc')} className="flex flex-col items-center justify-center p-6 bg-emerald-50/50 border border-emerald-100 rounded-2xl hover:bg-emerald-50 hover:border-emerald-200 transition-colors group">
-                      <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm text-emerald-600 mb-3 group-hover:scale-110 transition-transform">
-                        <ClipboardList className="w-6 h-6" />
-                      </div>
-                      <span className="font-bold text-emerald-800 text-sm text-center">Nhật ký Cho ăn</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Status List */}
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-teal-100">
-                  <h2 className="text-xl font-bold text-teal-900 mb-6 flex items-center gap-2">
-                    <Waves className="w-5 h-5 text-teal-500" />
-                    Trạng thái Ao của bạn
-                  </h2>
-                  <div className="space-y-4">
-                    {[
-                      { name: 'Ao số 1 (Giai đoạn đầu)', status: 'Tốt', temp: '29°C', ph: '7.8' },
-                      { name: 'Ao số 2 (Sắp thu hoạch)', status: 'Tốt', temp: '28°C', ph: '7.6' },
-                      { name: 'Ao số 3 (Mới thả giống)', status: 'Cần chú ý', temp: '30°C', ph: '8.2' },
-                    ].map((pond, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-4 border border-stone-100 rounded-2xl hover:bg-stone-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${pond.status === 'Tốt' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                          <div>
-                            <p className="font-bold text-stone-800">{pond.name}</p>
-                            <p className="text-xs font-semibold text-stone-500">Nhiệt độ: {pond.temp} • pH: {pond.ph}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => setActiveTab('Quản lý Ao của tôi')} className="text-teal-600 font-bold text-sm bg-teal-50 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors">
-                          Xem
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
+            <FarmerDashboardHome onNavigateTab={setActiveTab} currentUser={currentUser} />
           )}
 
           <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" /></div>}>

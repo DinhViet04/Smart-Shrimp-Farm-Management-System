@@ -13,11 +13,11 @@ import {
 } from 'lucide-react';
 
 import NotificationDropdown from '../components/NotificationDropdown';
+import TechnicianOverviewDashboard from '../features/growth/TechnicianOverviewDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
-const EnvironmentTrendDashboard = lazy(() => import('../features/environment/EnvironmentTrendDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
 const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
@@ -188,8 +188,12 @@ export default function TechnicianDashboard() {
               />
             </div>
           ) : activeTab === 'Dashboard' ? (
-            <div className="w-full h-full flex flex-col justify-start max-w-[1400px] mx-auto">
-              <EnvironmentTrendDashboard />
+            <div className="w-full h-full flex flex-col justify-start max-w-[1400px] mx-auto overflow-y-auto">
+              <TechnicianOverviewDashboard 
+                initialFarmId={growthConfig?.farmId}
+                initialPondId={growthConfig?.pondId}
+                initialCropId={growthConfig?.cropId}
+              />
             </div>
           ) : activeTab === 'Sức khỏe tôm' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">

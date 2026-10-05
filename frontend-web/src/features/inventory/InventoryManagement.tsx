@@ -1,33 +1,37 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, ClipboardList, CalendarDays, MinusCircle, Truck, X } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
 import { supplierService } from '../../services/supplier.service';
 import { pondService } from '../../services/pond.service';
 import InventoryFormModal from './InventoryFormModal';
 import InventoryDetailsModal from './InventoryDetailsModal';
+import InventoryActionModal from './InventoryActionModal';
+import InventoryUsageHistoryView from './InventoryUsageHistoryView';
+import LoadingMotion from '../../components/LoadingMotion';
+import { feedingLogService, type DailyFeedingGroup } from '../../services/feeding-log.service';
 
 const SUPPLIER_PHONE_REGEX = /^0\d{9}$/;
 const SUPPLIER_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const USAGE_PURPOSES = [
-  { id: 'FEEDING', label: 'Cho tôm ăn', icon: '🦐', desc: 'Cho ăn hàng ngày theo cử' },
-  { id: 'WATER_TREATMENT', label: 'Xử lý nước ao', icon: '🧪', desc: 'Đánh vi sinh, vôi, hóa chất' },
-  { id: 'TREATMENT', label: 'Điều trị bệnh tôm', icon: '💊', desc: 'Trộn thuốc kháng sinh, bổ tôm' },
-  { id: 'EQUIPMENT', label: 'Bảo trì / Vệ sinh', icon: '⚙️', desc: 'Vệ sinh quạt, bạt ao, thiết bị' },
-  { id: 'LOSS_EXPIRED', label: 'Hao hụt / Hết hạn', icon: '⚠️', desc: 'Hàng hỏng, hết hạn, sự cố' },
-  { id: 'OTHER', label: 'Mục đích khác', icon: '✏️', desc: 'Nhu cầu sử dụng riêng khác' },
-];
+const formatVND = (val: number | string) => {
+  const num = Number(val) || 0;
+  return new Intl.NumberFormat('vi-VN').format(Math.round(num));
+};
+
 
 export default function InventoryManagement() {
+  const [currentView, setCurrentView] = useState<'main' | 'usage-history'>('main');
+  const [consumptionCategory, setConsumptionCategory] = useState<'FEED' | 'MEDICINE' | 'CHEMICAL'>('FEED');
   const [inventories, setInventories] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [productCategoryFilter, setProductCategoryFilter] = useState<'ALL' | 'FEED' | 'MEDICINE' | 'CHEMICAL'>('ALL');
+  const [productSearch, setProductSearch] = useState('');
   const [farms, setFarms] = useState<any[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
   const [consumptionSummary, setConsumptionSummary] = useState<any>(null);
   const [usageLogs, setUsageLogs] = useState<any[]>([]);
+  const [recentFeedingLogs, setRecentFeedingLogs] = useState<DailyFeedingGroup[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   
   // Modal State
@@ -40,15 +44,7 @@ export default function InventoryManagement() {
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [ponds, setPonds] = useState<any[]>([]);
-  const [usageItem, setUsageItem] = useState<any>(null);
-  const [usageForm, setUsageForm] = useState({
-    quantityUsed: '',
-    usageDate: new Date().toISOString().slice(0, 10),
-    purpose: 'FEEDING',
-    pondId: '',
-    notes: '',
-  });
-  const [isRecordingUsage, setIsRecordingUsage] = useState(false);
+  const [actionItem, setActionItem] = useState<any>(null);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
   const [supplierForm, setSupplierForm] = useState({
@@ -67,29 +63,36 @@ export default function InventoryManagement() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canManageInventory = user.role === 'FARM_MANAGER';
   const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(user.role || '');
+  const isFarmerOrTech = ['FARMER', 'TECHNICIAN'].includes(user.role || '');
+
+  const lowStockCount = useMemo(() => {
+    return inventories.filter((i) => (i.quantity || 0) <= (i.minThreshold || 0)).length;
+  }, [inventories]);
 
   const fetchInventories = async (farmId: string) => {
     if (!farmId) return;
-    setIsLoading(true);
     try {
-      const data = await inventoryService.getAll(search, categoryFilter, farmId);
+      const data = await inventoryService.getAll('', 'ALL', farmId);
       setInventories(data.data || []);
     } catch (error) {
-      showToast('Không thể tải danh sách vật tư', 'error');
-    } finally {
-      setIsLoading(false);
+      showToast('Không thể tải danh sách sản phẩm', 'error');
     }
   };
 
-  const fetchConsumptionData = async (farmId: string) => {
+  const fetchConsumptionData = async (
+    farmId: string,
+    category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory,
+  ) => {
     if (!farmId) return;
     try {
-      const [summary, logs] = await Promise.all([
-        inventoryService.getConsumptionSummary(farmId, 30),
+      const [summary, logs, feedingRes] = await Promise.all([
+        inventoryService.getConsumptionSummary(farmId, undefined, category),
         inventoryService.getUsageLogs(farmId),
+        feedingLogService.getAllGrouped({ farmId, size: 5 }).catch(() => ({ data: [] })),
       ]);
       setConsumptionSummary(summary);
       setUsageLogs(logs || []);
+      setRecentFeedingLogs(feedingRes?.data || []);
     } catch (error) {
       showToast('Không thể tải dữ liệu tiêu thụ', 'error');
     }
@@ -105,6 +108,23 @@ export default function InventoryManagement() {
     }
   };
 
+  const loadAllFarmData = async (farmId: string, category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory) => {
+    if (!farmId) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await Promise.allSettled([
+        fetchInventories(farmId),
+        fetchConsumptionData(farmId, category),
+        fetchSuppliers(farmId),
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const fetchOverview = async () => {
     try {
       const overview = await pondService.getOverview();
@@ -112,9 +132,12 @@ export default function InventoryManagement() {
       setPonds(overview.ponds);
       if (overview.farms.length > 0 && !selectedFarmId) {
         setSelectedFarmId(overview.farms[0].id);
+      } else if (!overview.farms.length) {
+        setIsLoading(false);
       }
     } catch (error) {
       showToast('Không thể tải dữ liệu trang trại và ao nuôi', 'error');
+      setIsLoading(false);
     }
   };
 
@@ -123,17 +146,16 @@ export default function InventoryManagement() {
   }, []);
 
   useEffect(() => {
-    fetchInventories(selectedFarmId);
-    fetchConsumptionData(selectedFarmId);
-    fetchSuppliers(selectedFarmId);
+    if (selectedFarmId) {
+      loadAllFarmData(selectedFarmId, consumptionCategory);
+    }
   }, [selectedFarmId]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchInventories(selectedFarmId);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search, categoryFilter]);
+    if (selectedFarmId) {
+      fetchConsumptionData(selectedFarmId, consumptionCategory);
+    }
+  }, [consumptionCategory]);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -145,10 +167,10 @@ export default function InventoryManagement() {
     setIsDeleting(true);
     try {
       await inventoryService.remove(itemToDelete.id);
-      showToast('Xóa vật tư thành công!', 'success');
+      showToast('Xóa sản phẩm thành công!', 'success');
       fetchInventories(selectedFarmId);
     } catch (error: any) {
-      showToast(error.message || 'Không thể xóa vật tư này', 'error');
+      showToast(error.message || 'Không thể xóa sản phẩm này', 'error');
     } finally {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);
@@ -161,60 +183,8 @@ export default function InventoryManagement() {
     setIsModalOpen(true);
   };
 
-  const handleOpenUsageForm = (item: any) => {
-    let defaultPurpose = 'OTHER';
-    if (item.category === 'FEED') defaultPurpose = 'FEEDING';
-    else if (item.category === 'MEDICINE') defaultPurpose = 'TREATMENT';
-    else if (item.category === 'CHEMICAL') defaultPurpose = 'WATER_TREATMENT';
-
-    setUsageItem(item);
-    setUsageForm({
-      quantityUsed: '',
-      usageDate: new Date().toISOString().slice(0, 10),
-      purpose: defaultPurpose,
-      pondId: '',
-      notes: '',
-    });
-  };
-
-  const handleRecordUsage = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!usageItem) return;
-
-    const quantityUsed = Number(usageForm.quantityUsed);
-    if (!quantityUsed || quantityUsed <= 0) {
-      showToast('Số lượng tiêu thụ phải lớn hơn 0', 'error');
-      return;
-    }
-
-    if (quantityUsed > usageItem.quantity) {
-      showToast(`Số lượng xuất (${quantityUsed} ${usageItem.unit}) vượt quá tồn kho (${usageItem.quantity} ${usageItem.unit})`, 'error');
-      return;
-    }
-
-    setIsRecordingUsage(true);
-    try {
-      const purposeObj = USAGE_PURPOSES.find((p) => p.id === usageForm.purpose);
-      const purposeLabel = purposeObj ? `${purposeObj.icon} ${purposeObj.label}` : usageForm.purpose;
-      const selectedPond = ponds.find((p) => p.id === usageForm.pondId);
-      const pondText = selectedPond ? ` [Ao: ${selectedPond.name}]` : '';
-      const noteText = usageForm.notes.trim() ? ` — ${usageForm.notes.trim()}` : '';
-      const formattedNotes = `[Mục đích: ${purposeLabel}]${pondText}${noteText}`;
-
-      await inventoryService.recordUsage(usageItem.id, {
-        quantityUsed,
-        usageDate: usageForm.usageDate,
-        notes: formattedNotes,
-      });
-      showToast('Ghi nhận xuất kho / tiêu thụ thành công!', 'success');
-      setUsageItem(null);
-      fetchInventories(selectedFarmId);
-      fetchConsumptionData(selectedFarmId);
-    } catch (error: any) {
-      showToast(error.message || 'Không thể ghi nhận tiêu thụ', 'error');
-    } finally {
-      setIsRecordingUsage(false);
-    }
+  const handleOpenActionModal = (item: any) => {
+    setActionItem(item);
   };
 
   const formatNumber = (value: number) => {
@@ -310,6 +280,157 @@ export default function InventoryManagement() {
     }
   };
 
+  const selectedFarm = farms.find((f) => f.id === selectedFarmId);
+
+  // Thống kê phân loại vật tư
+  const feedCount = useMemo(() => inventories.filter((i) => i.category === 'FEED').length, [inventories]);
+  const medCount = useMemo(() => inventories.filter((i) => i.category === 'MEDICINE').length, [inventories]);
+  const chemCount = useMemo(() => inventories.filter((i) => i.category === 'CHEMICAL').length, [inventories]);
+
+  // Danh sách sản phẩm được lọc theo danh mục và tìm kiếm trong Khung "Danh sách sản phẩm"
+  const filteredProducts = useMemo(() => {
+    return inventories.filter((item) => {
+      // 1. Lọc theo danh mục
+      if (productCategoryFilter !== 'ALL' && item.category !== productCategoryFilter) {
+        return false;
+      }
+      // 2. Lọc theo từ khóa tìm kiếm (tên vật tư, mô tả, nhà cung cấp)
+      if (productSearch.trim()) {
+        const q = productSearch.toLowerCase().trim();
+        const name = (item.itemName || '').toLowerCase();
+        const desc = (item.description || '').toLowerCase();
+        const supplierName = (item.supplier?.name || '').toLowerCase();
+        if (!name.includes(q) && !desc.includes(q) && !supplierName.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [inventories, productCategoryFilter, productSearch]);
+
+  // Danh sách toàn bộ sản phẩm theo danh mục đang chọn kèm tiến độ tiêu thụ & tồn kho
+  const categoryProductsWithUsage = useMemo(() => {
+    const currentCategoryItems = inventories.filter(
+      (item) => item.category === consumptionCategory
+    );
+
+    return currentCategoryItems.map((item) => {
+      const consumed = consumptionSummary?.consumptionByItem?.find(
+        (c: any) => c.inventoryId === item.id
+      );
+      const quantityUsed = consumed ? consumed.quantityUsed : 0;
+      const quantityRemaining = item.quantity || 0;
+      const minThreshold = item.minThreshold || 0;
+      const total = quantityRemaining + quantityUsed;
+
+      const effectiveTotal = total > 0 ? total : Math.max(minThreshold, 1);
+      const usedPercent = Math.min(100, Math.max(0, Math.round((quantityUsed / effectiveTotal) * 100)));
+      const remainPercent = total > 0 ? 100 - usedPercent : 0;
+
+      // Phân loại trạng thái số lượng còn lại:
+      // - Đỏ (CRITICAL): Cảnh báo khi chạm hoặc dưới ngưỡng tối thiểu (hoặc hết hàng)
+      // - Vàng cam (LOW): Sắp hết khi tồn kho gần ngưỡng (<= 1.5 lần ngưỡng tối thiểu)
+      // - Xanh lá (SAFE): Còn dồi dào, an toàn (> 1.5 lần ngưỡng tối thiểu)
+      let status: 'SAFE' | 'LOW' | 'CRITICAL' = 'SAFE';
+      if (quantityRemaining <= minThreshold || quantityRemaining === 0) {
+        status = 'CRITICAL';
+      } else if (quantityRemaining <= minThreshold * 1.5) {
+        status = 'LOW';
+      } else {
+        status = 'SAFE';
+      }
+
+      return {
+        item,
+        quantityUsed,
+        quantityRemaining,
+        minThreshold,
+        total,
+        usedPercent,
+        remainPercent,
+        status,
+      };
+    });
+  }, [inventories, consumptionCategory, consumptionSummary]);
+
+  const lowStockCountForCategory = useMemo(() => {
+    return categoryProductsWithUsage.filter((p) => p.status === 'CRITICAL' || p.status === 'LOW').length;
+  }, [categoryProductsWithUsage]);
+
+  // Tổng hợp hoạt động sử dụng gần nhất (cả Cho ăn hàng ngày và Xuất kho)
+  const recentActivities = useMemo(() => {
+    const list: any[] = [];
+
+    // 1. Thêm các đợt cho ăn gần đây
+    recentFeedingLogs.forEach((fg) => {
+      list.push({
+        id: `feeding_${fg.id}`,
+        isFeeding: true,
+        date: fg.feedingDate,
+        title: `Cho ăn ${fg.pondName}`,
+        category: 'FEED',
+        amount: fg.totalFeedKg,
+        unit: 'kg',
+        creator: fg.createdBy || 'Nông dân',
+        sessionsSummary: `${fg.completedSessions}/7 cữ xong`,
+        note: (fg.sessions || [])
+          .filter((s) => s.feedingStatus !== 'SKIPPED' && s.feedProductName)
+          .map((s) => s.feedProductName)
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .join(', ') || 'Cho ăn theo cữ hàng ngày',
+      });
+    });
+
+    // 2. Thêm các đợt biến động kho (Nhập kho / Xuất kho)
+    usageLogs.forEach((ul) => {
+      const isImport = ul.type === 'IMPORT' || ul.notes?.startsWith('[NHẬP KHO') || false;
+      list.push({
+        id: `usage_${ul.id}`,
+        isFeeding: false,
+        isImport,
+        date: ul.usageDate,
+        title: ul.inventory?.itemName || 'Vật tư',
+        category: ul.inventory?.category || 'FEED',
+        amount: ul.quantityUsed,
+        unit: ul.inventory?.unit || 'kg',
+        creator: ul.creator?.fullName || 'Hệ thống',
+        sessionsSummary: null,
+        note: ul.notes,
+      });
+    });
+
+    // Sắp xếp giảm dần theo ngày
+    list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return list;
+  }, [recentFeedingLogs, usageLogs]);
+
+  // Chuyển trang riêng sang Nhật ký sử dụng chi tiết khi được bấm
+  if (currentView === 'usage-history') {
+    return (
+      <InventoryUsageHistoryView
+        farmId={selectedFarmId}
+        farmName={selectedFarm?.name}
+        ponds={ponds}
+        onBack={() => setCurrentView('main')}
+      />
+    );
+  }
+
+  // Motion hiệu ứng khi dữ liệu đang tải
+  if (isLoading && (!consumptionSummary || inventories.length === 0)) {
+    return (
+      <LoadingMotion
+        title="Đang tải dữ liệu Kho sản phẩm..."
+        subtitle="Hệ thống đang đồng bộ danh mục sản phẩm, biến động nhập xuất và tiến độ tiêu thụ từ trang trại..."
+        icon={<Package className="w-11 h-11 text-blue-600 animate-pulse" />}
+        headerTitle="Kho Sản phẩm & Thức ăn"
+        headerSubtitle="Quản lý các loại thức ăn, thuốc, hóa chất"
+        headerIcon={<Package className="w-7 h-7 text-blue-600" />}
+        color="blue"
+      />
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 relative">
       {/* Toast */}
@@ -329,12 +450,12 @@ export default function InventoryManagement() {
             <Package className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tight">Kho Vật tư & Thức ăn</h2>
+            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tight">Kho Sản phẩm & Thức ăn</h2>
             <p className="text-sm text-slate-500 font-medium">Quản lý các loại thức ăn, thuốc, hóa chất</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
           {farms.length > 0 && (
             <select
               value={selectedFarmId}
@@ -347,28 +468,6 @@ export default function InventoryManagement() {
             </select>
           )}
 
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm cursor-pointer"
-          >
-            <option value="ALL">Tất cả danh mục</option>
-            <option value="FEED">Thức ăn</option>
-            <option value="MEDICINE">Thuốc</option>
-            <option value="CHEMICAL">Hóa chất</option>
-          </select>
-
-          <div className="relative flex-1 sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm tên vật tư..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-inner"
-            />
-          </div>
-
           {canManageInventory && (
             <button
               onClick={() => handleOpenForm()}
@@ -380,104 +479,376 @@ export default function InventoryManagement() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+      {/* Thống kê hàng đầu */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
               <TrendingDown className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold text-slate-400 uppercase">30 ngày</span>
+            <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">Toàn thời gian</span>
           </div>
-          <p className="text-sm font-semibold text-slate-500">Tổng thức ăn đã dùng</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed)} kg</p>
-          <p className="text-xs text-slate-400 mt-2">
-            Trung bình {formatNumber(consumptionSummary?.averageDailyUsage)} kg/ngày
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng xuất dùng</p>
+          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed)} <span className="text-base font-semibold text-slate-500">kg/lít</span></p>
+          <p className="text-xs text-slate-400 mt-2 font-medium">
+            {consumptionSummary?.totalUsed > 0 ? 'Tổng lượng đã xuất dùng cho các ao nuôi' : 'Chưa phát sinh xuất dùng'}
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5" />
+        <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+              <Package className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold text-slate-400 uppercase">Cần theo dõi</span>
+            <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg">
+              {inventories.length} mặt hàng
+            </span>
           </div>
-          <p className="text-sm font-semibold text-slate-500">Mặt hàng sắp hết</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{consumptionSummary?.lowStockCount || 0}</p>
-          <p className="text-xs text-slate-400 mt-2">So với ngưỡng tối thiểu trong kho</p>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng sản phẩm trong kho</p>
+          <p className="text-3xl font-black text-blue-700 mt-1">{inventories.length} <span className="text-base font-semibold text-slate-500">sản phẩm</span></p>
+          <p className="text-xs text-slate-400 mt-2 font-medium">
+            {feedCount} thức ăn • {medCount} thuốc • {chemCount} hóa chất
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <ClipboardList className="w-5 h-5" />
+        {isFarmerOrTech ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${
+                lowStockCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+              }`}>
+                {lowStockCount > 0 ? <AlertTriangle className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+              </div>
+              <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${
+                lowStockCount > 0 ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+              }`}>
+                {lowStockCount > 0 ? `${lowStockCount} cần lưu ý` : 'Ổn định'}
+              </span>
             </div>
-            <span className="text-xs font-bold text-slate-400 uppercase">Gần đây</span>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tình trạng tồn kho</p>
+            <p className={`text-3xl font-black mt-1 ${lowStockCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {lowStockCount > 0 ? `${lowStockCount} mặt hàng` : '100% An toàn'}
+            </p>
+            <p className="text-xs text-slate-400 mt-2 font-medium">
+              {lowStockCount > 0 ? 'Có sản phẩm đã chạm hoặc dưới ngưỡng cảnh báo' : 'Tất cả sản phẩm đều trên ngưỡng an toàn'}
+            </p>
           </div>
-          <p className="text-sm font-semibold text-slate-500">Lượt ghi nhận tiêu thụ</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{usageLogs.length}</p>
-          <p className="text-xs text-slate-400 mt-2">Hiển thị tối đa 50 nhật ký mới nhất</p>
-        </div>
+        ) : (
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                <Truck className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-lg">
+                {suppliers.length} đối tác
+              </span>
+            </div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nhà cung cấp đối tác</p>
+            <p className="text-3xl font-black text-slate-800 mt-1">{suppliers.length} <span className="text-base font-semibold text-slate-500">nhà cung cấp</span></p>
+            <p className="text-xs text-slate-400 mt-2 font-medium">
+              Liên kết trực tiếp với các nguồn sản phẩm
+            </p>
+          </div>
+        )}
       </div>
 
+      {/* Sản phẩm tiêu thụ & Nhật ký sử dụng */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-bold text-slate-800">Tiêu thụ theo loại thức ăn</h3>
-            <Package className="w-5 h-5 text-slate-300" />
-          </div>
-          <div className="space-y-3">
-            {(consumptionSummary?.consumptionByItem || []).length === 0 ? (
-              <p className="text-sm text-slate-500 py-6 text-center">Chưa có dữ liệu tiêu thụ trong 30 ngày gần đây.</p>
-            ) : (
-              consumptionSummary.consumptionByItem.slice(0, 5).map((item: any) => (
-                <div key={item.inventoryId} className="flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="text-sm font-bold text-slate-700 truncate">{item.itemName}</p>
-                      <span className="text-sm font-black text-slate-800">{formatNumber(item.quantityUsed)} {item.unit}</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${Math.min(100, (item.quantityUsed / Math.max(consumptionSummary.totalUsed || 1, item.quantityUsed)) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
+        {/* Cột 1: Sản phẩm tiêu thụ (Chiếm 2 cột trên màn hình rộng) */}
+        <div className="xl:col-span-2 bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            {/* Header của Sản phẩm tiêu thụ với Tabs chọn Danh mục */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                  <Package className="w-5 h-5" />
                 </div>
-              ))
-            )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-800">Sản phẩm tiêu thụ</h3>
+                    <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                      {categoryProductsWithUsage.length} mặt hàng
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Theo dõi tỷ lệ xuất dùng so với số lượng còn trong kho
+                  </p>
+                </div>
+              </div>
+
+              {/* Tabs chọn danh mục: Thức ăn / Thuốc / Hóa chất */}
+              <div className="inline-flex p-1 bg-slate-100 rounded-2xl self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setConsumptionCategory('FEED')}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    consumptionCategory === 'FEED'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  Thức ăn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConsumptionCategory('MEDICINE')}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    consumptionCategory === 'MEDICINE'
+                      ? 'bg-rose-500 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <Pill className="w-3.5 h-3.5" />
+                  Thuốc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConsumptionCategory('CHEMICAL')}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    consumptionCategory === 'CHEMICAL'
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <FlaskConical className="w-3.5 h-3.5" />
+                  Hóa chất
+                </button>
+              </div>
+            </div>
+
+            {/* Chú thích màu sắc */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3 px-3 bg-slate-50/80 rounded-2xl my-3 text-[11px] font-bold text-slate-600 border border-slate-100">
+              <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Chú thích màu:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-blue-600"></span>
+                <span>Số lượng đã dùng</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+                <span>Số lượng còn lại</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-amber-400"></span>
+                <span>Gần hết</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-rose-500"></span>
+                <span>Cảnh báo</span>
+              </div>
+
+              {lowStockCountForCategory > 0 && (
+                <span className="ml-auto text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {lowStockCountForCategory} mặt hàng cần lưu ý
+                </span>
+              )}
+            </div>
+
+            {/* Danh sách toàn bộ sản phẩm của danh mục được chọn */}
+            <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-1">
+              {categoryProductsWithUsage.length === 0 ? (
+                <div className="py-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-600">
+                    Chưa có sản phẩm {consumptionCategory === 'FEED' ? 'thức ăn' : consumptionCategory === 'MEDICINE' ? 'thuốc' : 'hóa chất'} nào trong kho
+                  </p>
+                  {canManageInventory && (
+                    <button
+                      onClick={() => handleOpenForm()}
+                      className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm sản phẩm mới
+                    </button>
+                  )}
+                </div>
+              ) : (
+                categoryProductsWithUsage.map(({ item, quantityUsed, quantityRemaining, minThreshold, total, usedPercent, remainPercent, status }) => {
+                  const remainColor = status === 'CRITICAL' ? 'bg-rose-500' : status === 'LOW' ? 'bg-amber-400' : 'bg-emerald-500';
+                  const remainTextColor = status === 'CRITICAL' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-700' : 'text-emerald-700';
+                  const remainBadgeBg = status === 'CRITICAL' ? 'bg-rose-50 border-rose-200' : status === 'LOW' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200';
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50/60 transition-all duration-200 group"
+                      onClick={() => setSelectedDetailsItem(item)}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
+                        {/* Tên vật tư + Trạng thái */}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">
+                            {item.itemName}
+                          </span>
+
+                          {status === 'CRITICAL' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                              <AlertCircle className="w-3 h-3 text-rose-600" />
+                              {quantityRemaining === 0 ? 'Hết hàng' : 'Cảnh báo chạm ngưỡng'}
+                            </span>
+                          )}
+
+                          {status === 'LOW' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                              <AlertCircle className="w-3 h-3 text-amber-600" />
+                              Sắp hết
+                            </span>
+                          )}
+
+                          {status === 'SAFE' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Ổn định
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Số liệu: Đã dùng - Còn lại - Tổng */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold shrink-0">
+                          <span className="text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
+                            Đã dùng: {formatNumber(quantityUsed)} {item.unit}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-md border ${remainTextColor} ${remainBadgeBg}`}>
+                            Còn lại: {formatNumber(quantityRemaining)} {item.unit}
+                          </span>
+                          <span className="text-slate-400 font-semibold text-[11px]">
+                            (Tổng: {formatNumber(total)} {item.unit})
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Thanh hiển thị đa màu: Xanh dương (đã dùng) & Xanh lá / Vàng / Đỏ (còn lại) */}
+                      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                        {usedPercent > 0 && (
+                          <div
+                            className="h-full bg-blue-600 transition-all duration-500"
+                            style={{ width: `${usedPercent}%` }}
+                            title={`Đã dùng: ${formatNumber(quantityUsed)} ${item.unit} (${usedPercent}%)`}
+                          />
+                        )}
+                        {remainPercent > 0 && (
+                          <div
+                            className={`h-full ${remainColor} transition-all duration-500`}
+                            style={{ width: `${remainPercent}%` }}
+                            title={`Còn lại: ${formatNumber(quantityRemaining)} ${item.unit} (${remainPercent}%)`}
+                          />
+                        )}
+                        {total === 0 && (
+                          <div className="h-full w-full bg-slate-200 text-center text-[9px] text-slate-500 leading-3">
+                            Chưa có dữ liệu
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Thông tin ngưỡng và phần trăm */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1.5 px-0.5 font-medium">
+                        <span>
+                          Ngưỡng tối thiểu: <span className="font-bold text-slate-600">{formatNumber(minThreshold)} {item.unit}</span>
+                        </span>
+                        <span>
+                          {usedPercent}% đã dùng • {remainPercent}% còn lại
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-bold text-slate-800">Nhật ký gần đây</h3>
-            <CalendarDays className="w-5 h-5 text-slate-300" />
-          </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-            {usageLogs.length === 0 ? (
-              <p className="text-sm text-slate-500 py-6 text-center">Chưa có nhật ký tiêu thụ.</p>
-            ) : (
-              usageLogs.slice(0, 6).map((log) => (
-                <div key={log.id} className="border border-slate-100 rounded-xl p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-700 truncate">{log.inventory?.itemName}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{formatDate(log.usageDate)}</p>
-                      {log.creator?.fullName && (
-                        <p className="text-xs text-slate-500 mt-1">Người ghi nhận: {log.creator.fullName}</p>
+        {/* Cột 2: Nhật ký sử dụng (Giao diện thẻ ngoài, hiển thị cứng 3-4 lượt gần nhất) */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Nhật ký sử dụng</h3>
+                  <p className="text-xs text-slate-400 font-medium">Hoạt động xuất dùng gần nhất</p>
+                </div>
+              </div>
+
+              <span className="text-xs font-black text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-xl">
+                {recentActivities.length} hoạt động
+              </span>
+            </div>
+
+            {/* Hiển thị cứng 3 - 4 lượt sử dụng gần nhất */}
+            <div className="space-y-3">
+              {recentActivities.length === 0 ? (
+                <div className="py-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  <CalendarDays className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-600">Chưa có nhật ký sử dụng nào.</p>
+                </div>
+              ) : (
+                recentActivities.slice(0, 4).map((activity) => {
+                  const cat = getCategoryDetails(activity.category);
+                  return (
+                    <div
+                      key={activity.id}
+                      className="border border-slate-100 rounded-2xl p-3.5 hover:bg-slate-50/70 hover:border-blue-100 transition-all shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className={`inline-flex items-center p-1 rounded-md text-[10px] ${cat.bg} ${cat.color}`}>
+                              {cat.icon}
+                            </span>
+                            <p className="text-sm font-bold text-slate-800 truncate">{activity.title}</p>
+                            {activity.isFeeding ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 shrink-0">
+                                🦐 Cho ăn ({activity.sessionsSummary})
+                              </span>
+                            ) : activity.isImport ? (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                                📥 Nhập kho
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 shrink-0">
+                                📤 Xuất kho
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400">{formatDate(activity.date)}</p>
+                          {activity.creator && (
+                            <p className="text-xs text-slate-500 mt-1 font-medium">
+                              Người ghi nhận: <span className="font-bold text-slate-700">{activity.creator}</span>
+                            </p>
+                          )}
+                        </div>
+                        {activity.isImport ? (
+                          <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl whitespace-nowrap shadow-sm">
+                            + {formatNumber(activity.amount)} {activity.unit}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-black text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl whitespace-nowrap shadow-sm">
+                            - {formatNumber(activity.amount)} {activity.unit}
+                          </span>
+                        )}
+                      </div>
+                      {activity.note && (
+                        <p className="text-xs text-slate-500 mt-2 line-clamp-1 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                          {activity.note}
+                        </p>
                       )}
                     </div>
-                    <span className="text-sm font-black text-emerald-600 whitespace-nowrap">
-                      {formatNumber(log.quantityUsed)} {log.inventory?.unit}
-                    </span>
-                  </div>
-                  {log.notes && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{log.notes}</p>}
-                </div>
-              ))
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
+
+          {/* Nút bấm chuyển sang trang riêng xem toàn bộ Nhật ký biến động & Sử dụng */}
+          <button
+            type="button"
+            onClick={() => setCurrentView('usage-history')}
+            className="w-full mt-4 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5"
+          >
+            <span>Xem chi tiết Nhật ký</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -489,8 +860,7 @@ export default function InventoryManagement() {
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-800">Danh sách nhà cung cấp</h3>
-              <p className="text-xs text-slate-500 font-medium">Tổng hợp từ các vật tư đang có trong kho</p>
+              <h3 className="text-lg font-black text-slate-800">Danh sách nhà cung cấp</h3> 
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -513,7 +883,7 @@ export default function InventoryManagement() {
               <tr className="bg-slate-50/80 border-b border-slate-200 text-sm">
                 <th className="px-6 py-4 font-bold text-slate-600">Nhà cung cấp</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Số mặt hàng</th>
-                <th className="px-6 py-4 font-bold text-slate-600">Nhóm vật tư</th>
+                <th className="px-6 py-4 font-bold text-slate-600">Nhóm sản phẩm</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Sắp hết</th>
                 <th className="px-6 py-4 font-bold text-slate-600">Cập nhật gần nhất</th>
                 <th className="px-6 py-4 font-bold text-slate-600 text-right">Thao tác</th>
@@ -598,25 +968,137 @@ export default function InventoryManagement() {
       </div>
       )}
 
-      {/* Grid Cards for Inventory List */}
-      <div className="mt-6">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed">
-            <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 font-medium">Đang tải dữ liệu kho...</p>
-          </div>
-        ) : inventories.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed">
-            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-              <Package className="w-10 h-10 text-slate-300" />
+      {/* Khung: Danh sách sản phẩm */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+        {/* Header của Khung Danh sách sản phẩm */}
+        <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-sm">
+              <Package className="w-5 h-5" />
             </div>
-            <p className="text-slate-500 font-medium">Không tìm thấy vật tư nào.</p>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-lg font-black text-slate-800">Danh sách sản phẩm</h3>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                  {filteredProducts.length} mặt hàng
+                </span>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {inventories.map((item) => {
-              const cat = getCategoryDetails(item.category);
-              const isLowStock = item.quantity <= item.minThreshold;
+
+          {/* Bộ lọc Danh mục & Thanh tìm kiếm vật tư */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Tabs chọn danh mục */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-2xl self-start sm:self-auto flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setProductCategoryFilter('ALL')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  productCategoryFilter === 'ALL'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Tất cả ({inventories.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategoryFilter('FEED')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  productCategoryFilter === 'FEED'
+                    ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                    : 'text-slate-600 hover:text-amber-600 hover:bg-amber-50/50'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Thức ăn ({feedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategoryFilter('MEDICINE')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  productCategoryFilter === 'MEDICINE'
+                    ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/20'
+                    : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50/50'
+                }`}
+              >
+                <Pill className="w-3.5 h-3.5" />
+                Thuốc ({medCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductCategoryFilter('CHEMICAL')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  productCategoryFilter === 'CHEMICAL'
+                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/20'
+                    : 'text-slate-600 hover:text-cyan-600 hover:bg-cyan-50/50'
+                }`}
+              >
+                <FlaskConical className="w-3.5 h-3.5" />
+                Hóa chất ({chemCount})
+              </button>
+            </div>
+
+            {/* Thanh tìm kiếm theo tên sản phẩm */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Tìm tên sản phẩm..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all shadow-inner"
+              />
+              {productSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProductSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Nội dung bên trong khung: Grid thẻ sản phẩm */}
+        <div className="p-5 sm:p-6 bg-slate-50/30">
+          {isLoading ? (
+            <LoadingMotion
+              mode="card"
+              title="Đang làm mới danh mục sản phẩm kho..."
+              subtitle="Đang tải danh sách theo bộ lọc và từ khóa tìm kiếm..."
+              icon={<Package className="w-10 h-10 text-blue-600 animate-pulse" />}
+              color="blue"
+            />
+          ) : filteredProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-200 border-dashed text-center px-4">
+              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-3 text-slate-300">
+                <Package className="w-8 h-8" />
+              </div>
+              <h4 className="text-base font-bold text-slate-700">Không tìm thấy sản phẩm nào</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                Không có sản phẩm nào khớp với danh mục hoặc từ khóa tìm kiếm của bạn.
+              </p>
+              {(productCategoryFilter !== 'ALL' || productSearch) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductCategoryFilter('ALL');
+                    setProductSearch('');
+                  }}
+                  className="mt-4 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors"
+                >
+                  Đặt lại bộ lọc
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredProducts.map((item) => {
+                const cat = getCategoryDetails(item.category);
+                const isLowStock = item.quantity <= item.minThreshold;
 
               return (
                 <div 
@@ -638,11 +1120,17 @@ export default function InventoryManagement() {
                     )}
                     
                     {/* Category Badge overlay on image */}
-                    <div className="absolute top-3 left-3">
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-white/95 backdrop-blur-sm shadow-sm ${cat.color} ${cat.border}`}>
                         {cat.icon}
                         {cat.label}
                       </span>
+                      {isLowStock && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-500 text-white shadow-sm animate-pulse">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Sắp hết
+                        </span>
+                      )}
                     </div>
 
                     {/* Actions overlay on image (visible on hover) */}
@@ -683,51 +1171,46 @@ export default function InventoryManagement() {
                     </div>
                     
                     <div className="flex-1 flex flex-col justify-end gap-4">
-                      {/* Stock Info */}
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tồn kho</span>
-                          {isLowStock && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-wider">
-                              <AlertCircle className="w-3 h-3" />
-                              Sắp hết
-                            </span>
-                          )}
+                      {/* Specification & Price Section (Replaces 20 chai tổng 20 lít & Nhà cung cấp) */}
+                      <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-3.5 flex flex-col gap-2.5">
+                        {/* 1. Quy cách (Bao nhiêu Lít/Chai hoặc kg/Bao) */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Package className="w-3.5 h-3.5 text-slate-400" />
+                            Quy cách
+                          </span>
+                          <span className="text-xs font-black text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs">
+                            {item.weightPerPkg && item.packageType
+                              ? `${item.weightPerPkg} ${item.unit} / ${item.packageType}`
+                              : `${item.unit}`}
+                          </span>
                         </div>
-                        
-                        {item.packageType && item.packageQty != null ? (
-                          <div className="flex flex-col gap-1.5">
-                            <div className="flex items-baseline gap-1.5">
-                              <span className={`text-2xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                                {Math.ceil(item.packageQty)}
-                              </span>
-                              <span className="text-sm font-semibold text-slate-600">{item.packageType}</span>
+
+                        {/* 2. Đơn giá sản phẩm (Ẩn với Kỹ thuật viên & Nông dân) */}
+                        {!isFarmerOrTech && (
+                          <div className="pt-2.5 border-t border-slate-200/60 flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                              <CircleDollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                              Đơn giá
+                            </span>
+                            <div className="text-right">
+                              {item.pricePerPackage && item.pricePerPackage > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 shadow-2xs">
+                                  <span className="text-sm font-black tracking-tight">
+                                    {formatVND(item.pricePerPackage)}
+                                  </span>
+                                  <span className="text-[10.5px] font-bold text-emerald-600/90">
+                                    đ / {item.packageType || 'đơn vị'}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center text-[11px] font-semibold text-slate-400 italic bg-white px-2.5 py-1 rounded-lg border border-slate-200/70 shadow-2xs">
+                                  Chưa có giá
+                                </span>
+                              )}
                             </div>
-                            <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 self-start">
-                              Tổng: {Math.round(item.quantity * 100) / 100} {item.unit}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-baseline gap-1.5 mt-1">
-                            <span className={`text-2xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                              {item.quantity}
-                            </span>
-                            <span className="text-sm font-semibold text-slate-600">{item.unit}</span>
                           </div>
                         )}
-                      </div>
-
-                      {/* Supplier */}
-                      <div className="flex items-center gap-2.5 text-sm bg-white border border-slate-100 p-2.5 rounded-xl">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                          <Truck className="w-3.5 h-3.5 text-indigo-500" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Nhà cung cấp</p>
-                          <p className="text-slate-700 font-semibold truncate" title={item.supplier?.name || 'Chưa có thông tin'}>
-                            {item.supplier?.name || 'Không xác định'}
-                          </p>
-                        </div>
                       </div>
 
                       {/* Action Button for Usage (ALL categories) */}
@@ -735,12 +1218,12 @@ export default function InventoryManagement() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleOpenUsageForm(item);
+                            handleOpenActionModal(item);
                           }}
                           className="w-full mt-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-sm group/btn"
                         >
-                          <MinusCircle className="w-4 h-4 group-hover/btn:-translate-y-0.5 transition-transform" />
-                          Ghi nhận tiêu thụ / Xuất kho
+                          <Package className="w-4 h-4 group-hover/btn:-translate-y-0.5 transition-transform" />
+                          Nhập kho / Xuất kho
                         </button>
                       )}
                     </div>
@@ -750,6 +1233,7 @@ export default function InventoryManagement() {
             })}
           </div>
         )}
+        </div>
       </div>
 
       {/* Form Modal */}
@@ -887,162 +1371,18 @@ export default function InventoryManagement() {
         </div>
       )}
 
-      {usageItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-teal-50">
-              <div>
-                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                  <MinusCircle className="w-5 h-5 text-emerald-600" /> Ghi Nhận Tiêu Thụ / Xuất Kho
-                </h3>
-                <p className="text-xs text-slate-500 font-semibold mt-1">
-                  Mặt hàng: <span className="text-emerald-800 font-bold">{usageItem.itemName}</span> — Tồn hiện tại:{' '}
-                  <span className="font-extrabold text-slate-800">{formatNumber(usageItem.quantity)} {usageItem.unit}</span>
-                  {usageItem.packageQty ? ` (${Math.ceil(usageItem.packageQty)} ${usageItem.packageType || 'bao'})` : ''}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUsageItem(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-xl transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleRecordUsage} className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* Section 1: Purpose Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  1. Mục đích xuất kho / tiêu thụ <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {USAGE_PURPOSES.map((p) => {
-                    const isSelected = usageForm.purpose === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setUsageForm({ ...usageForm, purpose: p.id })}
-                        className={`p-3 rounded-2xl border text-left transition-all flex items-start gap-2.5 ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20 text-emerald-950 font-bold shadow-sm'
-                            : 'border-slate-200 bg-slate-50/50 hover:bg-white text-slate-700 font-semibold'
-                        }`}
-                      >
-                        <span className="text-lg leading-none">{p.icon}</span>
-                        <div>
-                          <p className="text-xs font-bold leading-tight">{p.label}</p>
-                          <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{p.desc}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Section 2: Pond Picker (Optional) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  2. Ao nuôi áp dụng <span className="text-slate-400 font-normal">(Không bắt buộc)</span>
-                </label>
-                <select
-                  value={usageForm.pondId}
-                  onChange={(e) => setUsageForm({ ...usageForm, pondId: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all cursor-pointer"
-                >
-                  <option value="">-- Sử dụng chung cho trang trại / Kho --</option>
-                  {ponds
-                    .filter((p) => !selectedFarmId || p.farmId === selectedFarmId)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              {/* Section 3: Quantity & Usage Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    3. Số lượng xuất ({usageItem.unit}) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={usageForm.quantityUsed}
-                    onChange={(e) => setUsageForm({ ...usageForm, quantityUsed: e.target.value })}
-                    placeholder={`Nhập số lượng ${usageItem.unit}...`}
-                    className={`w-full px-4 py-2.5 rounded-xl border text-xs font-bold outline-none transition-all ${
-                      Number(usageForm.quantityUsed) > usageItem.quantity
-                        ? 'border-red-300 bg-red-50 text-red-900 focus:border-red-500'
-                        : 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-white focus:border-emerald-500'
-                    }`}
-                    required
-                  />
-                  {Number(usageForm.quantityUsed) > usageItem.quantity && (
-                    <p className="text-[11px] font-bold text-red-600 mt-1">
-                      ⚠️ Vượt tồn kho ({usageItem.quantity} {usageItem.unit})!
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Ngày sử dụng <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={usageForm.usageDate}
-                    onChange={(e) => setUsageForm({ ...usageForm, usageDate: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 transition-all"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Section 4: Notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  4. Ghi chú chi tiết thêm
-                </label>
-                <textarea
-                  value={usageForm.notes}
-                  onChange={(e) => setUsageForm({ ...usageForm, notes: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 outline-none hover:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all resize-none"
-                  placeholder="Ví dụ: Đánh vi sinh buổi sáng theo hướng dẫn của kỹ sư..."
-                />
-              </div>
-
-              {/* Footer Buttons */}
-              <div className="flex gap-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setUsageItem(null)}
-                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={isRecordingUsage || Number(usageForm.quantityUsed) > usageItem.quantity}
-                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
-                >
-                  {isRecordingUsage ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Xác nhận xuất kho'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <InventoryActionModal
+        isOpen={!!actionItem}
+        item={actionItem}
+        ponds={ponds}
+        selectedFarmId={selectedFarmId}
+        onClose={() => setActionItem(null)}
+        onSuccess={(msg) => {
+          showToast(msg, 'success');
+          fetchInventories(selectedFarmId);
+          fetchConsumptionData(selectedFarmId);
+        }}
+      />
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (
@@ -1053,8 +1393,8 @@ export default function InventoryManagement() {
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-2">Xác nhận xóa</h3>
             <p className="text-slate-500 text-sm mb-6">
-              Bạn có chắc chắn muốn xóa vật tư <span className="font-semibold text-slate-700">{itemToDelete?.itemName}</span>? 
-              Hệ thống sẽ không cho phép xóa nếu vật tư này đã có nhật ký sử dụng.
+              Bạn có chắc chắn muốn xóa sản phẩm <span className="font-semibold text-slate-700">{itemToDelete?.itemName}</span>? 
+              Hệ thống sẽ không cho phép xóa nếu sản phẩm này đã có nhật ký sử dụng.
             </p>
             <div className="flex gap-3">
               <button
@@ -1083,6 +1423,8 @@ export default function InventoryManagement() {
       <InventoryDetailsModal 
         isOpen={!!selectedDetailsItem}
         item={selectedDetailsItem}
+        canViewSupplier={!isFarmerOrTech}
+        canViewPrice={!isFarmerOrTech}
         onClose={() => setSelectedDetailsItem(null)}
       />
     </div>

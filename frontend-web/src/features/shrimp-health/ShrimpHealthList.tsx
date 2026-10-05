@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { shrimpHealthService } from '../../services/shrimp-health.service';
+import LoadingMotion from '../../components/LoadingMotion';
 import type {
   ShrimpHealthHistoryRecord,
   ShrimpHealthStatusType,
@@ -135,7 +136,6 @@ export default function ShrimpHealthList({
   const themeFocusRing = isFarmer
     ? 'focus:border-teal-500 focus:ring-teal-500/10'
     : 'focus:border-indigo-500 focus:ring-indigo-500/10';
-  const themeSpinner = isFarmer ? 'border-t-teal-600' : 'border-t-indigo-600';
   const themeBg = isFarmer ? 'bg-teal-600' : 'bg-indigo-600';
   const themeBgHover = isFarmer ? 'hover:bg-teal-700' : 'hover:bg-indigo-700';
   const themeShadow = isFarmer ? 'shadow-teal-500/20' : 'shadow-indigo-500/20';
@@ -399,10 +399,13 @@ export default function ShrimpHealthList({
 
       {/* ─── Content ────────────────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm gap-4">
-          <div className={`w-10 h-10 border-4 border-slate-200 ${themeSpinner} rounded-full animate-spin`} />
-          <p className="text-sm font-semibold text-slate-500">Đang truy vấn dữ liệu...</p>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải dữ liệu kiểm tra sức khỏe tôm..."
+          subtitle="Đang truy vấn lịch sử quan sát, mẫu bệnh và mức độ nghiêm trọng từ trang trại..."
+          icon={<HeartPulse className={`w-10 h-10 ${isFarmer ? 'text-teal-600' : 'text-indigo-600'} animate-pulse`} />}
+          color={isFarmer ? 'teal' : 'indigo'}
+        />
       ) : errorMsg ? (
         <div className="flex flex-col items-center justify-center py-14 bg-red-50/50 rounded-3xl border border-red-100 p-6 text-center gap-3">
           <AlertCircle className="w-10 h-10 text-red-500" />

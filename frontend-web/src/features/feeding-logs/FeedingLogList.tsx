@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
+import LoadingMotion from '../../components/LoadingMotion';
 import {
   feedingLogService,
   DEFAULT_FEEDING_SESSIONS,
@@ -224,9 +225,13 @@ export default function FeedingLogList() {
       {/* ── Data Table ─────────────────────────────────────────────────── */}
       <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-white/60 shadow-lg shadow-slate-200/40 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-4 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
-          </div>
+          <LoadingMotion
+            mode="card"
+            title="Đang tải nhật ký cho ăn..."
+            subtitle="Đang đồng bộ dữ liệu các cử cho ăn, lượng thức ăn và trạng thái cho ăn..."
+            icon={<Utensils className="w-10 h-10 text-emerald-600 animate-pulse" />}
+            color="emerald"
+          />
         ) : data.length === 0 ? (
           <div className="text-center py-16 px-4">
             <Utensils className="w-12 h-12 text-slate-300 mx-auto mb-3" />

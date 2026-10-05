@@ -70,4 +70,10 @@ export class CreateInventoryDto {
   @IsString()
   @IsOptional()
   sizeSpec?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
+  pricePerPackage?: number;
 }

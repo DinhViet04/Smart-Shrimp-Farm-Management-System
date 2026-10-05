@@ -28,6 +28,7 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
+import LoadingMotion from './LoadingMotion';
 import { pondService } from '../services/pond.service';
 import { cropService, type Crop } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
@@ -654,6 +655,20 @@ export default function CropManagement({
     return diffDays >= 0 ? diffDays : 0;
   };
 
+  if (loading && crops.length === 0) {
+    return (
+      <LoadingMotion
+        title="Đang tải dữ liệu Vụ nuôi..."
+        subtitle="Hệ thống đang đồng bộ chu kỳ nuôi, mật độ giống và mục tiêu sản lượng..."
+        icon={<CalendarDays className="w-11 h-11 text-indigo-600 animate-pulse" />}
+        headerTitle="Quản Lý Vụ Nuôi"
+        headerSubtitle="Theo dõi chu kỳ nuôi, mật độ giống, FCR và mục tiêu sản lượng phân chia theo từng trang trại"
+        headerIcon={<CalendarDays className="w-7 h-7 text-indigo-600" />}
+        color="indigo"
+      />
+    );
+  }
+
   return (
     <div className="relative z-10 max-w-7xl mx-auto space-y-6">
       {/* Toast Notification */}
@@ -818,12 +833,13 @@ export default function CropManagement({
 
       {/* Loading state */}
       {loading ? (
-        <div className="flex items-center justify-center h-64 bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-sm">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 text-sm font-medium">Đang tải dữ liệu vụ nuôi...</p>
-          </div>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải danh sách vụ nuôi..."
+          subtitle="Đang làm mới dữ liệu vụ nuôi và tiến độ..."
+          icon={<CalendarDays className="w-10 h-10 text-indigo-600 animate-pulse" />}
+          color="indigo"
+        />
       ) : farms.length === 0 ? (
         /* No Farms State */
         <div className="flex flex-col items-center justify-center h-64 bg-white/90 backdrop-blur-xl rounded-3xl border border-slate-200/80 shadow-sm text-center px-6">

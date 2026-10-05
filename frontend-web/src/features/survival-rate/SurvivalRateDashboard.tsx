@@ -19,6 +19,7 @@ import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import { survivalRateService, type SurvivalRateStats } from '../../services/survival-rate.service';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Farm {
   id: string;
@@ -409,10 +410,13 @@ export default function SurvivalRateDashboard({
       )}
 
       {loadingStats ? (
-        <div className="flex flex-col items-center justify-center p-16 bg-white rounded-3xl border border-slate-200 shadow-xs">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
-          <p className="text-slate-500 font-medium text-sm">Đang tải dữ liệu tỷ lệ sống...</p>
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải dữ liệu tỷ lệ sống & hao hụt..."
+          subtitle="Hệ thống đang đối chiếu sản lượng giống thả, tỷ lệ hao hụt và chỉ số sống thực tế..."
+          icon={<Activity className="w-10 h-10 text-amber-500 animate-pulse" />}
+          color="amber"
+        />
       ) : !selectedCropId ? (
         <div className="text-center p-16 bg-white border border-slate-200/80 rounded-3xl shadow-xs">
           <Waves className="w-12 h-12 text-slate-300 mx-auto mb-3" />

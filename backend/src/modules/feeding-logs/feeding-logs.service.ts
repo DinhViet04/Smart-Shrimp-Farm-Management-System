@@ -191,7 +191,8 @@ export class FeedingLogsService {
         }
       }
 
-      const notePrefix = `Xuất kho từ Nhật ký cho ăn - Ao ${pond.name}`;
+      const pondLabel = pond.name.toLowerCase().startsWith('ao') ? pond.name : `Ao ${pond.name}`;
+      const notePrefix = `Xuất kho từ Nhật ký cho ăn - ${pondLabel}`;
       const startOfDay = new Date(feedingDateObj);
       startOfDay.setUTCHours(0, 0, 0, 0);
       const endOfDay = new Date(feedingDateObj);

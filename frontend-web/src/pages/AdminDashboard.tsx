@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NotificationDropdown from '../components/NotificationDropdown';
 import { apiFetch } from '../utils/api';
+import LoadingMotion from '../components/LoadingMotion';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -374,7 +375,16 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" /></div>}>
+            <Suspense fallback={
+              <div className="py-8">
+                <LoadingMotion
+                  mode="card"
+                  title="Đang tải giao diện quản trị..."
+                  subtitle="Hệ thống đang chuẩn bị các mô-đun và đồng bộ dữ liệu..."
+                  color="blue"
+                />
+              </div>
+            }>
             {activeTab === 'Cài đặt' ? (
               <AccountSettings />
             ) : activeTab === 'Trang trại' ? (
@@ -536,9 +546,13 @@ export default function AdminDashboard() {
                       <tbody className="divide-y divide-slate-100/50 bg-white/50">
                         {loadingUsers ? (
                           <tr>
-                            <td colSpan={5} className="text-center py-12">
-                              <div className="inline-block animate-spin w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full"></div>
-                              <p className="mt-4 text-slate-500 font-medium">Đang tải dữ liệu...</p>
+                            <td colSpan={5} className="py-6 px-4">
+                              <LoadingMotion
+                                mode="card"
+                                title="Đang tải danh sách người dùng..."
+                                subtitle="Đang đồng bộ dữ liệu tài khoản và phân quyền hệ thống..."
+                                color="blue"
+                              />
                             </td>
                           </tr>
                         ) : users.length === 0 ? (

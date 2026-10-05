@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, Activity, 
-  TrendingUp, AlertCircle, Loader2, PieChart, Scale,
+  TrendingUp, AlertCircle, PieChart, Scale,
   Calendar, Layers, Info
 } from 'lucide-react';
 import { 
@@ -12,6 +12,7 @@ import { format, isValid } from 'date-fns';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
 import { cropService, type Crop } from '../../services/crop.service';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import LoadingMotion from '../../components/LoadingMotion';
 
 interface Pond {
   id: string;
@@ -167,9 +168,13 @@ export default function PondBiomassDetail({
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center p-16 bg-white rounded-3xl border border-slate-200/80">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-        </div>
+        <LoadingMotion
+          mode="card"
+          title="Đang tải dữ liệu sinh khối ao..."
+          subtitle="Đang tính toán các chỉ số sinh khối, mật độ và biểu đồ tăng trưởng..."
+          icon={<PieChart className="w-10 h-10 text-emerald-600 animate-pulse" />}
+          color="emerald"
+        />
       ) : (
         <>
           {/* KPI Metrics Cards */}

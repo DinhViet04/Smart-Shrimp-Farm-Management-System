@@ -3,6 +3,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Clock3, Plus, RefreshCw, Sear
 import { incidentService, type Incident, type IncidentStatus, type IncidentTechnician } from '../../services/incident.service';
 import { type Crop } from '../../services/crop.service';
 import { pondService } from '../../services/pond.service';
+import LoadingMotion from '../../components/LoadingMotion';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Chờ xử lý',
@@ -327,8 +328,22 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex h-56 items-center justify-center rounded-3xl bg-white"><RefreshCw className="h-8 w-8 animate-spin text-indigo-500" /></div>
+      {loading && incidents.length === 0 ? (
+        <LoadingMotion
+          mode="page"
+          title="Đang tải dữ liệu Sự cố & Điều trị..."
+          subtitle="Hệ thống đang đồng bộ danh sách sự cố, tiến trình điều trị và phân công kỹ thuật từ trang trại..."
+          icon={<AlertTriangle className="w-12 h-12 text-rose-500" />}
+          color="rose"
+        />
+      ) : loading ? (
+        <LoadingMotion
+          mode="card"
+          title="Đang làm mới danh sách sự cố..."
+          subtitle="Đang cập nhật các trạng thái và tiến trình điều trị mới nhất..."
+          icon={<AlertTriangle className="w-10 h-10 text-rose-600 animate-pulse" />}
+          color="rose"
+        />
       ) : incidents.length === 0 ? (
         <div className="flex h-56 flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white text-center">
           <CheckCircle2 className="mb-3 h-10 w-10 text-emerald-400" />

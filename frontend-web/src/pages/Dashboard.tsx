@@ -4,6 +4,7 @@ import { LayoutDashboard, Waves, LineChart, Droplets, Bot, LogOut, Search, Activ
 import NotificationDropdown from '../components/NotificationDropdown';
 import { TrendingUp, HeartPulse } from 'lucide-react';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
+import LoadingMotion from '../components/LoadingMotion';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -276,7 +277,16 @@ export default function Dashboard() {
             </div>
           )}
 
-          <Suspense fallback={<div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" /></div>}>
+          <Suspense fallback={
+            <div className="py-8">
+              <LoadingMotion
+                mode="card"
+                title="Đang tải giao diện chức năng..."
+                subtitle="Hệ thống đang chuẩn bị các mô-đun và đồng bộ dữ liệu..."
+                color="blue"
+              />
+            </div>
+          }>
           {activeTab === 'Cài đặt' ? (
             <AccountSettings />
           ) : activeTab === 'Quản lý Trang Trại' ? (

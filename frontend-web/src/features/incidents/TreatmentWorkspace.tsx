@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { incidentService, type Incident, type IncidentUpdate } from '../../services/incident.service';
 import { inventoryService } from '../../services/inventory.service';
-import { chatbotService, type ChatbotResponse } from '../../services/chatbot.service';
+import { chatbotService } from '../../services/chatbot.service';
 import LoadingMotion from '../../components/LoadingMotion';
 
 interface InventoryItem {
@@ -78,7 +78,6 @@ export default function TreatmentWorkspace({
   
   // AI State
   const [aiLoading, setAiLoading] = useState(true);
-  const [aiResponse, setAiResponse] = useState<ChatbotResponse | null>(null);
   const [aiError, setAiError] = useState<string>('');
   const [aiChatInput, setAiChatInput] = useState<string>('');
   const [chatHistory, setChatHistory] = useState<AIChatMessage[]>([]);
@@ -150,7 +149,6 @@ Hãy thực hiện 3 công việc:
 
     try {
       const res = await chatbotService.ask(prompt, pondId);
-      setAiResponse(res);
       setChatHistory([
         {
           id: 'init-ai-1',

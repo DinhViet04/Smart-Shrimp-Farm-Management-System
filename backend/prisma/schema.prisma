@@ -212,6 +212,18 @@ model Crop {
   actualHarvestCount   Int?                 @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
   actualHarvestKg      Float?               @map("actual_harvest_kg") // Sản lượng thu hoạch thực tế (kg)
   actualHarvestSize    Float?               @map("actual_harvest_size") // Kích cỡ tôm thu hoạch thực tế (con/kg)
+  actualHarvestDate    DateTime?            @map("actual_harvest_date") // Ngày thu hoạch
+  actualHarvestPricePerKg Float?            @map("actual_harvest_price_per_kg") // Giá bán 1kg tôm (VNĐ/kg)
+  actualHarvestRevenue Float?               @map("actual_harvest_revenue") // Doanh thu thu hoạch (VNĐ)
+  actualHarvestCost    Float?               @map("actual_harvest_cost") // Tổng chi phí thức ăn, thuốc, hóa chất (VNĐ)
+  actualHarvestProfit  Float?               @map("actual_harvest_profit") // Tiền lời hoặc lỗ (VNĐ)
+  actualHarvestFcr     Float?               @map("actual_harvest_fcr") // Hệ số FCR thực tế
+  actualHarvestSurvivalRate Float?          @map("actual_harvest_survival_rate") // Tỉ lệ sống thực tế (%)
+  harvestFeedCost      Float?               @map("harvest_feed_cost") // Chi phí thức ăn riêng biệt
+  harvestMedicineCost  Float?               @map("harvest_medicine_cost") // Chi phí thuốc riêng biệt
+  harvestChemicalCost  Float?               @map("harvest_chemical_cost") // Chi phí hóa chất riêng biệt
+  harvestFeedKg        Float?               @map("harvest_feed_kg") // Tổng lượng thức ăn thực tế đã dùng (kg)
+  harvestNote          String?              @map("harvest_note") // Ghi chú thu hoạch
   environmentRecords   EnvironmentRecord[]
   incidents            Incident[]
   shrimpHealthRecords  ShrimpHealthRecord[]
@@ -406,6 +418,8 @@ model InventoryUsageLog {
   quantityUsed Float     @map("quantity_used")
   usageDate    DateTime  @default(now()) @map("usage_date")
   notes        String?
+  pondId       String?   @map("pond_id")
+  cropId       String?   @map("crop_id")
   createdBy    String?   @map("created_by")
   creator      User?     @relation(fields: [createdBy], references: [id])
 
@@ -413,6 +427,8 @@ model InventoryUsageLog {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([inventoryId, usageDate])
+  @@index([pondId, usageDate])
+  @@index([cropId, usageDate])
   @@map("inventory_usage_logs")
 }
 

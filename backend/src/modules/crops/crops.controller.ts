@@ -17,6 +17,7 @@ import { CropsService } from './crops.service.js';
 import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
 import { SplitCropDto } from './dto/split-crop.dto.js';
+import { HarvestCropDto } from './dto/harvest-crop.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -94,10 +95,20 @@ export class CropsController {
     return this.cropsService.splitCrop(req.user, id, dto);
   }
 
+  @Get(':id/harvest-summary')
+  @Roles('FARM_MANAGER', 'ADMIN', 'FARMER')
+  getHarvestSummary(@Request() req: any, @Param('id') id: string) {
+    return this.cropsService.getHarvestSummary(req.user, id);
+  }
+
   @Patch(':id/harvest')
   @Roles('FARM_MANAGER', 'ADMIN')
-  harvest(@Request() req: any, @Param('id') id: string) {
-    return this.cropsService.harvest(req.user, id);
+  harvest(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto?: HarvestCropDto,
+  ) {
+    return this.cropsService.harvest(req.user, id, dto);
   }
 
   @Delete(':id')

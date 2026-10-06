@@ -35,6 +35,21 @@ export interface Crop {
   nurserySurvivalRate?: number | null;
   transferSize?: number | null;
   splitNote?: string | null;
+  actualHarvestCount?: number | null;
+  actualHarvestKg?: number | null;
+  actualHarvestSize?: number | null;
+  actualHarvestDate?: string | null;
+  actualHarvestPricePerKg?: number | null;
+  actualHarvestRevenue?: number | null;
+  actualHarvestCost?: number | null;
+  actualHarvestProfit?: number | null;
+  actualHarvestFcr?: number | null;
+  actualHarvestSurvivalRate?: number | null;
+  harvestFeedCost?: number | null;
+  harvestMedicineCost?: number | null;
+  harvestChemicalCost?: number | null;
+  harvestFeedKg?: number | null;
+  harvestNote?: string | null;
   parentCrop?: {
     id: string;
     startDate: string;
@@ -117,6 +132,50 @@ export interface UpdateCropPayload {
   expectedDurationDays?: number;
   stage?: 'NURSERY' | 'COMMERCIAL';
   expectedTransferDate?: string;
+}
+
+export interface HarvestCropPayload {
+  actualHarvestKg: number;
+  actualHarvestSize: number;
+  actualHarvestPricePerKg?: number;
+  actualHarvestCount?: number;
+  actualHarvestRevenue?: number;
+  actualHarvestCost?: number;
+  actualHarvestProfit?: number;
+  actualHarvestFcr?: number;
+  actualHarvestSurvivalRate?: number;
+  harvestFeedCost?: number;
+  harvestMedicineCost?: number;
+  harvestChemicalCost?: number;
+  harvestFeedKg?: number;
+  actualHarvestDate?: string;
+  harvestNote?: string;
+}
+
+export interface MaterialUsageItem {
+  inventoryId: string;
+  itemName: string;
+  category: 'FEED' | 'MEDICINE' | 'CHEMICAL';
+  quantityUsed: number;
+  unit: string;
+  unitPrice: number;
+  totalCost: number;
+}
+
+export interface HarvestSummaryResponse {
+  crop: Crop;
+  doc: number;
+  summary: {
+    totalFeedKg: number;
+    totalFeedCost: number;
+    totalMedicineCost: number;
+    totalChemicalCost: number;
+    totalCost: number;
+    feedLogs: MaterialUsageItem[];
+    medicineLogs: MaterialUsageItem[];
+    chemicalLogs: MaterialUsageItem[];
+    availableInventory: any[];
+  };
 }
 
 export const cropService = {
@@ -208,9 +267,11 @@ export const cropService = {
     return data;
   },
 
-  harvest: async (id: string): Promise<Crop> => {
+  harvest: async (id: string, payload?: HarvestCropPayload): Promise<Crop> => {
     const response = await apiFetch(`${apiUrl}/api/crops/${id}/harvest`, {
       method: 'PATCH',
+      headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
     });
     const data = await response.json();
     if (!response.ok) {
@@ -218,6 +279,18 @@ export const cropService = {
     }
     invalidatePondOverviewCache();
     return data as Crop;
+  },
+
+  /**
+   * GET /api/crops/:id/harvest-summary
+   */
+  getHarvestSummary: async (id: string): Promise<HarvestSummaryResponse> => {
+    const response = await apiFetch(`${apiUrl}/api/crops/${id}/harvest-summary`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể tải thông tin thu hoạch');
+    }
+    return data as HarvestSummaryResponse;
   },
 
   /**

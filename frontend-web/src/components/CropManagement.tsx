@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Calendar,
@@ -27,11 +28,25 @@ import {
   CalendarDays,
   ArrowRight,
   ShieldCheck,
+  Filter,
+  TrendingDown,
+  DollarSign,
+  LayoutGrid,
+  Table as TableIcon,
+  RotateCcw,
+  Eye,
 } from 'lucide-react';
 import LoadingMotion from './LoadingMotion';
 import { pondService } from '../services/pond.service';
 import { cropService, type Crop } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
+import HarvestCropModal from './HarvestCropModal';
+import HarvestDetailModal from './HarvestDetailModal';
+
+const formatVND = (num: number | null | undefined): string => {
+  if (num === null || num === undefined || isNaN(num)) return '0';
+  return new Intl.NumberFormat('vi-VN').format(Math.round(num));
+};
 
 interface Farm {
   id: string;
@@ -108,6 +123,11 @@ export default function CropManagement({
   // ── Filters ─────────────────────────────────────────────────────────────────
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
+  const [filterYear, setFilterYear] = useState('');
+  const [filterFarmId, setFilterFarmId] = useState('');
+  const [filterPondId, setFilterPondId] = useState('');
+  const [historyDisplayMode, setHistoryDisplayMode] = useState<'grid' | 'table'>('grid');
+  const [harvestDetailCrop, setHarvestDetailCrop] = useState<Crop | null>(null);
 
   // ── Modal State ─────────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
@@ -129,7 +149,6 @@ export default function CropManagement({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [harvestCrop, setHarvestCrop] = useState<Crop | null>(null);
-  const [harvesting, setHarvesting] = useState(false);
   const [splitCropTarget, setSplitCropTarget] = useState<Crop | null>(null);
 
   const canSplitCrop = useCallback(
@@ -338,56 +357,119 @@ export default function CropManagement({
     }
   }, [initialCreateCropConfig, ponds]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Available Filter Options ──────────────────────────────────────────────
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    crops.forEach((c) => {
+      if (c.startDate) {
+        years.add(new Date(c.startDate).getFullYear().toString());
+      }
+      if (c.actualHarvestDate) {
+        years.add(new Date(c.actualHarvestDate).getFullYear().toString());
+      }
+    });
+    if (years.size === 0) years.add(new Date().getFullYear().toString());
+    return Array.from(years).sort().reverse();
+  }, [crops]);
+
+  const availableFilterPonds = useMemo(() => {
+    if (!filterFarmId) return ponds;
+    return ponds.filter((p) => p.farmId === filterFarmId);
+  }, [ponds, filterFarmId]);
+
   // ── Grouped Farms Calculation ──────────────────────────────────────────────
   const groupedFarms = useMemo(() => {
     const searchLower = search.trim().toLowerCase();
 
-    return farms.map((farm) => {
-      // Ponds belonging to this farm
-      const farmPonds = ponds.filter((p) => p.farmId === farm.id);
-      const farmPondIds = new Set(farmPonds.map((p) => p.id));
-
-      // Crops belonging to this farm
-      const farmCrops = crops.filter((crop) => {
-        const isThisFarm = crop.pond?.farmId === farm.id || farmPondIds.has(crop.pondId);
-        if (!isThisFarm) return false;
-
-        if (activeView === 'active' && crop.status !== 'ACTIVE') return false;
-        if (activeView === 'history' && crop.status === 'ACTIVE') return false;
-        if (filterStatus && crop.status !== filterStatus) return false;
-
-        if (searchLower) {
-          const pName = crop.pond?.name?.toLowerCase() || '';
-          const fName = farm.name?.toLowerCase() || '';
-          if (!pName.includes(searchLower) && !fName.includes(searchLower)) return false;
-        }
+    return farms
+      .filter((farm) => {
+        if (filterFarmId && farm.id !== filterFarmId) return false;
         return true;
+      })
+      .map((farm) => {
+        // Ponds belonging to this farm
+        const farmPonds = ponds.filter((p) => p.farmId === farm.id);
+        const farmPondIds = new Set(farmPonds.map((p) => p.id));
+
+        // Crops belonging to this farm
+        const farmCrops = crops.filter((crop) => {
+          const isThisFarm = crop.pond?.farmId === farm.id || farmPondIds.has(crop.pondId);
+          if (!isThisFarm) return false;
+
+          if (activeView === 'active' && crop.status !== 'ACTIVE') return false;
+          if (activeView === 'history' && crop.status === 'ACTIVE') return false;
+          if (filterStatus && crop.status !== filterStatus) return false;
+          if (filterPondId && crop.pondId !== filterPondId) return false;
+
+          if (filterYear) {
+            const startYear = crop.startDate ? new Date(crop.startDate).getFullYear().toString() : '';
+            const harvestYear = crop.actualHarvestDate ? new Date(crop.actualHarvestDate).getFullYear().toString() : '';
+            if (startYear !== filterYear && harvestYear !== filterYear) return false;
+          }
+
+          if (searchLower) {
+            const pName = crop.pond?.name?.toLowerCase() || '';
+            const fName = farm.name?.toLowerCase() || '';
+            const note = crop.harvestNote?.toLowerCase() || '';
+            if (!pName.includes(searchLower) && !fName.includes(searchLower) && !note.includes(searchLower)) return false;
+          }
+          return true;
+        });
+
+        const activeFarmCrops = crops.filter(
+          (c) => (c.pond?.farmId === farm.id || farmPondIds.has(c.pondId)) && c.status === 'ACTIVE'
+        );
+        const totalFarmShrimp = activeFarmCrops.reduce(
+          (sum, c) => sum + (Number(c.initialShrimpCount) || 0),
+          0
+        );
+
+        const totalPondArea = farmPonds.reduce((acc, p) => acc + (Number(p.areaSize) || 0), 0);
+        const farmArea = Number(farm.area) || 0;
+        const usagePercentage = farmArea > 0 ? Math.min(100, Math.round((totalPondArea / farmArea) * 100)) : 0;
+
+        return {
+          ...farm,
+          crops: farmCrops,
+          activeCropsCount: activeFarmCrops.length,
+          totalFarmShrimp,
+          farmPonds,
+          totalPondArea,
+          farmArea,
+          usagePercentage,
+        };
       });
+  }, [farms, ponds, crops, activeView, filterStatus, filterYear, filterFarmId, filterPondId, search]);
 
-      const activeFarmCrops = crops.filter(
-        (c) => (c.pond?.farmId === farm.id || farmPondIds.has(c.pondId)) && c.status === 'ACTIVE'
-      );
-      const totalFarmShrimp = activeFarmCrops.reduce(
-        (sum, c) => sum + (Number(c.initialShrimpCount) || 0),
-        0
-      );
+  // Flattened historical crops for Table view
+  const allFilteredHistoryCrops = useMemo(() => {
+    return groupedFarms.flatMap((f) => f.crops);
+  }, [groupedFarms]);
 
-      const totalPondArea = farmPonds.reduce((acc, p) => acc + (Number(p.areaSize) || 0), 0);
-      const farmArea = Number(farm.area) || 0;
-      const usagePercentage = farmArea > 0 ? Math.min(100, Math.round((totalPondArea / farmArea) * 100)) : 0;
+  // History Statistics KPIs
+  const historyStats = useMemo(() => {
+    const list = allFilteredHistoryCrops;
+    const totalHarvestKg = list.reduce((sum, c) => sum + (c.actualHarvestKg || 0), 0);
+    const totalRevenue = list.reduce((sum, c) => sum + (c.actualHarvestRevenue || 0), 0);
+    const totalCost = list.reduce((sum, c) => sum + (c.actualHarvestCost || 0), 0);
+    const totalProfit = list.reduce((sum, c) => {
+      if (c.actualHarvestProfit !== null && c.actualHarvestProfit !== undefined) {
+        return sum + c.actualHarvestProfit;
+      }
+      const rev = c.actualHarvestRevenue || 0;
+      const cost = c.actualHarvestCost || 0;
+      return sum + (rev - cost);
+    }, 0);
 
-      return {
-        ...farm,
-        crops: farmCrops,
-        activeCropsCount: activeFarmCrops.length,
-        totalFarmShrimp,
-        farmPonds,
-        totalPondArea,
-        farmArea,
-        usagePercentage,
-      };
-    });
-  }, [farms, ponds, crops, activeView, filterStatus, search]);
+    return {
+      totalCount: list.length,
+      totalHarvestKg,
+      totalHarvestTons: (totalHarvestKg / 1000).toFixed(2),
+      totalRevenue,
+      totalCost,
+      totalProfit,
+    };
+  }, [allFilteredHistoryCrops]);
 
   // Total Summary KPIs
   const activeCropsCount = useMemo(() => crops.filter((c) => c.status === 'ACTIVE').length, [crops]);
@@ -502,21 +584,6 @@ export default function CropManagement({
   const handleHarvest = async (e: React.MouseEvent, crop: Crop) => {
     e.stopPropagation();
     setHarvestCrop(crop);
-  };
-
-  const confirmHarvest = async () => {
-    if (!harvestCrop) return;
-    setHarvesting(true);
-    try {
-      await cropService.harvest(harvestCrop.id);
-      showToast('Đã đóng vụ nuôi và ghi nhận thu hoạch!', 'success');
-      setHarvestCrop(null);
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Không thể đóng vụ nuôi', 'error');
-    } finally {
-      setHarvesting(false);
-    }
   };
 
   const validateForm = (): boolean => {
@@ -772,63 +839,233 @@ export default function CropManagement({
       </div>
 
       {/* Filter & View Switcher Bar */}
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-white/60 shadow-xl shadow-blue-900/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        {/* Tab switcher */}
-        <div className="flex bg-slate-100/80 p-1.5 rounded-2xl w-fit">
-          <button
-            onClick={() => setActiveView('active')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeView === 'active'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-white/60 shadow-xl shadow-blue-900/5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Tab switcher */}
+          <div className="flex bg-slate-100/80 p-1.5 rounded-2xl w-fit">
+            <button
+              onClick={() => setActiveView('active')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeView === 'active'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
-          >
-            <Waves className="w-3.5 h-3.5" />
-            Đang nuôi (Active)
-            <span className="px-2 py-0.5 rounded-md bg-blue-50 text-[10px] text-blue-700 font-black border border-blue-100">
-              {activeCropsCount}
-            </span>
-          </button>
+            >
+              <Waves className="w-3.5 h-3.5" />
+              Đang nuôi (Active)
+              <span className="px-2 py-0.5 rounded-md bg-blue-50 text-[10px] text-blue-700 font-black border border-blue-100">
+                {activeCropsCount}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveView('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeView === 'history'
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
+            <button
+              onClick={() => setActiveView('history')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeView === 'history'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            Lịch sử vụ nuôi
-            <span className="px-2 py-0.5 rounded-md bg-slate-200 text-[10px] text-slate-700 font-black">
-              {crops.filter((c) => c.status !== 'ACTIVE').length}
-            </span>
-          </button>
+            >
+              <History className="w-3.5 h-3.5" />
+              Lịch sử vụ nuôi
+              <span className="px-2 py-0.5 rounded-md bg-slate-200 text-[10px] text-slate-700 font-black">
+                {crops.filter((c) => c.status !== 'ACTIVE').length}
+              </span>
+            </button>
+          </div>
+
+          {/* Right controls */}
+          <div className="flex items-center gap-3">
+            {activeView === 'history' && (
+              <div className="flex items-center bg-slate-100/80 p-1 rounded-xl">
+                <button
+                  onClick={() => setHistoryDisplayMode('grid')}
+                  className={`p-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    historyDisplayMode === 'grid'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Xem dạng thẻ"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" /> Dạng Thẻ
+                </button>
+                <button
+                  onClick={() => setHistoryDisplayMode('table')}
+                  className={`p-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    historyDisplayMode === 'table'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Xem dạng bảng tổng hợp"
+                >
+                  <TableIcon className="w-3.5 h-3.5" /> Dạng Bảng
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={fetchData}
+              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-inner cursor-pointer"
+              title="Tải lại danh sách"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
-        {/* Right sub-filters */}
-        <div className="flex items-center gap-3">
-          {activeView === 'history' && (
-            <div className="relative">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="pl-3.5 pr-8 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-inner"
-              >
-                <option value="">Tất cả trạng thái lịch sử</option>
-                <option value="HARVESTED">Đã thu hoạch</option>
-                <option value="FAILED">Thất thu</option>
-              </select>
-              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+        {/* History Advanced Filter Bar */}
+        {activeView === 'history' && (
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-black text-slate-700 mr-1">
+                <Filter className="w-3.5 h-3.5 text-blue-600" />
+                Bộ lọc:
+              </div>
+
+              {/* 1. Filter Year */}
+              <div className="relative">
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="">Tất cả các năm</option>
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      Năm {yr}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {/* 2. Filter Farm */}
+              <div className="relative">
+                <select
+                  value={filterFarmId}
+                  onChange={(e) => {
+                    setFilterFarmId(e.target.value);
+                    setFilterPondId('');
+                  }}
+                  className="pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="">Tất cả trang trại</option>
+                  {farms.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {/* 3. Filter Pond */}
+              <div className="relative">
+                <select
+                  value={filterPondId}
+                  onChange={(e) => setFilterPondId(e.target.value)}
+                  className="pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="">Tất cả ao nuôi</option>
+                  {availableFilterPonds.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {/* 4. Filter Status */}
+              <div className="relative">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="HARVESTED">Đã thu hoạch</option>
+                  <option value="FAILED">Thất thu</option>
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {/* Reset button */}
+              {(filterYear || filterFarmId || filterPondId || filterStatus || search) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterYear('');
+                    setFilterFarmId('');
+                    setFilterPondId('');
+                    setFilterStatus('');
+                    setSearch('');
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Xóa tất cả bộ lọc"
+                >
+                  <RotateCcw className="w-3 h-3" /> Xóa lọc
+                </button>
+              )}
             </div>
-          )}
 
-          <button
-            onClick={fetchData}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-inner cursor-pointer"
-            title="Tải lại danh sách"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+            {/* History KPI summary banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Số vụ lịch sử
+                </span>
+                <span className="text-base font-black text-slate-800 mt-0.5 block">
+                  {historyStats.totalCount} vụ
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100">
+                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">
+                  Tổng sản lượng thu
+                </span>
+                <span className="text-base font-black text-blue-900 mt-0.5 block">
+                  {historyStats.totalHarvestTons} tấn
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                  Tổng doanh thu
+                </span>
+                <span className="text-base font-black text-emerald-900 mt-0.5 block">
+                  {formatVND(historyStats.totalRevenue)} đ
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-100">
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
+                  Tổng chi phí
+                </span>
+                <span className="text-base font-black text-amber-900 mt-0.5 block">
+                  {formatVND(historyStats.totalCost)} đ
+                </span>
+              </div>
+
+              <div
+                className={`p-2.5 rounded-xl border col-span-2 sm:col-span-1 ${
+                  historyStats.totalProfit >= 0
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">
+                  {historyStats.totalProfit >= 0 ? 'Tổng tiền lời (+)' : 'Tổng tiền lỗ (-)'}
+                </span>
+                <span className="text-base font-black mt-0.5 block">
+                  {historyStats.totalProfit >= 0
+                    ? `+${formatVND(historyStats.totalProfit)} đ`
+                    : `${formatVND(historyStats.totalProfit)} đ`}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Loading state */}
@@ -857,6 +1094,189 @@ export default function CropManagement({
           </div>
           <h3 className="text-lg font-bold text-slate-700 mb-1">Không tìm thấy vụ nuôi phù hợp</h3>
           <p className="text-slate-500 text-sm">Không có kết quả nào khớp với từ khóa "{search}".</p>
+        </div>
+      ) : activeView === 'history' && historyDisplayMode === 'table' ? (
+        /* History Table View */
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-slate-200/80 shadow-xl shadow-blue-900/5 overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400"></div>
+          <div className="p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-inner">
+                  <TableIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 tracking-tight">
+                    Bảng Thống Kê & Lịch Sử Thu Hoạch Vụ Nuôi
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Hiển thị {allFilteredHistoryCrops.length} vụ nuôi đã hoàn thành hoặc kết thúc
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {allFilteredHistoryCrops.length === 0 ? (
+              <div className="p-10 text-center">
+                <p className="text-sm font-bold text-slate-700">Không có vụ nuôi nào phù hợp với bộ lọc hiện tại</p>
+                <p className="text-xs text-slate-400 mt-1">Vui lòng điều chỉnh hoặc xóa bộ lọc để xem các vụ khác.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200/80">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
+                      <th className="py-3 px-3.5">Trang trại / Ao</th>
+                      <th className="py-3 px-3.5">Trạng thái</th>
+                      <th className="py-3 px-3.5">Thời gian & DOC</th>
+                      <th className="py-3 px-3.5">Sản lượng thu</th>
+                      <th className="py-3 px-3.5">Size tôm</th>
+                      <th className="py-3 px-3.5">Tỷ lệ sống</th>
+                      <th className="py-3 px-3.5">FCR</th>
+                      <th className="py-3 px-3.5">Tài chính (Lời / Lỗ)</th>
+                      <th className="py-3 px-3.5 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {allFilteredHistoryCrops.map((crop) => {
+                      const farmName = crop.pond?.farm?.name || farms.find((f) => f.id === crop.pond?.farmId)?.name || 'Trang trại';
+                      const pondArea = crop.pond?.areaSize || 0;
+                      const harvestDurationDays = crop.actualHarvestDate
+                        ? Math.max(1, Math.round((new Date(crop.actualHarvestDate).getTime() - new Date(crop.startDate).getTime()) / (1000 * 60 * 60 * 24)))
+                        : (crop.expectedDurationDays || 90);
+                      const tons = crop.actualHarvestKg ? (crop.actualHarvestKg / 1000).toFixed(2) : null;
+                      const profitVal = crop.actualHarvestProfit !== null && crop.actualHarvestProfit !== undefined
+                        ? crop.actualHarvestProfit
+                        : ((crop.actualHarvestRevenue || 0) - (crop.actualHarvestCost || 0));
+                      const isProfit = profitVal > 0;
+                      const isLoss = profitVal < 0;
+
+                      return (
+                        <tr key={crop.id} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="py-3 px-3.5">
+                            <div className="font-bold text-slate-900 text-sm">{crop.pond?.name || 'Ao nuôi'}</div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                              <span>{farmName}</span>
+                              {pondArea > 0 && <span>• {pondArea.toLocaleString()} m²</span>}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${CROP_STATUS_BADGES[crop.status]?.bg || 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${CROP_STATUS_BADGES[crop.status]?.dot || 'bg-slate-400'}`} />
+                              {CROP_STATUS_LABELS[crop.status] || crop.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <div className="font-bold text-slate-800">
+                              {new Date(crop.startDate).toLocaleDateString('vi-VN')}
+                              {crop.actualHarvestDate && ` → ${new Date(crop.actualHarvestDate).toLocaleDateString('vi-VN')}`}
+                            </div>
+                            <div className="text-[11px] text-emerald-700 font-bold mt-0.5">
+                              {harvestDurationDays} ngày (DOC)
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {crop.actualHarvestKg ? (
+                              <div>
+                                <span className="font-bold text-slate-900">{crop.actualHarvestKg.toLocaleString()} kg</span>
+                                <span className="block text-[11px] text-slate-500 font-semibold">(~{tons} tấn)</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {crop.actualHarvestSize ? (
+                              <div>
+                                <span className="font-bold text-slate-900">{crop.actualHarvestSize} con/kg</span>
+                                <span className="block text-[11px] text-slate-500">~{(1000 / crop.actualHarvestSize).toFixed(1)} g/con</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {crop.actualHarvestSurvivalRate !== null && crop.actualHarvestSurvivalRate !== undefined ? (
+                              <div>
+                                <span className="font-bold text-emerald-700">{crop.actualHarvestSurvivalRate}%</span>
+                                {crop.targetSurvivalRate && (
+                                  <span className="block text-[10.5px] text-slate-400">Kế hoạch: {crop.targetSurvivalRate}%</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {crop.actualHarvestFcr !== null && crop.actualHarvestFcr !== undefined ? (
+                              <div>
+                                <span className="font-bold text-blue-700">{crop.actualHarvestFcr.toFixed(2)}</span>
+                                {crop.targetTotalFeedKg && crop.targetHarvestSize && (
+                                  <span className="block text-[10.5px] text-slate-400">
+                                    Kế hoạch: {(crop.targetTotalFeedKg / ((crop.initialShrimpCount * (crop.targetSurvivalRate || 80) / 100) / crop.targetHarvestSize)).toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <div className={`inline-flex flex-col px-2.5 py-1 rounded-xl border ${
+                              isProfit
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                : isLoss
+                                ? 'bg-rose-50 border-rose-200 text-rose-900'
+                                : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}>
+                              <span className="text-[10px] font-bold uppercase opacity-75">
+                                {isProfit ? 'Lời (+)' : isLoss ? 'Lỗ (-)' : 'Hòa vốn'}
+                              </span>
+                              <span className="text-xs font-black">
+                                {isProfit ? `+${formatVND(profitVal)} đ` : `${formatVND(profitVal)} đ`}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setHarvestDetailCrop(crop)}
+                                className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="Xem báo cáo chi tiết thu hoạch & so sánh chỉ tiêu"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> Báo cáo
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
+                                    setHarvestCrop(crop);
+                                  } else {
+                                    openEditModal(crop);
+                                  }
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa'}
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={(e) => handleDelete(e, crop.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                title="Xóa"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         /* Grouped By Farm Sections */
@@ -1087,137 +1507,288 @@ export default function CropManagement({
                                   </div>
                                 )}
 
-                                {/* Matrix stats */}
-                                <div className="grid grid-cols-2 gap-2.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100/80 shadow-inner my-3">
-                                  <div className="flex flex-col gap-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                      <Calendar className="w-3 h-3 text-blue-500" /> Ngày thả giống
-                                    </span>
-                                    <span className="text-xs font-black text-slate-800">{startDateFormatted}</span>
-                                  </div>
+                                {crop.status !== 'ACTIVE' ? (
+                                  /* CARD THEO ĐÚNG YÊU CẦU THẺ ẢNH SỐ 3 */
+                                  (() => {
+                                    const harvestDurationDays = crop.actualHarvestDate
+                                      ? Math.max(1, Math.round((new Date(crop.actualHarvestDate).getTime() - new Date(crop.startDate).getTime()) / (1000 * 60 * 60 * 24)))
+                                      : (crop.expectedDurationDays || 90);
+                                    const tonsVal = crop.actualHarvestKg ? (crop.actualHarvestKg / 1000).toFixed(2) : '0';
+                                    const profitVal = crop.actualHarvestProfit !== null && crop.actualHarvestProfit !== undefined
+                                      ? crop.actualHarvestProfit
+                                      : ((crop.actualHarvestRevenue || 0) - (crop.actualHarvestCost || 0));
+                                    const isProfit = profitVal > 0;
+                                    const isLoss = profitVal < 0;
 
-                                  <div className="flex flex-col gap-0.5">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                      <Clock className="w-3 h-3 text-blue-500" /> Thời gian nuôi
-                                    </span>
-                                    <span className="text-xs font-black text-blue-600">
-                                      {crop.status === 'ACTIVE' ? `Ngày ${doc} (DOC)` : 'Đã kết thúc'}
-                                    </span>
-                                  </div>
+                                    return (
+                                      <div className="space-y-3 my-3">
+                                        {/* 4 thông số chính: Ngày thả, Thời gian nuôi, Số lượng tôm thu, Size */}
+                                        <div className="grid grid-cols-2 gap-2.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100 shadow-inner">
+                                          {/* 1. Ngày thả giống */}
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                              <Calendar className="w-3 h-3 text-blue-500" /> Ngày thả giống
+                                            </span>
+                                            <span className="text-xs font-black text-slate-800">{startDateFormatted}</span>
+                                          </div>
 
-                                  <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                      <Users className="w-3 h-3 text-blue-500" /> Số lượng giống
-                                    </span>
-                                    <span className="text-xs font-black text-slate-800">
-                                      {crop.initialShrimpCount.toLocaleString()}{' '}
-                                      <span className="text-[10px] font-bold text-slate-400">con</span>
-                                    </span>
-                                  </div>
+                                          {/* 2. Thời gian nuôi */}
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                              <Clock className="w-3 h-3 text-emerald-500" /> Thời gian nuôi
+                                            </span>
+                                            <span className="text-xs font-black text-emerald-700">
+                                              {harvestDurationDays} ngày
+                                            </span>
+                                          </div>
 
-                                  <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                      <Gauge className="w-3 h-3 text-blue-500" /> Mật độ thả
-                                    </span>
-                                    <div>
-                                      {cropDensity ? (
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${densityBadgeBg}`}>
-                                          {cropDensity} con/m²
+                                          {/* 3. Số lượng tôm thu (kg/tấn) */}
+                                          <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                              <Scale className="w-3 h-3 text-blue-500" /> Số lượng tôm thu
+                                            </span>
+                                            <span className="text-xs font-black text-blue-900">
+                                              {crop.actualHarvestKg ? (
+                                                <>
+                                                  {crop.actualHarvestKg.toLocaleString()} kg{' '}
+                                                  <span className="text-[10.5px] font-bold text-slate-500">
+                                                    (~{tonsVal} tấn)
+                                                  </span>
+                                                </>
+                                              ) : (
+                                                '--'
+                                              )}
+                                            </span>
+                                          </div>
+
+                                          {/* 4. Size tôm */}
+                                          <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                              <Gauge className="w-3 h-3 text-purple-500" /> Size tôm
+                                            </span>
+                                            <span className="text-xs font-black text-slate-800">
+                                              {crop.actualHarvestSize ? (
+                                                <>
+                                                  {crop.actualHarvestSize}{' '}
+                                                  <span className="text-[10.5px] font-bold text-slate-400">con/kg</span>
+                                                </>
+                                              ) : (
+                                                '--'
+                                              )}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* 5. Tổng tiền lời hay lỗ */}
+                                        <div
+                                          className={`p-3 rounded-2xl border flex items-center justify-between transition-all ${
+                                            isProfit
+                                              ? 'bg-gradient-to-r from-emerald-50 via-teal-50/70 to-emerald-50 border-emerald-200 text-emerald-900'
+                                              : isLoss
+                                              ? 'bg-gradient-to-r from-rose-50 via-red-50/70 to-rose-50 border-rose-200 text-rose-900'
+                                              : 'bg-slate-50 border-slate-200 text-slate-700'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2.5">
+                                            <div
+                                              className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
+                                                isProfit
+                                                  ? 'bg-emerald-100 text-emerald-700'
+                                                  : isLoss
+                                                  ? 'bg-rose-100 text-rose-700'
+                                                  : 'bg-slate-200 text-slate-600'
+                                              }`}
+                                            >
+                                              {isProfit ? (
+                                                <TrendingUp className="w-4 h-4" />
+                                              ) : isLoss ? (
+                                                <TrendingDown className="w-4 h-4" />
+                                              ) : (
+                                                <DollarSign className="w-4 h-4" />
+                                              )}
+                                            </div>
+                                            <div>
+                                              <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">
+                                                {isProfit ? 'Tổng tiền lời' : isLoss ? 'Tổng tiền lỗ' : 'Lợi nhuận vụ'}
+                                              </span>
+                                              <span className="text-sm font-black">
+                                                {isProfit
+                                                  ? `+${formatVND(profitVal)} đ`
+                                                  : isLoss
+                                                  ? `${formatVND(profitVal)} đ`
+                                                  : `${formatVND(profitVal)} đ`}
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setHarvestDetailCrop(crop);
+                                            }}
+                                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-white shadow-2xs border border-slate-200/80 hover:bg-slate-50 text-slate-700 flex items-center gap-1 cursor-pointer transition-all hover:scale-105"
+                                            title="Xem báo cáo chi tiết thu hoạch và đối chiếu chỉ tiêu ban đầu"
+                                          >
+                                            Xem thêm <ArrowRight className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()
+                                ) : (
+                                  <>
+                                    {/* Matrix stats (Cho vụ đang nuôi) */}
+                                    <div className="grid grid-cols-2 gap-2.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100/80 shadow-inner my-3">
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                          <Calendar className="w-3 h-3 text-blue-500" /> Ngày thả giống
                                         </span>
-                                      ) : (
-                                        <span className="text-xs font-semibold text-slate-400">--</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
+                                        <span className="text-xs font-black text-slate-800">{startDateFormatted}</span>
+                                      </div>
 
-                                {/* Target & Planning Snippet */}
-                                {(crop.targetHarvestSize || crop.targetSurvivalRate || crop.targetTotalFeedKg || crop.expectedHarvestDate) && (
-                                  <div className="p-3 bg-gradient-to-r from-blue-50/60 to-indigo-50/50 rounded-2xl border border-blue-100/80 space-y-1.5 text-xs">
-                                    <div className="flex items-center justify-between font-bold text-slate-700">
-                                      <span className="flex items-center gap-1 text-blue-700 text-xs font-bold">
-                                        <Target className="w-3.5 h-3.5 text-blue-600" /> Kế hoạch mục tiêu
-                                      </span>
-                                      {crop.expectedDurationDays && (
-                                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-100/90 text-blue-800 font-bold">
-                                          {crop.expectedDurationDays} ngày
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                          <Clock className="w-3 h-3 text-blue-500" /> Thời gian nuôi
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-2 text-[11px] pt-1.5 border-t border-blue-100/60 text-slate-600">
-                                      <div>
-                                        <span className="text-slate-400 block text-[10px]">Size đích</span>
-                                        <span className="font-bold text-slate-800">
-                                          {crop.targetHarvestSize ? `${crop.targetHarvestSize} con/kg` : '--'}
+                                        <span className="text-xs font-black text-blue-600">
+                                          {crop.status === 'ACTIVE' ? `Ngày ${doc} (DOC)` : 'Đã kết thúc'}
                                         </span>
                                       </div>
-                                      <div>
-                                        <span className="text-slate-400 block text-[10px]">Tỷ lệ sống</span>
-                                        <span className="font-bold text-emerald-700">
-                                          {crop.targetSurvivalRate ? `${crop.targetSurvivalRate}%` : '--'}
+
+                                      <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                          <Users className="w-3 h-3 text-blue-500" /> Số lượng giống
+                                        </span>
+                                        <span className="text-xs font-black text-slate-800">
+                                          {crop.initialShrimpCount.toLocaleString()}{' '}
+                                          <span className="text-[10px] font-bold text-slate-400">con</span>
                                         </span>
                                       </div>
-                                      <div>
-                                        <span className="text-slate-400 block text-[10px]">Thức ăn (kg)</span>
-                                        <span className="font-bold text-amber-700">
-                                          {crop.targetTotalFeedKg ? `${crop.targetTotalFeedKg.toLocaleString()} kg` : '--'}
+
+                                      <div className="flex flex-col gap-0.5 pt-2 border-t border-slate-200/50">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                          <Gauge className="w-3 h-3 text-blue-500" /> Mật độ thả
                                         </span>
+                                        <div>
+                                          {cropDensity ? (
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${densityBadgeBg}`}>
+                                              {cropDensity} con/m²
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs font-semibold text-slate-400">--</span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
+
+                                    {/* Target & Planning Snippet */}
+                                    {(crop.targetHarvestSize || crop.targetSurvivalRate || crop.targetTotalFeedKg || crop.expectedHarvestDate) && (
+                                      <div className="p-3 bg-gradient-to-r from-blue-50/60 to-indigo-50/50 rounded-2xl border border-blue-100/80 space-y-1.5 text-xs">
+                                        <div className="flex items-center justify-between font-bold text-slate-700">
+                                          <span className="flex items-center gap-1 text-blue-700 text-xs font-bold">
+                                            <Target className="w-3.5 h-3.5 text-blue-600" /> Kế hoạch mục tiêu
+                                          </span>
+                                          {crop.expectedDurationDays && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-100/90 text-blue-800 font-bold">
+                                              {crop.expectedDurationDays} ngày
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-[11px] pt-1.5 border-t border-blue-100/60 text-slate-600">
+                                          <div>
+                                            <span className="text-slate-400 block text-[10px]">Size đích</span>
+                                            <span className="font-bold text-slate-800">
+                                              {crop.targetHarvestSize ? `${crop.targetHarvestSize} con/kg` : '--'}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block text-[10px]">Tỷ lệ sống</span>
+                                            <span className="font-bold text-emerald-700">
+                                              {crop.targetSurvivalRate ? `${crop.targetSurvivalRate}%` : '--'}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block text-[10px]">Thức ăn (kg)</span>
+                                            <span className="font-bold text-amber-700">
+                                              {crop.targetTotalFeedKg ? `${crop.targetTotalFeedKg.toLocaleString()} kg` : '--'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
 
                               {/* Card Footer Actions */}
                               <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  {crop.status === 'ACTIVE' && (
+                                  {crop.status !== 'ACTIVE' ? (
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        onNavigateToGrowth?.({
-                                          farmId: farmGroup.id,
-                                          pondId: crop.pondId || (crop.pond as any)?.id,
-                                          cropId: crop.id,
-                                        });
+                                        setHarvestDetailCrop(crop);
                                       }}
-                                      className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
-                                      title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
+                                      className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105"
+                                      title="Xem báo cáo chi tiết thu hoạch và đối chiếu với kế hoạch ban đầu"
                                     >
-                                      <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
+                                      <Target className="w-3.5 h-3.5 text-blue-600" /> Báo cáo chi tiết vụ nuôi
                                     </button>
-                                  )}
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onNavigateToGrowth?.({
+                                            farmId: farmGroup.id,
+                                            pondId: crop.pondId || (crop.pond as any)?.id,
+                                            cropId: crop.id,
+                                          });
+                                        }}
+                                        className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
+                                        title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
+                                      >
+                                        <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
+                                      </button>
 
-                                  {canSplitCrop(crop) && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSplitCropTarget(crop);
-                                      }}
-                                      className="px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-purple-200/90 shadow-2xs hover:scale-105 hover:shadow-purple-500/10"
-                                      title="Tách ao và chuyển sang các ao nuôi thương phẩm"
-                                    >
-                                      <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Tách ao
-                                    </button>
-                                  )}
+                                      {canSplitCrop(crop) && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSplitCropTarget(crop);
+                                          }}
+                                          className="px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-purple-200/90 shadow-2xs hover:scale-105 hover:shadow-purple-500/10"
+                                          title="Tách ao và chuyển sang các ao nuôi thương phẩm"
+                                        >
+                                          <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Tách ao
+                                        </button>
+                                      )}
 
-                                  {crop.status === 'ACTIVE' && (
-                                    <button
-                                      onClick={(e) => handleHarvest(e, crop)}
-                                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/60"
-                                      title="Đóng vụ và ghi nhận đã thu hoạch"
-                                    >
-                                      <CheckCircle2 className="w-3.5 h-3.5" /> Thu hoạch
-                                    </button>
+                                      <button
+                                        onClick={(e) => handleHarvest(e, crop)}
+                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/60"
+                                        title="Mở bảng thu hoạch và tổng kết vụ nuôi"
+                                      >
+                                        <CheckCircle2 className="w-3.5 h-3.5" /> Thu hoạch
+                                      </button>
+                                    </>
                                   )}
                                 </div>
 
                                 <div className="flex items-center gap-1">
                                   <button
-                                    onClick={() => openEditModal(crop)}
+                                    onClick={() => {
+                                      if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
+                                        setHarvestCrop(crop);
+                                      } else {
+                                        openEditModal(crop);
+                                      }
+                                    }}
                                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                                    title="Chỉnh sửa / Cập nhật mục tiêu"
+                                    title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa / Cập nhật mục tiêu'}
                                   >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
@@ -1244,9 +1815,9 @@ export default function CropManagement({
       )}
 
       {/* Create / Edit Modal (Ultra-Professional Spacious Balanced 2-Column) */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-5xl xl:max-w-6xl shadow-2xl overflow-hidden border border-slate-200/80 max-h-[90vh] flex flex-col">
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-5xl xl:max-w-6xl shadow-2xl overflow-hidden border border-slate-200/80 max-h-[90vh] flex flex-col relative">
 
             {/* ── Header ─────────────────────────────────────────── */}
             {(() => {
@@ -1751,40 +2322,35 @@ export default function CropManagement({
             })()}
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Harvest Confirmation Modal */}
+      {/* Harvest Crop Modal (Form thu hoạch, tính toán FCR, doanh thu, kho & so sánh mục tiêu) */}
       {harvestCrop && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center">
-            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">Xác nhận thu hoạch</h3>
-            <p className="text-slate-500 text-sm mb-6">
-              Bạn có chắc chắn muốn đóng vụ nuôi tại{' '}
-              <span className="font-semibold text-slate-700">{harvestCrop.pond?.name || 'ao nuôi'}</span>?
-              Trạng thái vụ sẽ chuyển thành “Đã thu hoạch”.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setHarvestCrop(null)}
-                disabled={harvesting}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors text-sm cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                onClick={confirmHarvest}
-                disabled={harvesting}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center cursor-pointer"
-              >
-                {harvesting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Thu hoạch ngay'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <HarvestCropModal
+          isOpen={!!harvestCrop}
+          crop={harvestCrop}
+          onClose={() => setHarvestCrop(null)}
+          onSuccess={(msg) => {
+            showToast(msg, 'success');
+            setHarvestCrop(null);
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Harvest Detail & Target Comparison Modal */}
+      {harvestDetailCrop && (
+        <HarvestDetailModal
+          isOpen={!!harvestDetailCrop}
+          crop={harvestDetailCrop}
+          onClose={() => setHarvestDetailCrop(null)}
+          onEditHarvest={(cropToEdit) => {
+            setHarvestDetailCrop(null);
+            setHarvestCrop(cropToEdit);
+          }}
+        />
       )}
 
       {/* Split Crop Modal */}

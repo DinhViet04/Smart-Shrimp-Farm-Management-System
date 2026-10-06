@@ -12,6 +12,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
 import { SplitCropDto } from './dto/split-crop.dto.js';
+import { HarvestCropDto } from './dto/harvest-crop.dto.js';
 
 export interface TrajectoryItem {
   doc: number;
@@ -476,7 +477,161 @@ export class CropsService {
     return { message: 'Xóa vụ nuôi thành công' };
   }
 
-  async harvest(user: AuthUser, id: string) {
+  async getHarvestSummary(user: AuthUser, id: string) {
+    const crop = await (this.prisma.crop as any).findUnique({
+      where: { id },
+      include: {
+        pond: {
+          include: {
+            farm: true,
+          },
+        },
+        feedingLogs: {
+          include: {
+            feedProduct: true,
+          },
+        },
+      },
+    });
+
+    if (!crop) {
+      throw new NotFoundException('Không tìm thấy vụ nuôi');
+    }
+
+    await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+
+    // 1. Calculate Feed usage from feeding logs
+    const feedMap = new Map<string, {
+      inventoryId: string;
+      itemName: string;
+      category: string;
+      quantityUsed: number;
+      unit: string;
+      unitPrice: number;
+      totalCost: number;
+    }>();
+
+    let totalFeedKg = 0;
+    for (const log of (crop.feedingLogs || [])) {
+      if (log.feedingStatus !== 'SKIPPED' && log.feedProductId && log.feedProduct) {
+        const amt = Number(log.feedAmount) || 0;
+        totalFeedKg += amt;
+        const prod = log.feedProduct;
+        const pkgWeight = Number(prod.weightPerPkg) || 1;
+        const pricePerPkg = Number(prod.pricePerPackage) || 0;
+        const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
+
+        const existing = feedMap.get(prod.id);
+        if (existing) {
+          existing.quantityUsed += amt;
+          existing.totalCost += amt * unitPrice;
+        } else {
+          feedMap.set(prod.id, {
+            inventoryId: prod.id,
+            itemName: prod.itemName,
+            category: 'FEED',
+            quantityUsed: amt,
+            unit: prod.unit || 'kg',
+            unitPrice: Math.round(unitPrice),
+            totalCost: Math.round(amt * unitPrice),
+          });
+        }
+      }
+    }
+
+    const feedLogs = Array.from(feedMap.values());
+    const totalFeedCost = feedLogs.reduce((sum, f) => sum + f.totalCost, 0);
+
+    // 2. Fetch warehouse usage logs for MEDICINE & CHEMICAL related to this pond/farm during crop lifecycle
+    const pondName = crop.pond?.name || '';
+    const startDate = new Date(crop.startDate);
+
+    const usageLogs = await (this.prisma.inventoryUsageLog as any).findMany({
+      where: {
+        OR: [
+          { cropId: crop.id },
+          { pondId: crop.pondId },
+          { notes: { contains: pondName, mode: 'insensitive' } },
+        ],
+        usageDate: { gte: startDate },
+      },
+      include: {
+        inventory: true,
+      },
+      orderBy: { usageDate: 'asc' },
+    });
+
+    const medicineMap = new Map<string, any>();
+    const chemicalMap = new Map<string, any>();
+
+    for (const u of usageLogs) {
+      const inv = u.inventory;
+      if (!inv || inv.deletedAt) continue;
+
+      const qty = Number(u.quantityUsed) || 0;
+      const pkgWeight = Number(inv.weightPerPkg) || 1;
+      const pricePerPkg = Number(inv.pricePerPackage) || 0;
+      const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
+      const cost = Math.round(qty * unitPrice);
+
+      const targetMap = inv.category === 'MEDICINE' ? medicineMap : (inv.category === 'CHEMICAL' ? chemicalMap : null);
+      if (targetMap) {
+        const existing = targetMap.get(inv.id);
+        if (existing) {
+          existing.quantityUsed += qty;
+          existing.totalCost += cost;
+        } else {
+          targetMap.set(inv.id, {
+            inventoryId: inv.id,
+            itemName: inv.itemName,
+            category: inv.category,
+            quantityUsed: qty,
+            unit: inv.unit || 'đơn vị',
+            unitPrice: Math.round(unitPrice),
+            totalCost: cost,
+          });
+        }
+      }
+    }
+
+    const medicineLogs = Array.from(medicineMap.values());
+    const chemicalLogs = Array.from(chemicalMap.values());
+    const totalMedicineCost = medicineLogs.reduce((sum, m) => sum + m.totalCost, 0);
+    const totalChemicalCost = chemicalLogs.reduce((sum, c) => sum + c.totalCost, 0);
+
+    const totalCost = totalFeedCost + totalMedicineCost + totalChemicalCost;
+
+    // 3. Available inventory items in the farm
+    const availableInventory = await this.prisma.inventory.findMany({
+      where: {
+        farmId: crop.pond.farmId,
+        deletedAt: null,
+      },
+      orderBy: { itemName: 'asc' },
+    });
+
+    // 4. Calculate DOC
+    const now = new Date();
+    const diffDays = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+    return {
+      crop,
+      doc: diffDays,
+      summary: {
+        totalFeedKg: Math.round(totalFeedKg * 100) / 100,
+        totalFeedCost,
+        totalMedicineCost,
+        totalChemicalCost,
+        totalCost,
+        feedLogs,
+        medicineLogs,
+        chemicalLogs,
+        availableInventory,
+      },
+    };
+  }
+
+  async harvest(user: AuthUser, id: string, dto?: HarvestCropDto) {
     const crop = await this.prisma.crop.findUnique({
       where: { id },
       include: { pond: true },
@@ -488,15 +643,49 @@ export class CropsService {
 
     await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
 
-    if (crop.status !== 'ACTIVE') {
+    if (crop.status !== 'ACTIVE' && crop.status !== 'HARVESTED') {
       throw new BadRequestException(
-        'Chỉ có thể thu hoạch vụ nuôi đang hoạt động',
+        'Chỉ có thể thu hoạch hoặc chỉnh sửa thông tin thu hoạch cho vụ nuôi đang hoạt động hoặc đã thu hoạch',
       );
     }
 
-    return this.prisma.crop.update({
+    const updateData: any = {
+      status: 'HARVESTED',
+    };
+
+    if (dto) {
+      if (dto.actualHarvestKg !== undefined) updateData.actualHarvestKg = dto.actualHarvestKg;
+      if (dto.actualHarvestSize !== undefined) updateData.actualHarvestSize = dto.actualHarvestSize;
+      if (dto.actualHarvestCount !== undefined) {
+        updateData.actualHarvestCount = dto.actualHarvestCount;
+      } else if (dto.actualHarvestKg && dto.actualHarvestSize) {
+        updateData.actualHarvestCount = Math.round(dto.actualHarvestKg * dto.actualHarvestSize);
+      }
+
+      if (dto.actualHarvestPricePerKg !== undefined) updateData.actualHarvestPricePerKg = dto.actualHarvestPricePerKg;
+      if (dto.actualHarvestRevenue !== undefined) updateData.actualHarvestRevenue = dto.actualHarvestRevenue;
+      if (dto.actualHarvestCost !== undefined) updateData.actualHarvestCost = dto.actualHarvestCost;
+      if (dto.actualHarvestProfit !== undefined) updateData.actualHarvestProfit = dto.actualHarvestProfit;
+      if (dto.actualHarvestFcr !== undefined) updateData.actualHarvestFcr = dto.actualHarvestFcr;
+      if (dto.actualHarvestSurvivalRate !== undefined) updateData.actualHarvestSurvivalRate = dto.actualHarvestSurvivalRate;
+      if (dto.harvestFeedCost !== undefined) updateData.harvestFeedCost = dto.harvestFeedCost;
+      if (dto.harvestMedicineCost !== undefined) updateData.harvestMedicineCost = dto.harvestMedicineCost;
+      if (dto.harvestChemicalCost !== undefined) updateData.harvestChemicalCost = dto.harvestChemicalCost;
+      if (dto.harvestFeedKg !== undefined) updateData.harvestFeedKg = dto.harvestFeedKg;
+      if (dto.harvestNote !== undefined) updateData.harvestNote = dto.harvestNote;
+      
+      if (dto.actualHarvestDate) {
+        updateData.actualHarvestDate = new Date(dto.actualHarvestDate);
+      } else if (!crop.actualHarvestDate) {
+        updateData.actualHarvestDate = new Date();
+      }
+    } else if (!crop.actualHarvestDate) {
+      updateData.actualHarvestDate = new Date();
+    }
+
+    return (this.prisma.crop as any).update({
       where: { id },
-      data: { status: 'HARVESTED' },
+      data: updateData,
       include: { pond: { select: { id: true, name: true, areaSize: true, depth: true, farmId: true } } },
     });
   }

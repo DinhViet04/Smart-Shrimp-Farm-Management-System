@@ -80,7 +80,10 @@ export const inventoryService = {
       body: JSON.stringify(data),
     });
     const resData = await response.json();
-    if (!response.ok) throw new Error(resData.message || 'Failed to update inventory item');
+    if (!response.ok) {
+      const msg = Array.isArray(resData?.message) ? resData.message.join(', ') : resData?.message;
+      throw new Error(msg || 'Failed to update inventory item');
+    }
     return resData;
   },
 
@@ -90,7 +93,10 @@ export const inventoryService = {
       body: JSON.stringify(data),
     });
     const resData = await response.json();
-    if (!response.ok) throw new Error(resData.message || 'Không thể ghi nhận tiêu thụ tồn kho');
+    if (!response.ok) {
+      const msg = Array.isArray(resData?.message) ? resData.message.join(', ') : resData?.message;
+      throw new Error(msg || 'Không thể ghi nhận tiêu thụ tồn kho');
+    }
     return resData;
   },
 
@@ -100,7 +106,10 @@ export const inventoryService = {
       body: JSON.stringify(data),
     });
     const resData = await response.json();
-    if (!response.ok) throw new Error(resData.message || 'Không thể ghi nhận nhập kho');
+    if (!response.ok) {
+      const msg = Array.isArray(resData?.message) ? resData.message.join(', ') : resData?.message;
+      throw new Error(msg || 'Không thể ghi nhận nhập kho');
+    }
     return resData;
   },
 
@@ -109,7 +118,10 @@ export const inventoryService = {
       method: 'DELETE',
     });
     const resData = await response.json();
-    if (!response.ok) throw new Error(resData.message || 'Failed to delete inventory item');
+    if (!response.ok) {
+      const msg = Array.isArray(resData?.message) ? resData.message.join(', ') : resData?.message;
+      throw new Error(msg || 'Failed to delete inventory item');
+    }
     return resData;
   },
 };

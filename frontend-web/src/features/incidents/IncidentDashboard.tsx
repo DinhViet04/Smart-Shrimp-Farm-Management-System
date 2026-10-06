@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Clock3, Plus, RefreshCw, Search, Stethoscope, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Bot, CheckCircle2, Clock3, Plus, RefreshCw, Search, Stethoscope, X } from 'lucide-react';
 import { incidentService, type Incident, type IncidentStatus, type IncidentTechnician } from '../../services/incident.service';
 import { type Crop } from '../../services/crop.service';
 import { pondService } from '../../services/pond.service';
 import LoadingMotion from '../../components/LoadingMotion';
+import TreatmentWorkspace from './TreatmentWorkspace';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Chờ xử lý',
@@ -16,6 +17,46 @@ const STATUS_STYLES: Record<IncidentStatus, string> = {
   TREATING: 'bg-blue-50 text-blue-700 border-blue-200',
   RESOLVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
+
+const STATUS_CONFIG: Record<IncidentStatus, {
+  label: string;
+  badgeStyle: string;
+  headerBg: string;
+  headerText: string;
+  headerBorder: string;
+  icon: typeof AlertTriangle;
+  emptyText: string;
+}> = {
+  OPEN: {
+    label: 'Chờ xử lý',
+    badgeStyle: 'bg-amber-50 text-amber-700 border-amber-200',
+    headerBg: 'bg-amber-500/10 border-amber-200/80 text-amber-900',
+    headerText: 'text-amber-600',
+    headerBorder: 'border-amber-200',
+    icon: AlertTriangle,
+    emptyText: 'Không có sự cố chờ xử lý',
+  },
+  TREATING: {
+    label: 'Đang điều trị',
+    badgeStyle: 'bg-blue-50 text-blue-700 border-blue-200',
+    headerBg: 'bg-blue-500/10 border-blue-200/80 text-blue-900',
+    headerText: 'text-blue-600',
+    headerBorder: 'border-blue-200',
+    icon: Stethoscope,
+    emptyText: 'Không có sự cố đang điều trị',
+  },
+  RESOLVED: {
+    label: 'Đã xử lý',
+    badgeStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    headerBg: 'bg-emerald-500/10 border-emerald-200/80 text-emerald-900',
+    headerText: 'text-emerald-600',
+    headerBorder: 'border-emerald-200',
+    icon: CheckCircle2,
+    emptyText: 'Không có sự cố đã xử lý',
+  },
+};
+
+const ALL_STATUSES: IncidentStatus[] = ['OPEN', 'TREATING', 'RESOLVED'];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Đã xảy ra lỗi';
@@ -59,6 +100,7 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
   const [createForm, setCreateForm] = useState({ cropId: '', title: '', description: '' });
   const [createErrors, setCreateErrors] = useState<CreateIncidentErrors>({});
   const [technicians, setTechnicians] = useState<IncidentTechnician[]>([]);
+  const [activeWorkspaceIncident, setActiveWorkspaceIncident] = useState<Incident | null>(null);
 
   const loadIncidents = useCallback(async () => {
     setLoading(true);
@@ -210,12 +252,18 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
     setNotice(message);
   };
 
+  const openTreatmentWorkspace = (inc: Incident) => {
+    setSelected(null);
+    setActiveWorkspaceIncident(inc);
+  };
+
   const startTreatment = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      await incidentService.startTreatment(selected.id);
-      await refreshSelected('Đã bắt đầu điều trị sự cố.');
+      const updated = await incidentService.startTreatment(selected.id);
+      setSelected(null);
+      setActiveWorkspaceIncident(updated);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -264,6 +312,20 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
       setSaving(false);
     }
   };
+
+  if (activeWorkspaceIncident) {
+    return (
+      <TreatmentWorkspace
+        incident={activeWorkspaceIncident}
+        onBack={() => {
+          setActiveWorkspaceIncident(null);
+          loadIncidents();
+        }}
+        currentUserRole={role}
+        currentUserId={currentUserId}
+      />
+    );
+  }
 
   return (
     <div className="relative mx-auto w-full max-w-7xl space-y-6">
@@ -344,40 +406,105 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
           icon={<AlertTriangle className="w-10 h-10 text-rose-600 animate-pulse" />}
           color="rose"
         />
-      ) : incidents.length === 0 ? (
-        <div className="flex h-56 flex-col items-center justify-center rounded-3xl border border-slate-100 bg-white text-center">
-          <CheckCircle2 className="mb-3 h-10 w-10 text-emerald-400" />
-          <h3 className="font-bold text-slate-700">Không có sự cố phù hợp</h3>
-          <p className="text-sm text-slate-400">Hãy thay đổi bộ lọc hoặc làm mới dữ liệu.</p>
-        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {incidents.map((incident) => (
-            <button key={incident.id} onClick={() => openIncident(incident)} className={`group rounded-3xl border border-white/60 bg-white/90 p-5 text-left shadow-lg shadow-slate-200/50 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl ${isFarmer ? 'hover:shadow-teal-500/10' : 'hover:shadow-indigo-500/10'}`}>
-              <div className="flex items-start justify-between gap-3">
-                <AlertTriangle className="h-6 w-6 shrink-0 text-amber-500" />
-                <span className={`rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[incident.status]}`}>{STATUS_LABELS[incident.status]}</span>
-              </div>
-              <h3 className="mt-4 text-lg font-black text-slate-800">{incident.title}</h3>
-              <p className="mt-1 line-clamp-2 text-sm text-slate-500">{incident.description}</p>
-              <div className="mt-4 space-y-1 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                <p><strong>{incident.crop.pond.farm.name}</strong> · {incident.crop.pond.name}</p>
-                <p>Phụ trách: {incident.assignedTo?.fullName || 'Chưa phân công'}</p>
-                <p>{incident._count?.updates ?? 0} cập nhật · {new Date(incident.updatedAt).toLocaleString('vi-VN')}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+        (() => {
+          const visibleStatuses: IncidentStatus[] = status
+            ? [(status as IncidentStatus)]
+            : ALL_STATUSES;
+
+          return (
+            <div className={`grid gap-6 ${visibleStatuses.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' : 'grid-cols-1 lg:grid-cols-3'}`}>
+              {visibleStatuses.map((statusKey) => {
+                const config = STATUS_CONFIG[statusKey];
+                const StatusIcon = config.icon;
+                const items = incidents.filter((item) => item.status === statusKey);
+
+                return (
+                  <div
+                    key={statusKey}
+                    className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 shadow-sm backdrop-blur-xl min-h-[450px]"
+                  >
+                    {/* Header Cột Trạng Thái */}
+                    <div className={`flex items-center justify-between rounded-2xl border ${config.headerBorder} ${config.headerBg} p-3.5 mb-4 shadow-xs`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-xs ${config.headerText}`}>
+                          <StatusIcon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-slate-800 text-base leading-tight">
+                            {config.label}
+                          </h3>
+                          <span className="text-xs font-medium text-slate-500">
+                            {items.length} sự cố
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[statusKey]}`}>
+                        {items.length}
+                      </span>
+                    </div>
+
+                    {/* Danh Sách Thẻ Sự Cố Theo Trạng Thái */}
+                    <div className="flex-1 space-y-3.5">
+                      {items.length === 0 ? (
+                        <div className="flex h-44 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-center">
+                          <StatusIcon className="mb-2 h-7 w-7 text-slate-300" />
+                          <p className="text-sm font-bold text-slate-400">{config.emptyText}</p>
+                        </div>
+                      ) : (
+                        items.map((incident) => (
+                          <button
+                            key={incident.id}
+                            onClick={() => openIncident(incident)}
+                            className={`w-full group rounded-2xl border border-white/80 bg-white p-4 text-left shadow-sm shadow-slate-200/60 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-md ${
+                              isFarmer ? 'hover:border-teal-300 hover:shadow-teal-500/10' : 'hover:border-indigo-300 hover:shadow-indigo-500/10'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                                {incident.title}
+                              </h4>
+                              <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${STATUS_STYLES[incident.status]}`}>
+                                {STATUS_LABELS[incident.status]}
+                              </span>
+                            </div>
+
+                            <p className="mt-2 line-clamp-2 text-xs font-medium text-slate-500 leading-relaxed">
+                              {incident.description}
+                            </p>
+
+                            <div className="mt-3 space-y-1 border-t border-slate-100 pt-2.5 text-[11px] font-medium text-slate-500">
+                              <p className="truncate">
+                                <strong className="text-slate-700">{incident.crop.pond.farm.name}</strong> · {incident.crop.pond.name}
+                              </p>
+                              <p className="truncate text-slate-500">
+                                Phụ trách: <span className="font-semibold text-slate-700">{incident.assignedTo?.fullName || 'Chưa phân công'}</span>
+                              </p>
+                              <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                                <span>{incident._count?.updates ?? 0} cập nhật</span>
+                                <span>{new Date(incident.updatedAt).toLocaleDateString('vi-VN')}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl border border-white/60 bg-white/95 p-6 shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
               <div><h3 className="text-xl font-black text-slate-800">Báo cáo sự cố</h3><p className="text-sm text-slate-500">Ghi nhận sự cố cho một vụ nuôi đang hoạt động.</p></div>
               <button onClick={() => { setShowCreate(false); setCreateErrors({}); }} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div><label className="mb-1 block text-sm font-bold text-slate-700">Vụ nuôi <span className="text-red-500">*</span></label><select value={createForm.cropId} onChange={(event) => updateCreateField('cropId', event.target.value)} aria-invalid={Boolean(createErrors.cropId)} className={`w-full rounded-xl border bg-white p-3 text-sm outline-none ${createErrors.cropId ? 'border-red-400 bg-red-50/40 focus:border-red-500' : 'border-slate-200 focus:border-indigo-400'}`}>
                 {loadingCrops && <option value="">Đang tải vụ nuôi...</option>}
                 {!loadingCrops && activeCrops.length === 0 && <option value="">Không có vụ nuôi đang hoạt động</option>}
@@ -393,9 +520,9 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/60 bg-white/95 shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
-            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50/95 to-white/95 px-6 py-5 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
+            <div className="flex shrink-0 items-start justify-between border-b border-slate-100 bg-slate-50/90 px-6 py-4">
               <div>
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-black text-slate-800">{selected.title}</h3>
@@ -406,7 +533,7 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
               <button onClick={closeIncident} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
 
-            <div className="space-y-6 p-6">
+            <div className="flex-1 overflow-y-auto space-y-6 p-6">
               <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                 <p>{selected.description}</p>
                 <p className="mt-2 text-xs">Người báo cáo: <strong>{selected.reporter?.fullName || 'Dữ liệu cũ chưa ghi nhận'}</strong></p>
@@ -446,40 +573,71 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
                 ) : <p className="text-sm text-slate-400">Chưa có cập nhật điều trị.</p>}
               </div>
 
-              {!loadingDetail && (role === 'FARM_MANAGER' && selected.status === 'RESOLVED' ? (
-                <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
-                  <h4 className="font-black text-amber-900">Mở lại sự cố</h4>
-                  <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder="Lý do mở lại..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-amber-400" />
-                  <button onClick={reopen} disabled={saving} className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
-                </div>
-              ) : role !== 'TECHNICIAN' ? (
-                <div className="rounded-xl bg-slate-50 p-3 text-center text-sm font-semibold text-slate-500">Bạn có thể theo dõi tiến trình; việc điều trị do kỹ thuật viên được phân công thực hiện.</div>
-              ) : selected.assignedToId !== currentUserId ? (
-                <div className="rounded-xl bg-amber-50 p-3 text-center text-sm font-semibold text-amber-700">Sự cố này chưa được giao cho bạn nên bạn không thể cập nhật điều trị.</div>
-              ) : selected.status === 'OPEN' ? (
-                <button onClick={startTreatment} disabled={saving} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">Bắt đầu điều trị</button>
-              ) : (
-                <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-                  <h4 className="flex items-center gap-2 font-black text-indigo-900"><Stethoscope className="h-4 w-4" /> {selected.status === 'RESOLVED' ? 'Mở lại sự cố' : 'Cập nhật điều trị'}</h4>
-                  <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder={selected.status === 'RESOLVED' ? 'Lý do mở lại...' : 'Biện pháp điều trị đã thực hiện...'} className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                  {selected.status === 'TREATING' && (
-                    <>
-                      <textarea value={observation} onChange={(event) => setObservation(event.target.value)} rows={2} placeholder="Quan sát sau điều trị (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                      <textarea value={result} onChange={(event) => setResult(event.target.value)} rows={2} placeholder="Kết quả (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                    </>
-                  )}
-                  <div className="flex gap-3">
-                    {selected.status === 'RESOLVED' ? (
-                      <button onClick={reopen} disabled={saving} className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
-                    ) : (
+              {!loadingDetail && (
+                role === 'FARM_MANAGER' && selected.status === 'RESOLVED' ? (
+                  <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                    <h4 className="font-black text-amber-900">Mở lại sự cố</h4>
+                    <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder="Lý do mở lại..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-amber-400" />
+                    <button onClick={reopen} disabled={saving} className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
+                  </div>
+                ) : role !== 'TECHNICIAN' ? (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => openTreatmentWorkspace(selected)}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
+                    >
+                      <Bot className="h-4 w-4 text-cyan-300" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
+                    </button>
+                    <div className="rounded-xl bg-slate-50 p-3 text-center text-sm font-semibold text-slate-500">
+                      Bạn có thể theo dõi tiến trình; việc điều trị do kỹ thuật viên được phân công thực hiện.
+                    </div>
+                  </div>
+                ) : selected.assignedToId !== currentUserId ? (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => openTreatmentWorkspace(selected)}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
+                    >
+                      <Bot className="h-4 w-4 text-cyan-300" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
+                    </button>
+                    <div className="rounded-xl bg-amber-50 p-3 text-center text-sm font-semibold text-amber-700">
+                      Sự cố này chưa được giao cho bạn nên bạn không thể cập nhật điều trị.
+                    </div>
+                  </div>
+                ) : selected.status === 'OPEN' ? (
+                  <button onClick={startTreatment} disabled={saving} className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition-all">
+                    <Stethoscope className="h-4 w-4" /> Bắt đầu điều trị (Mở trang AI & Vật tư kho)
+                  </button>
+                ) : (
+                  <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                    <button
+                      onClick={() => openTreatmentWorkspace(selected)}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3 text-sm font-bold text-white shadow-md hover:from-indigo-700 hover:to-blue-700 transition-all"
+                    >
+                      <Bot className="h-4 w-4 text-cyan-300" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
+                    </button>
+
+                    <h4 className="flex items-center gap-2 font-black text-indigo-900 pt-2"><Stethoscope className="h-4 w-4" /> {selected.status === 'RESOLVED' ? 'Mở lại sự cố' : 'Cập nhật điều trị Nhanh'}</h4>
+                    <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder={selected.status === 'RESOLVED' ? 'Lý do mở lại...' : 'Biện pháp điều trị đã thực hiện...'} className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
+                    {selected.status === 'TREATING' && (
                       <>
-                        <button onClick={() => submitUpdate(false)} disabled={saving} className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Lưu cập nhật</button>
-                        <button onClick={() => submitUpdate(true)} disabled={saving} className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Đã xử lý</button>
+                        <textarea value={observation} onChange={(event) => setObservation(event.target.value)} rows={2} placeholder="Quan sát sau điều trị (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
+                        <textarea value={result} onChange={(event) => setResult(event.target.value)} rows={2} placeholder="Kết quả (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
                       </>
                     )}
+                    <div className="flex gap-3">
+                      {selected.status === 'RESOLVED' ? (
+                        <button onClick={reopen} disabled={saving} className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
+                      ) : (
+                        <>
+                          <button onClick={() => submitUpdate(false)} disabled={saving} className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Lưu cập nhật</button>
+                          <button onClick={() => submitUpdate(true)} disabled={saving} className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Đã xử lý</button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           </div>
         </div>

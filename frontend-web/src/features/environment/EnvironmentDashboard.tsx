@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, History, LineChart } from 'lucide-react';
+import { ClipboardList, History, LineChart, Wrench } from 'lucide-react';
 import RecordWaterQuality from './RecordWaterQuality';
 import WaterQualityHistory from './WaterQualityHistory';
 import EnvironmentTrendDashboard from './EnvironmentTrendDashboard';
+import WaterTreatment from './WaterTreatment';
 
 interface EnvironmentDashboardProps {
   viewOnly?: boolean;
@@ -16,7 +17,7 @@ export default function EnvironmentDashboard({
   initialPondId,
 }: EnvironmentDashboardProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [subTab, setSubTab] = useState<'record' | 'history' | 'trend'>(
+  const [subTab, setSubTab] = useState<'record' | 'history' | 'trend' | 'treatment'>(
     viewOnly || initialPondId ? 'trend' : 'record',
   );
 
@@ -91,6 +92,18 @@ export default function EnvironmentDashboard({
           <History className="w-4 h-4" />
           Lịch sử đo lường
         </button>
+
+        <button
+          onClick={() => setSubTab('treatment')}
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
+            subTab === 'treatment'
+              ? activeTabClass
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Wrench className="w-4 h-4" />
+          Xử lý môi trường nước
+        </button>
       </div>
 
       {/* ── Active Component View ─────────────────────────────────────────── */}
@@ -102,8 +115,13 @@ export default function EnvironmentDashboard({
             initialFarmId={initialFarmId}
             initialPondId={initialPondId}
           />
-        ) : (
+        ) : subTab === 'history' ? (
           <WaterQualityHistory
+            initialFarmId={initialFarmId}
+            initialPondId={initialPondId}
+          />
+        ) : (
+          <WaterTreatment
             initialFarmId={initialFarmId}
             initialPondId={initialPondId}
           />
@@ -112,3 +130,4 @@ export default function EnvironmentDashboard({
     </div>
   );
 }
+

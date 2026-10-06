@@ -18,4 +18,8 @@ export class CreateInventoryUsageDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  pondId?: string;
 }

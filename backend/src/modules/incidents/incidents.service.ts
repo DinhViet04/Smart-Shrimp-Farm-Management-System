@@ -200,8 +200,8 @@ export class IncidentsService {
   async addTreatmentUpdate(user: AuthUser, id: string, dto: CreateTreatmentUpdateDto) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status !== 'TREATING') {
-      throw new BadRequestException('Chỉ được cập nhật sự cố đang điều trị');
+    if (incident.status === 'RESOLVED') {
+      throw new BadRequestException('Không thể cập nhật sự cố đã đóng');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -223,6 +223,7 @@ export class IncidentsService {
         data: {
           treatment: dto.treatment.trim(),
           status: 'TREATING',
+          ...(incident.status === 'OPEN' ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -232,8 +233,8 @@ export class IncidentsService {
   async resolve(user: AuthUser, id: string, dto: ResolveIncidentDto) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status !== 'TREATING') {
-      throw new BadRequestException('Chỉ có thể hoàn tất sự cố đang điều trị');
+    if (incident.status === 'RESOLVED') {
+      throw new BadRequestException('Sự cố này đã xử lý xong');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -254,6 +255,7 @@ export class IncidentsService {
           treatment: dto.treatment.trim(),
           status: 'RESOLVED',
           resolvedAt: new Date(),
+          ...(incident.status === 'OPEN' ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -306,8 +308,11 @@ export class IncidentsService {
 
   private async assertCanTreat(user: AuthUser, incident: Awaited<ReturnType<IncidentsService['getIncident']>>) {
     await this.farmAccess.assertCanAccessFarm(user, incident.crop.pond.farmId);
+    if (user.role === 'FARM_MANAGER' || user.role === 'ADMIN') {
+      return;
+    }
     if (user.role !== 'TECHNICIAN' || incident.assignedToId !== user.userId) {
-      throw new ForbiddenException('Chỉ kỹ thuật viên được phân công mới có thể điều trị sự cố');
+      throw new ForbiddenException('Chỉ kỹ thuật viên được phân công hoặc Quản lý trang trại mới có thể điều trị sự cố');
     }
   }
 

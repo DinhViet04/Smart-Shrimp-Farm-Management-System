@@ -13,6 +13,7 @@ import {
 import { WaterQualityService } from './water-quality.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { GetWaterQualityHistoryDto } from './dto/get-water-quality-history.dto.js';
+import { GetManagerWaterTrendsDto } from './dto/get-manager-water-trends.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -39,6 +40,15 @@ export class WaterQualityController {
   @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
   findAllByPond(@Request() req: any, @Param('pondId') pondId: string) {
     return this.waterQualityService.findAllByPond(pondId, req.user);
+  }
+
+  @Get('manager-trends')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  getManagerTrends(
+    @Request() req: any,
+    @Query() query: GetManagerWaterTrendsDto,
+  ) {
+    return this.waterQualityService.getManagerTrends(req.user, query);
   }
 
   @Get('trends')

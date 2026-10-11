@@ -8,6 +8,7 @@ import {
 } from '../farm-access/farm-access.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { NotificationLevel } from '@prisma/client';
+import { GetManagerWaterTrendsDto } from './dto/get-manager-water-trends.dto.js';
 
 @Injectable()
 export class WaterQualityService {
@@ -485,6 +486,121 @@ export class WaterQualityService {
         overallStatus,
       };
     });
+  }
+
+  async getManagerTrends(
+    user: AuthUser,
+    query: GetManagerWaterTrendsDto,
+  ) {
+    const days = query.days ?? 7;
+    if (query.farmId) {
+      await this.farmAccess.assertCanAccessFarm(user, query.farmId);
+    }
+
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
+    const farmIds = query.farmId ? [query.farmId] : accessibleFarmIds;
+    const pondFilter = farmIds === undefined
+      ? undefined
+      : { farmId: { in: farmIds } };
+
+    const rangeEnd = new Date();
+    rangeEnd.setUTCHours(23, 59, 59, 999);
+    const rangeStart = new Date(rangeEnd);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - days + 1);
+    rangeStart.setUTCHours(0, 0, 0, 0);
+
+    const [trendRecords, latestGroups] = await Promise.all([
+      this.prisma.waterQualityRecord.findMany({
+        where: {
+          recordTime: { gte: rangeStart, lte: rangeEnd },
+          ...(pondFilter ? { pond: pondFilter } : {}),
+        },
+        select: {
+          recordTime: true,
+          dissolvedOxygen: true,
+          ph: true,
+        },
+        orderBy: { recordTime: 'asc' },
+      }),
+      this.prisma.waterQualityRecord.groupBy({
+        by: ['pondId'],
+        where: pondFilter ? { pond: pondFilter } : {},
+        _max: { recordTime: true },
+      }),
+    ]);
+
+    const latestRecords = latestGroups.length
+      ? await this.prisma.waterQualityRecord.findMany({
+        where: {
+          ...(pondFilter ? { pond: pondFilter } : {}),
+          OR: latestGroups.flatMap((group) => group._max.recordTime
+            ? [{ pondId: group.pondId, recordTime: group._max.recordTime }]
+            : []),
+        },
+        select: {
+          pondId: true,
+          recordTime: true,
+          temperature: true,
+          ph: true,
+          dissolvedOxygen: true,
+          salinity: true,
+          alkalinity: true,
+          nh3: true,
+          h2s: true,
+          no2: true,
+          transparency: true,
+          waterColor: true,
+        },
+      })
+      : [];
+
+    const buckets = new Map<string, { doSum: number; phSum: number; count: number }>();
+    for (let offset = 0; offset < days; offset += 1) {
+      const date = new Date(rangeStart);
+      date.setUTCDate(rangeStart.getUTCDate() + offset);
+      buckets.set(date.toISOString().slice(0, 10), { doSum: 0, phSum: 0, count: 0 });
+    }
+
+    trendRecords.forEach((record) => {
+      const key = record.recordTime.toISOString().slice(0, 10);
+      const bucket = buckets.get(key);
+      if (!bucket) return;
+      bucket.doSum += Number(record.dissolvedOxygen);
+      bucket.phSum += Number(record.ph);
+      bucket.count += 1;
+    });
+
+    return {
+      days,
+      fromDate: rangeStart.toISOString(),
+      toDate: rangeEnd.toISOString(),
+      series: [...buckets.entries()].map(([date, bucket]) => ({
+        date,
+        averageDo: bucket.count ? Number((bucket.doSum / bucket.count).toFixed(2)) : null,
+        averagePh: bucket.count ? Number((bucket.phSum / bucket.count).toFixed(2)) : null,
+        sampleCount: bucket.count,
+      })),
+      latestByPond: latestRecords.map((record) => {
+        const h2s = record.h2s ?? record.no2 ?? 0;
+        return {
+          pondId: record.pondId,
+          recordTime: record.recordTime.toISOString(),
+          dissolvedOxygen: Number(record.dissolvedOxygen),
+          ph: Number(record.ph),
+          overallStatus: this.calculateOverallStatus({
+            temperature: record.temperature,
+            ph: record.ph,
+            dissolvedOxygen: record.dissolvedOxygen,
+            salinity: record.salinity,
+            alkalinity: record.alkalinity,
+            nh3: record.nh3,
+            h2s,
+            transparency: record.transparency,
+            waterColor: record.waterColor,
+          }),
+        };
+      }),
+    };
   }
 
   private calculateOverallStatus(metrics: {

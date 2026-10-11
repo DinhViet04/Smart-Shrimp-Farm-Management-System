@@ -67,6 +67,7 @@ export const incidentService = {
   getAll: async (filters: {
     status?: string;
     assignedToMe?: boolean;
+    activeOnly?: boolean;
     search?: string;
     farmId?: string;
     pondId?: string;
@@ -80,6 +81,7 @@ export const incidentService = {
     const params = new URLSearchParams();
     if (filters.status) params.set('status', filters.status);
     if (filters.assignedToMe) params.set('assignedToMe', 'true');
+    if (filters.activeOnly) params.set('activeOnly', 'true');
     if (filters.search) params.set('search', filters.search);
     if (filters.farmId) params.set('farmId', filters.farmId);
     if (filters.pondId) params.set('pondId', filters.pondId);

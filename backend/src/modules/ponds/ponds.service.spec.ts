@@ -68,6 +68,7 @@ describe('PondsService overview', () => {
 
     const farmQuery = prisma.farm.findMany.mock.calls[0][0];
     const cropQuery = prisma.crop.findMany.mock.calls[0][0];
+    const pondQuery = prisma.pond.findMany.mock.calls[0][0];
     expect(farmQuery.where).toEqual({
       deletedAt: null,
       ownerId: 'manager-id',
@@ -77,6 +78,8 @@ describe('PondsService overview', () => {
       { pondId: 'asc' },
       { startDate: 'desc' },
     ]);
+    expect(pondQuery.select.sizeSamples.take).toBe(1);
+    expect(pondQuery.select.sizeSamples.orderBy).toEqual({ samplingDate: 'desc' });
     expect(result.farms).toHaveLength(1);
     expect(result.farms[0]).not.toHaveProperty('ponds');
     expect(result.ponds[0]).toMatchObject({

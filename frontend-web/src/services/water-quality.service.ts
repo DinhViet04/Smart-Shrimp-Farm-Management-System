@@ -62,6 +62,25 @@ export interface CreateWaterQualityResponse {
   message: string;
 }
 
+export interface ManagerWaterTrendsResponse {
+  days: number;
+  fromDate: string;
+  toDate: string;
+  series: Array<{
+    date: string;
+    averageDo: number | null;
+    averagePh: number | null;
+    sampleCount: number;
+  }>;
+  latestByPond: Array<{
+    pondId: string;
+    recordTime: string;
+    dissolvedOxygen: number;
+    ph: number;
+    overallStatus: 'Optimal' | 'Warning' | 'Danger';
+  }>;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const waterQualityService = {
@@ -156,6 +175,18 @@ export const waterQualityService = {
       throw new Error(data?.message || 'Không thể tải lịch sử chất lượng nước');
     }
     return data;
+  },
+
+  getManagerTrends: async (filters: { farmId?: string; days?: number } = {}): Promise<ManagerWaterTrendsResponse> => {
+    const params = new URLSearchParams();
+    if (filters.farmId) params.set('farmId', filters.farmId);
+    if (filters.days) params.set('days', String(filters.days));
+    const response = await apiFetch(`${apiUrl}/api/water-quality/manager-trends?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể tải xu hướng môi trường nước');
+    }
+    return data as ManagerWaterTrendsResponse;
   },
 
   /**

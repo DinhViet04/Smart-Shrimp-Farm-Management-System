@@ -7,6 +7,10 @@ import { type Crop } from '../services/crop.service';
 interface PondCropDashboardProps {
   initialSubTab?: 'ponds' | 'crops';
   initialFarmId?: string;
+  initialPondId?: string;
+  initialCropYear?: string;
+  initialCropQuarter?: string;
+  initialCropView?: 'active' | 'history';
   initialCropConfig?: { farmId?: string; pondId?: string } | null;
   onNavigateToGrowth?: (config: { farmId: string; pondId: string; cropId?: string }) => void;
 }
@@ -14,6 +18,10 @@ interface PondCropDashboardProps {
 export default function PondCropDashboard({
   initialSubTab = 'ponds',
   initialFarmId,
+  initialPondId,
+  initialCropYear,
+  initialCropQuarter,
+  initialCropView,
   initialCropConfig,
   onNavigateToGrowth,
 }: PondCropDashboardProps = {}) {
@@ -86,6 +94,11 @@ export default function PondCropDashboard({
           />
         ) : (
           <CropManagement 
+            initialView={initialCropView}
+            initialFilterFarmId={initialFarmId}
+            initialFilterPondId={initialPondId}
+            initialFilterYear={initialCropYear}
+            initialFilterQuarter={initialCropQuarter}
             initialEditCrop={editCropParam} 
             onClearEditCrop={() => setEditCropParam(null)} 
             initialCreateCropConfig={createCropParam}

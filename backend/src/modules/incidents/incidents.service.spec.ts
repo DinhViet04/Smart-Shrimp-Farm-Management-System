@@ -80,6 +80,21 @@ describe('IncidentsService', () => {
     );
   });
 
+  it('loads only open and treating incidents for dashboard summaries', async () => {
+    await service.findAll(
+      { userId: 'manager-id', role: 'FARM_MANAGER' },
+      { activeOnly: true, page: 0, size: 100 },
+    );
+
+    expect(prisma.incident.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['OPEN', 'TREATING'] },
+        }),
+      }),
+    );
+  });
+
   it('loads incident detail with a single database query', async () => {
     await service.findOne(
       { userId: 'technician-id', role: 'TECHNICIAN' },

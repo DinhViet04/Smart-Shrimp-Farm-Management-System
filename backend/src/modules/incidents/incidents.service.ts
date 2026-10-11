@@ -43,6 +43,7 @@ export class IncidentsService {
     }
 
     if (query.status) where.status = query.status;
+    else if (query.activeOnly) where.status = { in: ['OPEN', 'TREATING'] };
     if (query.assignedToMe) where.assignedToId = user.userId;
     if (query.search?.trim()) {
       where.OR = [

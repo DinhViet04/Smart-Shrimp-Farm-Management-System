@@ -42,6 +42,7 @@ import { cropService, type Crop } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
 import HarvestCropModal from './HarvestCropModal';
 import HarvestDetailModal from './HarvestDetailModal';
+import { analyzeCropHistory, type HistoryMetricKey } from '../utils/cropHistoryAnalysis';
 
 const formatVND = (num: number | null | undefined): string => {
   if (num === null || num === undefined || isNaN(num)) return '0';
@@ -97,6 +98,11 @@ const getDaysDifference = (startDateStr: string, endDateStr: string): number => 
 };
 
 interface CropManagementProps {
+  initialView?: 'active' | 'history';
+  initialFilterFarmId?: string;
+  initialFilterPondId?: string;
+  initialFilterYear?: string;
+  initialFilterQuarter?: string;
   initialEditCrop?: Crop | null;
   onClearEditCrop?: () => void;
   initialCreateCropConfig?: {
@@ -108,6 +114,11 @@ interface CropManagementProps {
 }
 
 export default function CropManagement({
+  initialView = 'active',
+  initialFilterFarmId = '',
+  initialFilterPondId = '',
+  initialFilterYear = '',
+  initialFilterQuarter = '',
   initialEditCrop,
   onClearEditCrop,
   initialCreateCropConfig,
@@ -118,14 +129,15 @@ export default function CropManagement({
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<'active' | 'history'>('active');
+  const [activeView, setActiveView] = useState<'active' | 'history'>(initialView);
 
   // ── Filters ─────────────────────────────────────────────────────────────────
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
-  const [filterYear, setFilterYear] = useState('');
-  const [filterFarmId, setFilterFarmId] = useState('');
-  const [filterPondId, setFilterPondId] = useState('');
+  const [filterYear, setFilterYear] = useState(initialFilterYear);
+  const [filterQuarter, setFilterQuarter] = useState(initialFilterQuarter);
+  const [filterFarmId, setFilterFarmId] = useState(initialFilterFarmId);
+  const [filterPondId, setFilterPondId] = useState(initialFilterPondId);
   const [historyDisplayMode, setHistoryDisplayMode] = useState<'grid' | 'table'>('grid');
   const [harvestDetailCrop, setHarvestDetailCrop] = useState<Crop | null>(null);
 
@@ -406,12 +418,20 @@ export default function CropManagement({
             const harvestYear = crop.actualHarvestDate ? new Date(crop.actualHarvestDate).getFullYear().toString() : '';
             if (startYear !== filterYear && harvestYear !== filterYear) return false;
           }
+          if (filterQuarter) {
+            if (!crop.actualHarvestDate) return false;
+            const harvestQuarter = Math.floor(new Date(crop.actualHarvestDate).getMonth() / 3) + 1;
+            if (harvestQuarter.toString() !== filterQuarter) return false;
+          }
 
           if (searchLower) {
             const pName = crop.pond?.name?.toLowerCase() || '';
             const fName = farm.name?.toLowerCase() || '';
-            const note = crop.harvestNote?.toLowerCase() || '';
-            if (!pName.includes(searchLower) && !fName.includes(searchLower) && !note.includes(searchLower)) return false;
+            const reviewText = [crop.harvestNote, crop.harvestEvaluation, crop.harvestLessonsLearned, crop.harvestNextRecommendation]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            if (!pName.includes(searchLower) && !fName.includes(searchLower) && !reviewText.includes(searchLower)) return false;
           }
           return true;
         });
@@ -439,12 +459,20 @@ export default function CropManagement({
           usagePercentage,
         };
       });
-  }, [farms, ponds, crops, activeView, filterStatus, filterYear, filterFarmId, filterPondId, search]);
+  }, [farms, ponds, crops, activeView, filterStatus, filterYear, filterQuarter, filterFarmId, filterPondId, search]);
 
   // Flattened historical crops for Table view
   const allFilteredHistoryCrops = useMemo(() => {
     return groupedFarms.flatMap((f) => f.crops);
   }, [groupedFarms]);
+
+  const comparisonCrops = useMemo(() => {
+    if (activeView !== 'history' || !filterPondId) return [];
+    return crops
+      .filter((crop) => crop.status === 'HARVESTED' && crop.pondId === filterPondId)
+      .sort((a, b) => new Date(b.actualHarvestDate || b.startDate).getTime() - new Date(a.actualHarvestDate || a.startDate).getTime())
+      .slice(0, 3);
+  }, [activeView, crops, filterPondId]);
 
   // History Statistics KPIs
   const historyStats = useMemo(() => {
@@ -939,6 +967,18 @@ export default function CropManagement({
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
+              <div className="relative">
+                <select
+                  value={filterQuarter}
+                  onChange={(e) => setFilterQuarter(e.target.value)}
+                  className="pl-3 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer shadow-2xs"
+                >
+                  <option value="">Cả năm</option>
+                  {[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Quý {quarter}</option>)}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
               {/* 2. Filter Farm */}
               <div className="relative">
                 <select
@@ -991,11 +1031,12 @@ export default function CropManagement({
               </div>
 
               {/* Reset button */}
-              {(filterYear || filterFarmId || filterPondId || filterStatus || search) && (
+              {(filterYear || filterQuarter || filterFarmId || filterPondId || filterStatus || search) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFilterYear('');
+                    setFilterQuarter('');
                     setFilterFarmId('');
                     setFilterPondId('');
                     setFilterStatus('');
@@ -1067,6 +1108,10 @@ export default function CropManagement({
           </div>
         )}
       </div>
+
+      {activeView === 'history' && filterPondId && (
+        <CropComparisonPanel crops={comparisonCrops} pondName={ponds.find((pond) => pond.id === filterPondId)?.name || 'Ao nuôi'} onOpen={setHarvestDetailCrop} />
+      )}
 
       {/* Loading state */}
       {loading ? (
@@ -2368,4 +2413,70 @@ export default function CropManagement({
       )}
     </div>
   );
+}
+
+function CropComparisonPanel({ crops, pondName, onOpen }: { crops: Crop[]; pondName: string; onOpen: (crop: Crop) => void }) {
+  if (crops.length < 2) {
+    return <div className="rounded-3xl border border-dashed border-indigo-200 bg-indigo-50/40 p-5 text-center">
+      <p className="text-sm font-black text-indigo-900">So sánh lịch sử {pondName}</p>
+      <p className="mt-1 text-xs text-indigo-600">Cần ít nhất hai vụ đã thu hoạch để hệ thống đối chiếu hiệu quả.</p>
+    </div>;
+  }
+
+  const analysis = analyzeCropHistory(crops);
+  const metricBadges: Record<HistoryMetricKey, string> = {
+    profit: 'Lợi nhuận cao nhất',
+    fcr: 'FCR tốt nhất',
+    survival: 'Tỷ lệ sống cao nhất',
+    harvest: 'Sản lượng cao nhất',
+  };
+  const rows: Array<{ label: string; metric?: HistoryMetricKey; value: (crop: Crop) => string }> = [
+    { label: 'Thời gian nuôi', value: (crop: Crop) => crop.actualHarvestDate ? `${Math.max(1, Math.round((new Date(crop.actualHarvestDate).getTime() - new Date(crop.startDate).getTime()) / 86_400_000))} ngày` : '--' },
+    { label: 'Sản lượng', metric: 'harvest', value: (crop: Crop) => crop.actualHarvestKg ? `${crop.actualHarvestKg.toLocaleString('vi-VN')} kg` : '--' },
+    { label: 'Tỷ lệ sống', metric: 'survival', value: (crop: Crop) => crop.actualHarvestSurvivalRate !== null && crop.actualHarvestSurvivalRate !== undefined ? `${crop.actualHarvestSurvivalRate}%` : '--' },
+    { label: 'FCR', metric: 'fcr', value: (crop: Crop) => crop.actualHarvestFcr !== null && crop.actualHarvestFcr !== undefined ? crop.actualHarvestFcr.toFixed(2) : '--' },
+    { label: 'Doanh thu', value: (crop: Crop) => `${formatVND(crop.actualHarvestRevenue || 0)} đ` },
+    { label: 'Lợi nhuận', metric: 'profit', value: (crop: Crop) => `${formatVND(crop.actualHarvestProfit || 0)} đ` },
+  ];
+
+  const bestCrop = analysis.overallBestIds.length === 1
+    ? crops.find((crop) => crop.id === analysis.overallBestIds[0])
+    : null;
+  const bestMetricCount = bestCrop
+    ? Object.values(analysis.winners).filter((ids) => ids.includes(bestCrop.id)).length
+    : 0;
+
+  return <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-sm">
+    <div className="flex flex-col gap-2 border-b border-indigo-100 bg-indigo-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div><h3 className="text-base font-black text-slate-900">So sánh các vụ gần nhất · {pondName}</h3><p className="mt-1 text-xs text-slate-500">Ba vụ gần nhất của ao được đối chiếu xuyên suốt các kỳ để nhận biết xu hướng hiệu quả.</p></div>
+      <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-indigo-600">{crops.length} vụ được so sánh</span>
+    </div>
+    <div className="grid gap-3 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/70 to-cyan-50/60 p-5 lg:grid-cols-[minmax(0,1fr)_auto]">
+      <div>
+        <div className="flex items-center gap-2 text-sm font-black text-indigo-950"><Sparkles className="h-4 w-4 text-indigo-600" /> Phân tích hiệu quả thông minh</div>
+        {bestCrop ? (
+          <p className="mt-2 text-sm text-slate-700">
+            <span className="font-black text-indigo-700">Vụ {new Date(bestCrop.actualHarvestDate || bestCrop.startDate).toLocaleDateString('vi-VN')}</span> có hiệu quả tổng thể tốt nhất, đạt {analysis.scores[bestCrop.id]}/100 điểm và dẫn đầu {bestMetricCount}/4 chỉ số chính.
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-slate-700">Các vụ đang đồng hạng hiệu quả tổng thể; xem huy hiệu từng chỉ số để lựa chọn theo mục tiêu quản lý.</p>
+        )}
+        <div className="mt-3 space-y-1.5">
+          {analysis.insights.length > 0 ? analysis.insights.map((insight) => <p key={insight} className="text-xs font-medium text-slate-600">• {insight}</p>) : <p className="text-xs text-slate-500">Các chỉ số của vụ gần nhất chưa có thay đổi đáng kể so với vụ trước.</p>}
+        </div>
+      </div>
+      <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 text-[11px] text-slate-500 shadow-sm">
+        <p className="font-black uppercase tracking-wider text-slate-700">Quy tắc chấm điểm</p>
+        <p className="mt-1">Lợi nhuận 40% · FCR 25%</p>
+        <p>Tỷ lệ sống 20% · Sản lượng 15%</p>
+        <p className="mt-1 text-slate-400">Dữ liệu thiếu không được suy đoán.</p>
+      </div>
+    </div>
+    <div className="overflow-x-auto p-5">
+      <table className="w-full min-w-[700px] text-left text-xs">
+        <thead><tr className="border-b border-slate-100 text-slate-400"><th className="pb-3 uppercase tracking-wider">Chỉ số</th>{crops.map((crop, index) => <th key={crop.id} className="pb-3"><button type="button" onClick={() => onOpen(crop)} className="text-left font-black text-blue-600 hover:underline">{index === 0 ? 'Vụ gần nhất' : `Trước đó ${index}`} · {new Date(crop.actualHarvestDate || crop.startDate).toLocaleDateString('vi-VN')}</button>{analysis.overallBestIds.includes(crop.id) && <span className="mt-1 block w-fit rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">Hiệu quả tổng thể · {analysis.scores[crop.id]}/100</span>}</th>)}</tr></thead>
+        <tbody>{rows.map((row) => <tr key={row.label} className="border-b border-slate-50 last:border-0"><td className="py-3 font-bold text-slate-500">{row.label}</td>{crops.map((crop) => <td key={crop.id} className={`py-3 font-bold ${row.label === 'Lợi nhuận' && (crop.actualHarvestProfit || 0) < 0 ? 'text-rose-600' : 'text-slate-800'}`}><span>{row.value(crop)}</span>{row.metric && analysis.winners[row.metric].includes(crop.id) && <span className="ml-2 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700">{metricBadges[row.metric]}</span>}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  </section>;
 }

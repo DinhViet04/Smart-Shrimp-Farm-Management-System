@@ -48,8 +48,15 @@ export interface Crop {
   harvestFeedCost?: number | null;
   harvestMedicineCost?: number | null;
   harvestChemicalCost?: number | null;
+  harvestSeedCost?: number | null;
+  harvestElectricityCost?: number | null;
+  harvestLaborCost?: number | null;
+  harvestOtherCost?: number | null;
   harvestFeedKg?: number | null;
   harvestNote?: string | null;
+  harvestEvaluation?: string | null;
+  harvestLessonsLearned?: string | null;
+  harvestNextRecommendation?: string | null;
   parentCrop?: {
     id: string;
     startDate: string;
@@ -137,16 +144,14 @@ export interface UpdateCropPayload {
 export interface HarvestCropPayload {
   actualHarvestKg: number;
   actualHarvestSize: number;
-  actualHarvestPricePerKg?: number;
-  actualHarvestCount?: number;
-  actualHarvestRevenue?: number;
-  actualHarvestCost?: number;
-  actualHarvestProfit?: number;
-  actualHarvestFcr?: number;
-  actualHarvestSurvivalRate?: number;
+  actualHarvestPricePerKg: number;
   harvestFeedCost?: number;
   harvestMedicineCost?: number;
   harvestChemicalCost?: number;
+  harvestSeedCost?: number;
+  harvestElectricityCost?: number;
+  harvestLaborCost?: number;
+  harvestOtherCost?: number;
   harvestFeedKg?: number;
   actualHarvestDate?: string;
   harvestNote?: string;
@@ -176,6 +181,52 @@ export interface HarvestSummaryResponse {
     chemicalLogs: MaterialUsageItem[];
     availableInventory: any[];
   };
+}
+
+export interface ManagerHarvestSummary {
+  year: number;
+  quarter: number | null;
+  totals: {
+    harvestedCrops: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+    harvestKg: number;
+    profitMargin: number;
+    averageFcr: number | null;
+    averageSurvivalRate: number | null;
+    targetMet: number;
+  };
+  comparison: {
+    revenuePercent: number | null;
+    profitPercent: number | null;
+    harvestKgPercent: number | null;
+  };
+  farmSummaries: Array<{
+    farmId: string;
+    farmName: string;
+    totals: ManagerHarvestSummary['totals'];
+    ponds: Array<{
+      pondId: string;
+      pondName: string;
+      totals: ManagerHarvestSummary['totals'];
+    }>;
+  }>;
+  recentHarvests: Array<{
+    id: string;
+    pondId: string;
+    pondName: string;
+    farmId: string;
+    farmName: string;
+    actualHarvestDate: string;
+    actualHarvestKg: number;
+    actualHarvestRevenue: number;
+    actualHarvestCost: number;
+    actualHarvestProfit: number;
+    actualHarvestFcr: number | null;
+    actualHarvestSurvivalRate: number | null;
+    targetMet: boolean | null;
+  }>;
 }
 
 export const cropService = {
@@ -267,11 +318,10 @@ export const cropService = {
     return data;
   },
 
-  harvest: async (id: string, payload?: HarvestCropPayload): Promise<Crop> => {
+  harvest: async (id: string, payload: HarvestCropPayload): Promise<Crop> => {
     const response = await apiFetch(`${apiUrl}/api/crops/${id}/harvest`, {
       method: 'PATCH',
-      headers: payload ? { 'Content-Type': 'application/json' } : undefined,
-      body: payload ? JSON.stringify(payload) : undefined,
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -291,6 +341,19 @@ export const cropService = {
       throw new Error(data?.message || 'Không thể tải thông tin thu hoạch');
     }
     return data as HarvestSummaryResponse;
+  },
+
+  getManagerSummary: async (filters: { farmId?: string; year?: number; quarter?: number } = {}): Promise<ManagerHarvestSummary> => {
+    const params = new URLSearchParams();
+    if (filters.farmId) params.set('farmId', filters.farmId);
+    if (filters.year) params.set('year', String(filters.year));
+    if (filters.quarter) params.set('quarter', String(filters.quarter));
+    const response = await apiFetch(`${apiUrl}/api/crops/analytics/manager-summary?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể tải tổng kết vụ nuôi');
+    }
+    return data as ManagerHarvestSummary;
   },
 
   /**

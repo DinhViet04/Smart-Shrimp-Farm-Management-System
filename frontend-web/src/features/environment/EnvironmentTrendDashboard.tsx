@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, ReferenceArea
 } from 'recharts';
 import { subDays, subHours, format } from 'date-fns';
-import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Minus, Calendar, Layers } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Minus } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import { waterQualityService } from '../../services/water-quality.service';

@@ -1,29 +1,59 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, History } from 'lucide-react';
+import { ClipboardList, History, AlertTriangle } from 'lucide-react';
 import CreateShrimpHealth from './CreateShrimpHealth';
 import ShrimpHealthList from './ShrimpHealthList';
+import IncidentDashboard from '../incidents/IncidentDashboard';
+
+export type ShrimpHealthSubTab = 'record' | 'history' | 'incident';
 
 interface ShrimpHealthDashboardProps {
   viewOnly?: boolean;
   initialFarmId?: string;
   initialPondId?: string;
+  initialSubTab?: ShrimpHealthSubTab;
+  initialIncidentSubTab?: 'board' | 'history';
+  role?: 'ADMIN' | 'FARM_MANAGER' | 'TECHNICIAN' | 'FARMER';
 }
 
 export default function ShrimpHealthDashboard({
   viewOnly = false,
   initialFarmId,
   initialPondId,
+  initialSubTab,
+  initialIncidentSubTab,
+  role,
 }: ShrimpHealthDashboardProps) {
-  const [subTab, setSubTab] = useState<'record' | 'history'>(
-    viewOnly || initialPondId ? 'history' : 'record',
-  );
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    try {
+      const userStr = localStorage.getItem('user');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const userRole = role || currentUser?.role || (viewOnly ? 'FARMER' : 'TECHNICIAN');
+  const canRecord = !viewOnly && userRole !== 'FARMER' && userRole !== 'FARM_MANAGER' && userRole !== 'ADMIN';
+
+  const [subTab, setSubTab] = useState<ShrimpHealthSubTab>(() => {
+    if (initialSubTab) return initialSubTab;
+    if (viewOnly || initialPondId || !canRecord) {
+      return 'history';
+    }
+    return 'record';
+  });
 
   useEffect(() => {
-    if (initialPondId) {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  useEffect(() => {
+    if (initialPondId && !initialSubTab) {
       setSubTab('history');
     }
-  }, [initialPondId]);
+  }, [initialPondId, initialSubTab]);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -31,28 +61,27 @@ export default function ShrimpHealthDashboard({
       try {
         const parsed = JSON.parse(userStr);
         setCurrentUser(parsed);
-        if (parsed.role === 'FARMER' || parsed.role === 'FARM_MANAGER' || viewOnly || initialPondId) {
-          setSubTab('history');
-        }
       } catch {
         /* ignore */
       }
     }
-  }, [viewOnly, initialPondId]);
+  }, []);
 
-  const isFarmer = currentUser?.role === 'FARMER';
+  const isFarmer = userRole === 'FARMER';
   const activeTabClass = isFarmer
     ? 'border-teal-600 text-teal-600'
+    : userRole === 'FARM_MANAGER' || userRole === 'ADMIN'
+    ? 'border-blue-600 text-blue-600'
     : 'border-indigo-600 text-indigo-600';
 
   return (
     <div className="space-y-6">
       {/* ── Sub Navigation Tabs ────────────────────────────────────────────── */}
-      {!viewOnly && currentUser?.role !== 'FARMER' && currentUser?.role !== 'FARM_MANAGER' && (
-        <div className="flex border-b border-slate-200 gap-6">
+      <div className="flex border-b border-slate-200 gap-6 overflow-x-auto">
+        {canRecord && (
           <button
             onClick={() => setSubTab('record')}
-            className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
+            className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
               subTab === 'record'
                 ? activeTabClass
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -61,25 +90,39 @@ export default function ShrimpHealthDashboard({
             <ClipboardList className="w-4 h-4" />
             Ghi nhận sức khỏe
           </button>
+        )}
 
-          <button
-            onClick={() => setSubTab('history')}
-            className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 ${
-              subTab === 'history'
-                ? activeTabClass
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            Lịch sử sức khỏe
-          </button>
-        </div>
-      )}
+        <button
+          onClick={() => setSubTab('history')}
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
+            subTab === 'history'
+              ? activeTabClass
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Lịch sử sức khỏe
+        </button>
+
+        <button
+          onClick={() => setSubTab('incident')}
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
+            subTab === 'incident'
+              ? activeTabClass
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <AlertTriangle className="w-4 h-4" />
+          Sự cố & Điều trị
+        </button>
+      </div>
 
       {/* ── Active Component View ─────────────────────────────────────────── */}
       <div className="animate-in fade-in duration-300">
-        {subTab === 'record' && !viewOnly ? (
+        {subTab === 'record' && canRecord ? (
           <CreateShrimpHealth />
+        ) : subTab === 'incident' ? (
+          <IncidentDashboard role={userRole} initialSubTab={initialIncidentSubTab} />
         ) : (
           <ShrimpHealthList
             initialFarmId={initialFarmId}

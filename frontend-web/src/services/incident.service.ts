@@ -32,6 +32,9 @@ export interface Incident {
   crop: {
     id: string;
     startDate: string;
+    stage?: 'NURSERY' | 'COMMERCIAL' | string;
+    status?: 'ACTIVE' | 'HARVESTED' | 'FAILED' | string;
+    actualHarvestDate?: string | null;
     pond: { id: string; name: string; farm: { id: string; name: string } };
   };
   updates?: IncidentUpdate[];
@@ -61,13 +64,30 @@ export const incidentService = {
     return handleResponse<Incident>(response);
   },
 
-  getAll: async (filters: { status?: string; assignedToMe?: boolean; search?: string } = {}) => {
+  getAll: async (filters: {
+    status?: string;
+    assignedToMe?: boolean;
+    search?: string;
+    farmId?: string;
+    pondId?: string;
+    cropId?: string;
+    year?: number;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    size?: number;
+  } = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.set('status', filters.status);
     if (filters.assignedToMe) params.set('assignedToMe', 'true');
     if (filters.search) params.set('search', filters.search);
-    params.set('size', '100');
-    const response = await apiFetch(`${apiUrl}/api/incidents?${params.toString()}`);
+    if (filters.farmId) params.set('farmId', filters.farmId);
+    if (filters.pondId) params.set('pondId', filters.pondId);
+    if (filters.cropId) params.set('cropId', filters.cropId);
+    if (filters.page !== undefined) params.set('page', filters.page.toString());
+    if (filters.size !== undefined) params.set('size', filters.size.toString());
+    const queryStr = params.toString();
+    const response = await apiFetch(`${apiUrl}/api/incidents${queryStr ? `?${queryStr}` : ''}`);
     return handleResponse<{ content: Incident[]; totalElements: number }>(response);
   },
 

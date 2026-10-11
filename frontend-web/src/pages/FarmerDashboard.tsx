@@ -39,7 +39,7 @@ export default function FarmerDashboard() {
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
   const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [envConfig, setEnvConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
-  const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
+  const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string; subTab?: 'record' | 'history' | 'incident' } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   const handleNavigateToGrowth = (config: { farmId: string; pondId: string; cropId?: string }) => {
@@ -75,7 +75,6 @@ export default function FarmerDashboard() {
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5 text-teal-600" /> },
-    { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
@@ -167,8 +166,12 @@ export default function FarmerDashboard() {
                 if (tab === 'Môi trường nước') {
                   if (config) setEnvConfig(config);
                   setActiveTab('Môi trường nước');
-                } else if (tab === 'Sức khỏe tôm') {
-                  if (config) setHealthConfig(config);
+                } else if (tab === 'Sức khỏe tôm' || tab === 'Báo cáo sự cố' || tab === 'Sự cố & Điều trị') {
+                  setHealthConfig({
+                    farmId: config?.farmId,
+                    pondId: config?.pondId,
+                    subTab: (tab === 'Báo cáo sự cố' || tab === 'Sự cố & Điều trị') ? 'incident' : undefined,
+                  });
                   setActiveTab('Sức khỏe tôm');
                 } else if (tab === 'Theo dõi tăng trưởng') {
                   if (config) {
@@ -190,7 +193,17 @@ export default function FarmerDashboard() {
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
           {activeTab === 'Dashboard' && (
-            <FarmerDashboardHome onNavigateTab={setActiveTab} currentUser={currentUser} />
+            <FarmerDashboardHome
+              onNavigateTab={(tab) => {
+                if (tab === 'Báo cáo sự cố' || tab === 'Sự cố & Điều trị') {
+                  setHealthConfig(prev => ({ ...prev, subTab: 'incident' }));
+                  setActiveTab('Sức khỏe tôm');
+                } else {
+                  setActiveTab(tab);
+                }
+              }}
+              currentUser={currentUser}
+            />
           )}
 
           <Suspense fallback={
@@ -215,11 +228,13 @@ export default function FarmerDashboard() {
              />
           ) : activeTab === 'Quản lý Ao của tôi' ? (
              <PondCropDashboard onNavigateToGrowth={handleNavigateToGrowth} />
-          ) : activeTab === 'Sức khỏe tôm' ? (
+          ) : activeTab === 'Sức khỏe tôm' || activeTab === 'Báo cáo sự cố' ? (
              <ShrimpHealthDashboard 
                viewOnly={true} 
                initialFarmId={healthConfig?.farmId}
                initialPondId={healthConfig?.pondId}
+               initialSubTab={activeTab === 'Báo cáo sự cố' ? 'incident' : healthConfig?.subTab}
+               role="FARMER"
              />
           ) : activeTab === 'Theo dõi tăng trưởng' ? (
              <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
@@ -262,8 +277,6 @@ export default function FarmerDashboard() {
                  />
                )}
              </div>
-          ) : activeTab === 'Báo cáo sự cố' ? (
-             <IncidentDashboard role="FARMER" />
           ) : activeTab === 'Nhật ký Chăm sóc' ? (
              <FeedingLogDashboard />
           ) : activeTab !== 'Dashboard' ? (

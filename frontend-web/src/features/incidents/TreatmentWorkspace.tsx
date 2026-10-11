@@ -4,16 +4,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   Bot,
+  Building2,
   Check,
   CheckCircle2,
   Clock,
   FlaskConical,
+  Layers,
   Package,
   Pill,
   RefreshCw,
   Send,
   Sparkles,
   Stethoscope,
+  Waves,
 } from 'lucide-react';
 import { incidentService, type Incident, type IncidentUpdate } from '../../services/incident.service';
 import { inventoryService } from '../../services/inventory.service';
@@ -84,7 +87,6 @@ export default function TreatmentWorkspace({
   const [aiChatInput, setAiChatInput] = useState<string>('');
   const [chatHistory, setChatHistory] = useState<AIChatMessage[]>([]);
 
-  const farmId = incidentDetail.crop?.pond?.farm?.id || incident.crop?.pond?.farm?.id;
   const pondId = incidentDetail.crop?.pond?.id || incident.crop?.pond?.id;
   const pondName = incidentDetail.crop?.pond?.name || incident.crop?.pond?.name || 'Ao nuôi';
   const farmName = incidentDetail.crop?.pond?.farm?.name || incident.crop?.pond?.farm?.name || 'Trang trại';
@@ -424,10 +426,27 @@ Hãy thực hiện 3 công việc:
                   : 'Chờ xử lý'}
               </span>
             </div>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              <strong className="text-slate-700">{farmName}</strong> · {pondName} · Báo cáo ngày{' '}
-              {new Date(incidentDetail.createdAt).toLocaleString('vi-VN')}
-            </p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Trang trại: <strong>{farmName}</strong></span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-50 text-cyan-800 border border-cyan-200 text-xs font-bold">
+                <Waves className="w-3.5 h-3.5 text-cyan-600" />
+                <span>Ao nuôi: <strong>{pondName}</strong></span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-bold">
+                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                <span>
+                  Vụ nuôi: <strong>{incidentDetail.crop?.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}</strong>
+                  {incidentDetail.crop?.startDate ? ` • Bắt đầu ${new Date(incidentDetail.crop.startDate).toLocaleDateString('vi-VN')}` : ''}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-500 font-medium">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                Báo cáo: {new Date(incidentDetail.createdAt).toLocaleString('vi-VN')}
+              </span>
+            </div>
           </div>
         </div>
 

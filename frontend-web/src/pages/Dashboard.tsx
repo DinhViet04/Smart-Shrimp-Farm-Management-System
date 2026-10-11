@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [healthConfig, setHealthConfig] = useState<{
     farmId?: string;
     pondId?: string;
+    subTab?: 'record' | 'history' | 'incident';
   } | null>(null);
 
   const handleNavigateToPonds = (farmId?: string) => {
@@ -97,7 +98,6 @@ export default function Dashboard() {
     { name: 'Quản lý Ao/Vụ', icon: <Waves className="w-5 h-5" /> },
     { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5" /> },
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
-    { name: 'Sự cố & Điều trị', icon: <AlertTriangle className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
@@ -189,8 +189,12 @@ export default function Dashboard() {
                 if (tab === 'Môi trường nước') {
                   if (config) setEnvConfig(config);
                   setActiveTab('Môi trường nước');
-                } else if (tab === 'Sức khỏe tôm') {
-                  if (config) setHealthConfig(config);
+                } else if (tab === 'Sức khỏe tôm' || tab === 'Sự cố & Điều trị') {
+                  setHealthConfig({
+                    farmId: config?.farmId,
+                    pondId: config?.pondId,
+                    subTab: tab === 'Sự cố & Điều trị' ? 'incident' : undefined,
+                  });
                   setActiveTab('Sức khỏe tôm');
                 } else if (tab === 'Theo dõi tăng trưởng') {
                   if (config) {
@@ -211,7 +215,16 @@ export default function Dashboard() {
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
           {activeTab === 'Dashboard' && (
-            <ManagerDashboardHome onNavigateTab={setActiveTab} />
+            <ManagerDashboardHome 
+              onNavigateTab={(tab) => {
+                if (tab === 'Sự cố & Điều trị') {
+                  setHealthConfig(prev => ({ ...prev, subTab: 'incident' }));
+                  setActiveTab('Sức khỏe tôm');
+                } else {
+                  setActiveTab(tab);
+                }
+              }} 
+            />
           )}
 
           <Suspense fallback={
@@ -267,7 +280,7 @@ export default function Dashboard() {
                 />
               ) : (
                 <FcrDashboard 
-                  onNavigateTab={(tab) => setGrowthSubTab(tab)}
+                  onNavigateTab={(tab) => setGrowthSubTab(tab)} 
                   initialFarmId={growthConfig?.farmId}
                   initialPondId={growthConfig?.pondId}
                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
@@ -277,19 +290,19 @@ export default function Dashboard() {
             </div>
           ) : activeTab === 'Quản Lý Kho' ? (
             <InventoryManagement />
-          ) : activeTab === 'Sự cố & Điều trị' ? (
-            <IncidentDashboard role="FARM_MANAGER" />
           ) : activeTab === 'Môi trường nước' ? (
             <EnvironmentDashboard 
               viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} 
               initialFarmId={envConfig?.farmId}
               initialPondId={envConfig?.pondId}
             />
-          ) : activeTab === 'Sức khỏe tôm' ? (
+          ) : activeTab === 'Sức khỏe tôm' || activeTab === 'Sự cố & Điều trị' ? (
             <ShrimpHealthDashboard 
               viewOnly={currentUser?.role !== 'ADMIN' && currentUser?.role !== 'TECHNICIAN'} 
               initialFarmId={healthConfig?.farmId}
               initialPondId={healthConfig?.pondId}
+              initialSubTab={activeTab === 'Sự cố & Điều trị' ? 'incident' : healthConfig?.subTab}
+              role="FARM_MANAGER"
             />
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">

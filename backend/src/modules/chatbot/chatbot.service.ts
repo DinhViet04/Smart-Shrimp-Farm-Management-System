@@ -241,113 +241,112 @@ export class ChatbotService implements OnModuleInit {
 
   // ── 4. RAG RETRIEVAL & CHATGPT GENERATION (Python AI Service + OpenAI) ──────
   async ask(dto: AskChatbotDto, currentUser: AuthUser) {
-    const question = dto.question.trim();
+    const question = dto.question?.trim() || '';
     if (!question) {
       return { answer: 'Vui lòng nhập câu hỏi của bạn.' };
     }
 
-    // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
     let targetPondName = '';
     let pondContextPayload: any = null;
     let pondRealtimeContext = '';
 
-    if (dto.pondId) {
+    try {
+      // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
+      if (dto.pondId) {
+        try {
+          const pond = await this.prisma.pond.findUnique({
+            where: { id: dto.pondId },
+            include: {
+              farm: true,
+              crops: { where: { status: 'ACTIVE' }, take: 1 },
+              waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
+            },
+          });
+
+          if (pond) {
+            await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
+            targetPondName = pond.name;
+            const latestWater = pond.waterQualityRecords[0];
+            const activeCrop = pond.crops[0];
+
+            let docDays = 0;
+            if (activeCrop) {
+              const start = new Date(activeCrop.startDate);
+              const now = new Date();
+              docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+            }
+
+            pondContextPayload = {
+              pondId: pond.id,
+              pondName: pond.name,
+              farmName: pond.farm?.name || '',
+              areaSize: pond.areaSize,
+              depth: pond.depth,
+              doc: activeCrop ? docDays : null,
+              initialShrimpCount: activeCrop?.initialShrimpCount || null,
+              stage: activeCrop?.stage || null,
+              latestWaterQuality: latestWater ? {
+                ph: latestWater.ph,
+                dissolvedOxygen: latestWater.dissolvedOxygen,
+                salinity: latestWater.salinity,
+                temperature: latestWater.temperature,
+                nh3: latestWater.nh3,
+                no2: latestWater.no2,
+                alkalinity: (latestWater as any).alkalinity || null,
+              } : null,
+            };
+
+            const shrimpCountFormatted = activeCrop?.initialShrimpCount != null ? Number(activeCrop.initialShrimpCount).toLocaleString() : 'Chưa rõ';
+            pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
+              `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
+              (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
+              (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
+          }
+        } catch (e) {
+          this.logger.warn('Failed to fetch pond realtime context:', e);
+        }
+      }
+
+      // 2. Gọi sang Python AI Microservice (FastAPI on :8000)
+      const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
       try {
-        const pond = await this.prisma.pond.findUnique({
-          where: { id: dto.pondId },
-          include: {
-            farm: true,
-            crops: { where: { status: 'ACTIVE' }, take: 1 },
-            waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
-          },
+        const response = await fetch(`${aiServiceUrl}/api/v1/chat/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            pondId: pondContextPayload?.pondId,
+            pondContext: pondContextPayload,
+          }),
+          signal: AbortSignal.timeout(12000), // Timeout sau 12 giây
         });
 
-        if (!pond) {
-          throw new NotFoundException('Không tìm thấy ao nuôi');
-        }
-
-        await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
-          targetPondName = pond.name;
-          const latestWater = pond.waterQualityRecords[0];
-          const activeCrop = pond.crops[0];
-
-          let docDays = 0;
-          if (activeCrop) {
-            const start = new Date(activeCrop.startDate);
-            const now = new Date();
-            docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-          }
-
-          pondContextPayload = {
-            pondId: pond.id,
-            pondName: pond.name,
-            farmName: pond.farm?.name || '',
-            areaSize: pond.areaSize,
-            depth: pond.depth,
-            doc: activeCrop ? docDays : null,
-            initialShrimpCount: activeCrop?.initialShrimpCount || null,
-            stage: activeCrop?.stage || null,
-            latestWaterQuality: latestWater ? {
-              ph: latestWater.ph,
-              dissolvedOxygen: latestWater.dissolvedOxygen,
-              salinity: latestWater.salinity,
-              temperature: latestWater.temperature,
-              nh3: latestWater.nh3,
-              no2: latestWater.no2,
-              alkalinity: (latestWater as any).alkalinity || null,
-            } : null,
+        if (response.ok) {
+          const aiData = await response.json();
+          return {
+            answer: aiData.answer,
+            sources: aiData.sources || [],
+            pondName: targetPondName || aiData.pondName || undefined,
+            recommendations: aiData.recommendations || [],
+            poweredBy: 'Python AI Service (FastAPI + ChromaDB)',
           };
-
-          pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
-            `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
-            (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${activeCrop.initialShrimpCount.toLocaleString()} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
-            (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
-      } catch (e) {
-        if (e instanceof HttpException) throw e;
-        this.logger.warn('Failed to fetch pond realtime context:', e);
+        }
+      } catch (pythonErr: any) {
+        this.logger.warn('Python AI Service is unreachable, using built-in NestJS RAG fallback:', pythonErr?.message || pythonErr);
       }
-    }
 
-    // 2. Gọi sang Python AI Microservice (FastAPI on :8000)
-    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    try {
-      const response = await fetch(`${aiServiceUrl}/api/v1/chat/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          pondId: pondContextPayload?.pondId,
-          pondContext: pondContextPayload,
-        }),
-        signal: AbortSignal.timeout(12000), // Timeout sau 12 giây
-      });
+      // 3. Fallback: Embedding câu hỏi & Cosine search nội bộ nếu Python Service chưa chạy
+      const questionEmbedding = await this.getEmbedding(question);
+      const topChunks = await this.searchSimilarChunks(questionEmbedding, 3);
+      let answerText = '';
 
-      if (response.ok) {
-        const aiData = await response.json();
-        return {
-          answer: aiData.answer,
-          sources: aiData.sources || [],
-          pondName: targetPondName || aiData.pondName || undefined,
-          recommendations: aiData.recommendations || [],
-          poweredBy: 'Python AI Service (FastAPI + ChromaDB)',
-        };
-      }
-    } catch (pythonErr: any) {
-      this.logger.warn('Python AI Service is currently unreachable, using built-in NestJS RAG fallback:', pythonErr?.message || pythonErr);
-    }
+      if (this.openai && this.apiKey) {
+        try {
+          const contextDocuments = topChunks.length > 0
+            ? topChunks.map((c: ChunkMatch, i: number) => `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`).join('\n\n')
+            : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
 
-    // 3. Fallback: Embedding câu hỏi & Cosine search nội bộ nếu Python Service chưa chạy
-    const questionEmbedding = await this.getEmbedding(question);
-    const topChunks = await this.searchSimilarChunks(questionEmbedding, 3);
-    let answerText = '';
-
-    if (this.openai && this.apiKey) {
-      try {
-        const contextDocuments = topChunks.length > 0
-          ? topChunks.map((c: ChunkMatch, i: number) => `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`).join('\n\n')
-          : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
-
-        const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
+          const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
 Nhiệm vụ của bạn là giải đáp câu hỏi của người nuôi tôm dựa trên TÀI LIỆU KHO TRI THỨC và DỮ LIỆU THỰC TẾ được cung cấp dưới đây.
 
 ${pondRealtimeContext}
@@ -360,34 +359,42 @@ YÊU CẦU TRẢ LỜI:
 2. Ưu tiên dựa trên dữ liệu tài liệu đã cung cấp. Nếu câu hỏi có nhắc tới chỉ số ao thật, hãy phân tích dựa trên dữ liệu đo của ao.
 3. Cuối câu trả lời, hãy nêu rõ nguồn tài liệu tham khảo đã dùng để người nuôi yên tâm.`;
 
-        const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: question },
-          ],
-          temperature: 0.3,
-        });
+          const completion = await this.openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: question },
+            ],
+            temperature: 0.3,
+          });
 
-        answerText = completion.choices[0]?.message?.content || '';
-      } catch (openaiErr) {
-        this.logger.error('OpenAI chat completion failed:', openaiErr);
+          answerText = completion.choices[0]?.message?.content || '';
+        } catch (openaiErr) {
+          this.logger.error('OpenAI chat completion failed:', openaiErr);
+          answerText = this.buildFallbackResponse(question, topChunks, pondRealtimeContext);
+        }
+      } else {
         answerText = this.buildFallbackResponse(question, topChunks, pondRealtimeContext);
       }
-    } else {
-      answerText = this.buildFallbackResponse(question, topChunks, pondRealtimeContext);
-    }
 
-    return {
-      answer: answerText,
-      sources: topChunks.map((c: ChunkMatch) => ({
-        title: c.documentTitle,
-        chunkIndex: c.chunkIndex,
-        snippet: c.content.slice(0, 160) + '...',
-        relevanceScore: c.score,
-      })),
-      pondName: targetPondName || undefined,
-    };
+      return {
+        answer: answerText,
+        sources: topChunks.map((c: ChunkMatch) => ({
+          title: c.documentTitle,
+          chunkIndex: c.chunkIndex,
+          snippet: (c.content || '').slice(0, 160) + '...',
+          relevanceScore: c.score,
+        })),
+        pondName: targetPondName || undefined,
+      };
+    } catch (topErr) {
+      this.logger.error('Error handling askChatbot:', topErr);
+      return {
+        answer: this.buildFallbackResponse(question, [], pondRealtimeContext),
+        sources: [],
+        pondName: targetPondName || undefined,
+      };
+    }
   }
 
   private buildFallbackResponse(question: string, topChunks: ChunkMatch[], pondRealtimeContext: string): string {

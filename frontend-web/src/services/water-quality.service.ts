@@ -126,6 +126,8 @@ export const waterQualityService = {
   getHistory: async (filters: {
     farmId?: string;
     pondId?: string;
+    cropId?: string;
+    year?: number;
     fromDate?: string;
     toDate?: string;
     page?: number;
@@ -159,6 +161,8 @@ export const waterQualityService = {
     const params = new URLSearchParams();
     if (filters.farmId) params.append('farmId', filters.farmId);
     if (filters.pondId) params.append('pondId', filters.pondId);
+    if (filters.cropId) params.append('cropId', filters.cropId);
+    if (filters.year !== undefined) params.append('year', filters.year.toString());
     if (filters.fromDate) params.append('fromDate', filters.fromDate);
     if (filters.toDate) params.append('toDate', filters.toDate);
     if (filters.page !== undefined) params.append('page', filters.page.toString());
@@ -189,7 +193,13 @@ export const waterQualityService = {
    * GET /api/water-quality/trends
    * Returns unpaginated history for a pond ordered by recordTime asc for charts.
    */
-  getTrends: async (pondId: string, fromDate?: string, toDate?: string): Promise<{
+  getTrends: async (
+    pondId: string,
+    fromDate?: string,
+    toDate?: string,
+    cropId?: string,
+    year?: number,
+  ): Promise<{
     id: string;
     recordTime: string;
     temperature: number;
@@ -208,6 +218,8 @@ export const waterQualityService = {
     params.append('pondId', pondId);
     if (fromDate) params.append('fromDate', fromDate);
     if (toDate) params.append('toDate', toDate);
+    if (cropId) params.append('cropId', cropId);
+    if (year !== undefined) params.append('year', year.toString());
 
     const response = await apiFetch(`${apiUrl}/api/water-quality/trends?${params.toString()}`);
     const data = await response.json();

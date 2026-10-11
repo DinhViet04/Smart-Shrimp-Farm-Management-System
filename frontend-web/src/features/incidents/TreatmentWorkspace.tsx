@@ -66,6 +66,8 @@ export default function TreatmentWorkspace({
   const [quantityUsed, setQuantityUsed] = useState<string>('');
   const [treatmentNote, setTreatmentNote] = useState<string>('');
   const [observationNote, setObservationNote] = useState<string>('');
+  const [resultNote, setResultNote] = useState<string>('');
+  const [reopenReason, setReopenReason] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'MEDICINE' | 'CHEMICAL'>('ALL');
   
   // Validation state
@@ -82,10 +84,10 @@ export default function TreatmentWorkspace({
   const [aiChatInput, setAiChatInput] = useState<string>('');
   const [chatHistory, setChatHistory] = useState<AIChatMessage[]>([]);
 
-  const farmId = incident.crop?.pond?.farm?.id;
-  const pondId = incident.crop?.pond?.id;
-  const pondName = incident.crop?.pond?.name || 'Ao nuôi';
-  const farmName = incident.crop?.pond?.farm?.name || 'Trang trại';
+  const farmId = incidentDetail.crop?.pond?.farm?.id || incident.crop?.pond?.farm?.id;
+  const pondId = incidentDetail.crop?.pond?.id || incident.crop?.pond?.id;
+  const pondName = incidentDetail.crop?.pond?.name || incident.crop?.pond?.name || 'Ao nuôi';
+  const farmName = incidentDetail.crop?.pond?.farm?.name || incident.crop?.pond?.farm?.name || 'Trang trại';
 
   // Can user perform treatment actions?
   const canUpdateTreatment =
@@ -97,18 +99,22 @@ export default function TreatmentWorkspace({
   const loadData = useCallback(async () => {
     setLoadingDetail(true);
     setLoadingInventory(true);
+    let targetFarmId = incidentDetail.crop?.pond?.farm?.id || incident.crop?.pond?.farm?.id;
     try {
       const detail = await incidentService.getById(incident.id);
       setIncidentDetail(detail);
+      if (detail.crop?.pond?.farm?.id) {
+        targetFarmId = detail.crop.pond.farm.id;
+      }
     } catch {
       // Use fallback prop if details fetch fails
     } finally {
       setLoadingDetail(false);
     }
 
-    if (farmId) {
+    if (targetFarmId) {
       try {
-        const invData = await inventoryService.getAll('', 'ALL', farmId);
+        const invData = await inventoryService.getAll('', 'ALL', targetFarmId);
         // Normalize array from response
         const items: InventoryItem[] = Array.isArray(invData)
           ? invData
@@ -122,7 +128,7 @@ export default function TreatmentWorkspace({
     } else {
       setLoadingInventory(false);
     }
-  }, [incident.id, farmId]);
+  }, [incident.id, incident.crop?.pond?.farm?.id, incidentDetail.crop?.pond?.farm?.id]);
 
   useEffect(() => {
     loadData();
@@ -238,7 +244,7 @@ Hãy thực hiện 3 công việc:
         errors.quantityUsed = `Vượt quá tồn kho hiện có (${selectedItem.quantity} ${selectedItem.unit}).`;
       }
     } else if (!treatmentNote.trim()) {
-      errors.treatmentNote = 'Vui lòng chọn thuốc/hóa chất từ kho hoặc nhập phác đồ điều trị.';
+      errors.treatmentNote = 'Vui lòng nhập biện pháp điều trị đã thực hiện hoặc chọn thuốc/hóa chất từ kho.';
     }
 
     setFieldErrors(errors);
@@ -281,8 +287,9 @@ Hãy thực hiện 3 công việc:
           quantityUsed: qtyNum,
         };
 
+        const pondTag = pondName ? ` [${pondName}]` : '';
         if (finalNote && finalNote.trim()) {
-          usagePayload.notes = `[Điều trị sự cố: ${incidentDetail.title}] ${finalNote.trim()}`;
+          usagePayload.notes = `[Điều trị sự cố${pondTag}: ${incidentDetail.title}] ${finalNote.trim()}`;
         }
 
         if (pondId && typeof pondId === 'string' && pondId.trim()) {
@@ -291,7 +298,7 @@ Hãy thực hiện 3 công việc:
 
         await inventoryService.recordUsage(selectedInventoryId, usagePayload);
 
-        const usagePrefix = `[Xuất kho: ${selectedItem.itemName} — ${qtyNum} ${selectedItem.unit}]`;
+        const usagePrefix = `[Xuất kho cho ${pondName}: ${selectedItem.itemName} — ${qtyNum} ${selectedItem.unit}]`;
         fullTreatmentText = `${usagePrefix} ${finalNote}`;
       }
 
@@ -299,15 +306,16 @@ Hãy thực hiện 3 công việc:
       if (shouldResolve) {
         await incidentService.resolve(incidentDetail.id, {
           treatment: fullTreatmentText || 'Đã hoàn tất điều trị sự cố.',
-          result: observationNote.trim() || undefined,
+          result: resultNote.trim() || undefined,
         });
-        setNotice({ type: 'success', message: 'Đã hoàn tất điều trị và trừ kho vật tư thành công!' });
+        setNotice({ type: 'success', message: 'Đã hoàn tất điều trị và đóng sự cố thành công!' });
       } else {
         await incidentService.addUpdate(incidentDetail.id, {
           treatment: fullTreatmentText,
           observation: observationNote.trim() || undefined,
+          result: resultNote.trim() || undefined,
         });
-        setNotice({ type: 'success', message: 'Đã ghi nhận phương án điều trị & khấu trừ tồn kho!' });
+        setNotice({ type: 'success', message: 'Đã lưu cập nhật điều trị thành công!' });
       }
 
       // Reset form & reload data
@@ -315,6 +323,7 @@ Hãy thực hiện 3 công việc:
       setQuantityUsed('');
       setTreatmentNote('');
       setObservationNote('');
+      setResultNote('');
       setFieldErrors({});
       await loadData();
     } catch (err) {
@@ -325,6 +334,29 @@ Hãy thực hiện 3 công việc:
     } finally {
       setSubmitting(false);
       setResolving(false);
+    }
+  };
+
+  // Reopen incident
+  const handleReopen = async () => {
+    if (!reopenReason.trim()) {
+      setNotice({ type: 'error', message: 'Vui lòng nhập lý do mở lại sự cố.' });
+      return;
+    }
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      await incidentService.reopen(incidentDetail.id, reopenReason.trim());
+      setReopenReason('');
+      setNotice({ type: 'success', message: 'Đã mở lại sự cố thành công!' });
+      await loadData();
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Có lỗi xảy ra khi mở lại sự cố.',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -451,7 +483,7 @@ Hãy thực hiện 3 công việc:
             </div>
           </div>
 
-          {/* Card 2: Mục chọn Thuốc / Hóa chất link từ Kho */}
+          {/* Card 2: Cập nhật điều trị & Vật tư kho */}
           <div className="rounded-3xl border border-white/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -460,10 +492,10 @@ Hãy thực hiện 3 công việc:
                 </div>
                 <div>
                   <h2 className="text-base font-extrabold text-slate-800">
-                    Chọn Thuốc / Hóa chất từ Kho & Ghi nhận điều trị
+                    Cập nhật điều trị & Vật tư kho
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Khấu trừ tự động tồn kho khi ghi nhận biện pháp
+                    Ghi nhận biện pháp, theo dõi lâm sàng và khấu trừ kho vật tư
                   </p>
                 </div>
               </div>
@@ -476,194 +508,262 @@ Hãy thực hiện 3 công việc:
               </div>
             )}
 
-            <div className="mt-5 space-y-4">
-              {/* Category selector */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-                    Loại vật tư sử dụng
-                  </label>
-                  <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setCategoryFilter('ALL')}
-                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                        categoryFilter === 'ALL'
-                          ? 'bg-white text-indigo-600 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCategoryFilter('MEDICINE')}
-                      className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                        categoryFilter === 'MEDICINE'
-                          ? 'bg-white text-emerald-600 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      <Pill className="h-3 w-3" /> Thuốc
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCategoryFilter('CHEMICAL')}
-                      className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                        categoryFilter === 'CHEMICAL'
-                          ? 'bg-white text-blue-600 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      <FlaskConical className="h-3 w-3" /> Hóa chất
-                    </button>
+            {incidentDetail.status === 'RESOLVED' ? (
+              <div className="mt-5 space-y-4">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm font-semibold text-emerald-800 flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="font-bold">Sự cố này đã được điều trị xong và đóng lại.</p>
+                    {incidentDetail.resolvedAt && (
+                      <p className="text-xs text-emerald-600 font-medium">Thời gian đóng: {new Date(incidentDetail.resolvedAt).toLocaleString('vi-VN')}</p>
+                    )}
                   </div>
                 </div>
 
-                {/* Dropdown list of Inventory items */}
-                <select
-                  value={selectedInventoryId}
-                  onChange={(e) => handleInventorySelect(e.target.value)}
-                  disabled={!canUpdateTreatment || loadingInventory}
-                  className={`w-full rounded-2xl border bg-white p-3.5 text-sm font-semibold text-slate-800 outline-none transition-colors ${
-                    fieldErrors.selectedInventoryId
-                      ? 'border-red-400 bg-red-50/30 focus:border-red-500'
-                      : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-                  } disabled:opacity-60`}
-                >
-                  <option value="">-- Chọn thuốc/hóa chất từ kho (Tùy chọn) --</option>
-                  {availableInventory.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      [{item.category === 'MEDICINE' ? 'Thuốc' : 'Hóa chất'}] {item.itemName} — Còn kho: {item.quantity} {item.unit}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedItem && (
-                  <div className="mt-2 flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 px-3.5 py-2 text-xs">
-                    <span className="font-semibold text-indigo-900">
-                      Mặt hàng đã chọn: <strong>{selectedItem.itemName}</strong>
-                    </span>
-                    <span className="font-bold text-indigo-700">
-                      Tồn hiện tại: {selectedItem.quantity} {selectedItem.unit}
-                    </span>
+                {(currentUserRole === 'FARM_MANAGER' || currentUserRole === 'ADMIN' || canUpdateTreatment) && (
+                  <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                    <h4 className="font-black text-amber-900 text-sm">Mở lại sự cố</h4>
+                    <textarea
+                      value={reopenReason}
+                      onChange={(e) => setReopenReason(e.target.value)}
+                      rows={2}
+                      placeholder="Lý do mở lại sự cố (ví dụ: tôm tái phát triệu chứng)..."
+                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleReopen}
+                      disabled={submitting}
+                      className="rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition-all disabled:opacity-50"
+                    >
+                      {submitting ? 'Đang mở lại...' : 'Mở lại sự cố'}
+                    </button>
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="mt-5 space-y-4">
+                {/* Section 1: Chọn thuốc/hóa chất từ kho (Tùy chọn) */}
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Package className="h-3.5 w-3.5 text-indigo-500" /> Xuất thuốc / Hóa chất từ kho (Tùy chọn)
+                    </label>
+                    <div className="flex gap-1 rounded-xl bg-white p-1 border border-slate-200/80 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setCategoryFilter('ALL')}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                          categoryFilter === 'ALL'
+                            ? 'bg-indigo-50 text-indigo-600'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        Tất cả
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryFilter('MEDICINE')}
+                        className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                          categoryFilter === 'MEDICINE'
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        <Pill className="h-3 w-3" /> Thuốc
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryFilter('CHEMICAL')}
+                        className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                          categoryFilter === 'CHEMICAL'
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        <FlaskConical className="h-3 w-3" /> Hóa chất
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Quantity Used Input */}
-              {selectedInventoryId && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                  <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
-                    Liều lượng / Số lượng xuất sử dụng <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={quantityUsed}
-                      onChange={(e) => handleQuantityChange(e.target.value)}
-                      placeholder="Ví dụ: 2.5"
-                      className={`w-full rounded-2xl border py-3 pl-4 pr-16 text-sm font-bold text-slate-800 outline-none transition-colors ${
-                        fieldErrors.quantityUsed
+                  {/* Dropdown list of Inventory items */}
+                  <select
+                    value={selectedInventoryId}
+                    onChange={(e) => handleInventorySelect(e.target.value)}
+                    disabled={!canUpdateTreatment || loadingInventory}
+                    className={`w-full rounded-2xl border bg-white p-3.5 text-sm font-semibold text-slate-800 outline-none transition-colors ${
+                      fieldErrors.selectedInventoryId
+                        ? 'border-red-400 bg-red-50/30 focus:border-red-500'
+                        : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                    } disabled:opacity-60`}
+                  >
+                    <option value="">-- Chọn thuốc/hóa chất từ kho (Nếu có sử dụng) --</option>
+                    {availableInventory.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        [{item.category === 'MEDICINE' ? 'Thuốc' : 'Hóa chất'}] {item.itemName} — Còn kho: {item.quantity} {item.unit}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedItem && (
+                    <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 px-3.5 py-2 text-xs">
+                      <span className="font-semibold text-indigo-900">
+                        Mặt hàng đã chọn: <strong>{selectedItem.itemName}</strong>
+                      </span>
+                      <span className="font-bold text-indigo-700">
+                        Tồn hiện tại: {selectedItem.quantity} {selectedItem.unit}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Quantity Used Input */}
+                  {selectedInventoryId && (
+                    <div className="animate-in fade-in slide-in-from-top-2 duration-200 pt-1">
+                      <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                        Liều lượng / Số lượng xuất sử dụng <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={quantityUsed}
+                          onChange={(e) => handleQuantityChange(e.target.value)}
+                          placeholder="Ví dụ: 2.5"
+                          className={`w-full rounded-2xl border bg-white py-3 pl-4 pr-16 text-sm font-bold text-slate-800 outline-none transition-colors ${
+                            fieldErrors.quantityUsed
+                              ? 'border-red-400 bg-red-50/40 focus:border-red-500'
+                              : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                          }`}
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          {selectedItem?.unit || 'đơn vị'}
+                        </span>
+                      </div>
+                      {fieldErrors.quantityUsed && (
+                        <p className="mt-1.5 flex items-center gap-1 text-xs font-bold text-red-600">
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          {fieldErrors.quantityUsed}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 2: Form Cập nhật điều trị Nhanh */}
+                <div className="space-y-4 pt-1">
+                  {/* Field 1: Biện pháp điều trị đã thực hiện */}
+                  <div>
+                    <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                      Biện pháp điều trị đã thực hiện {!selectedInventoryId && <span className="text-red-500">*</span>}
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={treatmentNote}
+                      onChange={(e) => handleNoteChange(e.target.value)}
+                      placeholder="Biện pháp điều trị đã thực hiện..."
+                      disabled={!canUpdateTreatment}
+                      className={`w-full rounded-2xl border p-3.5 text-sm outline-none transition-colors ${
+                        fieldErrors.treatmentNote
                           ? 'border-red-400 bg-red-50/40 focus:border-red-500'
                           : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-                      }`}
+                      } disabled:opacity-60`}
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                      {selectedItem?.unit || 'đơn vị'}
-                    </span>
+                    {fieldErrors.treatmentNote && (
+                      <p className="mt-1.5 flex items-center gap-1 text-xs font-bold text-red-600">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        {fieldErrors.treatmentNote}
+                      </p>
+                    )}
                   </div>
-                  {fieldErrors.quantityUsed && (
-                    <p className="mt-1.5 flex items-center gap-1 text-xs font-bold text-red-600">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      {fieldErrors.quantityUsed}
-                    </p>
-                  )}
-                </div>
-              )}
 
-              {/* Treatment details / Notes */}
-              <div>
-                <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
-                  Phác đồ / Hướng dẫn điều trị {!selectedInventoryId && <span className="text-red-500">*</span>}
-                </label>
-                <textarea
-                  rows={3}
-                  value={treatmentNote}
-                  onChange={(e) => handleNoteChange(e.target.value)}
-                  placeholder="Ghi rõ cách pha chế, thời điểm tạt thuốc, các chú ý an toàn..."
-                  disabled={!canUpdateTreatment}
-                  className={`w-full rounded-2xl border p-3.5 text-sm outline-none transition-colors ${
-                    fieldErrors.treatmentNote
-                      ? 'border-red-400 bg-red-50/40 focus:border-red-500'
-                      : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-                  } disabled:opacity-60`}
-                />
-                {fieldErrors.treatmentNote && (
-                  <p className="mt-1.5 flex items-center gap-1 text-xs font-bold text-red-600">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    {fieldErrors.treatmentNote}
-                  </p>
+                  {/* Field 2: Quan sát sau điều trị */}
+                  <div>
+                    <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                      Quan sát sau điều trị <span className="text-slate-400 font-normal">(không bắt buộc)</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={observationNote}
+                      onChange={(e) => setObservationNote(e.target.value)}
+                      placeholder="Quan sát sau điều trị (không bắt buộc)..."
+                      disabled={!canUpdateTreatment}
+                      className="w-full rounded-2xl border border-slate-200 p-3.5 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                    />
+                  </div>
+
+                  {/* Field 3: Kết quả */}
+                  <div>
+                    <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                      Kết quả <span className="text-slate-400 font-normal">(không bắt buộc)</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={resultNote}
+                      onChange={(e) => setResultNote(e.target.value)}
+                      placeholder="Kết quả (không bắt buộc)..."
+                      disabled={!canUpdateTreatment}
+                      className="w-full rounded-2xl border border-slate-200 p-3.5 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+
+                {/* Inline Notice Banner */}
+                {notice && (
+                  <div
+                    className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm animate-in fade-in zoom-in-95 duration-200 ${
+                      notice.type === 'error'
+                        ? 'border-rose-300 bg-rose-50 text-rose-800'
+                        : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    }`}
+                  >
+                    {notice.type === 'error' ? (
+                      <AlertCircle className="h-5 w-5 shrink-0 text-rose-600" />
+                    ) : (
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 animate-bounce" />
+                    )}
+                    <div className="flex-1 text-sm font-extrabold">{notice.message}</div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                {canUpdateTreatment && (
+                  <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => handleRecordTreatment(false)}
+                      disabled={submitting || resolving}
+                      className="flex-1 rounded-2xl bg-indigo-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition-all hover:bg-indigo-700 hover:-translate-y-0.5 disabled:opacity-50"
+                    >
+                      {submitting ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <RefreshCw className="h-4 w-4 animate-spin" /> Đang lưu...
+                        </span>
+                      ) : (
+                        selectedInventoryId ? 'Lưu cập nhật & Trừ kho' : 'Lưu cập nhật'
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRecordTreatment(true)}
+                      disabled={submitting || resolving}
+                      className="flex-1 rounded-2xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:bg-emerald-700 hover:-translate-y-0.5 disabled:opacity-50"
+                    >
+                      {resolving ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <RefreshCw className="h-4 w-4 animate-spin" /> Đang hoàn tất...
+                        </span>
+                      ) : (
+                        <span className="flex items-center justify-center gap-1.5">
+                          <Check className="h-4 w-4" /> Đã xử lý
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
-
-              {/* Inline Notice Banner */}
-              {notice && (
-                <div
-                  className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm animate-in fade-in zoom-in-95 duration-200 ${
-                    notice.type === 'error'
-                      ? 'border-rose-300 bg-rose-50 text-rose-800'
-                      : 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                  }`}
-                >
-                  {notice.type === 'error' ? (
-                    <AlertCircle className="h-5 w-5 shrink-0 text-rose-600" />
-                  ) : (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 animate-bounce" />
-                  )}
-                  <div className="flex-1 text-sm font-extrabold">{notice.message}</div>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              {canUpdateTreatment && (
-                <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => handleRecordTreatment(false)}
-                    disabled={submitting || resolving}
-                    className="flex-1 rounded-2xl bg-indigo-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition-all hover:bg-indigo-700 hover:-translate-y-0.5 disabled:opacity-50"
-                  >
-                    {submitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <RefreshCw className="h-4 w-4 animate-spin" /> Đang lưu & trừ kho...
-                      </span>
-                    ) : (
-                      'Ghi nhận cập nhật & Trừ kho'
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleRecordTreatment(true)}
-                    disabled={submitting || resolving}
-                    className="flex-1 rounded-2xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:bg-emerald-700 hover:-translate-y-0.5 disabled:opacity-50"
-                  >
-                    {resolving ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <RefreshCw className="h-4 w-4 animate-spin" /> Đang hoàn tất...
-                      </span>
-                    ) : (
-                      <span className="flex items-center justify-center gap-1.5">
-                        <Check className="h-4 w-4" /> Đã điều trị xong & Đóng sự cố
-                      </span>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Timeline of treatment updates */}
@@ -689,6 +789,11 @@ Hãy thực hiện 3 công việc:
                     {upd.observation && (
                       <p className="mt-1 text-xs text-slate-500 italic">
                         Quan sát: {upd.observation}
+                      </p>
+                    )}
+                    {upd.result && (
+                      <p className="mt-1 text-xs text-emerald-600 font-semibold">
+                        Kết quả: {upd.result}
                       </p>
                     )}
                   </div>

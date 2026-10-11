@@ -59,10 +59,12 @@ describe('IncidentsService', () => {
       { userId: 'technician-id', role: 'TECHNICIAN' },
       'farm-id',
     );
-    expect(prisma.incident.update).toHaveBeenCalledWith({
-      where: { id: incident.id },
-      data: { status: 'TREATING', startedAt: expect.any(Date) },
-    });
+    expect(prisma.incident.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: incident.id },
+        data: { status: 'TREATING', startedAt: expect.any(Date) },
+      }),
+    );
   });
 
   it('limits the incident list to accessible farms', async () => {

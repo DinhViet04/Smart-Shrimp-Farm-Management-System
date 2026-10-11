@@ -208,6 +208,8 @@ export class WaterQualityService {
     query: {
       farmId?: string;
       pondId?: string;
+      cropId?: string;
+      year?: number;
       fromDate?: string;
       toDate?: string;
       page?: number;
@@ -218,12 +220,31 @@ export class WaterQualityService {
     const page = query.page ?? 0;
     const size = query.size ?? 10;
     const sort = query.sort ?? 'desc';
-    const { farmId, pondId, fromDate, toDate } = query;
+    const { farmId, pondId, cropId, year, fromDate, toDate } = query;
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
     const where: any = {};
 
-    if (pondId) {
+    let cropStartDate: Date | null = null;
+    let cropEndDate: Date | null = null;
+
+    if (cropId) {
+      const crop = await this.prisma.crop.findUnique({
+        where: { id: cropId },
+        include: { pond: true },
+      });
+      if (!crop) {
+        throw new NotFoundException('Không tìm thấy vụ nuôi');
+      }
+      await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+      where.pondId = crop.pondId;
+
+      cropStartDate = new Date(crop.startDate);
+      if (crop.actualHarvestDate) {
+        cropEndDate = new Date(crop.actualHarvestDate);
+        cropEndDate.setHours(23, 59, 59, 999);
+      }
+    } else if (pondId) {
       const pond = await this.prisma.pond.findUnique({
         where: { id: pondId },
         include: { farm: true },
@@ -248,14 +269,39 @@ export class WaterQualityService {
       };
     }
 
-    if (fromDate || toDate) {
-      where.recordTime = {};
-      if (fromDate) where.recordTime.gte = new Date(fromDate);
-      if (toDate) {
-        const end = new Date(toDate);
-        end.setHours(23, 59, 59, 999);
-        where.recordTime.lte = end;
+    let filterStartDate: Date | null = cropStartDate;
+    let filterEndDate: Date | null = cropEndDate;
+
+    if (year) {
+      const yearStart = new Date(Date.UTC(Number(year), 0, 1, 0, 0, 0, 0));
+      const yearEnd = new Date(Date.UTC(Number(year), 11, 31, 23, 59, 59, 999));
+      if (!filterStartDate || yearStart > filterStartDate) {
+        filterStartDate = yearStart;
       }
+      if (!filterEndDate || yearEnd < filterEndDate) {
+        filterEndDate = yearEnd;
+      }
+    }
+
+    if (fromDate) {
+      const fromD = new Date(fromDate);
+      if (!filterStartDate || fromD > filterStartDate) {
+        filterStartDate = fromD;
+      }
+    }
+
+    if (toDate) {
+      const endD = new Date(toDate);
+      endD.setHours(23, 59, 59, 999);
+      if (!filterEndDate || endD < filterEndDate) {
+        filterEndDate = endD;
+      }
+    }
+
+    if (filterStartDate || filterEndDate) {
+      where.recordTime = {};
+      if (filterStartDate) where.recordTime.gte = filterStartDate;
+      if (filterEndDate) where.recordTime.lte = filterEndDate;
     }
 
     const skip = page * size;
@@ -332,9 +378,11 @@ export class WaterQualityService {
 
   async findTrends(
     pondId: string,
-    fromDate: string,
-    toDate: string,
-    user: AuthUser,
+    fromDate?: string,
+    toDate?: string,
+    user?: AuthUser,
+    cropId?: string,
+    year?: number,
   ) {
     const pond = await this.prisma.pond.findUnique({
       where: { id: pondId },
@@ -343,13 +391,58 @@ export class WaterQualityService {
     if (!pond) {
       throw new NotFoundException('Khong tim thay ao nuoi');
     }
-    await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
+    if (user) {
+      await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
+    }
 
     const where: any = { pondId };
-    if (fromDate || toDate) {
+
+    let filterStartDate: Date | null = null;
+    let filterEndDate: Date | null = null;
+
+    if (cropId) {
+      const crop = await this.prisma.crop.findUnique({
+        where: { id: cropId },
+      });
+      if (crop) {
+        filterStartDate = new Date(crop.startDate);
+        if (crop.actualHarvestDate) {
+          const cEnd = new Date(crop.actualHarvestDate);
+          cEnd.setHours(23, 59, 59, 999);
+          filterEndDate = cEnd;
+        }
+      }
+    }
+
+    if (year) {
+      const yearStart = new Date(Date.UTC(Number(year), 0, 1, 0, 0, 0, 0));
+      const yearEnd = new Date(Date.UTC(Number(year), 11, 31, 23, 59, 59, 999));
+      if (!filterStartDate || yearStart > filterStartDate) {
+        filterStartDate = yearStart;
+      }
+      if (!filterEndDate || yearEnd < filterEndDate) {
+        filterEndDate = yearEnd;
+      }
+    }
+
+    if (fromDate) {
+      const fromD = new Date(fromDate);
+      if (!filterStartDate || fromD > filterStartDate) {
+        filterStartDate = fromD;
+      }
+    }
+
+    if (toDate) {
+      const toD = new Date(toDate);
+      if (!filterEndDate || toD < filterEndDate) {
+        filterEndDate = toD;
+      }
+    }
+
+    if (filterStartDate || filterEndDate) {
       where.recordTime = {};
-      if (fromDate) where.recordTime.gte = new Date(fromDate);
-      if (toDate) where.recordTime.lte = new Date(toDate);
+      if (filterStartDate) where.recordTime.gte = filterStartDate;
+      if (filterEndDate) where.recordTime.lte = filterEndDate;
     }
 
     const records = await this.prisma.waterQualityRecord.findMany({

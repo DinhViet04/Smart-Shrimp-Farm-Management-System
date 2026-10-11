@@ -93,8 +93,6 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [treatment, setTreatment] = useState('');
-  const [observation, setObservation] = useState('');
-  const [result, setResult] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [activeCrops, setActiveCrops] = useState<Crop[]>([]);
   const [createForm, setCreateForm] = useState({ cropId: '', title: '', description: '' });
@@ -247,8 +245,6 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
     setSelected(await incidentService.getById(selected.id));
     await loadIncidents();
     setTreatment('');
-    setObservation('');
-    setResult('');
     setNotice(message);
   };
 
@@ -262,34 +258,13 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
     setSaving(true);
     try {
       const updated = await incidentService.startTreatment(selected.id);
+      const fullIncident: Incident = {
+        ...selected,
+        ...updated,
+        crop: updated.crop || selected.crop,
+      };
       setSelected(null);
-      setActiveWorkspaceIncident(updated);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const submitUpdate = async (resolve = false) => {
-    if (!selected || !treatment.trim()) {
-      setError('Vui lòng nhập biện pháp điều trị.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      if (resolve) {
-        await incidentService.resolve(selected.id, { treatment, result: result || undefined });
-        await refreshSelected('Đã đánh dấu sự cố là đã xử lý.');
-      } else {
-        await incidentService.addUpdate(selected.id, {
-          treatment,
-          observation: observation || undefined,
-          result: result || undefined,
-        });
-        await refreshSelected('Đã thêm cập nhật điều trị.');
-      }
+      setActiveWorkspaceIncident(fullIncident);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -575,10 +550,18 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
 
               {!loadingDetail && (
                 role === 'FARM_MANAGER' && selected.status === 'RESOLVED' ? (
-                  <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
-                    <h4 className="font-black text-amber-900">Mở lại sự cố</h4>
-                    <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder="Lý do mở lại..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-amber-400" />
-                    <button onClick={reopen} disabled={saving} className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => openTreatmentWorkspace(selected)}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
+                    >
+                      <Bot className="h-4 w-4 text-cyan-300" /> Xem trang điều trị & Phân tích AI (Kho vật tư)
+                    </button>
+                    <div className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                      <h4 className="font-black text-amber-900">Mở lại sự cố</h4>
+                      <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder="Lý do mở lại..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-amber-400" />
+                      <button onClick={reopen} disabled={saving} className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
+                    </div>
                   </div>
                 ) : role !== 'TECHNICIAN' ? (
                   <div className="space-y-3">
@@ -609,32 +592,13 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
                     <Stethoscope className="h-4 w-4" /> Bắt đầu điều trị (Mở trang AI & Vật tư kho)
                   </button>
                 ) : (
-                  <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <div className="space-y-3">
                     <button
                       onClick={() => openTreatmentWorkspace(selected)}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3 text-sm font-bold text-white shadow-md hover:from-indigo-700 hover:to-blue-700 transition-all"
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
                     >
                       <Bot className="h-4 w-4 text-cyan-300" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
                     </button>
-
-                    <h4 className="flex items-center gap-2 font-black text-indigo-900 pt-2"><Stethoscope className="h-4 w-4" /> {selected.status === 'RESOLVED' ? 'Mở lại sự cố' : 'Cập nhật điều trị Nhanh'}</h4>
-                    <textarea value={treatment} onChange={(event) => setTreatment(event.target.value)} rows={3} placeholder={selected.status === 'RESOLVED' ? 'Lý do mở lại...' : 'Biện pháp điều trị đã thực hiện...'} className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                    {selected.status === 'TREATING' && (
-                      <>
-                        <textarea value={observation} onChange={(event) => setObservation(event.target.value)} rows={2} placeholder="Quan sát sau điều trị (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                        <textarea value={result} onChange={(event) => setResult(event.target.value)} rows={2} placeholder="Kết quả (không bắt buộc)..." className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400" />
-                      </>
-                    )}
-                    <div className="flex gap-3">
-                      {selected.status === 'RESOLVED' ? (
-                        <button onClick={reopen} disabled={saving} className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white disabled:opacity-50">Mở lại</button>
-                      ) : (
-                        <>
-                          <button onClick={() => submitUpdate(false)} disabled={saving} className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Lưu cập nhật</button>
-                          <button onClick={() => submitUpdate(true)} disabled={saving} className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">Đã xử lý</button>
-                        </>
-                      )}
-                    </div>
                   </div>
                 )
               )}

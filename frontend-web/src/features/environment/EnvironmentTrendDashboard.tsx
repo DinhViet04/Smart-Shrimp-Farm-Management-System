@@ -4,12 +4,13 @@ import {
   ResponsiveContainer, ReferenceArea
 } from 'recharts';
 import { subDays, subHours, format } from 'date-fns';
-import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Minus } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, ChevronDown, Droplets, Minus, Calendar, Layers } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
+import { cropService, type Crop } from '../../services/crop.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import LoadingMotion from '../../components/LoadingMotion';
 
-type TimeRange = '24h' | '7d' | '30d';
+type TimeRange = '24h' | '7d' | '30d' | 'crop' | 'year';
 type WQStatus = 'Optimal' | 'Warning' | 'Danger';
 
 interface Farm { id: string; name: string; }
@@ -54,18 +55,28 @@ export default function EnvironmentTrendDashboard({
 }: EnvironmentTrendDashboardProps = {}) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
+  const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedFarm, setSelectedFarm] = useState(initialFarmId || '');
   const [selectedPond, setSelectedPond] = useState(initialPondId || '');
+
+  const currentYearStr = new Date().getFullYear().toString();
+  const [selectedYear, setSelectedYear] = useState<string>('ALL');
+  const [selectedCropId, setSelectedCropId] = useState<string>('ALL');
+
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [loading, setLoading] = useState(false);
   const [trendData, setTrendData] = useState<TrendData[]>([]);
   const [activeParam, setActiveParam] = useState<ParamKey>('temperature');
 
-  // Load farms & ponds
+  // Load farms, ponds & crops
   useEffect(() => {
-    pondService.getOverview().then(({ farms: f, ponds: p }) => {
+    Promise.all([
+      pondService.getOverview(),
+      cropService.getAll().catch(() => [] as Crop[]),
+    ]).then(([{ farms: f, ponds: p }, cropsData]) => {
       setFarms(f);
       setPonds(p);
+      setCrops(cropsData || []);
 
       let targetFarm = initialFarmId;
       let targetPond = initialPondId;
@@ -92,13 +103,50 @@ export default function EnvironmentTrendDashboard({
     });
   }, [initialFarmId, initialPondId]);
 
+  // Danh sách các năm nuôi
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    yearsSet.add(currentYearStr);
+    crops.forEach((c) => {
+      if (c.startDate) {
+        const y = new Date(c.startDate).getFullYear();
+        if (!isNaN(y)) yearsSet.add(y.toString());
+      }
+    });
+    const curY = new Date().getFullYear();
+    yearsSet.add((curY - 1).toString());
+    yearsSet.add((curY - 2).toString());
+    return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+  }, [crops, currentYearStr]);
+
+  // Danh sách vụ nuôi theo ao & năm
+  const availableCrops = useMemo(() => {
+    let list = crops;
+    if (selectedFarm) {
+      list = list.filter((c) => c.pond?.farmId === selectedFarm || ponds.find(p => p.id === c.pondId)?.farmId === selectedFarm);
+    }
+    if (selectedPond) {
+      list = list.filter((c) => c.pondId === selectedPond);
+    }
+    if (selectedYear !== 'ALL') {
+      const yrNum = parseInt(selectedYear, 10);
+      list = list.filter((c) => {
+        if (!c.startDate) return false;
+        const startY = new Date(c.startDate).getFullYear();
+        const endY = c.actualHarvestDate ? new Date(c.actualHarvestDate).getFullYear() : startY;
+        return yrNum >= startY && yrNum <= endY;
+      });
+    }
+    return list;
+  }, [crops, selectedFarm, selectedPond, selectedYear, ponds]);
+
   // Cập nhật khi props thay đổi từ thông báo (Deep link từ notification)
   useEffect(() => {
     if (initialFarmId) setSelectedFarm(initialFarmId);
     if (initialPondId) setSelectedPond(initialPondId);
   }, [initialFarmId, initialPondId]);
 
-  // Fetch trend data when pond or time range changes
+  // Fetch trend data when pond, time range, crop or year changes
   useEffect(() => {
     if (!selectedPond) {
       setTrendData([]);
@@ -107,12 +155,22 @@ export default function EnvironmentTrendDashboard({
     const fetchData = async () => {
       setLoading(true);
       try {
-        let fromDate = new Date();
+        let fromDate: Date | undefined;
+        let toDate: Date | undefined;
         if (timeRange === '24h') fromDate = subHours(new Date(), 24);
         if (timeRange === '7d') fromDate = subDays(new Date(), 7);
         if (timeRange === '30d') fromDate = subDays(new Date(), 30);
         
-        const data = await waterQualityService.getTrends(selectedPond, fromDate.toISOString());
+        const cId = selectedCropId !== 'ALL' ? selectedCropId : undefined;
+        const yr = selectedYear !== 'ALL' ? parseInt(selectedYear, 10) : undefined;
+
+        const data = await waterQualityService.getTrends(
+          selectedPond,
+          fromDate ? fromDate.toISOString() : undefined,
+          toDate ? toDate.toISOString() : undefined,
+          cId,
+          yr,
+        );
         setTrendData(data);
       } catch (err) {
         console.error(err);
@@ -121,7 +179,7 @@ export default function EnvironmentTrendDashboard({
       }
     };
     fetchData();
-  }, [selectedPond, timeRange]);
+  }, [selectedPond, timeRange, selectedCropId, selectedYear]);
 
   const filteredPonds = ponds.filter(p => p.farmId === selectedFarm);
 
@@ -204,25 +262,91 @@ export default function EnvironmentTrendDashboard({
           </div>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+        <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
+          {/* Trang trại */}
           <div className="relative">
             <select
               value={selectedFarm}
-              onChange={(e) => { setSelectedFarm(e.target.value); setSelectedPond(''); }}
-              className="pl-4 pr-10 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-sm font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[160px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
+              onChange={(e) => {
+                setSelectedFarm(e.target.value);
+                setSelectedPond('');
+                setSelectedCropId('ALL');
+              }}
+              className="pl-3 pr-8 py-2 rounded-xl border border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[140px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
             >
               <option value="">-- Chọn trang trại --</option>
               {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
-            <ChevronDown className="w-4 h-4 text-indigo-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-indigo-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
-          <div className="bg-slate-100 p-1 rounded-xl flex text-sm font-bold">
-            {([['24h', '24 Giờ'], ['7d', '7 Ngày'], ['30d', '30 Ngày']] as const).map(([val, label]) => (
+          {/* Năm */}
+          <div className="relative">
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                const yr = e.target.value;
+                setSelectedYear(yr);
+                setSelectedCropId('ALL');
+              }}
+              className="pl-3 pr-8 py-2 rounded-xl border border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[120px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
+            >
+              <option value="ALL">Tất cả năm</option>
+              {availableYears.map(yr => (
+                <option key={yr} value={yr}>
+                  {yr === currentYearStr ? `Năm ${yr}` : `Năm ${yr}`}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-indigo-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Vụ nuôi */}
+          <div className="relative">
+            <select
+              value={selectedCropId}
+              onChange={(e) => {
+                const cId = e.target.value;
+                setSelectedCropId(cId);
+                if (cId !== 'ALL') {
+                  const found = crops.find(c => c.id === cId);
+                  if (found) {
+                    if (found.pondId) setSelectedPond(found.pondId);
+                    if (found.pond?.farmId) setSelectedFarm(found.pond.farmId);
+                  }
+                  setTimeRange('crop');
+                }
+              }}
+              className="pl-3 pr-8 py-2 rounded-xl border border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[150px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
+            >
+              <option value="ALL">Tất cả vụ nuôi</option>
+              {availableCrops.map((c, idx) => {
+                const pName = c.pond?.name || ponds.find(p => p.id === c.pondId)?.name || 'Ao';
+                const stage = c.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm';
+                const dStr = c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : '';
+                return (
+                  <option key={c.id} value={c.id}>
+                    {pName} - Vụ {idx + 1} ({stage}) - {dStr}
+                  </option>
+                );
+              })}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-indigo-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Khoảng thời gian */}
+          <div className="bg-slate-100 p-1 rounded-xl flex text-xs font-bold">
+            {([
+              ['24h', '24 Giờ'],
+              ['7d', '7 Ngày'],
+              ['30d', '30 Ngày'],
+              ['crop', 'Theo vụ'],
+              ['year', 'Cả năm'],
+            ] as const).map(([val, label]) => (
               <button
                 key={val}
                 onClick={() => setTimeRange(val)}
-                className={`px-4 py-2 rounded-lg transition-all ${timeRange === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-3 py-1.5 rounded-lg transition-all ${timeRange === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {label}
               </button>

@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsString,
   IsIn,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -15,6 +16,15 @@ export class GetWaterQualityHistoryDto {
   @IsOptional()
   @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
   pondId?: string;
+
+  @IsOptional()
+  @IsUUID('4', { message: 'cropId phải là UUID hợp lệ' })
+  cropId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'year phải là số nguyên' })
+  year?: number;
 
   @IsOptional()
   @IsDateString({}, { message: 'fromDate phải là định dạng ngày hợp lệ' })

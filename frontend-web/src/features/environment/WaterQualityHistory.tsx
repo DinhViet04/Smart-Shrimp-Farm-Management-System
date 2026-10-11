@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Calendar,
   RotateCcw,
@@ -23,8 +23,12 @@ import {
   AlertTriangle,
   Info,
   History,
+  Layers,
+  Building2,
+  ChevronDown,
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
+import { cropService, type Crop } from '../../services/crop.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import { weatherService, type WeatherInfo } from '../../services/weather.service';
 import LoadingMotion from '../../components/LoadingMotion';
@@ -157,8 +161,14 @@ export default function WaterQualityHistory({
 
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
+  const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
   const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
+  const [selectedCropId, setSelectedCropId] = useState('');
+
+  const currentYearStr = new Date().getFullYear().toString();
+  const [selectedYear, setSelectedYear] = useState('ALL');
+
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [records, setRecords] = useState<HistoryRecord[]>([]);
@@ -176,15 +186,72 @@ export default function WaterQualityHistory({
     ? ponds.filter((p) => p.farmId === selectedFarmId)
     : ponds;
 
+  // Danh sách các năm nuôi
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    yearsSet.add(currentYearStr);
+    crops.forEach((c) => {
+      if (c.startDate) {
+        const y = new Date(c.startDate).getFullYear();
+        if (!isNaN(y)) yearsSet.add(y.toString());
+      }
+    });
+    const curY = new Date().getFullYear();
+    yearsSet.add((curY - 1).toString());
+    yearsSet.add((curY - 2).toString());
+    return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+  }, [crops, currentYearStr]);
+
+  // Danh sách vụ nuôi theo trang trại, ao và năm được chọn
+  const availableCrops = useMemo(() => {
+    let list = crops;
+    if (selectedFarmId) {
+      list = list.filter((c) => {
+        const pFarmId = c.pond?.farmId || ponds.find((p) => p.id === c.pondId)?.farmId;
+        return pFarmId === selectedFarmId;
+      });
+    }
+    if (selectedPondId) {
+      list = list.filter((c) => c.pondId === selectedPondId);
+    }
+    if (selectedYear !== 'ALL') {
+      const yrNum = parseInt(selectedYear, 10);
+      list = list.filter((c) => {
+        if (!c.startDate) return false;
+        const startY = new Date(c.startDate).getFullYear();
+        const endY = c.actualHarvestDate ? new Date(c.actualHarvestDate).getFullYear() : startY;
+        return yrNum >= startY && yrNum <= endY;
+      });
+    }
+    return list;
+  }, [crops, selectedFarmId, selectedPondId, selectedYear, ponds]);
+
+  // Khớp vụ nuôi cho bản ghi
+  const getCropForRecord = useCallback((r: HistoryRecord) => {
+    const pond = ponds.find((p) => p.name === r.pondName);
+    if (!pond) return null;
+    const recTime = new Date(r.recordTime).getTime();
+    return crops.find((c) => {
+      if (c.pondId !== pond.id) return false;
+      const start = new Date(c.startDate).getTime();
+      const end = c.actualHarvestDate ? new Date(c.actualHarvestDate).getTime() : Date.now() + 86400000;
+      return recTime >= start && recTime <= end;
+    });
+  }, [ponds, crops]);
+
   useEffect(() => {
     (async () => {
       try {
-        const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
-        setFarms(farmsData);
-        setPonds(pondsData);
+        const [{ farms: farmsData, ponds: pondsData }, cropsData] = await Promise.all([
+          pondService.getOverview(),
+          cropService.getAll().catch(() => [] as Crop[]),
+        ]);
+        setFarms(farmsData || []);
+        setPonds(pondsData || []);
+        setCrops(cropsData || []);
 
         if (initialPondId) {
-          const found = pondsData.find((p: any) => p.id === initialPondId);
+          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);
@@ -235,6 +302,8 @@ export default function WaterQualityHistory({
       const data = await waterQualityService.getHistory({
         farmId: selectedFarmId || undefined,
         pondId: selectedPondId || undefined,
+        cropId: selectedCropId || undefined,
+        year: selectedYear !== 'ALL' ? parseInt(selectedYear, 10) : undefined,
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
         page,
@@ -248,7 +317,7 @@ export default function WaterQualityHistory({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedFarmId, selectedPondId, fromDate, toDate, page, size]);
+  }, [selectedFarmId, selectedPondId, selectedCropId, selectedYear, fromDate, toDate, page, size]);
 
   useEffect(() => {
     fetchHistory();
@@ -256,7 +325,9 @@ export default function WaterQualityHistory({
 
   const handleResetFilters = () => {
     setSelectedFarmId('');
+    setSelectedYear('ALL');
     setSelectedPondId('');
+    setSelectedCropId('');
     setFromDate('');
     setToDate('');
     setPage(0);
@@ -306,7 +377,7 @@ export default function WaterQualityHistory({
             <h2 className={`text-xl font-bold bg-gradient-to-r ${themeTextGradientHeader} bg-clip-text text-transparent`}>
               Lịch Sử Đo Lường Môi Trường
             </h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Theo dõi dữ liệu đo đạc chất lượng nước, thời tiết & khuyến nghị AI</p>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">Theo dõi dữ liệu đo đạc chất lượng nước theo năm, ao nuôi và từng vụ</p>
           </div>
         </div>
         <button onClick={fetchHistory} className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer">
@@ -319,34 +390,179 @@ export default function WaterQualityHistory({
           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
             <Filter className="w-4 h-4 text-slate-500" /> Bộ Lọc Tìm Kiếm
           </span>
-          {(selectedFarmId || selectedPondId || fromDate || toDate) && (
+          {(selectedFarmId || selectedYear !== 'ALL' || selectedPondId || selectedCropId || fromDate || toDate) && (
             <button onClick={handleResetFilters} className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer">
               <RotateCcw className="w-3.5 h-3.5" /> Đặt lại bộ lọc
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          {/* Lọc theo Năm */}
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Trang trại</label>
-            <select value={selectedFarmId} onChange={(e) => { setSelectedFarmId(e.target.value); setSelectedPondId(''); setPage(0); }} className={`w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`}>
-              <option value="">Tất cả trang trại</option>
-              {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Năm
+            </label>
+            <div className="relative">
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  const yr = e.target.value;
+                  setSelectedYear(yr);
+                  if (selectedCropId) {
+                    const c = crops.find((item) => item.id === selectedCropId);
+                    if (c && yr !== 'ALL') {
+                      const cYr = new Date(c.startDate).getFullYear().toString();
+                      if (cYr !== yr) setSelectedCropId('');
+                    }
+                  }
+                  setPage(0);
+                }}
+                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+              >
+                <option value="ALL">Tất cả các năm</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {yr === currentYearStr ? `Năm ${yr} (Hiện tại)` : `Năm ${yr}`}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
+
+          {/* Lọc theo Trang trại */}
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Ao nuôi</label>
-            <select value={selectedPondId} onChange={(e) => { setSelectedPondId(e.target.value); setPage(0); }} className={`w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`}>
-              <option value="">Tất cả ao</option>
-              {filteredPonds.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+              Trang trại
+            </label>
+            <div className="relative">
+              <select
+                value={selectedFarmId}
+                onChange={(e) => {
+                  setSelectedFarmId(e.target.value);
+                  setSelectedPondId('');
+                  setSelectedCropId('');
+                  setPage(0);
+                }}
+                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+              >
+                <option value="">Tất cả trang trại</option>
+                {farms.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
+
+          {/* Lọc theo Ao nuôi */}
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Từ ngày</label>
-            <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className={`w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`} />
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Waves className="w-3.5 h-3.5 text-cyan-600" />
+              Ao nuôi
+            </label>
+            <div className="relative">
+              <select
+                value={selectedPondId}
+                onChange={(e) => {
+                  const pId = e.target.value;
+                  setSelectedPondId(pId);
+                  if (selectedCropId) {
+                    const c = crops.find((item) => item.id === selectedCropId);
+                    if (c && pId && c.pondId !== pId) setSelectedCropId('');
+                  }
+                  setPage(0);
+                }}
+                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+              >
+                <option value="">Tất cả ao</option>
+                {filteredPonds.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
+
+          {/* Lọc theo Vụ nuôi */}
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Đến ngày</label>
-            <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(0); }} className={`w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`} />
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              Vụ nuôi
+            </label>
+            <div className="relative">
+              <select
+                value={selectedCropId}
+                onChange={(e) => {
+                  const cId = e.target.value;
+                  setSelectedCropId(cId);
+                  if (cId) {
+                    const c = crops.find((item) => item.id === cId);
+                    if (c) {
+                      if (c.pondId) setSelectedPondId(c.pondId);
+                      const fId = c.pond?.farmId || ponds.find((p) => p.id === c.pondId)?.farmId;
+                      if (fId) setSelectedFarmId(fId);
+                    }
+                  }
+                  setPage(0);
+                }}
+                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+              >
+                <option value="">Tất cả vụ nuôi</option>
+                {availableCrops.map((c, idx) => {
+                  const pName = c.pond?.name || ponds.find((p) => p.id === c.pondId)?.name || 'Ao';
+                  const stage = c.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm';
+                  const dStr = c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : '';
+                  const statusLabel = c.status === 'ACTIVE' ? '🟢 Đang nuôi' : '⚪ Đã thu';
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {pName} - Vụ {idx + 1} ({stage}) [{statusLabel}] - {dStr}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Từ ngày */}
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              Từ ngày
+            </label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setPage(0);
+              }}
+              className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
+            />
+          </div>
+
+          {/* Đến ngày */}
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              Đến ngày
+            </label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setPage(0);
+              }}
+              className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
+            />
           </div>
         </div>
       </div>
@@ -409,9 +625,22 @@ export default function WaterQualityHistory({
                     <h4 className={`text-lg font-black text-slate-800 ${isFarmer ? 'group-hover:text-teal-600' : 'group-hover:text-indigo-600'} transition-colors`}>
                       {r.pondName}
                     </h4>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                      {r.farmName}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                        {r.farmName}
+                      </p>
+                      {(() => {
+                        const cropMatch = getCropForRecord(r);
+                        if (!cropMatch) return null;
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100">
+                            <Layers className="w-3 h-3 text-indigo-500" />
+                            {cropMatch.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}
+                            {cropMatch.status === 'ACTIVE' ? ' (Đang nuôi)' : ''}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   {/* Symmetrical Param Matrix Grid (3x3) */}
@@ -539,10 +768,21 @@ export default function WaterQualityHistory({
                   <span className={`text-[10px] font-extrabold ${themeText500} uppercase tracking-widest`}>Chi tiết bản ghi & Đánh giá AI</span>
                   {getStatusBadge(selectedRecord.overallStatus)}
                 </div>
-                <h3 className="text-xl font-bold text-slate-800 mt-0.5 flex items-center gap-2">
+                <h3 className="text-xl font-bold text-slate-800 mt-0.5 flex flex-wrap items-center gap-2">
                   <Waves className="w-5 h-5 text-blue-600" />
                   {selectedRecord.pondName}
                   <span className="text-sm font-normal text-slate-400">({selectedRecord.farmName})</span>
+                  {(() => {
+                    const cMatch = getCropForRecord(selectedRecord);
+                    if (!cMatch) return null;
+                    return (
+                      <span className="text-xs font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                        {cMatch.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}
+                        {cMatch.status === 'ACTIVE' ? ' (Đang nuôi)' : ' (Đã thu)'}
+                      </span>
+                    );
+                  })()}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">Thời gian đo: <strong>{formatDate(selectedRecord.recordTime)}</strong></p>
               </div>

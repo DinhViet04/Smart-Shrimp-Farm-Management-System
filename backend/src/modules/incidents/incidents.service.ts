@@ -183,6 +183,13 @@ export class IncidentsService {
       const updated = await tx.incident.update({
         where: { id },
         data: { status: 'TREATING', startedAt: new Date() },
+        include: {
+          crop: {
+            include: { pond: { include: { farm: true } } },
+          },
+          reporter: { select: { id: true, fullName: true, role: true } },
+          assignedTo: { select: { id: true, fullName: true, email: true } },
+        },
       });
       await tx.incidentTreatmentUpdate.create({
         data: {
@@ -202,6 +209,9 @@ export class IncidentsService {
     await this.assertCanTreat(user, incident);
     if (incident.status === 'RESOLVED') {
       throw new BadRequestException('Không thể cập nhật sự cố đã đóng');
+    }
+    if (incident.status === 'OPEN') {
+      throw new BadRequestException('Vui lòng bắt đầu điều trị trước khi cập nhật tiến trình');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -308,7 +318,7 @@ export class IncidentsService {
 
   private async assertCanTreat(user: AuthUser, incident: Awaited<ReturnType<IncidentsService['getIncident']>>) {
     await this.farmAccess.assertCanAccessFarm(user, incident.crop.pond.farmId);
-    if (user.role === 'FARM_MANAGER' || user.role === 'ADMIN') {
+    if (user.role === 'FARM_MANAGER') {
       return;
     }
     if (user.role !== 'TECHNICIAN' || incident.assignedToId !== user.userId) {

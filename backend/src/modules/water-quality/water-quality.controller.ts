@@ -46,14 +46,18 @@ export class WaterQualityController {
   getTrends(
     @Request() req: any,
     @Query('pondId') pondId: string,
-    @Query('fromDate') fromDate: string,
-    @Query('toDate') toDate: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('cropId') cropId?: string,
+    @Query('year') year?: number,
   ) {
     return this.waterQualityService.findTrends(
       pondId,
       fromDate,
       toDate,
       req.user,
+      cropId,
+      year ? Number(year) : undefined,
     );
   }
 }

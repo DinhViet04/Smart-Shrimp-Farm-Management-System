@@ -24,6 +24,11 @@ export class GetIncidentsDto {
   assignedToMe?: boolean;
 
   @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  activeOnly?: boolean;
+
+  @IsOptional()
   @IsString()
   search?: string;
 

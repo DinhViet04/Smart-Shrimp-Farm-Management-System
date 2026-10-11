@@ -26,6 +26,15 @@ export interface OverviewPond {
   createdAt: string;
   updatedAt: string;
   farm?: OverviewFarm;
+  latestSizeSample?: {
+    abwGram?: number;
+    sizePerKg?: number;
+    adgGramPerDay?: number | null;
+    estimatedBiomassKg?: number | null;
+    estimatedTotalShrimp?: number | null;
+    doc?: number | null;
+    samplingDate?: string;
+  } | null;
 }
 
 export interface PondOverview {

@@ -1,1076 +1,549 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Waves, Droplets, ShieldAlert, CheckCircle2,
-  AlertTriangle, RefreshCw, Loader2, Calendar,
-  Search, SlidersHorizontal, Scale, Fish,
-  Building2, X, Clock, PlusCircle,
+  Activity, AlertTriangle, ArrowRight, Building2, CheckCircle2, CircleAlert,
+  Clock3, DollarSign, Droplets, Fish, Gauge, Loader2, RefreshCw, Scale, Search,
+  ShieldAlert, TrendingUp, Waves,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
-import { pondService } from '../../services/pond.service';
-import { cropService, type Crop } from '../../services/crop.service';
+import {
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceArea,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
+import { pondService, type OverviewFarm, type OverviewPond } from '../../services/pond.service';
+import { cropService, type Crop, type ManagerHarvestSummary } from '../../services/crop.service';
 import { incidentService, type Incident } from '../../services/incident.service';
-import { waterQualityService } from '../../services/water-quality.service';
-import { shrimpSizeService } from '../../services/shrimpSizeService';
+import { waterQualityService, type ManagerWaterTrendsResponse } from '../../services/water-quality.service';
 
-interface Farm {
-  id: string;
-  name: string;
-}
+type ShrimpSample = NonNullable<OverviewPond['latestSizeSample']>;
 
-interface Pond {
-  id: string;
-  name: string;
-  farmId: string;
-  areaSize?: number;
-  status?: string;
-  farm?: {
-    id: string;
-    name: string;
-  };
-}
+type DashboardWaterRecord = ManagerWaterTrendsResponse['latestByPond'][number];
 
-interface WaterQualityRecord {
-  id: string;
-  pondName: string;
-  recordTime: string;
-  temperature: number;
-  ph: number;
-  dissolvedOxygen: number;
-  salinity: number;
-  alkalinity?: number;
-  nh3?: number;
-  h2s?: number;
-  overallStatus: 'Optimal' | 'Warning' | 'Danger';
-}
-
-interface ShrimpSampleRecord {
-  abwGram?: number;
-  sizePerKg?: number;
-  adgGramPerDay?: number | null;
-  estimatedBiomassKg?: number;
-  estimatedTotalShrimp?: number;
-  doc?: number;
-  samplingDate?: string;
-}
-
-interface ManagerDashboardHomeProps {
+interface Props {
   onNavigateTab?: (tab: string) => void;
+  onOpenCropHistory?: (farmId?: string, pondId?: string, year?: number, quarter?: number | null) => void;
 }
 
 type HealthStatus = 'DANGER' | 'WARNING' | 'OPTIMAL' | 'IDLE';
 
-interface PondCardData {
-  pond: Pond;
+interface PondRow {
+  pond: OverviewPond;
   crop: Crop | null;
   doc: number | null;
-  latestWq: WaterQualityRecord | null;
-  latestSample: ShrimpSampleRecord | null;
+  latestWq: DashboardWaterRecord | null;
+  sample: ShrimpSample | null;
   openIncidents: Incident[];
-  health: {
-    status: HealthStatus;
-    label: string;
-    score: number;
-    reason: string;
-  };
+  health: { status: HealthStatus; label: string; reason: string };
 }
 
-const getDOC = (startDate: string) => Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000));
-const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleDateString('vi-VN'); } catch { return iso; } };
-const fmtTimeAgo = (iso: string) => {
-  try {
-    const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (diffMin < 60) return `${diffMin} phút trước`;
-    const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH} giờ trước`;
-    return new Date(iso).toLocaleDateString('vi-VN');
-  } catch {
-    return iso;
-  }
-};
+interface ActionItem {
+  id: string;
+  severity: 'DANGER' | 'WARNING';
+  title: string;
+  detail: string;
+  tab: string;
+}
 
-const getStageLabel = (doc: number) => {
-  if (doc <= 30) return { label: 'Giai đoạn đầu', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-  if (doc <= 60) return { label: 'Giai đoạn thúc', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' };
-  return { label: 'Giai đoạn về đích', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-};
+const DAY_MS = 86_400_000;
+const getDoc = (startDate: string, snapshotTime: number) => Math.max(0, Math.floor((snapshotTime - new Date(startDate).getTime()) / DAY_MS));
+const farmNameOf = (pond: OverviewPond, farms: OverviewFarm[]) =>
+  pond.farm?.name || farms.find((farm) => farm.id === pond.farmId)?.name || 'Trang trại';
+const shortDate = (value: string) => new Date(value).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+const formatMoney = (value: number) => new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 }).format(value) + ' đ';
+const comparisonText = (value: number | null, quarter: number | null) => value === null
+  ? 'Chưa có dữ liệu kỳ trước'
+  : `${value >= 0 ? '↑' : '↓'} ${Math.abs(value)}% ${quarter ? 'so với cùng kỳ năm trước' : 'so với năm trước'}`;
 
-export default function ManagerDashboardHome({ onNavigateTab }: ManagerDashboardHomeProps) {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [ponds, setPonds] = useState<Pond[]>([]);
+export default function ManagerDashboardHome({ onNavigateTab, onOpenCropHistory }: Props) {
+  const [farms, setFarms] = useState<OverviewFarm[]>([]);
+  const [ponds, setPonds] = useState<OverviewPond[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [waterQualities, setWaterQualities] = useState<WaterQualityRecord[]>([]);
-  const [samplesMap, setSamplesMap] = useState<Record<string, ShrimpSampleRecord>>({});
-  const [selectedFarmId, setSelectedFarmId] = useState('ALL');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [waterOverview, setWaterOverview] = useState<ManagerWaterTrendsResponse | null>(null);
+  const [waterLoading, setWaterLoading] = useState(true);
+  const [waterError, setWaterError] = useState(false);
+  const [farmId, setFarmId] = useState('ALL');
+  const [status, setStatus] = useState<'ALL' | HealthStatus>('ALL');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [snapshotTime, setSnapshotTime] = useState(() => Date.now());
+  const [financeYear, setFinanceYear] = useState(() => new Date().getFullYear());
+  const [financeQuarter, setFinanceQuarter] = useState<number | null>(null);
+  const [finance, setFinance] = useState<ManagerHarvestSummary | null>(null);
+  const [financeError, setFinanceError] = useState(false);
+  const [financeLoading, setFinanceLoading] = useState(true);
+  const [operationalRefreshKey, setOperationalRefreshKey] = useState(0);
+  const [financeRefreshKey, setFinanceRefreshKey] = useState(0);
 
-  // Filters & Search
-  const [statusFilter, setStatusFilter] = useState<'ALL' | HealthStatus>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'risk' | 'doc' | 'name'>('risk');
-
-  // Modal inspection
-  const [inspectingPond, setInspectingPond] = useState<PondCardData | null>(null);
-
-  // Fetch all base data
-  const fetchAll = useCallback(async (refresh = false) => {
-    if (refresh) setIsRefreshing(true); else setIsLoading(true);
+  const loadDashboard = useCallback(async (refresh = false, background = false) => {
+    if (refresh) setRefreshing(true);
+    else if (!background) setLoading(true);
+    setError(null);
     try {
-      const [f, p, c, inc] = await Promise.all([
-        farmService.getMy().catch(() => farmService.getAll().catch(() => [])),
-        pondService.getAll().catch(() => []),
-        cropService.getAll().catch(() => []),
-        incidentService.getAll({}).catch(() => ({ content: [] })),
+      const [overview, incidentPage] = await Promise.all([
+        pondService.getOverview(),
+        incidentService.getAll({ activeOnly: true }).catch(() => ({ content: [], totalElements: 0 })),
       ]);
-      setFarms(f);
-      setPonds(p);
-      setCrops(c);
-      setIncidents((inc as any).content ?? []);
 
-      // Load water quality history (all accessible farms or filtered by selected farm)
-      const wqParams: { farmId?: string; size: number } = { size: 100 };
-      if (selectedFarmId && selectedFarmId !== 'ALL') {
-        wqParams.farmId = selectedFarmId;
-      }
-      const wqRes = await waterQualityService.getHistory(wqParams).catch(() => ({ content: [] }));
-      setWaterQualities((wqRes.content || []) as WaterQualityRecord[]);
+      setFarms(overview.farms || []);
+      setPonds(overview.ponds || []);
+      setCrops(overview.crops || []);
+      setIncidents(incidentPage.content || []);
 
-      // Load latest shrimp size samples for active ponds
-      const targetPonds = (!selectedFarmId || selectedFarmId === 'ALL')
-        ? p
-        : p.filter((pond: Pond) => pond.farmId === selectedFarmId);
-
-      const samplePromises = targetPonds.map(async (pond: Pond) => {
-        try {
-          const s = await shrimpSizeService.getLatestSample(pond.id);
-          return { pondId: pond.id, sample: s };
-        } catch {
-          return { pondId: pond.id, sample: null };
-        }
-      });
-      const samplesResults = await Promise.all(samplePromises);
-      const sMap: Record<string, ShrimpSampleRecord> = {};
-      samplesResults.forEach(res => {
-        if (res.sample) sMap[res.pondId] = res.sample;
-      });
-      setSamplesMap(sMap);
-    } catch (e) {
-      console.error('Lỗi khi nạp dữ liệu điều hành manager:', e);
+      setUpdatedAt(new Date());
+      setSnapshotTime(Date.now());
+    } catch (loadError) {
+      console.error('Không thể tải dashboard quản lý:', loadError);
+      setError('Không thể tải dữ liệu tổng quan. Vui lòng thử lại.');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [selectedFarmId]);
+  }, []);
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    // Initial data synchronization is the purpose of this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadDashboard();
+  }, [loadDashboard]);
 
-  // Farm-filtered ponds
-  const farmPonds = useMemo(() => {
-    if (!selectedFarmId || selectedFarmId === 'ALL') return ponds;
-    return ponds.filter(p => p.farmId === selectedFarmId);
-  }, [ponds, selectedFarmId]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void loadDashboard(false, true);
+      setOperationalRefreshKey((key) => key + 1);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadDashboard]);
 
-  // Combine data into Pond Matrix cards
-  const matrixData: PondCardData[] = useMemo(() => {
-    return farmPonds.map(pond => {
-      // Find active crop for this pond:
-      // Match by either pondId or nested pond.id, and prioritize ACTIVE status over HARVESTED
-      const pondCrops = crops.filter(c => {
-        const pId = c.pondId || (c.pond as any)?.id;
-        return String(pId) === String(pond.id);
+  useEffect(() => {
+    let active = true;
+    cropService.getManagerSummary({
+      farmId: farmId === 'ALL' ? undefined : farmId,
+      year: financeYear,
+      quarter: financeQuarter || undefined,
+    }).then((result) => {
+      if (!active) return;
+      setFinance(result);
+      setFinanceError(false);
+    }).catch((financeLoadError) => {
+      console.error('Không thể tải tổng kết tài chính:', financeLoadError);
+      if (!active) return;
+      setFinance(null);
+      setFinanceError(true);
+    }).finally(() => {
+      if (active) setFinanceLoading(false);
+    });
+    return () => { active = false; };
+  }, [farmId, financeQuarter, financeRefreshKey, financeYear]);
+
+  useEffect(() => {
+    let active = true;
+    waterQualityService.getManagerTrends({
+      farmId: farmId === 'ALL' ? undefined : farmId,
+      days: 7,
+    }).then((result) => {
+      if (!active) return;
+      setWaterOverview((previous) => {
+        if (!previous) return result;
+        const latestByPond = new Map(previous.latestByPond.map((record) => [record.pondId, record]));
+        result.latestByPond.forEach((record) => latestByPond.set(record.pondId, record));
+        return { ...result, latestByPond: [...latestByPond.values()] };
       });
+      setWaterError(false);
+    }).catch((waterLoadError) => {
+      console.error('Không thể tải tổng hợp môi trường nước:', waterLoadError);
+      if (active) setWaterError(true);
+    }).finally(() => {
+      if (active) setWaterLoading(false);
+    });
+    return () => { active = false; };
+  }, [farmId, operationalRefreshKey]);
 
-      const crop = pondCrops.find(c => (c.status || '').toUpperCase() === 'ACTIVE')
-        || pondCrops.find(c => {
-          const s = (c.status || '').toUpperCase();
-          return s !== 'HARVESTED' && s !== 'FAILED';
-        })
-        || null;
+  const selectedFarm = useMemo(() => farms.find((farm) => farm.id === farmId), [farmId, farms]);
 
-      const doc = crop ? getDOC(crop.startDate) : null;
+  const activeCropByPond = useMemo(() => new Map(
+    crops.filter((crop) => crop.status === 'ACTIVE').map((crop) => [crop.pondId, crop]),
+  ), [crops]);
 
-      // Find latest water quality for this pond (first match by pondName)
-      const latestWq = waterQualities.find(wq => wq.pondName === pond.name) ?? null;
+  const latestWaterByPond = useMemo(() => new Map(
+    (waterOverview?.latestByPond || []).map((record) => [record.pondId, record]),
+  ), [waterOverview]);
 
-      // Latest size sample
-      const latestSample = samplesMap[pond.id] ?? null;
+  const incidentsByPond = useMemo(() => {
+    const grouped = new Map<string, Incident[]>();
+    incidents.forEach((incident) => {
+      if (incident.status !== 'OPEN' && incident.status !== 'TREATING') return;
+      const pondId = incident.crop?.pond?.id;
+      if (!pondId) return;
+      const existing = grouped.get(pondId);
+      if (existing) existing.push(incident);
+      else grouped.set(pondId, [incident]);
+    });
+    return grouped;
+  }, [incidents]);
 
-      // Open incidents for this pond
-      const openInc = incidents.filter(i => {
-        const pondMatches = i.crop?.pond?.id === pond.id || (crop && i.crop?.id === crop.id);
-        return pondMatches && (i.status === 'OPEN' || i.status === 'TREATING');
-      });
+  const rows = useMemo<PondRow[]>(() => {
+    const visiblePonds = farmId === 'ALL' ? ponds : ponds.filter((pond) => pond.farmId === farmId);
+    return visiblePonds.map((pond) => {
+      const crop = activeCropByPond.get(pond.id) || null;
+      const latestWq = latestWaterByPond.get(pond.id) || null;
+      const openIncidents = incidentsByPond.get(pond.id) || [];
 
-      // Compute health status
-      let healthStatus: HealthStatus = 'OPTIMAL';
-      let label = 'Ổn định';
-      let score = 4;
-      let reason = 'Môi trường & Sinh trưởng đạt chuẩn';
-
-      if (!crop) {
-        healthStatus = 'IDLE';
-        label = 'Ao trống';
-        score = 0;
-        reason = 'Chưa có vụ nuôi';
-      } else if (openInc.length > 0) {
-        healthStatus = 'DANGER';
-        label = 'Cần xử lý';
-        score = 1;
-        reason = `Có ${openInc.length} sự cố đang mở`;
-      } else if (latestWq) {
-        const doVal = Number(latestWq.dissolvedOxygen);
-        const phVal = Number(latestWq.ph);
-
-        if (latestWq.overallStatus === 'Danger' || (doVal > 0 && doVal < 4.0) || (phVal > 0 && (phVal < 7.0 || phVal > 9.0))) {
-          healthStatus = 'DANGER';
-          label = 'Nguy hiểm';
-          score = 1;
-          reason = doVal < 4.0 ? `Oxy hòa tan rất thấp (${doVal} mg/L)` : 'Thông số môi trường nguy hại';
-        } else if (latestWq.overallStatus === 'Warning' || (doVal > 0 && doVal < 5.0) || (phVal > 0 && (phVal < 7.5 || phVal > 8.5))) {
-          healthStatus = 'WARNING';
-          label = 'Cần chú ý';
-          score = 2;
-          reason = doVal < 5.0 ? `Oxy tiệm cận ngưỡng (${doVal} mg/L)` : 'pH biến động ngoài khoảng tối ưu';
-        }
-      }
-
-      return {
-        pond,
-        crop,
-        doc,
-        latestWq,
-        latestSample,
-        openIncidents: openInc,
-        health: {
-          status: healthStatus,
-          label,
-          score,
-          reason,
-        },
+      if (!crop) return {
+        pond, crop, doc: null, latestWq, sample: pond.latestSizeSample || null, openIncidents,
+        health: { status: 'IDLE', label: 'Ao trống', reason: 'Chưa có vụ nuôi hoạt động' },
       };
-    });
-  }, [farmPonds, crops, waterQualities, samplesMap, incidents]);
 
-  // Summary counts
-  const summaryCounts = useMemo(() => {
-    const total = matrixData.length;
-    const danger = matrixData.filter(d => d.health.status === 'DANGER').length;
-    const warning = matrixData.filter(d => d.health.status === 'WARNING').length;
-    const optimal = matrixData.filter(d => d.health.status === 'OPTIMAL').length;
-    const idle = matrixData.filter(d => d.health.status === 'IDLE').length;
-    const activeCropsCount = matrixData.filter(d => d.crop !== null).length;
-    const totalShrimp = matrixData.reduce((acc, d) => acc + (d.crop?.initialShrimpCount || 0), 0);
-    const totalEstimatedBiomassKg = matrixData.reduce((acc, d) => {
-      const b = d.latestSample?.estimatedBiomassKg;
-      return acc + (b ? Number(b) : 0);
-    }, 0);
+      const dissolvedOxygen = Number(latestWq?.dissolvedOxygen);
+      const ph = Number(latestWq?.ph);
+      const measurementAge = latestWq ? snapshotTime - new Date(latestWq.recordTime).getTime() : Infinity;
+      const dangerWater = !!latestWq && (latestWq.overallStatus === 'Danger' || (dissolvedOxygen > 0 && dissolvedOxygen < 4) || (ph > 0 && (ph < 7 || ph > 9)));
+      const warningWater = !!latestWq && (latestWq.overallStatus === 'Warning' || (dissolvedOxygen > 0 && dissolvedOxygen < 5) || (ph > 0 && (ph < 7.5 || ph > 8.5)));
+      let health: PondRow['health'] = { status: 'OPTIMAL', label: 'Ổn định', reason: 'Không có cảnh báo đang mở' };
 
-    return {
-      total,
-      danger,
-      warning,
-      optimal,
-      idle,
-      activeCropsCount,
-      totalShrimp,
-      totalEstimatedBiomassKg,
-    };
-  }, [matrixData]);
-
-  // Filtered & Sorted items
-  const displayItems = useMemo(() => {
-    let result = [...matrixData];
-
-    // Filter by status tab
-    if (statusFilter !== 'ALL') {
-      result = result.filter(d => d.health.status === statusFilter);
-    }
-
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(d => d.pond.name.toLowerCase().includes(q));
-    }
-
-    // Sorting
-    result.sort((a, b) => {
-      if (sortBy === 'risk') {
-        // Danger (1) -> Warning (2) -> Optimal (4) -> Idle (0)
-        const getRiskOrder = (score: number) => {
-          if (score === 1) return 0; // danger first
-          if (score === 2) return 1; // warning second
-          if (score === 4) return 2; // optimal third
-          return 3; // idle last
+      if (openIncidents.length || dangerWater) {
+        health = {
+          status: 'DANGER', label: 'Cần xử lý',
+          reason: openIncidents.length ? `${openIncidents.length} sự cố đang mở` : 'Môi trường ở mức nguy hiểm',
         };
-        return getRiskOrder(a.health.score) - getRiskOrder(b.health.score);
+      } else if (!latestWq || measurementAge > DAY_MS || warningWater) {
+        health = {
+          status: 'WARNING', label: 'Cần chú ý',
+          reason: !latestWq ? 'Chưa có dữ liệu môi trường' : measurementAge > DAY_MS ? 'Dữ liệu môi trường đã quá 24 giờ' : 'Môi trường ngoài ngưỡng tối ưu',
+        };
       }
-      if (sortBy === 'doc') {
-        return (b.doc || 0) - (a.doc || 0);
-      }
-      return a.pond.name.localeCompare(b.pond.name, 'vi-VN');
+      return { pond, crop, doc: getDoc(crop.startDate, snapshotTime), latestWq, sample: pond.latestSizeSample || null, openIncidents, health };
     });
+  }, [activeCropByPond, farmId, incidentsByPond, latestWaterByPond, ponds, snapshotTime]);
 
-    return result;
-  }, [matrixData, statusFilter, searchQuery, sortBy]);
+  const summary = useMemo(() => ({
+    total: rows.length,
+    active: rows.filter((row) => row.crop).length,
+    danger: rows.filter((row) => row.health.status === 'DANGER').length,
+    warning: rows.filter((row) => row.health.status === 'WARNING').length,
+    optimal: rows.filter((row) => row.health.status === 'OPTIMAL').length,
+    idle: rows.filter((row) => row.health.status === 'IDLE').length,
+    incidents: rows.reduce((sum, row) => sum + row.openIncidents.length, 0),
+    biomass: rows.reduce((sum, row) => sum + Number(row.sample?.estimatedBiomassKg || 0), 0),
+    measured: rows.filter((row) => row.crop && row.latestWq).length,
+    sampled: rows.filter((row) => row.crop && row.sample).length,
+  }), [rows]);
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <div className="relative">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
-          <Waves className="w-5 h-5 text-blue-400 absolute inset-0 m-auto" />
-        </div>
-        <p className="text-slate-600 font-bold text-sm tracking-wide">Đang nạp dữ liệu ma trận ao nuôi...</p>
-      </div>
-    );
-  }
+  const actions = useMemo<ActionItem[]>(() => {
+    const result: ActionItem[] = [];
+    rows.forEach((row) => {
+      row.openIncidents.forEach((incident) => result.push({
+        id: `incident-${incident.id}`, severity: 'DANGER', title: incident.title,
+        detail: `${row.pond.name} · ${incident.assignedTo?.fullName || 'Chưa phân công'}`, tab: 'Sự cố & Điều trị',
+      }));
+      if (row.health.status === 'DANGER' && !row.openIncidents.length) result.push({
+        id: `danger-${row.pond.id}`, severity: 'DANGER', title: `${row.pond.name}: môi trường nguy hiểm`,
+        detail: row.health.reason, tab: 'Môi trường nước',
+      });
+      if (row.health.status === 'WARNING') result.push({
+        id: `warning-${row.pond.id}`, severity: 'WARNING', title: `${row.pond.name}: cần kiểm tra`,
+        detail: row.health.reason, tab: 'Môi trường nước',
+      });
+    });
+    return result.sort((a, b) => a.severity === b.severity ? 0 : a.severity === 'DANGER' ? -1 : 1).slice(0, 6);
+  }, [rows]);
+
+  const waterTrend = useMemo(() => (waterOverview?.series || []).map((day) => ({
+    date: shortDate(day.date),
+    do: day.averageDo,
+    ph: day.averagePh,
+    samples: day.sampleCount,
+  })), [waterOverview]);
+
+  const growth = useMemo(() => rows.filter((row) => row.crop && row.sample?.abwGram).slice(0, 10).map((row) => {
+    const milestones = row.crop?.growthMilestones || [];
+    const nearest = milestones.length ? [...milestones].sort((a, b) => Math.abs(a.day - (row.doc || 0)) - Math.abs(b.day - (row.doc || 0)))[0] : null;
+    return { pond: row.pond.name, actual: Number(Number(row.sample?.abwGram).toFixed(2)), target: nearest?.weight };
+  }), [rows]);
+
+  const farmRows = useMemo(() => (farmId === 'ALL' ? farms : farms.filter((farm) => farm.id === farmId)).map((farm) => {
+    const items = rows.filter((row) => row.pond.farmId === farm.id);
+    return {
+      id: farm.id, name: farm.name, total: items.length, active: items.filter((row) => row.crop).length,
+      alerts: items.filter((row) => row.health.status === 'DANGER' || row.health.status === 'WARNING').length,
+      incidents: items.reduce((sum, row) => sum + row.openIncidents.length, 0),
+      biomass: items.reduce((sum, row) => sum + Number(row.sample?.estimatedBiomassKg || 0), 0),
+    };
+  }), [farmId, farms, rows]);
+
+  const visibleRows = useMemo(() => rows
+    .filter((row) => status === 'ALL' || row.health.status === status)
+    .filter((row) => row.pond.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => ({ DANGER: 0, WARNING: 1, OPTIMAL: 2, IDLE: 3 })[a.health.status] - ({ DANGER: 0, WARNING: 1, OPTIMAL: 2, IDLE: 3 })[b.health.status]),
+  [rows, search, status]);
+
+  const handleFarmChange = (nextFarmId: string) => {
+    if (nextFarmId === farmId) return;
+    setFinanceLoading(true);
+    setWaterLoading(true);
+    setFarmId(nextFarmId);
+  };
+
+  const handleYearChange = (nextYear: number) => {
+    if (nextYear === financeYear) return;
+    setFinanceLoading(true);
+    setFinanceYear(nextYear);
+  };
+
+  const handleQuarterChange = (nextQuarter: number | null) => {
+    if (nextQuarter === financeQuarter) return;
+    setFinanceLoading(true);
+    setFinanceQuarter(nextQuarter);
+  };
+
+  const handleRefresh = () => {
+    setFinanceLoading(true);
+    setWaterLoading(true);
+    void loadDashboard(true);
+    setOperationalRefreshKey((key) => key + 1);
+    setFinanceRefreshKey((key) => key + 1);
+  };
+
+  if (loading || (waterLoading && !waterOverview)) return <LoadingState />;
+
+  const isSyncing = refreshing || financeLoading || waterLoading;
+
+  const kpis = [
+    { label: 'Ao đang nuôi', value: `${summary.active}/${summary.total}`, note: `${summary.idle} ao trống`, icon: Waves, tone: 'blue' },
+    { label: 'Ao cần chú ý', value: summary.danger + summary.warning, note: `${summary.danger} ao nguy hiểm`, icon: ShieldAlert, tone: summary.danger ? 'rose' : 'amber' },
+    { label: 'Sự cố đang mở', value: summary.incidents, note: summary.incidents ? 'Cần theo dõi xử lý' : 'Không có sự cố', icon: AlertTriangle, tone: summary.incidents ? 'rose' : 'emerald' },
+    { label: 'Sinh khối ước tính', value: summary.biomass ? `${(summary.biomass / 1000).toFixed(1)} t` : '--', note: `${summary.sampled}/${summary.active} ao có mẫu`, icon: Scale, tone: 'violet' },
+    { label: 'Dữ liệu môi trường', value: `${summary.measured}/${summary.active}`, note: 'Ao đã có số đo', icon: Gauge, tone: summary.measured < summary.active ? 'amber' : 'emerald' },
+  ];
+  const financial = finance?.totals;
+  const financialKpis = [
+    { label: 'Doanh thu', value: financial ? formatMoney(financial.revenue) : '--', note: comparisonText(finance?.comparison.revenuePercent ?? null, financeQuarter), icon: DollarSign, tone: 'emerald' },
+    { label: 'Tổng chi phí', value: financial ? formatMoney(financial.cost) : '--', note: `${financial?.harvestedCrops || 0} vụ đã thu hoạch`, icon: Scale, tone: 'amber' },
+    { label: 'Lợi nhuận ròng', value: financial ? formatMoney(financial.profit) : '--', note: comparisonText(finance?.comparison.profitPercent ?? null, financeQuarter), icon: TrendingUp, tone: financial && financial.profit < 0 ? 'rose' : 'blue' },
+    { label: 'Sản lượng', value: financial ? `${(financial.harvestKg / 1000).toFixed(1)} t` : '--', note: comparisonText(finance?.comparison.harvestKgPercent ?? null, financeQuarter), icon: Fish, tone: 'violet' },
+    { label: 'Biên lợi nhuận', value: financial ? `${financial.profitMargin}%` : '--', note: `${financial?.targetMet || 0}/${financial?.harvestedCrops || 0} vụ đạt mục tiêu`, icon: Gauge, tone: financial && financial.profitMargin < 0 ? 'rose' : 'emerald' },
+  ];
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto pb-20 animate-in fade-in duration-300">
-
-      {/* 1. HEADER & FARM SELECTOR */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Trung tâm Điều hành Trang Trại
-            </span>
+    <div className="mx-auto max-w-[1600px] space-y-5 pb-16">
+      <header className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.18em] text-blue-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Tổng quan</div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Hoạt động trang trại</h1>
+            <p className="mt-1.5 text-sm text-slate-500">Theo dõi vận hành, cảnh báo và hiệu quả các vụ nuôi.</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Ma Trận Sức Khỏe &amp; Môi Trường Ao Nuôi
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Giám sát thời gian thực toàn bộ các ao nuôi trên 1 màn hình duy nhất • Không cần chuyển đổi riêng lẻ
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          {farms.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-2.5">
-              <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
-              <select
-                value={selectedFarmId}
-                onChange={e => setSelectedFarmId(e.target.value)}
-                className="bg-transparent text-sm font-bold text-slate-800 outline-none cursor-pointer pr-2"
-              >
-                <option value="ALL">Toàn bộ trang trại ({farms.length})</option>
-                {farms.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
+          <div className="flex flex-wrap gap-3">
+            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+              <Building2 className="h-4 w-4 text-slate-400" />
+              <select value={farmId} onChange={(event) => handleFarmChange(event.target.value)} className="max-w-52 bg-transparent text-sm font-bold text-slate-700 outline-none" aria-label="Chọn trang trại">
+                <option value="ALL">Tất cả trang trại</option>
+                {farms.map((farm) => <option key={farm.id} value={farm.id}>{farm.name}</option>)}
               </select>
-            </div>
-          )}
-
-          <button
-            onClick={() => fetchAll(true)}
-            disabled={isRefreshing}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-2xl text-sm font-bold transition-all disabled:opacity-50 shadow-md shadow-blue-500/20 cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>{isRefreshing ? 'Đang đồng bộ...' : 'Đồng bộ lại'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. MACRO METRICS BAR */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Waves className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ao đang nuôi</p>
-            <p className="text-xl sm:text-2xl font-black text-slate-800">
-              {summaryCounts.activeCropsCount} <span className="text-xs text-slate-400 font-semibold">/ {summaryCounts.total} ao</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 2 */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <Fish className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tổng con giống</p>
-            <p className="text-xl sm:text-2xl font-black text-slate-800">
-              {summaryCounts.totalShrimp.toLocaleString('vi-VN')} <span className="text-xs text-slate-400 font-semibold">con</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 3 */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-            <Scale className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sinh khối ước tính</p>
-            <p className="text-xl sm:text-2xl font-black text-slate-800">
-              {summaryCounts.totalEstimatedBiomassKg > 0 ? (summaryCounts.totalEstimatedBiomassKg / 1000).toFixed(1) : '--'}
-              <span className="text-xs text-slate-400 font-semibold"> tấn</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 4 */}
-        <div className={`rounded-2xl p-4 border shadow-xs flex items-center gap-3.5 ${
-          summaryCounts.danger > 0 ? 'bg-rose-50/70 border-rose-200' : 'bg-white border-slate-200/80'
-        }`}>
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-            summaryCounts.danger > 0 ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-emerald-50 text-emerald-600'
-          }`}>
-            {summaryCounts.danger > 0 ? <ShieldAlert className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-          </div>
-          <div>
-            <p className={`text-[11px] font-bold uppercase tracking-wider ${summaryCounts.danger > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-              Cần can thiệp
-            </p>
-            <p className={`text-xl sm:text-2xl font-black ${summaryCounts.danger > 0 ? 'text-rose-700' : 'text-slate-800'}`}>
-              {summaryCounts.danger + summaryCounts.warning} <span className="text-xs font-semibold text-slate-400">ao có lưu ý</span>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. MATRIX CONTROLS: FILTER PILLS + SEARCH + SORT */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar">
-            <button
-              onClick={() => setStatusFilter('ALL')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
-                statusFilter === 'ALL'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Tất cả ao ({summaryCounts.total})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('DANGER')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
-                statusFilter === 'DANGER'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              Nguy cơ cao ({summaryCounts.danger})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('WARNING')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
-                statusFilter === 'WARNING'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              Cần chú ý ({summaryCounts.warning})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('OPTIMAL')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
-                statusFilter === 'OPTIMAL'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Ổn định ({summaryCounts.optimal})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('IDLE')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
-                statusFilter === 'IDLE'
-                  ? 'bg-slate-700 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Ao trống ({summaryCounts.idle})
+            </label>
+            <select value={financeYear} onChange={(event) => handleYearChange(Number(event.target.value))} className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-700 outline-none" aria-label="Chọn năm tổng kết">
+              {[0, 1, 2].map((offset) => {
+                const year = new Date().getFullYear() - offset;
+                return <option key={year} value={year}>Năm {year}</option>;
+              })}
+            </select>
+            <select value={financeQuarter ?? 'ALL'} onChange={(event) => handleQuarterChange(event.target.value === 'ALL' ? null : Number(event.target.value))} className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-700 outline-none" aria-label="Chọn kỳ tổng kết">
+              <option value="ALL">Cả năm</option>
+              {[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Quý {quarter}</option>)}
+            </select>
+            <button type="button" onClick={handleRefresh} disabled={isSyncing} className="flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />{isSyncing ? 'Đang đồng bộ' : 'Đồng bộ'}
             </button>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-3 text-xs text-slate-500 lg:px-6">
+          <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />Cập nhật: {updatedAt?.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) || '--:--'}</span>
+          <span>{selectedFarm?.name || `${farms.length} trang trại`} · {summary.total} ao</span>
+        </div>
+      </header>
 
-          {/* Search & Sort */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 sm:w-56">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Tìm tên ao..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500"
-              />
-            </div>
+      {error && <div className="flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"><span className="flex items-center gap-2"><CircleAlert className="h-4 w-4" />{error}</span><button type="button" onClick={handleRefresh} className="underline">Thử lại</button></div>}
+      {waterError && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">Chưa thể cập nhật dữ liệu môi trường. Dashboard đang giữ kết quả gần nhất.</div>}
 
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shrink-0">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as any)}
-                className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value="risk">Ưu tiên rủi ro cao</option>
-                <option value="doc">Theo ngày nuôi (DOC)</option>
-                <option value="name">Theo tên ao</option>
-              </select>
-            </div>
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div><h2 className="text-lg font-black text-slate-900">Kết quả kinh doanh {financeQuarter ? `quý ${financeQuarter}/${financeYear}` : `năm ${financeYear}`}</h2><p className="mt-0.5 text-xs text-slate-500">Tổng kết các vụ theo ngày thu hoạch trong phạm vi đang chọn</p></div>
+          {financeLoading ? <span className="flex items-center gap-1.5 text-xs font-bold text-blue-600"><Loader2 className="h-3.5 w-3.5 animate-spin" />Đang cập nhật</span> : financeError && <span className="text-xs font-bold text-rose-600">Không tải được dữ liệu tài chính</span>}
+        </div>
+        {financeLoading && !finance
+          ? <KpiSkeleton count={5} />
+          : <div className={`grid grid-cols-2 gap-3 transition-opacity lg:grid-cols-5 ${financeLoading ? 'opacity-50' : ''}`}>{financialKpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}</div>}
+      </section>
+
+      <Panel title="Các vụ vừa kết thúc" subtitle="Kết quả gần nhất để quản lý đánh giá và đi sâu khi cần">
+        {financeLoading && !finance ? <TableSkeleton /> : finance?.recentHarvests.length ? (
+          <div className={`overflow-x-auto transition-opacity ${financeLoading ? 'opacity-50' : ''}`}>
+            <table className="w-full min-w-[760px] text-left">
+              <thead><tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400"><th className="pb-3">Ao/Vụ</th><th className="pb-3">Thu hoạch</th><th className="pb-3">Sản lượng</th><th className="pb-3">Doanh thu</th><th className="pb-3">Lợi nhuận</th><th className="pb-3">Kết quả</th></tr></thead>
+              <tbody>{finance.recentHarvests.map((crop) => (
+                <tr key={crop.id} className="border-b border-slate-50 text-sm last:border-0">
+                  <td className="py-3.5"><p className="font-bold text-slate-800">{crop.pondName}</p><p className="text-xs text-slate-400">{crop.farmName}</p></td>
+                  <td className="py-3.5 text-slate-600">{new Date(crop.actualHarvestDate).toLocaleDateString('vi-VN')}</td>
+                  <td className="py-3.5 font-semibold text-slate-700">{crop.actualHarvestKg.toLocaleString('vi-VN')} kg</td>
+                  <td className="py-3.5 font-semibold text-slate-700">{formatMoney(crop.actualHarvestRevenue)}</td>
+                  <td className={`py-3.5 font-black ${crop.actualHarvestProfit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatMoney(crop.actualHarvestProfit)}</td>
+                  <td className="py-3.5"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${crop.targetMet === false ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{crop.targetMet === null ? 'Chưa có mục tiêu' : crop.targetMet ? 'Đạt mục tiêu' : 'Chưa đạt'}</span></td>
+                </tr>
+              ))}</tbody>
+            </table>
           </div>
+        ) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-sm text-slate-500">Chưa có vụ thu hoạch trong {financeQuarter ? `quý ${financeQuarter}/${financeYear}` : `năm ${financeYear}`}.</div>}
+        <div className="mt-4 flex justify-end"><button type="button" onClick={() => onOpenCropHistory ? onOpenCropHistory(farmId === 'ALL' ? undefined : farmId, undefined, financeYear, financeQuarter) : onNavigateTab?.('Quản lý Ao/Vụ')} className="flex items-center gap-1 text-xs font-bold text-blue-600">Xem lịch sử vụ nuôi <ArrowRight className="h-3.5 w-3.5" /></button></div>
+      </Panel>
 
-        </div>
-      </div>
-
-      {/* 4. THE POND HEALTH MATRIX (GRID OF COMMAND CARDS) */}
-      {displayItems.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-16 flex flex-col items-center justify-center text-slate-300 gap-3">
-          <Waves className="w-12 h-12 text-slate-300" />
-          <p className="text-base font-bold text-slate-600">Không tìm thấy ao nuôi nào phù hợp bộ lọc</p>
-          <button
-            onClick={() => { setStatusFilter('ALL'); setSearchQuery(''); }}
-            className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-          >
-            Xóa bộ lọc
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-          {displayItems.map(item => {
-            const { pond, crop, doc, latestWq, latestSample, openIncidents, health } = item;
-            const isIdle = health.status === 'IDLE';
-            const isDanger = health.status === 'DANGER';
-            const isWarning = health.status === 'WARNING';
-            const stage = doc !== null ? getStageLabel(doc) : null;
-
-            // Border & Card Accent
-            const cardBorder = isDanger
-              ? 'border-rose-300 bg-rose-50/20 hover:border-rose-500 shadow-rose-100/50'
-              : isWarning
-              ? 'border-amber-300 bg-amber-50/20 hover:border-amber-500 shadow-amber-100/50'
-              : isIdle
-              ? 'border-dashed border-slate-300 bg-slate-50/50 hover:border-slate-400'
-              : 'border-slate-200/80 bg-white hover:border-blue-400 shadow-slate-100/50';
-
-            const accentBar = isDanger
-              ? 'bg-rose-500'
-              : isWarning
-              ? 'bg-amber-500'
-              : isIdle
-              ? 'bg-slate-300'
-              : 'bg-emerald-500';
-
-            const statusBadge = isDanger
-              ? 'bg-rose-100 text-rose-700 border-rose-200'
-              : isWarning
-              ? 'bg-amber-100 text-amber-800 border-amber-200'
-              : isIdle
-              ? 'bg-slate-100 text-slate-500 border-slate-200'
-              : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-            return (
-              <div
-                key={pond.id}
-                className={`rounded-3xl border p-5 shadow-xs relative overflow-hidden flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${cardBorder}`}
-              >
-                {/* Left accent bar */}
-                <div className={`absolute left-0 inset-y-0 w-1.5 ${accentBar}`} />
-
-                {/* Top Section */}
-                <div>
-                  {/* Card Header: Name + Status Badge */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-base font-black text-slate-900 tracking-tight">{pond.name}</span>
-                        {pond.areaSize && (
-                          <span className="text-[11px] text-slate-400 font-semibold">({pond.areaSize} m²)</span>
-                        )}
-                        {selectedFarmId === 'ALL' && (pond.farm?.name || farms.find(f => f.id === pond.farmId)?.name) && (
-                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
-                            {pond.farm?.name || farms.find(f => f.id === pond.farmId)?.name}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-medium">
-                        {isIdle ? 'Sẵn sàng thả giống' : crop?.stage ? `Mô hình: ${crop.stage}` : 'Vụ nuôi công nghiệp'}
-                      </p>
-                    </div>
-
-                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border shrink-0 uppercase tracking-wide flex items-center gap-1 ${statusBadge}`}>
-                      {!isIdle && <span className={`w-1.5 h-1.5 rounded-full ${isDanger ? 'bg-rose-600 animate-pulse' : isWarning ? 'bg-amber-600' : 'bg-emerald-600'}`} />}
-                      {health.label}
-                    </span>
-                  </div>
-
-                  {/* IDLE POND VIEW */}
-                  {isIdle ? (
-                    <div className="py-8 flex flex-col items-center justify-center text-center gap-2">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-1">
-                        <Waves className="w-6 h-6" />
-                      </div>
-                      <p className="text-xs font-bold text-slate-600">Ao hiện chưa thả giống</p>
-                      <p className="text-[11px] text-slate-400 max-w-[200px]">
-                        Diện tích {pond.areaSize || 0} m², chất lượng nước sẵn sàng để thả giống vụ mới.
-                      </p>
-                      <button
-                        onClick={() => onNavigateTab?.('Quản lý Ao/Vụ')}
-                        className="mt-3 flex items-center gap-1 px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-extrabold rounded-xl transition-all cursor-pointer"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5" />
-                        Tạo vụ nuôi mới
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3.5">
-
-                      {/* DOC & PROGRESS */}
-                      <div className="bg-white/80 backdrop-blur-xs p-3 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-black text-slate-900 flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                            DOC {doc}
-                          </span>
-                          {stage && (
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${stage.color}`}>
-                              {stage.label}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* DOC Progress Bar (0 to 90 days) */}
-                        <div className="space-y-1">
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className="bg-gradient-to-r from-blue-500 to-indigo-600 h-1.5 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.min(100, ((doc || 0) / 90) * 100)}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-[9px] font-bold text-slate-400">
-                            <span>DOC 1</span>
-                            <span>30d</span>
-                            <span>60d</span>
-                            <span>90d (Thu hoạch)</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-50">
-                          <span>Thả: <b>{(crop?.initialShrimpCount || 0).toLocaleString('vi-VN')} con</b></span>
-                          {crop?.expectedHarvestDate && (
-                            <span className="text-slate-400">Thu: {fmtDate(crop.expectedHarvestDate)}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* REAL-TIME WATER QUALITY METRICS */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-extrabold text-slate-700 flex items-center gap-1">
-                            <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                            Môi trường nước
-                          </span>
-                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            {latestWq ? fmtTimeAgo(latestWq.recordTime) : 'Chưa đo'}
-                          </span>
-                        </div>
-
-                        {latestWq ? (
-                          <div className="grid grid-cols-4 gap-1.5 text-center">
-                            {/* DO */}
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Oxy (DO)</p>
-                              <p className={`text-xs font-black ${
-                                latestWq.dissolvedOxygen < 4.0 ? 'text-rose-600' : latestWq.dissolvedOxygen < 5.0 ? 'text-amber-600' : 'text-slate-800'
-                              }`}>
-                                {latestWq.dissolvedOxygen}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">mg/L</span>
-                            </div>
-
-                            {/* pH */}
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">pH</p>
-                              <p className={`text-xs font-black ${
-                                (latestWq.ph < 7.5 || latestWq.ph > 8.5) ? 'text-amber-600' : 'text-slate-800'
-                              }`}>
-                                {latestWq.ph}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">7.5-8.5</span>
-                            </div>
-
-                            {/* Temp */}
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Nhiệt độ</p>
-                              <p className="text-xs font-black text-slate-800">
-                                {latestWq.temperature}°
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">°C</span>
-                            </div>
-
-                            {/* Salinity */}
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Độ mặn</p>
-                              <p className="text-xs font-black text-slate-800">
-                                {latestWq.salinity}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">‰</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
-                            <span className="text-[11px] text-slate-400 font-semibold">Chưa có kết quả quan trắc</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* SHRIMP GROWTH SAMPLE */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-extrabold text-slate-700 flex items-center gap-1">
-                            <Fish className="w-3.5 h-3.5 text-indigo-600" />
-                            Sinh trưởng tôm
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {latestSample?.samplingDate ? fmtTimeAgo(latestSample.samplingDate) : ''}
-                          </span>
-                        </div>
-
-                        {latestSample ? (
-                          <div className="grid grid-cols-3 gap-1.5 text-center">
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Trọng lượng (ABW)</p>
-                              <p className="text-xs font-black text-indigo-700">
-                                {latestSample.abwGram ? `${Number(latestSample.abwGram).toFixed(1)}g` : '--'}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">
-                                {latestSample.sizePerKg ? `~${Math.round(latestSample.sizePerKg)} c/kg` : ''}
-                              </span>
-                            </div>
-
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Tốc độ lớn</p>
-                              <p className={`text-xs font-black ${
-                                (latestSample.adgGramPerDay && latestSample.adgGramPerDay < 0) ? 'text-rose-600' : 'text-emerald-700'
-                              }`}>
-                                {latestSample.adgGramPerDay !== null && latestSample.adgGramPerDay !== undefined
-                                  ? `+${Number(latestSample.adgGramPerDay).toFixed(2)}`
-                                  : '--'}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">g/ngày</span>
-                            </div>
-
-                            <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-2xs">
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Sinh khối ước</p>
-                              <p className="text-xs font-black text-purple-700">
-                                {latestSample.estimatedBiomassKg
-                                  ? `${Math.round(Number(latestSample.estimatedBiomassKg)).toLocaleString('vi-VN')}`
-                                  : '--'}
-                              </p>
-                              <span className="text-[8px] text-slate-400 font-medium">kg</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
-                            <span className="text-[11px] text-slate-400 font-semibold">Chưa có mẫu chài gần nhất</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* OPEN INCIDENTS ALERT BANNER */}
-                      {openIncidents.length > 0 && (
-                        <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-start gap-2 text-xs">
-                          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
-                          <div className="min-w-0">
-                            <p className="font-extrabold truncate">{openIncidents[0].title}</p>
-                            <p className="text-[10px] text-rose-500 font-medium">
-                              {openIncidents.length > 1 ? `+ ${openIncidents.length - 1} sự cố khác • ` : ''}
-                              {openIncidents[0].assignedTo ? `KTV: ${openIncidents[0].assignedTo.fullName}` : 'Chưa phân công'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  )}
-                </div>
-
-                {/* Card Footer: Quick Actions */}
-                <div className="pt-3.5 mt-3 border-t border-slate-100/80 flex items-center justify-between gap-2">
-                  {!isIdle ? (
-                    <>
-                      <button
-                        onClick={() => setInspectingPond(item)}
-                        className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all text-center cursor-pointer shadow-xs"
-                      >
-                        Soi chi tiết ao
-                      </button>
-
-                      <button
-                        onClick={() => onNavigateTab?.('Môi trường nước')}
-                        title="Xem lịch sử môi trường"
-                        className="p-1.5 rounded-xl bg-slate-100 hover:bg-cyan-50 hover:text-cyan-600 text-slate-600 transition-colors cursor-pointer"
-                      >
-                        <Droplets className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => onNavigateTab?.('Quản lý Ao/Vụ')}
-                        title="Quản lý vụ nuôi"
-                        className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors cursor-pointer"
-                      >
-                        <Waves className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => onNavigateTab?.('Quản lý Ao/Vụ')}
-                      className="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all text-center cursor-pointer"
-                    >
-                      Bắt đầu vụ nuôi mới →
-                    </button>
-                  )}
-                </div>
-
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 5. MODAL: QUICK POND INSPECTION (SOI SÂU AO NUÔI) */}
-      {inspectingPond && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6 relative">
-
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xl sm:text-2xl font-black text-slate-900">{inspectingPond.pond.name}</span>
-                  {inspectingPond.pond.areaSize && (
-                    <span className="text-xs text-slate-400 font-semibold">({inspectingPond.pond.areaSize} m²)</span>
-                  )}
-                  {(inspectingPond.pond.farm?.name || farms.find(f => f.id === inspectingPond.pond.farmId)?.name) && (
-                    <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
-                      {inspectingPond.pond.farm?.name || farms.find(f => f.id === inspectingPond.pond.farmId)?.name}
-                    </span>
-                  )}
-                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                    inspectingPond.health.status === 'DANGER'
-                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                      : inspectingPond.health.status === 'WARNING'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
-                    {inspectingPond.health.label}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  Đánh giá: <span className="font-bold text-slate-700">{inspectingPond.health.reason}</span>
-                </p>
-              </div>
-
-              <button
-                onClick={() => setInspectingPond(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Crop Info */}
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-              <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-blue-600" />
-                Thông tin Vụ nuôi hiện tại
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <p className="text-slate-400">Ngày tuổi (DOC)</p>
-                  <p className="font-black text-slate-900 text-sm">DOC {inspectingPond.doc}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Số lượng giống</p>
-                  <p className="font-black text-slate-900 text-sm">{(inspectingPond.crop?.initialShrimpCount || 0).toLocaleString('vi-VN')} con</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Ngày bắt đầu</p>
-                  <p className="font-bold text-slate-700">{fmtDate(inspectingPond.crop?.startDate || '')}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Dự kiến thu hoạch</p>
-                  <p className="font-bold text-slate-700">{inspectingPond.crop?.expectedHarvestDate ? fmtDate(inspectingPond.crop.expectedHarvestDate) : 'Chưa định'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Environmental Quality Details */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Droplets className="w-4 h-4 text-cyan-600" />
-                Chỉ số Môi trường Nước gần nhất
-              </h3>
-              {inspectingPond.latestWq ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Oxy hòa tan (DO)</p>
-                    <p className={`text-base font-black ${inspectingPond.latestWq.dissolvedOxygen < 4 ? 'text-rose-600' : 'text-slate-900'}`}>
-                      {inspectingPond.latestWq.dissolvedOxygen} <span className="text-xs font-normal text-slate-400">mg/L</span>
-                    </p>
-                    <span className="text-[10px] text-slate-400">Chuẩn ≥ 5.0</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Độ pH</p>
-                    <p className={`text-base font-black ${(inspectingPond.latestWq.ph < 7.5 || inspectingPond.latestWq.ph > 8.5) ? 'text-amber-600' : 'text-slate-900'}`}>
-                      {inspectingPond.latestWq.ph}
-                    </p>
-                    <span className="text-[10px] text-slate-400">Chuẩn 7.5 - 8.5</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Nhiệt độ nước</p>
-                    <p className="text-base font-black text-slate-900">
-                      {inspectingPond.latestWq.temperature}°<span className="text-xs font-normal text-slate-400">C</span>
-                    </p>
-                    <span className="text-[10px] text-slate-400">Chuẩn 28 - 32°C</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Độ mặn</p>
-                    <p className="text-base font-black text-slate-900">
-                      {inspectingPond.latestWq.salinity} <span className="text-xs font-normal text-slate-400">‰</span>
-                    </p>
-                    <span className="text-[10px] text-slate-400">Chuẩn 10 - 25‰</span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic">Chưa có bản ghi đo đạc môi trường nào cho ao này.</p>
-              )}
-            </div>
-
-            {/* Growth Sample Details */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Fish className="w-4 h-4 text-indigo-600" />
-                Mẫu chài Tăng trưởng gần nhất
-              </h3>
-              {inspectingPond.latestSample ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Trọng lượng (ABW)</p>
-                    <p className="text-base font-black text-indigo-700">
-                      {inspectingPond.latestSample.abwGram ? `${Number(inspectingPond.latestSample.abwGram).toFixed(2)}g` : '--'}
-                    </p>
-                    <span className="text-[10px] text-slate-400">{inspectingPond.latestSample.sizePerKg ? `~${Math.round(inspectingPond.latestSample.sizePerKg)} con/kg` : ''}</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Tốc độ lớn (ADG)</p>
-                    <p className="text-base font-black text-emerald-700">
-                      {inspectingPond.latestSample.adgGramPerDay !== null && inspectingPond.latestSample.adgGramPerDay !== undefined
-                        ? `+${Number(inspectingPond.latestSample.adgGramPerDay).toFixed(2)} g/d`
-                        : '--'}
-                    </p>
-                    <span className="text-[10px] text-slate-400">Chuẩn &gt; 0.2g/ngày</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Sinh khối ước tính</p>
-                    <p className="text-base font-black text-purple-700">
-                      {inspectingPond.latestSample.estimatedBiomassKg
-                        ? `${Math.round(Number(inspectingPond.latestSample.estimatedBiomassKg)).toLocaleString('vi-VN')} kg`
-                        : '--'}
-                    </p>
-                    <span className="text-[10px] text-slate-400">Tại DOC {inspectingPond.latestSample.doc || inspectingPond.doc}</span>
-                  </div>
-
-                  <div className="p-3 bg-white border border-slate-200 rounded-2xl">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Tổng tôm ước lượng</p>
-                    <p className="text-base font-black text-slate-900">
-                      {inspectingPond.latestSample.estimatedTotalShrimp
-                        ? `${Math.round(Number(inspectingPond.latestSample.estimatedTotalShrimp)).toLocaleString('vi-VN')}`
-                        : '--'}
-                    </p>
-                    <span className="text-[10px] text-slate-400">con sống</span>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic">Chưa có kết quả chài mẫu nào gần đây.</p>
-              )}
-            </div>
-
-            {/* Incidents List */}
-            {inspectingPond.openIncidents.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-extrabold text-rose-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4" />
-                  Sự cố đang xảy ra tại ao ({inspectingPond.openIncidents.length})
-                </h3>
-                <div className="space-y-2">
-                  {inspectingPond.openIncidents.map(inc => (
-                    <div key={inc.id} className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs flex items-center justify-between">
-                      <div>
-                        <p className="font-extrabold text-slate-900">{inc.title}</p>
-                        <p className="text-slate-500 mt-0.5">Ngày tạo: {fmtDate(inc.createdAt)} • KTV: {inc.assignedTo?.fullName || 'Chưa phân công'}</p>
-                      </div>
-                      <span className="px-2 py-0.5 bg-rose-200 text-rose-800 font-bold rounded-lg text-[10px]">
-                        {inc.status === 'OPEN' ? 'Chưa xử lý' : 'Đang điều trị'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions in Modal */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button
-                onClick={() => setInspectingPond(null)}
-                className="px-4 py-2.5 rounded-2xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
-              >
-                Đóng
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setInspectingPond(null);
-                    onNavigateTab?.('Theo dõi tăng trưởng');
-                  }}
-                  className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-2xl text-xs font-bold transition-all cursor-pointer"
-                >
-                  Xem quỹ đạo 5T
-                </button>
-
-                <button
-                  onClick={() => {
-                    setInspectingPond(null);
-                    onNavigateTab?.('Quản lý Ao/Vụ');
-                  }}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-blue-500/20"
-                >
-                  Quản lý vụ nuôi ao này →
-                </button>
-              </div>
-            </div>
-
+      <Panel title="Tổng kết theo trang trại và ao" subtitle="Đối chiếu hiệu quả các vụ đã thu hoạch trong kỳ đang chọn">
+        {financeLoading && !finance ? <TableSkeleton /> : finance?.farmSummaries.length ? (
+          <div className={`overflow-x-auto transition-opacity ${financeLoading ? 'opacity-50' : ''}`}>
+            <table className="w-full min-w-[860px] text-left">
+              <thead><tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400"><th className="pb-3">Phạm vi</th><th className="pb-3">Số vụ</th><th className="pb-3">Sản lượng</th><th className="pb-3">Doanh thu</th><th className="pb-3">Lợi nhuận</th><th className="pb-3">FCR TB</th><th className="pb-3">Tỷ lệ sống TB</th></tr></thead>
+              <tbody>{finance.farmSummaries.flatMap((farm) => [
+                <SummaryRow key={farm.farmId} label={farm.farmName} totals={farm.totals} level="farm" onOpen={onOpenCropHistory ? () => onOpenCropHistory(farm.farmId, undefined, financeYear, financeQuarter) : undefined} />,
+                ...farm.ponds.map((pond) => <SummaryRow key={pond.pondId} label={pond.pondName} totals={pond.totals} level="pond" onOpen={onOpenCropHistory ? () => onOpenCropHistory(farm.farmId, pond.pondId, financeYear, financeQuarter) : undefined} />),
+              ])}</tbody>
+            </table>
           </div>
-        </div>
-      )}
+        ) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-sm text-slate-500">Chưa có dữ liệu để tổng kết theo trang trại và ao.</div>}
+      </Panel>
 
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
+        <Panel title="Việc cần xử lý ngay" subtitle="Ưu tiên theo mức độ ảnh hưởng đến vụ nuôi" icon={<CircleAlert className="h-5 w-5 text-rose-500" />} badge={`${actions.length} việc`}>
+          {actions.length ? <div className="space-y-2">{actions.map((action) => (
+            <button key={action.id} type="button" onClick={() => onNavigateTab?.(action.tab)} className="group flex w-full items-center gap-3 rounded-2xl border border-slate-100 p-3 text-left hover:border-blue-200 hover:bg-blue-50/40">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${action.severity === 'DANGER' ? 'bg-rose-500' : 'bg-amber-500'}`} />
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{action.title}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{action.detail}</span></span>
+              <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-blue-500" />
+            </button>
+          ))}</div> : <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/50 text-center"><CheckCircle2 className="mb-3 h-9 w-9 text-emerald-500" /><p className="font-bold text-emerald-800">Chưa có vấn đề cần can thiệp</p><p className="mt-1 text-xs text-emerald-600">Các ao đang trong trạng thái kiểm soát</p></div>}
+        </Panel>
+
+        <Panel title="Sức khỏe toàn trang trại" subtitle={`Phân bổ trạng thái của ${summary.total} ao`}>
+          <HealthOverview summary={summary} onSelect={setStatus} />
+        </Panel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-2">
+        <ChartPanel title="Môi trường nước 7 ngày" subtitle="DO và pH trung bình của các ao đang hiển thị" icon={<Droplets className="h-5 w-5 text-cyan-500" />} onOpen={() => onNavigateTab?.('Môi trường nước')}>
+          <div className="relative h-full">
+          {waterTrend.filter((day) => day.samples > 0).length > 1 ? <ResponsiveContainer width="100%" height="100%"><LineChart data={waterTrend} margin={{ top: 12, right: 5, left: -20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} /><XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="do" domain={[0, 10]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis yAxisId="ph" orientation="right" domain={[6, 10]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <ReferenceArea yAxisId="do" y1={5} y2={8} fill="#dcfce7" fillOpacity={0.45} /><Tooltip /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            <Line yAxisId="do" type="monotone" dataKey="do" name="DO (mg/L)" stroke="#0891b2" strokeWidth={3} dot={{ r: 3 }} /><Line yAxisId="ph" type="monotone" dataKey="ph" name="pH" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} />
+          </LineChart></ResponsiveContainer> : <EmptyChart message="Cần ít nhất hai ngày đo để hiển thị xu hướng." />}
+          {waterLoading && <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[1px]"><span className="flex items-center gap-2 text-xs font-bold text-cyan-700"><Loader2 className="h-4 w-4 animate-spin" />Đang cập nhật môi trường</span></div>}
+          </div>
+        </ChartPanel>
+
+        <ChartPanel title="Tăng trưởng gần nhất" subtitle="ABW thực tế và mục tiêu gần DOC hiện tại" icon={<Fish className="h-5 w-5 text-indigo-500" />} onOpen={() => onNavigateTab?.('Theo dõi tăng trưởng')}>
+          {growth.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={growth} margin={{ top: 12, right: 5, left: -18 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} /><XAxis dataKey="pond" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit="g" /><Tooltip /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="actual" name="Thực tế (g)" fill="#4f46e5" radius={[6, 6, 0, 0]} /><Bar dataKey="target" name="Mục tiêu (g)" fill="#cbd5e1" radius={[6, 6, 0, 0]} />
+          </BarChart></ResponsiveContainer> : <EmptyChart message="Chưa có mẫu kích cỡ để tổng hợp tăng trưởng." />}
+        </ChartPanel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
+        <Panel title="Tổng quan theo trang trại" subtitle="So sánh nhanh quy mô và rủi ro vận hành">
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead><tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400"><th className="pb-3">Trang trại</th><th className="pb-3">Ao hoạt động</th><th className="pb-3">Cảnh báo</th><th className="pb-3">Sự cố</th><th className="pb-3">Sinh khối</th><th /></tr></thead><tbody>
+            {farmRows.map((farm) => <tr key={farm.id} className="border-b border-slate-50 text-sm last:border-0"><td className="py-3.5 font-bold text-slate-800">{farm.name}</td><td className="py-3.5 text-slate-600">{farm.active}/{farm.total} ao</td><td className="py-3.5"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${farm.alerts ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{farm.alerts}</span></td><td className={`py-3.5 font-bold ${farm.incidents ? 'text-rose-600' : 'text-slate-500'}`}>{farm.incidents}</td><td className="py-3.5 font-semibold text-slate-600">{farm.biomass ? `${(farm.biomass / 1000).toFixed(1)} t` : '--'}</td><td className="py-3.5 text-right"><button type="button" onClick={() => handleFarmChange(farm.id)} className="text-xs font-bold text-blue-600">Xem</button></td></tr>)}
+          </tbody></table></div>
+        </Panel>
+        <Panel title="Mức độ sẵn sàng dữ liệu" subtitle="Phát hiện ao chưa được cập nhật kịp thời">
+          <div className="space-y-5"><Progress label="Đo môi trường" value={summary.measured} total={summary.active} color="bg-cyan-500" /><Progress label="Lấy mẫu tăng trưởng" value={summary.sampled} total={summary.active} color="bg-indigo-500" /><Progress label="Ao không có cảnh báo" value={summary.optimal} total={summary.active} color="bg-emerald-500" /></div>
+          <button type="button" onClick={() => onNavigateTab?.('Môi trường nước')} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white">Kiểm tra dữ liệu còn thiếu <ArrowRight className="h-4 w-4" /></button>
+        </Panel>
+      </section>
+
+      <Panel title="Tình trạng từng ao" subtitle="Danh sách rút gọn, ưu tiên ao có rủi ro trước">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">{([['ALL', 'Tất cả'], ['DANGER', 'Nguy hiểm'], ['WARNING', 'Chú ý'], ['OPTIMAL', 'Ổn định'], ['IDLE', 'Ao trống']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setStatus(value)} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold ${status === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div>
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2"><Search className="h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm ao..." className="w-40 bg-transparent text-sm outline-none" /></label>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{visibleRows.map((row) => <PondCard key={row.pond.id} row={row} farmName={farmNameOf(row.pond, farms)} onOpen={(tab) => onNavigateTab?.(tab)} />)}</div>
+      </Panel>
     </div>
   );
+}
+
+function LoadingState() {
+  return <div className="mx-auto max-w-[1600px] space-y-5 pb-16" role="status" aria-label="Đang tải tổng quan trang trại">
+    <span className="sr-only">Đang tổng hợp tình hình trang trại</span>
+    <div className="animate-pulse overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="h-3 w-24 rounded-full bg-blue-100" />
+      <div className="mt-4 h-8 w-64 max-w-full rounded-xl bg-slate-200" />
+      <div className="mt-3 h-4 w-96 max-w-full rounded-lg bg-slate-100" />
+      <div className="mt-6 border-t border-slate-100 pt-4"><div className="h-3 w-36 rounded-full bg-slate-100" /></div>
+    </div>
+    <section className="space-y-3">
+      <div className="animate-pulse"><div className="h-5 w-52 rounded-lg bg-slate-200" /><div className="mt-2 h-3 w-72 max-w-full rounded bg-slate-100" /></div>
+      <KpiSkeleton count={5} />
+    </section>
+    <div className="grid gap-5 xl:grid-cols-2">
+      {[0, 1].map((item) => <div key={item} className="animate-pulse rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><div className="h-5 w-44 rounded-lg bg-slate-200" /><div className="mt-2 h-3 w-56 rounded bg-slate-100" /><div className="mt-6 h-56 rounded-2xl bg-slate-100" /></div>)}
+    </div>
+  </div>;
+}
+
+function KpiSkeleton({ count }: { count: number }) {
+  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{Array.from({ length: count }, (_, index) => <div key={index} className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="h-10 w-10 rounded-xl bg-slate-100" /><div className="mt-3 h-3 w-20 rounded bg-slate-100" /><div className="mt-3 h-7 w-24 rounded-lg bg-slate-200" /><div className="mt-2 h-3 w-28 max-w-full rounded bg-slate-100" /></div>)}</div>;
+}
+
+function TableSkeleton() {
+  return <div className="animate-pulse space-y-3">{[0, 1, 2].map((row) => <div key={row} className="grid grid-cols-4 gap-4 border-b border-slate-100 py-3"><div className="h-4 rounded bg-slate-200" /><div className="h-4 rounded bg-slate-100" /><div className="h-4 rounded bg-slate-100" /><div className="h-4 rounded bg-slate-100" /></div>)}</div>;
+}
+
+function SummaryRow({ label, totals, level, onOpen }: { label: string; totals: ManagerHarvestSummary['totals']; level: 'farm' | 'pond'; onOpen?: () => void }) {
+  return <tr className={`border-b border-slate-50 text-sm last:border-0 ${level === 'farm' ? 'bg-slate-50/70' : ''}`}>
+    <td className={`py-3.5 ${level === 'farm' ? 'font-black text-slate-900' : 'pl-7 font-semibold text-slate-700'}`}><button type="button" onClick={onOpen} disabled={!onOpen} className="text-left hover:text-blue-600 disabled:cursor-default disabled:hover:text-inherit">{level === 'pond' && <span className="mr-2 text-slate-300">└</span>}{label}{onOpen && <span className="ml-2 text-[10px] font-bold text-blue-500">Xem lịch sử →</span>}</button></td>
+    <td className="py-3.5 font-semibold text-slate-600">{totals.harvestedCrops}</td>
+    <td className="py-3.5 font-semibold text-slate-700">{totals.harvestKg.toLocaleString('vi-VN')} kg</td>
+    <td className="py-3.5 text-slate-700">{formatMoney(totals.revenue)}</td>
+    <td className={`py-3.5 font-black ${totals.profit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatMoney(totals.profit)}</td>
+    <td className="py-3.5 text-slate-600">{totals.averageFcr ?? '--'}</td>
+    <td className="py-3.5 text-slate-600">{totals.averageSurvivalRate !== null ? `${totals.averageSurvivalRate}%` : '--'}</td>
+  </tr>;
+}
+
+function Panel({ title, subtitle, icon, badge, children }: { title: string; subtitle: string; icon?: React.ReactNode; badge?: string; children: React.ReactNode }) {
+  return <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900">{icon}{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div>{badge && <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600">{badge}</span>}</div>{children}</article>;
+}
+
+function ChartPanel({ title, subtitle, icon, onOpen, children }: { title: string; subtitle: string; icon: React.ReactNode; onOpen: () => void; children: React.ReactNode }) {
+  return <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-start justify-between"><div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900">{icon}{title}</h2><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><button type="button" onClick={onOpen} className="text-xs font-bold text-blue-600">Xem chi tiết</button></div><div className="h-72">{children}</div></article>;
+}
+
+function KpiCard({ label, value, note, icon: Icon, tone }: { label: string; value: string | number; note: string; icon: typeof Waves; tone: string }) {
+  const colors: Record<string, string> = { blue: 'bg-blue-50 text-blue-600', rose: 'bg-rose-50 text-rose-600', amber: 'bg-amber-50 text-amber-600', emerald: 'bg-emerald-50 text-emerald-600', violet: 'bg-violet-50 text-violet-600' };
+  return <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-2xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs text-slate-500">{note}</p></article>;
+}
+
+function HealthOverview({ summary, onSelect }: { summary: { total: number; danger: number; warning: number; optimal: number; idle: number }; onSelect: (status: HealthStatus) => void }) {
+  const items = [{ status: 'OPTIMAL' as const, label: 'Ổn định', count: summary.optimal, color: 'bg-emerald-500', text: 'text-emerald-700' }, { status: 'WARNING' as const, label: 'Cần chú ý', count: summary.warning, color: 'bg-amber-400', text: 'text-amber-700' }, { status: 'DANGER' as const, label: 'Nguy hiểm', count: summary.danger, color: 'bg-rose-500', text: 'text-rose-700' }, { status: 'IDLE' as const, label: 'Ao trống', count: summary.idle, color: 'bg-slate-300', text: 'text-slate-600' }];
+  return <><div className="mb-6 flex h-4 overflow-hidden rounded-full bg-slate-100">{summary.total > 0 && items.map((item) => item.count > 0 && <button key={item.status} type="button" onClick={() => onSelect(item.status)} className={item.color} style={{ width: `${item.count / summary.total * 100}%` }} title={`${item.count} ao`} />)}</div><div className="grid grid-cols-2 gap-3">{items.map((item) => <button key={item.status} type="button" onClick={() => onSelect(item.status)} className="rounded-2xl bg-slate-50 p-3 text-left hover:bg-slate-100"><span className="flex items-center gap-2 text-xs font-bold text-slate-500"><span className={`h-2 w-2 rounded-full ${item.color}`} />{item.label}</span><span className={`mt-1 block text-2xl font-black ${item.text}`}>{item.count}</span></button>)}</div></>;
+}
+
+function EmptyChart({ message }: { message: string }) {
+  return <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center"><Activity className="mb-3 h-8 w-8 text-slate-300" /><p className="max-w-xs text-xs font-semibold text-slate-500">{message}</p></div>;
+}
+
+function Progress({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const percent = total ? Math.min(100, Math.round(value / total * 100)) : 0;
+  return <div><div className="mb-2 flex justify-between text-sm"><span className="font-bold text-slate-700">{label}</span><span className="text-xs font-semibold text-slate-500">{value}/{total} · {percent}%</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${color}`} style={{ width: `${percent}%` }} /></div></div>;
+}
+
+function PondCard({ row, farmName, onOpen }: { row: PondRow; farmName: string; onOpen: (tab: string) => void }) {
+  const styles: Record<HealthStatus, string> = { DANGER: 'border-rose-200 bg-rose-50/40 text-rose-700', WARNING: 'border-amber-200 bg-amber-50/40 text-amber-700', OPTIMAL: 'border-emerald-200 bg-emerald-50/30 text-emerald-700', IDLE: 'border-slate-200 bg-slate-50 text-slate-600' };
+  const tab = row.openIncidents.length ? 'Sự cố & Điều trị' : row.latestWq ? 'Môi trường nước' : 'Quản lý Ao/Vụ';
+  return <button type="button" onClick={() => onOpen(tab)} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${styles[row.health.status]}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-900">{row.pond.name}</p><p className="mt-0.5 text-xs text-slate-500">{farmName}{row.doc !== null ? ` · DOC ${row.doc}` : ''}</p></div><span className="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase">{row.health.label}</span></div><p className="mt-3 text-xs font-semibold">{row.health.reason}</p><div className="mt-4 flex items-center justify-between border-t border-current/10 pt-3 text-xs text-slate-500"><span>{row.latestWq ? `DO ${row.latestWq.dissolvedOxygen} · pH ${row.latestWq.ph}` : 'Chưa đo môi trường'}</span><span className="font-bold text-blue-600">Xem →</span></div></button>;
 }

@@ -222,8 +222,15 @@ model Crop {
   harvestFeedCost      Float?               @map("harvest_feed_cost") // Chi phí thức ăn riêng biệt
   harvestMedicineCost  Float?               @map("harvest_medicine_cost") // Chi phí thuốc riêng biệt
   harvestChemicalCost  Float?               @map("harvest_chemical_cost") // Chi phí hóa chất riêng biệt
+  harvestSeedCost      Float?               @map("harvest_seed_cost") // Chi phí con giống
+  harvestElectricityCost Float?              @map("harvest_electricity_cost") // Chi phí điện và nước
+  harvestLaborCost     Float?               @map("harvest_labor_cost") // Chi phí nhân công
+  harvestOtherCost     Float?               @map("harvest_other_cost") // Chi phí khác
   harvestFeedKg        Float?               @map("harvest_feed_kg") // Tổng lượng thức ăn thực tế đã dùng (kg)
   harvestNote          String?              @map("harvest_note") // Ghi chú thu hoạch
+  harvestEvaluation    String?              @map("harvest_evaluation") @db.VarChar(2000) // Đánh giá nguyên nhân, vấn đề và biện pháp trong vụ
+  harvestLessonsLearned String?             @map("harvest_lessons_learned") @db.VarChar(2000) // Bài học rút ra sau vụ
+  harvestNextRecommendation String?         @map("harvest_next_recommendation") @db.VarChar(2000) // Khuyến nghị cho vụ tiếp theo
   environmentRecords   EnvironmentRecord[]
   incidents            Incident[]
   shrimpHealthRecords  ShrimpHealthRecord[]

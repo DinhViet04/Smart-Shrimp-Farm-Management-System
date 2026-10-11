@@ -61,10 +61,11 @@ export const incidentService = {
     return handleResponse<Incident>(response);
   },
 
-  getAll: async (filters: { status?: string; assignedToMe?: boolean; search?: string } = {}) => {
+  getAll: async (filters: { status?: string; assignedToMe?: boolean; activeOnly?: boolean; search?: string } = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.set('status', filters.status);
     if (filters.assignedToMe) params.set('assignedToMe', 'true');
+    if (filters.activeOnly) params.set('activeOnly', 'true');
     if (filters.search) params.set('search', filters.search);
     params.set('size', '100');
     const response = await apiFetch(`${apiUrl}/api/incidents?${params.toString()}`);

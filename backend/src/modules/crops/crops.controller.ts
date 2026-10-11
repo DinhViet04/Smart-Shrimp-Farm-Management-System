@@ -61,6 +61,21 @@ export class CropsController {
     });
   }
 
+  @Get('analytics/manager-summary')
+  @Roles('FARM_MANAGER', 'ADMIN')
+  getManagerSummary(
+    @Request() req: any,
+    @Query('farmId') farmId?: string,
+    @Query('year') year?: string,
+    @Query('quarter') quarter?: string,
+  ) {
+    return this.cropsService.getManagerSummary(req.user, {
+      farmId,
+      year: year ? Number(year) : undefined,
+      quarter: quarter ? Number(quarter) : undefined,
+    });
+  }
+
   @Get(':id')
   @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
   findOne(@Request() req: any, @Param('id') id: string) {
@@ -106,7 +121,7 @@ export class CropsController {
   harvest(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() dto?: HarvestCropDto,
+    @Body() dto: HarvestCropDto,
   ) {
     return this.cropsService.harvest(req.user, id, dto);
   }

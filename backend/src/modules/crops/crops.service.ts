@@ -13,6 +13,7 @@ import { CreateCropDto } from './dto/create-crop.dto.js';
 import { UpdateCropDto } from './dto/update-crop.dto.js';
 import { SplitCropDto } from './dto/split-crop.dto.js';
 import { HarvestCropDto } from './dto/harvest-crop.dto.js';
+import { generateHarvestReview } from './crop-review.generator.js';
 
 export interface TrajectoryItem {
   doc: number;
@@ -130,6 +131,172 @@ export class CropsService {
       },
       orderBy: { startDate: 'desc' },
     });
+  }
+
+  async getManagerSummary(
+    user: AuthUser,
+    query: { farmId?: string; year?: number; quarter?: number },
+  ) {
+    const year = query.year || new Date().getFullYear();
+    if (!Number.isInteger(year) || year < 2000 || year > new Date().getFullYear() + 1) {
+      throw new BadRequestException('Năm tổng kết không hợp lệ');
+    }
+    if (query.quarter !== undefined && (![1, 2, 3, 4].includes(query.quarter))) {
+      throw new BadRequestException('Quý tổng kết không hợp lệ');
+    }
+
+    if (query.farmId) {
+      await this.farmAccess.assertCanAccessFarm(user, query.farmId);
+    }
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
+    const farmIds = query.farmId
+      ? [query.farmId]
+      : accessibleFarmIds;
+    const startMonth = query.quarter ? (query.quarter - 1) * 3 : 0;
+    const monthCount = query.quarter ? 3 : 12;
+    const currentStart = new Date(Date.UTC(year, startMonth, 1));
+    const currentEnd = new Date(Date.UTC(year, startMonth + monthCount, 1));
+    const previousStart = new Date(Date.UTC(year - 1, startMonth, 1));
+    const previousEnd = new Date(Date.UTC(year - 1, startMonth + monthCount, 1));
+
+    const harvested = await this.prisma.crop.findMany({
+      where: {
+        status: 'HARVESTED',
+        OR: [
+          { actualHarvestDate: { gte: previousStart, lt: previousEnd } },
+          { actualHarvestDate: { gte: currentStart, lt: currentEnd } },
+        ],
+        ...(farmIds !== undefined
+          ? { pond: { farmId: { in: farmIds } } }
+          : {}),
+      },
+      select: {
+        id: true,
+        pondId: true,
+        initialShrimpCount: true,
+        targetSurvivalRate: true,
+        targetHarvestSize: true,
+        actualHarvestDate: true,
+        actualHarvestKg: true,
+        actualHarvestRevenue: true,
+        actualHarvestCost: true,
+        actualHarvestProfit: true,
+        actualHarvestFcr: true,
+        actualHarvestSurvivalRate: true,
+        pond: {
+          select: {
+            id: true,
+            name: true,
+            farmId: true,
+            farm: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { actualHarvestDate: 'desc' },
+    });
+
+    const current = harvested.filter(
+      (crop) => crop.actualHarvestDate
+        && crop.actualHarvestDate >= currentStart
+        && crop.actualHarvestDate < currentEnd,
+    );
+    const previous = harvested.filter(
+      (crop) => crop.actualHarvestDate
+        && crop.actualHarvestDate >= previousStart
+        && crop.actualHarvestDate < previousEnd,
+    );
+
+    const aggregate = (items: typeof harvested) => {
+      const revenue = items.reduce((sum, crop) => sum + (crop.actualHarvestRevenue || 0), 0);
+      const cost = items.reduce((sum, crop) => sum + (crop.actualHarvestCost || 0), 0);
+      const profit = items.reduce((sum, crop) => sum + (crop.actualHarvestProfit || 0), 0);
+      const harvestKg = items.reduce((sum, crop) => sum + (crop.actualHarvestKg || 0), 0);
+      const fcrValues = items.flatMap((crop) => crop.actualHarvestFcr === null ? [] : [crop.actualHarvestFcr]);
+      const survivalValues = items.flatMap((crop) => crop.actualHarvestSurvivalRate === null ? [] : [crop.actualHarvestSurvivalRate]);
+      const targetMet = items.filter((crop) => {
+        if (!crop.actualHarvestKg || !crop.targetSurvivalRate || !crop.targetHarvestSize) return false;
+        const targetKg = crop.initialShrimpCount * (crop.targetSurvivalRate / 100) / crop.targetHarvestSize;
+        return crop.actualHarvestKg >= targetKg;
+      }).length;
+      return {
+        harvestedCrops: items.length,
+        revenue: Math.round(revenue),
+        cost: Math.round(cost),
+        profit: Math.round(profit),
+        harvestKg: Number(harvestKg.toFixed(2)),
+        profitMargin: revenue > 0 ? Number(((profit / revenue) * 100).toFixed(2)) : 0,
+        averageFcr: fcrValues.length
+          ? Number((fcrValues.reduce((sum, value) => sum + value, 0) / fcrValues.length).toFixed(2))
+          : null,
+        averageSurvivalRate: survivalValues.length
+          ? Number((survivalValues.reduce((sum, value) => sum + value, 0) / survivalValues.length).toFixed(2))
+          : null,
+        targetMet,
+      };
+    };
+    const totals = aggregate(current);
+    const previousTotals = aggregate(previous);
+    const percentChange = (value: number, oldValue: number) =>
+      oldValue === 0 ? null : Number((((value - oldValue) / Math.abs(oldValue)) * 100).toFixed(2));
+
+    const farmGroups = new Map<string, typeof current>();
+    current.forEach((crop) => {
+      const items = farmGroups.get(crop.pond.farmId) || [];
+      items.push(crop);
+      farmGroups.set(crop.pond.farmId, items);
+    });
+    const farmSummaries = [...farmGroups.entries()].map(([farmId, farmCrops]) => {
+      const pondGroups = new Map<string, typeof current>();
+      farmCrops.forEach((crop) => {
+        const items = pondGroups.get(crop.pondId) || [];
+        items.push(crop);
+        pondGroups.set(crop.pondId, items);
+      });
+      return {
+        farmId,
+        farmName: farmCrops[0].pond.farm.name,
+        totals: aggregate(farmCrops),
+        ponds: [...pondGroups.entries()].map(([pondId, pondCrops]) => ({
+          pondId,
+          pondName: pondCrops[0].pond.name,
+          totals: aggregate(pondCrops),
+        })),
+      };
+    });
+
+    return {
+      year,
+      quarter: query.quarter ?? null,
+      totals,
+      comparison: {
+        revenuePercent: percentChange(totals.revenue, previousTotals.revenue),
+        profitPercent: percentChange(totals.profit, previousTotals.profit),
+        harvestKgPercent: percentChange(totals.harvestKg, previousTotals.harvestKg),
+      },
+      farmSummaries,
+      recentHarvests: current.slice(0, 5).map((crop) => {
+        let targetMet: boolean | null = null;
+        if (crop.actualHarvestKg && crop.targetSurvivalRate && crop.targetHarvestSize) {
+          const targetKg = crop.initialShrimpCount * (crop.targetSurvivalRate / 100) / crop.targetHarvestSize;
+          targetMet = crop.actualHarvestKg >= targetKg;
+        }
+        return {
+          id: crop.id,
+          pondId: crop.pondId,
+          pondName: crop.pond.name,
+          farmId: crop.pond.farmId,
+          farmName: crop.pond.farm.name,
+          actualHarvestDate: crop.actualHarvestDate,
+          actualHarvestKg: crop.actualHarvestKg || 0,
+          actualHarvestRevenue: crop.actualHarvestRevenue || 0,
+          actualHarvestCost: crop.actualHarvestCost || 0,
+          actualHarvestProfit: crop.actualHarvestProfit || 0,
+          actualHarvestFcr: crop.actualHarvestFcr,
+          actualHarvestSurvivalRate: crop.actualHarvestSurvivalRate,
+          targetMet,
+        };
+      }),
+    };
   }
 
   async findOne(user: AuthUser, id: string) {
@@ -543,17 +710,18 @@ export class CropsService {
     const totalFeedCost = feedLogs.reduce((sum, f) => sum + f.totalCost, 0);
 
     // 2. Fetch warehouse usage logs for MEDICINE & CHEMICAL related to this pond/farm during crop lifecycle
-    const pondName = crop.pond?.name || '';
     const startDate = new Date(crop.startDate);
+    const endDate = crop.actualHarvestDate
+      ? new Date(crop.actualHarvestDate)
+      : new Date();
 
     const usageLogs = await (this.prisma.inventoryUsageLog as any).findMany({
       where: {
         OR: [
           { cropId: crop.id },
-          { pondId: crop.pondId },
-          { notes: { contains: pondName, mode: 'insensitive' } },
+          { cropId: null, pondId: crop.pondId },
         ],
-        usageDate: { gte: startDate },
+        usageDate: { gte: startDate, lte: endDate },
       },
       include: {
         inventory: true,
@@ -631,7 +799,7 @@ export class CropsService {
     };
   }
 
-  async harvest(user: AuthUser, id: string, dto?: HarvestCropDto) {
+  async harvest(user: AuthUser, id: string, dto: HarvestCropDto) {
     const crop = await this.prisma.crop.findUnique({
       where: { id },
       include: { pond: true },
@@ -649,43 +817,104 @@ export class CropsService {
       );
     }
 
-    const updateData: any = {
-      status: 'HARVESTED',
-    };
-
-    if (dto) {
-      if (dto.actualHarvestKg !== undefined) updateData.actualHarvestKg = dto.actualHarvestKg;
-      if (dto.actualHarvestSize !== undefined) updateData.actualHarvestSize = dto.actualHarvestSize;
-      if (dto.actualHarvestCount !== undefined) {
-        updateData.actualHarvestCount = dto.actualHarvestCount;
-      } else if (dto.actualHarvestKg && dto.actualHarvestSize) {
-        updateData.actualHarvestCount = Math.round(dto.actualHarvestKg * dto.actualHarvestSize);
-      }
-
-      if (dto.actualHarvestPricePerKg !== undefined) updateData.actualHarvestPricePerKg = dto.actualHarvestPricePerKg;
-      if (dto.actualHarvestRevenue !== undefined) updateData.actualHarvestRevenue = dto.actualHarvestRevenue;
-      if (dto.actualHarvestCost !== undefined) updateData.actualHarvestCost = dto.actualHarvestCost;
-      if (dto.actualHarvestProfit !== undefined) updateData.actualHarvestProfit = dto.actualHarvestProfit;
-      if (dto.actualHarvestFcr !== undefined) updateData.actualHarvestFcr = dto.actualHarvestFcr;
-      if (dto.actualHarvestSurvivalRate !== undefined) updateData.actualHarvestSurvivalRate = dto.actualHarvestSurvivalRate;
-      if (dto.harvestFeedCost !== undefined) updateData.harvestFeedCost = dto.harvestFeedCost;
-      if (dto.harvestMedicineCost !== undefined) updateData.harvestMedicineCost = dto.harvestMedicineCost;
-      if (dto.harvestChemicalCost !== undefined) updateData.harvestChemicalCost = dto.harvestChemicalCost;
-      if (dto.harvestFeedKg !== undefined) updateData.harvestFeedKg = dto.harvestFeedKg;
-      if (dto.harvestNote !== undefined) updateData.harvestNote = dto.harvestNote;
-      
-      if (dto.actualHarvestDate) {
-        updateData.actualHarvestDate = new Date(dto.actualHarvestDate);
-      } else if (!crop.actualHarvestDate) {
-        updateData.actualHarvestDate = new Date();
-      }
-    } else if (!crop.actualHarvestDate) {
-      updateData.actualHarvestDate = new Date();
+    const harvestDate = dto.actualHarvestDate
+      ? new Date(dto.actualHarvestDate)
+      : crop.actualHarvestDate || new Date();
+    const startDate = new Date(crop.startDate);
+    const tomorrow = new Date();
+    tomorrow.setHours(23, 59, 59, 999);
+    if (harvestDate < startDate) {
+      throw new BadRequestException('Ngày thu hoạch không được trước ngày bắt đầu vụ nuôi');
+    }
+    if (harvestDate > tomorrow) {
+      throw new BadRequestException('Ngày thu hoạch không được ở tương lai');
     }
 
-    return (this.prisma.crop as any).update({
+    const actualHarvestCount = Math.round(
+      dto.actualHarvestKg * dto.actualHarvestSize,
+    );
+    const actualHarvestSurvivalRate = Number(
+      ((actualHarvestCount / crop.initialShrimpCount) * 100).toFixed(2),
+    );
+    if (actualHarvestSurvivalRate > 100) {
+      throw new BadRequestException(
+        'Sản lượng và kích cỡ thu hoạch tạo ra tỷ lệ sống lớn hơn 100%. Vui lòng kiểm tra lại số liệu',
+      );
+    }
+
+    const feedCost = dto.harvestFeedCost || 0;
+    const medicineCost = dto.harvestMedicineCost || 0;
+    const chemicalCost = dto.harvestChemicalCost || 0;
+    const seedCost = dto.harvestSeedCost || 0;
+    const electricityCost = dto.harvestElectricityCost || 0;
+    const laborCost = dto.harvestLaborCost || 0;
+    const otherCost = dto.harvestOtherCost || 0;
+    const actualHarvestCost = Math.round(
+      feedCost + medicineCost + chemicalCost + seedCost +
+        electricityCost + laborCost + otherCost,
+    );
+    const actualHarvestRevenue = Math.round(
+      dto.actualHarvestKg * dto.actualHarvestPricePerKg,
+    );
+    const actualHarvestProfit = actualHarvestRevenue - actualHarvestCost;
+    const actualHarvestFcr = dto.harvestFeedKg
+      ? Number((dto.harvestFeedKg / dto.actualHarvestKg).toFixed(2))
+      : null;
+
+    const previousHarvest = await this.prisma.crop.findFirst({
+      where: {
+        id: { not: id },
+        pondId: crop.pondId,
+        status: 'HARVESTED',
+        actualHarvestDate: { not: null },
+      },
+      orderBy: { actualHarvestDate: 'desc' },
+      select: {
+        actualHarvestKg: true,
+        actualHarvestProfit: true,
+        actualHarvestFcr: true,
+        actualHarvestSurvivalRate: true,
+      },
+    });
+    const generatedReview = generateHarvestReview({
+      initialShrimpCount: crop.initialShrimpCount,
+      targetHarvestSize: crop.targetHarvestSize,
+      targetSurvivalRate: crop.targetSurvivalRate,
+      actualHarvestKg: dto.actualHarvestKg,
+      actualHarvestRevenue,
+      actualHarvestCost,
+      actualHarvestProfit,
+      actualHarvestFcr,
+      actualHarvestSurvivalRate,
+    }, previousHarvest);
+
+    return this.prisma.crop.update({
       where: { id },
-      data: updateData,
+      data: {
+        status: 'HARVESTED',
+        actualHarvestKg: dto.actualHarvestKg,
+        actualHarvestSize: dto.actualHarvestSize,
+        actualHarvestCount,
+        actualHarvestDate: harvestDate,
+        actualHarvestPricePerKg: dto.actualHarvestPricePerKg,
+        actualHarvestRevenue,
+        actualHarvestCost,
+        actualHarvestProfit,
+        actualHarvestFcr,
+        actualHarvestSurvivalRate,
+        harvestFeedCost: feedCost,
+        harvestMedicineCost: medicineCost,
+        harvestChemicalCost: chemicalCost,
+        harvestSeedCost: seedCost,
+        harvestElectricityCost: electricityCost,
+        harvestLaborCost: laborCost,
+        harvestOtherCost: otherCost,
+        harvestFeedKg: dto.harvestFeedKg || 0,
+        harvestNote: dto.harvestNote,
+        harvestEvaluation: generatedReview.evaluation,
+        harvestLessonsLearned: generatedReview.lessonsLearned,
+        harvestNextRecommendation: generatedReview.nextRecommendation,
+      },
       include: { pond: { select: { id: true, name: true, areaSize: true, depth: true, farmId: true } } },
     });
   }

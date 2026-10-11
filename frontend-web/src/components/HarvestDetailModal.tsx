@@ -286,6 +286,18 @@ export default function HarvestDetailModal({
                   <p className="text-slate-600 leading-relaxed">{crop.harvestNote}</p>
                 </div>
               )}
+
+              {(crop.harvestEvaluation || crop.harvestLessonsLearned || crop.harvestNextRecommendation) && (
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <h4 className="mb-1 text-sm font-black text-slate-800">Phân tích sau vụ từ kết quả thực tế</h4>
+                  <p className="mb-3 text-[11px] text-slate-500">Hệ thống tổng hợp từ kết quả thu hoạch, mục tiêu và vụ trước cùng ao; không tự suy đoán nguyên nhân khi thiếu nhật ký.</p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <ReviewItem label="Đánh giá kết quả" value={crop.harvestEvaluation} />
+                    <ReviewItem label="So sánh và bài học dữ liệu" value={crop.harvestLessonsLearned} />
+                    <ReviewItem label="Khuyến nghị theo chỉ số" value={crop.harvestNextRecommendation} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -511,4 +523,11 @@ export default function HarvestDetailModal({
     </div>,
     document.body
   );
+}
+
+function ReviewItem({ label, value }: { label: string; value?: string | null }) {
+  return <div className="rounded-xl border border-white bg-white/80 p-3">
+    <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-600">{label}</span>
+    <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{value || 'Chưa ghi nhận'}</p>
+  </div>;
 }

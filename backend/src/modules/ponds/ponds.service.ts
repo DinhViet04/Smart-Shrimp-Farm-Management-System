@@ -122,6 +122,19 @@ export class PondsService {
           farmId: true,
           createdAt: true,
           updatedAt: true,
+          sizeSamples: {
+            take: 1,
+            orderBy: { samplingDate: 'desc' },
+            select: {
+              abwGram: true,
+              sizePerKg: true,
+              adgGramPerDay: true,
+              estimatedBiomassKg: true,
+              estimatedTotalShrimp: true,
+              doc: true,
+              samplingDate: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -156,9 +169,10 @@ export class PondsService {
     ]);
 
     const farmById = new Map(farms.map((farm) => [farm.id, farm]));
-    const overviewPonds = ponds.map((pond) => ({
+    const overviewPonds = ponds.map(({ sizeSamples, ...pond }) => ({
       ...pond,
       farm: farmById.get(pond.farmId),
+      latestSizeSample: sizeSamples?.[0] || null,
     }));
     const pondById = new Map(overviewPonds.map((pond) => [pond.id, pond]));
     const overviewCrops = crops.map((crop) => ({

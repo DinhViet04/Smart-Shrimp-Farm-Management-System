@@ -44,4 +44,17 @@ export class GetIncidentsDto {
   @Min(1)
   @Max(100)
   size?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  year?: number;
+
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @IsOptional()
+  @IsString()
+  toDate?: string;
 }

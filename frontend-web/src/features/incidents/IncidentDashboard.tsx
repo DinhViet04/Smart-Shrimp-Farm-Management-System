@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, AlertTriangle, Bot, CheckCircle2, Clock3, Plus, RefreshCw, Search, Stethoscope, X } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  Bot,
+  Building2,
+  CheckCircle2,
+  Clock3,
+  History,
+  Layers,
+  Plus,
+  RefreshCw,
+  Search,
+  Stethoscope,
+  Waves,
+  X,
+} from 'lucide-react';
 import { incidentService, type Incident, type IncidentStatus, type IncidentTechnician } from '../../services/incident.service';
 import { type Crop } from '../../services/crop.service';
 import { pondService } from '../../services/pond.service';
 import LoadingMotion from '../../components/LoadingMotion';
 import TreatmentWorkspace from './TreatmentWorkspace';
+import IncidentTreatmentHistory from './IncidentTreatmentHistory';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Chờ xử lý',
@@ -65,7 +81,13 @@ function getErrorMessage(error: unknown) {
 type IncidentRole = 'ADMIN' | 'FARM_MANAGER' | 'TECHNICIAN' | 'FARMER';
 type CreateIncidentErrors = Partial<Record<'cropId' | 'title' | 'description', string>>;
 
-export default function IncidentDashboard({ role }: { role: IncidentRole }) {
+export default function IncidentDashboard({
+  role,
+  initialSubTab = 'board',
+}: {
+  role: IncidentRole;
+  initialSubTab?: 'board' | 'history';
+}) {
   const adminView = role === 'ADMIN';
   const canCreate = role !== 'ADMIN';
   const canAssign = role === 'FARM_MANAGER';
@@ -77,6 +99,17 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
       return undefined;
     }
   });
+  const [subTab, setSubTab] = useState<'board' | 'history'>(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  const activeTabClass = isFarmer
+    ? 'border-teal-600 text-teal-600'
+    : 'border-indigo-600 text-indigo-600';
   const primaryButtonClass = isFarmer
     ? 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-teal-500/30'
     : 'from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-500/30';
@@ -304,6 +337,55 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
 
   return (
     <div className="relative mx-auto w-full max-w-7xl space-y-6">
+      {/* ── Chế độ xem: Bảng theo dõi / Lịch sử (Segmented Control Pill Switcher) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="inline-flex items-center p-1 bg-white/90 rounded-xl border border-slate-200/60 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setSubTab('board')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              subTab === 'board'
+                ? isFarmer
+                  ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
+                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <Stethoscope className="w-3.5 h-3.5" />
+            <span>Bảng theo dõi & Xử lý</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubTab('history')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              subTab === 'history'
+                ? isFarmer
+                  ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
+                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Lịch sử & Nhật ký điều trị</span>
+          </button>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 pr-3 text-xs text-slate-500 font-medium">
+          {subTab === 'board' ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Giám sát sự cố đang diễn ra & phân công kỹ thuật
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              Tra cứu đầy đủ hồ sơ điều trị, vật tư & tiến trình theo vụ nuôi
+            </span>
+          )}
+        </div>
+      </div>
+
       {(notice || error) && (
         <div className={`fixed right-6 top-6 z-[100] flex max-w-[calc(100vw-3rem)] items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg animate-in slide-in-from-right-8 fade-in duration-300 ${
           error
@@ -315,55 +397,65 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
         </div>
       )}
 
-      <div className={`rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl backdrop-blur-xl ${isFarmer ? 'shadow-teal-900/5' : 'shadow-indigo-900/5'}`}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg ${isFarmer ? 'from-teal-500 to-emerald-600 shadow-teal-500/20' : 'from-indigo-500 to-blue-600 shadow-indigo-500/20'}`}>
-              <Stethoscope className="h-7 w-7 text-white" />
+      {subTab === 'history' ? (
+        <IncidentTreatmentHistory
+          currentUserRole={role}
+          currentUserId={currentUserId}
+          onOpenWorkspace={(inc) => {
+            setActiveWorkspaceIncident(inc);
+          }}
+        />
+      ) : (
+        <>
+          <div className={`rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl backdrop-blur-xl ${isFarmer ? 'shadow-teal-900/5' : 'shadow-indigo-900/5'}`}>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg ${isFarmer ? 'from-teal-500 to-emerald-600 shadow-teal-500/20' : 'from-indigo-500 to-blue-600 shadow-indigo-500/20'}`}>
+                  <Stethoscope className="h-7 w-7 text-white" />
+                </div>
+                <div>
+                  <h2 className={`bg-gradient-to-r bg-clip-text text-2xl font-black tracking-tight text-transparent ${isFarmer ? 'from-teal-700 to-emerald-600' : 'from-indigo-700 to-blue-600'}`}>Sự cố & Điều trị</h2>
+                  <p className="mt-1 text-sm font-medium text-slate-500">
+                    {adminView
+                      ? 'Giám sát sự cố trên toàn hệ thống.'
+                      : role === 'FARMER'
+                        ? 'Báo cáo và theo dõi tình trạng xử lý sự cố tại ao.'
+                        : role === 'FARM_MANAGER'
+                          ? 'Báo cáo, phân công và theo dõi xử lý sự cố trong trang trại.'
+                          : 'Báo cáo và theo dõi các sự cố cùng tiến trình điều trị.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex w-full flex-wrap gap-2 lg:w-auto">
+                {canCreate && (
+                  <button onClick={openCreateIncident} className={`flex items-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 ${primaryButtonClass}`}>
+                    <Plus className="h-4 w-4" /> Báo cáo sự cố
+                  </button>
+                )}
+                <button onClick={loadIncidents} disabled={loading} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-200 disabled:opacity-60">
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Làm mới
+                </button>
+              </div>
             </div>
-            <div>
-              <h2 className={`bg-gradient-to-r bg-clip-text text-2xl font-black tracking-tight text-transparent ${isFarmer ? 'from-teal-700 to-emerald-600' : 'from-indigo-700 to-blue-600'}`}>Sự cố & Điều trị</h2>
-              <p className="mt-1 text-sm font-medium text-slate-500">
-                {adminView
-                  ? 'Giám sát sự cố trên toàn hệ thống.'
-                  : role === 'FARMER'
-                    ? 'Báo cáo và theo dõi tình trạng xử lý sự cố tại ao.'
-                    : role === 'FARM_MANAGER'
-                      ? 'Báo cáo, phân công và theo dõi xử lý sự cố trong trang trại.'
-                      : 'Báo cáo và theo dõi các sự cố cùng tiến trình điều trị.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex w-full flex-wrap gap-2 lg:w-auto">
-            {canCreate && (
-              <button onClick={openCreateIncident} className={`flex items-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 ${primaryButtonClass}`}>
-                <Plus className="h-4 w-4" /> Báo cáo sự cố
-              </button>
-            )}
-            <button onClick={loadIncidents} disabled={loading} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-200 disabled:opacity-60">
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Làm mới
-            </button>
-          </div>
-        </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc mô tả sự cố..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" />
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc mô tả sự cố..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" />
+              </div>
+              <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400">
+                <option value="">Tất cả trạng thái</option>
+                <option value="OPEN">Chờ xử lý</option>
+                <option value="TREATING">Đang điều trị</option>
+                <option value="RESOLVED">Đã xử lý</option>
+              </select>
+              {role === 'TECHNICIAN' && (
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">
+                  <input type="checkbox" checked={assignedToMe} onChange={(event) => setAssignedToMe(event.target.checked)} /> Chỉ sự cố giao cho tôi
+                </label>
+              )}
+            </div>
           </div>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400">
-            <option value="">Tất cả trạng thái</option>
-            <option value="OPEN">Chờ xử lý</option>
-            <option value="TREATING">Đang điều trị</option>
-            <option value="RESOLVED">Đã xử lý</option>
-          </select>
-          {role === 'TECHNICIAN' && (
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">
-              <input type="checkbox" checked={assignedToMe} onChange={(event) => setAssignedToMe(event.target.checked)} /> Chỉ sự cố giao cho tôi
-            </label>
-          )}
-        </div>
-      </div>
 
       {loading && incidents.length === 0 ? (
         <LoadingMotion
@@ -448,10 +540,22 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
                               {incident.description}
                             </p>
 
-                            <div className="mt-3 space-y-1 border-t border-slate-100 pt-2.5 text-[11px] font-medium text-slate-500">
-                              <p className="truncate">
-                                <strong className="text-slate-700">{incident.crop.pond.farm.name}</strong> · {incident.crop.pond.name}
-                              </p>
+                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-2.5 text-[11px] font-medium text-slate-500">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-bold">
+                                  <Building2 className="w-3 h-3 text-emerald-600" />
+                                  <span className="truncate max-w-[120px]">{incident.crop.pond.farm.name}</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-100 text-[10px] font-bold">
+                                  <Waves className="w-3 h-3 text-cyan-600" />
+                                  <span>{incident.crop.pond.name}</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100 text-[10px] font-bold">
+                                  <Layers className="w-3 h-3 text-indigo-600" />
+                                  <span>{incident.crop.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm'}</span>
+                                </span>
+                              </div>
+
                               <p className="truncate text-slate-500">
                                 Phụ trách: <span className="font-semibold text-slate-700">{incident.assignedTo?.fullName || 'Chưa phân công'}</span>
                               </p>
@@ -503,16 +607,57 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
                   <h3 className="text-xl font-black text-slate-800">{selected.title}</h3>
                   <span className={`rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[selected.status]}`}>{STATUS_LABELS[selected.status]}</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-500">{selected.crop.pond.farm.name} · {selected.crop.pond.name}</p>
+                {/* RÕ THÔNG TIN TRANG TRẠI - AO - VỤ NUÔI */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold shadow-2xs">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Trang trại: <strong>{selected.crop.pond.farm.name}</strong></span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-50 text-cyan-800 border border-cyan-200 text-xs font-bold shadow-2xs">
+                    <Waves className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>Ao nuôi: <strong>{selected.crop.pond.name}</strong></span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-bold shadow-2xs">
+                    <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>
+                      Vụ nuôi: <strong>{selected.crop.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}</strong>
+                      {selected.crop.status ? ` (${selected.crop.status === 'ACTIVE' ? 'Đang nuôi' : 'Đã thu'})` : ''}
+                      {selected.crop.startDate ? ` • Bắt đầu ${new Date(selected.crop.startDate).toLocaleDateString('vi-VN')}` : ''}
+                    </span>
+                  </span>
+                </div>
               </div>
-              <button onClick={closeIncident} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+              <button onClick={closeIncident} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-6 p-6">
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                <p>{selected.description}</p>
-                <p className="mt-2 text-xs">Người báo cáo: <strong>{selected.reporter?.fullName || 'Dữ liệu cũ chưa ghi nhận'}</strong></p>
-                <p className="mt-2 text-xs">Phụ trách: <strong>{selected.assignedTo?.fullName || 'Chưa phân công'}</strong></p>
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 border border-slate-100 space-y-3">
+                <div>
+                  <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                    Mô tả dấu hiệu sự cố
+                  </span>
+                  <p className="text-slate-800 font-semibold leading-relaxed">{selected.description}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-200/80 text-xs">
+                  <div>
+                    <span className="text-slate-400">Người báo cáo:</span>
+                    <p className="mt-0.5 font-bold text-slate-700">{selected.reporter?.fullName || 'Dữ liệu cũ chưa ghi nhận'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Phụ trách điều trị:</span>
+                    <p className="mt-0.5 font-bold text-indigo-600">{selected.assignedTo?.fullName || 'Chưa phân công'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Thời điểm phát hiện:</span>
+                    <p className="mt-0.5 font-bold text-slate-700">{new Date(selected.createdAt).toLocaleString('vi-VN')}</p>
+                  </div>
+                  {selected.resolvedAt && (
+                    <div>
+                      <span className="text-slate-400">Thời điểm xử lý xong:</span>
+                      <p className="mt-0.5 font-bold text-emerald-600">{new Date(selected.resolvedAt).toLocaleString('vi-VN')}</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {canAssign && (
@@ -605,6 +750,8 @@ export default function IncidentDashboard({ role }: { role: IncidentRole }) {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

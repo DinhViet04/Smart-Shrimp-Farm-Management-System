@@ -56,6 +56,10 @@ export default function HarvestCropModal({
   const [pricePerKg, setPricePerKg] = useState<string>('');
   const [harvestDate, setHarvestDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [harvestNote, setHarvestNote] = useState<string>('');
+  const [seedCost, setSeedCost] = useState<string>('');
+  const [electricityCost, setElectricityCost] = useState<string>('');
+  const [laborCost, setLaborCost] = useState<string>('');
+  const [otherCost, setOtherCost] = useState<string>('');
 
   // Material usage lists (editable)
   const [feedItems, setFeedItems] = useState<MaterialUsageItem[]>([]);
@@ -81,6 +85,10 @@ export default function HarvestCropModal({
     setHarvestSize(crop.actualHarvestSize ? crop.actualHarvestSize.toString() : '');
     setPricePerKg(crop.actualHarvestPricePerKg ? crop.actualHarvestPricePerKg.toString() : '');
     setHarvestNote(crop.harvestNote || '');
+    setSeedCost(crop.harvestSeedCost ? crop.harvestSeedCost.toString() : '');
+    setElectricityCost(crop.harvestElectricityCost ? crop.harvestElectricityCost.toString() : '');
+    setLaborCost(crop.harvestLaborCost ? crop.harvestLaborCost.toString() : '');
+    setOtherCost(crop.harvestOtherCost ? crop.harvestOtherCost.toString() : '');
     setHarvestDate(
       crop.actualHarvestDate
         ? new Date(crop.actualHarvestDate).toISOString().slice(0, 10)
@@ -93,9 +101,9 @@ export default function HarvestCropModal({
         if (!isMounted) return;
 
         // Set material usage lists
-        const feedLogs = res.summary.feedLogs || [];
-        const medicineLogs = res.summary.medicineLogs || [];
-        const chemicalLogs = res.summary.chemicalLogs || [];
+        const feedLogs = [...(res.summary.feedLogs || [])];
+        const medicineLogs = [...(res.summary.medicineLogs || [])];
+        const chemicalLogs = [...(res.summary.chemicalLogs || [])];
 
         // If crop was already harvested and had stored costs, but logs are empty:
         if (feedLogs.length === 0 && crop.harvestFeedKg) {
@@ -131,6 +139,30 @@ export default function HarvestCropModal({
             totalCost: crop.harvestChemicalCost,
           });
         }
+
+        const preserveRecordedCost = (
+          items: MaterialUsageItem[],
+          recordedCost: number | null | undefined,
+          category: MaterialUsageItem['category'],
+        ) => {
+          if (recordedCost === null || recordedCost === undefined) return;
+          const currentCost = items.reduce((sum, item) => sum + item.totalCost, 0);
+          const difference = recordedCost - currentCost;
+          if (Math.abs(difference) < 1) return;
+          items.push({
+            inventoryId: `harvest-adjustment-${category.toLowerCase()}`,
+            itemName: 'Điều chỉnh khi chốt thu hoạch',
+            category,
+            quantityUsed: 1,
+            unit: 'khoản',
+            unitPrice: difference,
+            totalCost: difference,
+          });
+        };
+
+        preserveRecordedCost(feedLogs, crop.harvestFeedCost, 'FEED');
+        preserveRecordedCost(medicineLogs, crop.harvestMedicineCost, 'MEDICINE');
+        preserveRecordedCost(chemicalLogs, crop.harvestChemicalCost, 'CHEMICAL');
 
         setFeedItems(feedLogs);
         setMedicineItems(medicineLogs);
@@ -178,6 +210,10 @@ export default function HarvestCropModal({
   const numKg = parseFloat(harvestKg) || 0;
   const numSize = parseFloat(harvestSize) || 0;
   const numPrice = parseFloat(pricePerKg) || 0;
+  const numSeedCost = parseFloat(seedCost) || 0;
+  const numElectricityCost = parseFloat(electricityCost) || 0;
+  const numLaborCost = parseFloat(laborCost) || 0;
+  const numOtherCost = parseFloat(otherCost) || 0;
 
   // 1. Tấn quy đổi
   const tons = useMemo(() => {
@@ -231,6 +267,10 @@ export default function HarvestCropModal({
     return feedCostTotal + medicineCostTotal + chemicalCostTotal;
   }, [feedCostTotal, medicineCostTotal, chemicalCostTotal]);
 
+  const totalOperatingCost = useMemo(() => {
+    return totalMaterialCost + numSeedCost + numElectricityCost + numLaborCost + numOtherCost;
+  }, [totalMaterialCost, numSeedCost, numElectricityCost, numLaborCost, numOtherCost]);
+
   // 8. Doanh thu = kg * giá 1kg
   const totalRevenue = useMemo(() => {
     return Math.round(numKg * numPrice);
@@ -238,8 +278,8 @@ export default function HarvestCropModal({
 
   // 9. Lợi nhuận = Doanh thu - Tổng chi phí
   const netProfit = useMemo(() => {
-    return totalRevenue - totalMaterialCost;
-  }, [totalRevenue, totalMaterialCost]);
+    return totalRevenue - totalOperatingCost;
+  }, [totalRevenue, totalOperatingCost]);
 
   // Target comparisons
   const targetShrimpCount = useMemo(() => {
@@ -332,18 +372,16 @@ export default function HarvestCropModal({
         actualHarvestKg: numKg,
         actualHarvestSize: numSize,
         actualHarvestPricePerKg: numPrice,
-        actualHarvestCount: totalHarvestShrimpCount,
-        actualHarvestRevenue: totalRevenue,
-        actualHarvestCost: totalMaterialCost,
-        actualHarvestProfit: netProfit,
-        actualHarvestFcr: actualFcr,
-        actualHarvestSurvivalRate: actualSurvivalRate,
         harvestFeedCost: feedCostTotal,
         harvestMedicineCost: medicineCostTotal,
         harvestChemicalCost: chemicalCostTotal,
+        harvestSeedCost: numSeedCost,
+        harvestElectricityCost: numElectricityCost,
+        harvestLaborCost: numLaborCost,
+        harvestOtherCost: numOtherCost,
         harvestFeedKg: totalFeedKgUsed,
         actualHarvestDate: new Date(harvestDate).toISOString(),
-        harvestNote: harvestNote.trim() || undefined,
+        harvestNote: harvestNote.trim(),
       };
 
       await cropService.harvest(crop.id, payload);
@@ -675,6 +713,8 @@ export default function HarvestCropModal({
                   <input
                     type="date"
                     value={harvestDate}
+                    min={new Date(crop.startDate).toISOString().slice(0, 10)}
+                    max={new Date().toISOString().slice(0, 10)}
                     onChange={(e) => setHarvestDate(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-inner"
                   />
@@ -682,7 +722,38 @@ export default function HarvestCropModal({
                     Thời điểm kết thúc vụ nuôi chính thức
                   </p>
                 </div>
-              </div>
+                </div>
+
+                <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3">
+                    <h4 className="text-sm font-black text-slate-800">Chi phí vận hành bổ sung</h4>
+                    <p className="mt-0.5 text-[10.5px] text-slate-500">Nhập các khoản chưa được tổng hợp từ nhật ký kho để tính đúng lợi nhuận ròng.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[
+                      { label: 'Con giống', value: seedCost, setter: setSeedCost },
+                      { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost },
+                      { label: 'Nhân công', value: laborCost, setter: setLaborCost },
+                      { label: 'Chi phí khác', value: otherCost, setter: setOtherCost },
+                    ].map((item) => (
+                      <label key={item.label} className="space-y-1">
+                        <span className="text-[11px] font-bold text-slate-600">{item.label}</span>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={item.value}
+                            onChange={(event) => item.setter(event.target.value)}
+                            placeholder="0"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-12 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">VNĐ</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
               {/* Financial Breakdown Card */}
               <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl space-y-4">
@@ -694,7 +765,7 @@ export default function HarvestCropModal({
                     <div>
                       <h4 className="text-sm font-black text-white">Bảng Tổng Kết Tài Chính Vụ Nuôi</h4>
                       <p className="text-[11px] text-slate-400">
-                        Đối chiếu Doanh thu bán tôm và Chi phí vật tư kho đã xuất cho ao
+                        Đối chiếu doanh thu với toàn bộ chi phí đã ghi nhận của vụ nuôi
                       </p>
                     </div>
                   </div>
@@ -723,12 +794,12 @@ export default function HarvestCropModal({
 
                   {/* Expenses */}
                   <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10">
-                    <span className="text-xs text-slate-400 font-medium block">2. Tổng Chi Phí Vật Tư</span>
+                    <span className="text-xs text-slate-400 font-medium block">2. Tổng Chi Phí</span>
                     <span className="text-xl font-black text-amber-400 mt-1 block">
-                      {formatVND(totalMaterialCost)} đ
+                      {formatVND(totalOperatingCost)} đ
                     </span>
                     <span className="text-[10.5px] text-slate-400 mt-1 block">
-                      Thức ăn + Thuốc + Hóa chất
+                      Vật tư + Giống + Điện nước + Nhân công + Khác
                     </span>
                   </div>
 
@@ -776,11 +847,18 @@ export default function HarvestCropModal({
                 </label>
                 <textarea
                   rows={2}
+                  maxLength={1000}
                   value={harvestNote}
                   onChange={(e) => setHarvestNote(e.target.value)}
                   placeholder="Nhập nhận xét về chất lượng tôm, thời tiết lúc thu hoạch, đánh giá thương lái..."
                   className="w-full p-3 bg-white border border-slate-200 rounded-2xl text-xs font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
                 />
+              </div>
+
+              <div className="rounded-3xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5">
+                <h4 className="flex items-center gap-2 text-sm font-black text-slate-800"><Sparkles className="h-4 w-4 text-indigo-600" /> Phân tích sau vụ do hệ thống tạo</h4>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">Sau khi lưu, hệ thống sẽ tự tạo đánh giá, bài học dữ liệu và khuyến nghị từ kết quả thu hoạch, mục tiêu và vụ trước cùng ao. Hệ thống không suy đoán nguyên nhân khi không có nhật ký chứng minh.</p>
+                {crop.status === 'HARVESTED' && <p className="mt-2 text-[11px] font-bold text-indigo-600">Khi cập nhật số liệu thu hoạch, phân tích hiện tại cũng sẽ được tính lại.</p>}
               </div>
             </div>
           )}
@@ -800,7 +878,7 @@ export default function HarvestCropModal({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-                    Tổng chi phí: <strong className="text-amber-700">{formatVND(totalMaterialCost)} đ</strong>
+                    Tổng chi phí: <strong className="text-amber-700">{formatVND(totalOperatingCost)} đ</strong>
                   </span>
                   <button
                     type="button"

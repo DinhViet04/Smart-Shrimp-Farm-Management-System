@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Search, Settings, Building2, Package, AlertTriangle, TrendingUp, HeartPulse } from 'lucide-react';
+import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package, AlertTriangle, TrendingUp, HeartPulse } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
 import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
@@ -27,6 +27,10 @@ export default function Dashboard() {
   const [pondCropConfig, setPondCropConfig] = useState<{
     initialSubTab?: 'ponds' | 'crops';
     initialFarmId?: string;
+    initialPondId?: string;
+    initialCropYear?: string;
+    initialCropQuarter?: string;
+    initialCropView?: 'active' | 'history';
     initialCropConfig?: { farmId?: string; pondId?: string };
   } | null>(null);
 
@@ -58,6 +62,18 @@ export default function Dashboard() {
     setGrowthConfig(config);
     setGrowthSubTab('Theo dõi kích cỡ');
     setActiveTab('Theo dõi tăng trưởng');
+  };
+
+  const handleOpenCropHistory = (farmId?: string, pondId?: string, year?: number, quarter?: number | null) => {
+    setPondCropConfig({
+      initialSubTab: 'crops',
+      initialCropView: 'history',
+      initialFarmId: farmId,
+      initialPondId: pondId,
+      initialCropYear: year ? String(year) : undefined,
+      initialCropQuarter: quarter ? String(quarter) : undefined,
+    });
+    setActiveTab('Quản lý Ao/Vụ');
   };
 
   useEffect(() => {
@@ -175,14 +191,6 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{activeTab}</h1>
           
           <div className="flex items-center gap-6">
-            <div className="relative hidden md:block">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Tìm kiếm thông tin..." 
-                className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-200 outline-none transition-all w-64"
-              />
-            </div>
             <NotificationDropdown 
               themeColor="blue" 
               onNavigateTab={(tab, config) => {
@@ -211,7 +219,7 @@ export default function Dashboard() {
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
           {activeTab === 'Dashboard' && (
-            <ManagerDashboardHome onNavigateTab={setActiveTab} />
+            <ManagerDashboardHome onNavigateTab={setActiveTab} onOpenCropHistory={handleOpenCropHistory} />
           )}
 
           <Suspense fallback={
@@ -232,6 +240,10 @@ export default function Dashboard() {
             <PondCropDashboard 
               initialSubTab={pondCropConfig?.initialSubTab}
               initialFarmId={pondCropConfig?.initialFarmId}
+              initialPondId={pondCropConfig?.initialPondId}
+              initialCropView={pondCropConfig?.initialCropView}
+              initialCropYear={pondCropConfig?.initialCropYear}
+              initialCropQuarter={pondCropConfig?.initialCropQuarter}
               initialCropConfig={pondCropConfig?.initialCropConfig}
               onNavigateToGrowth={handleNavigateToGrowth}
             />

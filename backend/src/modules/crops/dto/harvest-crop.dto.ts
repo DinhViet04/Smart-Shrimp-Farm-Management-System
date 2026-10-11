@@ -1,10 +1,4 @@
-import {
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsDateString,
-  Min,
-} from 'class-validator';
+import { IsDateString, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class HarvestCropDto {
@@ -18,60 +12,57 @@ export class HarvestCropDto {
   @Min(1, { message: 'Kích cỡ tôm thu hoạch phải lớn hơn 0 con/kg' })
   actualHarvestSize: number;
 
-  @IsOptional()
   @Type(() => Number)
   @IsNumber({}, { message: 'Giá bán phải là số hợp lệ' })
-  @Min(0, { message: 'Giá bán không được âm' })
-  actualHarvestPricePerKg?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Tổng số con tôm thu hoạch phải là số hợp lệ' })
-  actualHarvestCount?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Doanh thu phải là số hợp lệ' })
-  actualHarvestRevenue?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Chi phí phải là số hợp lệ' })
-  actualHarvestCost?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Lợi nhuận phải là số hợp lệ' })
-  actualHarvestProfit?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Hệ số FCR phải là số hợp lệ' })
-  actualHarvestFcr?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'Tỷ lệ sống phải là số hợp lệ' })
-  actualHarvestSurvivalRate?: number;
+  @Min(0.01, { message: 'Giá bán phải lớn hơn 0' })
+  actualHarvestPricePerKg: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   harvestFeedCost?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   harvestMedicineCost?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   harvestChemicalCost?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
+  harvestSeedCost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  harvestElectricityCost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  harvestLaborCost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  harvestOtherCost?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   harvestFeedKg?: number;
 
   @IsOptional()
@@ -80,5 +71,7 @@ export class HarvestCropDto {
 
   @IsOptional()
   @IsString({ message: 'Ghi chú thu hoạch phải là chuỗi văn bản' })
+  @MaxLength(1000, { message: 'Ghi chú thu hoạch tối đa 1000 ký tự' })
   harvestNote?: string;
+
 }

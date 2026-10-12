@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { API_BASE_URL } from '../../config/api';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -35,9 +36,7 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
-      const apiUrl = 'http://localhost:3000'; // Đổi thành IP máy nếu test trên điện thoại thật (vd: 192.168.1.x)
-
-      const response = await fetch(`${apiUrl}/api/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -49,7 +48,7 @@ export default function LoginScreen() {
         const errorMsg = Array.isArray(data.message) ? data.message[0] : (data.message || 'Sai email hoặc mật khẩu');
         Alert.alert('Đăng nhập thất bại', errorMsg);
       } else {
-        await login(data.accessToken, data.user);
+        await login(data.accessToken, data.user, data.refreshToken);
       }
     } catch (error) {
       Alert.alert('Lỗi kết nối', 'Không thể kết nối đến máy chủ. Hãy kiểm tra lại kết nối mạng.');

@@ -84,9 +84,12 @@ export class AuthController {
   async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
+    @Body('refreshToken') bodyToken?: string,
   ) {
-    this.assertCsrfHeader(request);
-    const token = this.getRefreshCookie(request);
+    const token = this.getRefreshCookie(request) || bodyToken;
+    if (!bodyToken) {
+      this.assertCsrfHeader(request);
+    }
     const result = await this.authService.refreshToken(token ?? '');
     return this.attachRefreshCookie(result, response);
   }
@@ -102,9 +105,13 @@ export class AuthController {
   async logout(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
+    @Body('refreshToken') bodyToken?: string,
   ) {
-    this.assertCsrfHeader(request);
-    const result = await this.authService.logout(this.getRefreshCookie(request));
+    const token = this.getRefreshCookie(request) || bodyToken;
+    if (!bodyToken) {
+      this.assertCsrfHeader(request);
+    }
+    const result = await this.authService.logout(token);
     response.clearCookie('ssfm_refresh_token', this.getCookieOptions(false));
     return result;
   }
@@ -124,15 +131,14 @@ export class AuthController {
   private attachRefreshCookie<T extends { refreshToken: string }>(
     result: T,
     response: Response,
-  ): Omit<T, 'refreshToken'> {
+  ): T {
     response.cookie(
       'ssfm_refresh_token',
       result.refreshToken,
       this.getCookieOptions(),
     );
     response.setHeader('Cache-Control', 'no-store');
-    const { refreshToken: _, ...body } = result;
-    return body;
+    return result;
   }
 
   private getRefreshCookie(request: Request) {

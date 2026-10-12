@@ -10,7 +10,9 @@
  *  - GET    /api/ponds
  */
 
-const BASE_URL = 'http://localhost:3000/api';
+import { API_ENDPOINT } from '../config/api';
+
+const BASE_URL = API_ENDPOINT;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,46 +77,32 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+import { apiClient } from './apiClient';
+
 // ─── API Functions ────────────────────────────────────────────────────────────
 
 /**
  * Fetches all farms owned by the authenticated user.
  */
-export async function getFarms(token: string): Promise<Farm[]> {
-  const res = await fetch(`${BASE_URL}/farms`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<Farm[]>(res);
+export async function getFarms(_token?: string): Promise<Farm[]> {
+  return apiClient.get<Farm[]>('/farms');
 }
 
 /**
  * Fetches all ponds owned by the authenticated user (across all farms).
  */
-export async function getPonds(token: string): Promise<Pond[]> {
-  const res = await fetch(`${BASE_URL}/ponds`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<Pond[]>(res);
+export async function getPonds(_token?: string): Promise<Pond[]> {
+  return apiClient.get<Pond[]>('/ponds');
 }
 
 /**
  * Creates a new water quality record.
- *
- * @param token   - JWT access token.
- * @param payload - The measurement data.
- * @returns       - { id, message } on success.
- * @throws        - Error with a human-readable message on failure.
  */
 export async function createWaterQualityRecord(
-  token: string,
+  _token: string | undefined,
   payload: CreateWaterQualityPayload,
 ): Promise<WaterQualityCreateResponse> {
-  const res = await fetch(`${BASE_URL}/water-quality`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<WaterQualityCreateResponse>(res);
+  return apiClient.post<WaterQualityCreateResponse>('/water-quality', payload);
 }
 
 export interface WaterQualityHistoryRecord {
@@ -148,7 +136,7 @@ export interface WaterQualityHistoryResponse {
  * Queries paginated and filtered water quality history from backend.
  */
 export async function getWaterQualityHistory(
-  token: string,
+  _token: string | undefined,
   filters: {
     farmId?: string;
     pondId?: string;
@@ -157,7 +145,7 @@ export async function getWaterQualityHistory(
     page?: number;
     size?: number;
     sort?: 'asc' | 'desc';
-  },
+  } = {},
 ): Promise<WaterQualityHistoryResponse> {
   const params = new URLSearchParams();
   if (filters.farmId) params.append('farmId', filters.farmId);
@@ -168,8 +156,5 @@ export async function getWaterQualityHistory(
   if (filters.size !== undefined) params.append('size', filters.size.toString());
   if (filters.sort) params.append('sort', filters.sort);
 
-  const res = await fetch(`${BASE_URL}/water-quality/history?${params.toString()}`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<WaterQualityHistoryResponse>(res);
+  return apiClient.get<WaterQualityHistoryResponse>(`/water-quality/history?${params.toString()}`);
 }

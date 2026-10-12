@@ -1,18 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
-import { 
-  X, 
-  ArrowUp, 
-  SquarePen, 
-  History, 
-  Trash2, 
-  MessageSquare, 
-  Maximize2, 
-  Minimize2, 
-  Copy, 
-  Check, 
-  FileCheck2, 
-  Compass, 
-  Search, 
+import {
+  X,
+  ArrowUp,
+  SquarePen,
+  History,
+  Trash2,
+  MessageSquare,
+  Maximize2,
+  Minimize2,
+  Copy,
+  Check,
+  FileCheck2,
+  Compass,
+  Search,
   MessageCircle,
   Calendar,
   Layers
@@ -63,7 +63,7 @@ export default function FloatingAIChatbox() {
   const [showNotificationBadge, setShowNotificationBadge] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  
+
   // Tab điều hướng riêng biệt: 'chat' hoặc 'history'
   const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
   const [historySearchQuery, setHistorySearchQuery] = useState('');
@@ -247,7 +247,7 @@ export default function FloatingAIChatbox() {
   };
 
   // Lọc danh sách lịch sử theo từ khóa tìm kiếm
-  const filteredSessions = sessions.filter(s => 
+  const filteredSessions = sessions.filter(s =>
     s.title.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
     s.messages.some(m => m.text.toLowerCase().includes(historySearchQuery.toLowerCase()))
   );
@@ -259,7 +259,7 @@ export default function FloatingAIChatbox() {
       if (!line.trim()) {
         return <div key={idx} className="h-2" />;
       }
-      
+
       const parts = line.split(/(\*\*.*?\*\*)/g);
       const formattedParts = parts.map((part, pIdx) => {
         if (part.startsWith('**') && part.endsWith('**')) {
@@ -283,12 +283,11 @@ export default function FloatingAIChatbox() {
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto font-sans">
       {/* ── 1. MAIN CHATGPT WINDOW ───────────────────────────────────────────── */}
       {isOpen && (
-        <div 
-          className={`rounded-3xl shadow-2xl shadow-slate-950/20 border border-slate-200/90 bg-white flex flex-col overflow-hidden mb-3 transition-all duration-300 animate-in zoom-in-95 origin-bottom-right ${
-            isExpanded 
-              ? 'w-[94vw] sm:w-[700px] md:w-[780px] h-[86vh]' 
+        <div
+          className={`rounded-3xl shadow-2xl shadow-slate-950/20 border border-slate-200/90 bg-white flex flex-col overflow-hidden mb-3 transition-all duration-300 animate-in zoom-in-95 origin-bottom-right ${isExpanded
+              ? 'w-[94vw] sm:w-[700px] md:w-[780px] h-[86vh]'
               : 'w-[370px] sm:w-[460px] h-[640px] max-h-[85vh]'
-          }`}
+            }`}
         >
           {/* Header Navigation Bar (Chuyển Tab Riêng Biệt: Chat / Lịch Sử) */}
           <div className="h-14 border-b border-slate-100 px-4 flex items-center justify-between bg-white flex-shrink-0 z-20">
@@ -296,11 +295,10 @@ export default function FloatingAIChatbox() {
             <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/60">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'chat'
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'chat'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <img src="/assets/shrimp-mascot.jpg" alt="Shrimp AI" className="w-4 h-4 rounded-full object-cover" />
                 <span>Trò chuyện</span>
@@ -308,11 +306,10 @@ export default function FloatingAIChatbox() {
 
               <button
                 onClick={() => setActiveTab('history')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'history'
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'history'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <History className="w-3.5 h-3.5 text-sky-600" />
                 <span>Lịch sử</span>
@@ -401,17 +398,15 @@ export default function FloatingAIChatbox() {
                       <div
                         key={s.id}
                         onClick={() => handleSelectSession(s.id)}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 group relative ${
-                          isActive
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 group relative ${isActive
                             ? 'bg-white border-emerald-500/50 ring-2 ring-emerald-500/10 shadow-sm'
                             : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-xs'
-                        }`}
+                          }`}
                       >
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex items-center gap-2">
-                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                              isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
-                            }`}>
+                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                              }`}>
                               <MessageSquare className="w-3.5 h-3.5" />
                             </div>
                             <h4 className={`text-xs font-bold truncate flex-1 ${isActive ? 'text-slate-900' : 'text-slate-800'}`}>
@@ -488,10 +483,10 @@ export default function FloatingAIChatbox() {
                       /* AI MESSAGE: Full Width with Orange Shrimp Mascot Avatar & Markdown */
                       <div className="flex gap-3 items-start max-w-full">
                         {/* Orange Shrimp 3D Avatar */}
-                        <img 
-                          src="/assets/shrimp-mascot.jpg" 
-                          alt="Shrimp AI" 
-                          className="w-7 h-7 rounded-full object-cover ring-1 ring-orange-400/50 flex-shrink-0 mt-0.5 shadow-xs bg-slate-900" 
+                        <img
+                          src="/assets/shrimp-mascot.jpg"
+                          alt="Shrimp AI"
+                          className="w-7 h-7 rounded-full object-cover ring-1 ring-orange-400/50 flex-shrink-0 mt-0.5 shadow-xs bg-slate-900"
                         />
 
                         <div className="flex-1 min-w-0 space-y-2">
@@ -513,7 +508,7 @@ export default function FloatingAIChatbox() {
                             <div className="mt-2.5 pt-2 border-t border-slate-100">
                               <div className="flex flex-wrap gap-1.5">
                                 {msg.sources.map((src, sIdx) => (
-                                  <div 
+                                  <div
                                     key={sIdx}
                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] text-slate-600"
                                     title={src.snippet}
@@ -557,10 +552,10 @@ export default function FloatingAIChatbox() {
                 {/* AI Thinking Indicator */}
                 {isTyping && (
                   <div className="flex gap-3 items-start animate-in fade-in duration-150">
-                    <img 
-                      src="/assets/shrimp-mascot.jpg" 
-                      alt="Shrimp AI Thinking" 
-                      className="w-7 h-7 rounded-full object-cover ring-2 ring-orange-400/60 animate-pulse flex-shrink-0 shadow-xs bg-slate-900" 
+                    <img
+                      src="/assets/shrimp-mascot.jpg"
+                      alt="Shrimp AI Thinking"
+                      className="w-7 h-7 rounded-full object-cover ring-2 ring-orange-400/60 animate-pulse flex-shrink-0 shadow-xs bg-slate-900"
                     />
                     <div className="flex items-center gap-1.5 py-2">
                       <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -595,11 +590,10 @@ export default function FloatingAIChatbox() {
                   <button
                     onClick={handleSendMessage}
                     disabled={!inputMessage.trim() || isTyping}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer flex-shrink-0 mb-0.5 ${
-                      inputMessage.trim() && !isTyping
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer flex-shrink-0 mb-0.5 ${inputMessage.trim() && !isTyping
                         ? 'bg-slate-900 text-white hover:bg-black shadow-xs hover:scale-105 active:scale-95'
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
+                      }`}
                     title="Gửi câu hỏi (Enter)"
                   >
                     <ArrowUp className="w-4 h-4 stroke-[2.5]" />
@@ -621,9 +615,9 @@ export default function FloatingAIChatbox() {
         {!isOpen && showNotificationBadge && (
           <div className="absolute right-20 bg-white px-3.5 py-1.5 rounded-full shadow-xl border border-orange-200/80 flex items-center gap-2 whitespace-nowrap animate-in fade-in slide-in-from-right-4 duration-300">
             <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-              <span>Trợ lý Tôm AI</span> 🦐
+              <span></span> 🦐
             </span>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setShowNotificationBadge(false); }}
               className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
             >
@@ -634,19 +628,17 @@ export default function FloatingAIChatbox() {
 
         <button
           onClick={() => setIsOpen(prev => !prev)}
-          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-white/90 overflow-hidden relative p-0.5 group ${
-            isOpen 
-              ? 'bg-gradient-to-tr from-amber-500 via-orange-500 to-cyan-400 shadow-orange-500/50 ring-4 ring-orange-500/30' 
+          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-white/90 overflow-hidden relative p-0.5 group ${isOpen
+              ? 'bg-gradient-to-tr from-amber-500 via-orange-500 to-cyan-400 shadow-orange-500/50 ring-4 ring-orange-500/30'
               : 'bg-gradient-to-tr from-amber-500 via-orange-500 to-cyan-400 shadow-orange-500/35 ring-4 ring-orange-400/20'
-          }`}
+            }`}
           title={isOpen ? "Thu nhỏ Trợ lý Tôm AI" : "Mở Trợ lý Tôm AI"}
         >
-          <img 
-            src="/assets/shrimp-mascot.jpg" 
-            alt="Smart Shrimp Mascot" 
-            className={`w-full h-full object-cover rounded-full transition-all duration-700 ease-out transform ${
-              isOpen ? 'rotate-[360deg] scale-100' : 'rotate-0 group-hover:rotate-12 group-hover:scale-105'
-            }`} 
+          <img
+            src="/assets/shrimp-mascot.jpg"
+            alt="Smart Shrimp Mascot"
+            className={`w-full h-full object-cover rounded-full transition-all duration-700 ease-out transform ${isOpen ? 'rotate-[360deg] scale-100' : 'rotate-0 group-hover:rotate-12 group-hover:scale-105'
+              }`}
           />
         </button>
       </div>

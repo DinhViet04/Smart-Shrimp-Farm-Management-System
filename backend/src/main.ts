@@ -12,18 +12,42 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  const allowedOrigins = (
+  const defaultOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:8081',
+    'http://localhost:8082',
+    'http://localhost:19006',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:8081',
+  ];
+
+  const envOrigins = (
     process.env.CORS_ORIGINS ??
     process.env.FRONTEND_URL ??
-    'http://localhost:5173'
+    ''
   )
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  // Only allow configured frontends to send credentialed browser requests.
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
+  // Only allow configured frontends and local dev tools (Expo Web/Mobile)
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        (process.env.NODE_ENV !== 'production' &&
+          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin));
+
+      if (isAllowed) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   });
 

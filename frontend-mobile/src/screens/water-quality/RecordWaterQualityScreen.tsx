@@ -115,6 +115,10 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
 function validateField(name: string, v: number | null): string | null {
+  if (name === 'h2s') {
+    if (v === null || isNaN(v)) return null; // H2S tùy chọn, mặc định 0 nếu không đo
+    return v < 0 ? 'H2S không được âm' : null;
+  }
   if (v === null || isNaN(v)) return 'Vui lòng nhập giá trị hợp lệ';
   switch (name) {
     case 'temperature':
@@ -129,8 +133,6 @@ function validateField(name: string, v: number | null): string | null {
       return v < 0 || v > 300 ? 'Độ kiềm phải từ 0–300 mg/L' : null;
     case 'nh3':
       return v < 0 ? 'NH3 không được âm' : null;
-    case 'h2s':
-      return v < 0 ? 'H2S không được âm' : null;
     case 'transparency':
       return v < 0 ? 'Độ trong không được âm' : null;
     default:
@@ -406,7 +408,11 @@ export default function RecordWaterQualityScreen({
       setTimeout(() => setSnackbar({ visible: false, message: '' }), 3000);
       return;
     }
-    if (!validate()) return;
+    if (!validate()) {
+      setSnackbar({ visible: true, message: 'Vui lòng kiểm tra lại các trường thông số bị lỗi' });
+      setTimeout(() => setSnackbar({ visible: false, message: '' }), 3500);
+      return;
+    }
     if (!userToken) return;
 
     setSaving(true);

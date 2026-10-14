@@ -170,16 +170,17 @@ export class PondsService {
 
     const farmById = new Map(farms.map((farm) => [farm.id, farm]));
     const activeCropByPondId = new Map(
-      crops
-        .filter((c) => c.status === 'ACTIVE')
-        .map((c) => [c.pondId, c])
+      crops.filter((c) => c.status === 'ACTIVE').map((c) => [c.pondId, c]),
     );
 
     const overviewPonds = ponds.map(({ sizeSamples, ...pond }) => {
       const activeCrop = activeCropByPondId.get(pond.id);
       const sample = sizeSamples?.[0] || null;
-      const isSampleFromActiveCrop =
-        Boolean(activeCrop && sample && new Date(sample.samplingDate) >= new Date(activeCrop.startDate));
+      const isSampleFromActiveCrop = Boolean(
+        activeCrop &&
+        sample &&
+        new Date(sample.samplingDate) >= new Date(activeCrop.startDate),
+      );
 
       return {
         ...pond,

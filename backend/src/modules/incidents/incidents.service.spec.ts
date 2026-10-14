@@ -39,21 +39,41 @@ describe('IncidentsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.incident.findUnique.mockResolvedValue(incident);
-    prisma.crop.findUnique.mockResolvedValue({ id: 'crop-id', status: 'ACTIVE', pond: { farmId: 'farm-id', farm: { id: 'farm-id' } } });
-    prisma.farmStaff.findFirst.mockResolvedValue({ user: { id: 'technician-id', fullName: 'Kỹ thuật viên', email: 'tech@example.com' } });
+    prisma.crop.findUnique.mockResolvedValue({
+      id: 'crop-id',
+      status: 'ACTIVE',
+      pond: { farmId: 'farm-id', farm: { id: 'farm-id' } },
+    });
+    prisma.farmStaff.findFirst.mockResolvedValue({
+      user: {
+        id: 'technician-id',
+        fullName: 'Kỹ thuật viên',
+        email: 'tech@example.com',
+      },
+    });
     prisma.incident.create.mockResolvedValue({ id: 'new-incident' });
-    prisma.incident.update.mockResolvedValue({ ...incident, status: 'TREATING' });
+    prisma.incident.update.mockResolvedValue({
+      ...incident,
+      status: 'TREATING',
+    });
     prisma.incident.findMany.mockResolvedValue([]);
     prisma.incident.count.mockResolvedValue(0);
-    prisma.incidentTreatmentUpdate.create.mockResolvedValue({ id: 'update-id' });
-    prisma.$transaction.mockImplementation(async (callback: (client: typeof prisma) => unknown) => callback(prisma));
+    prisma.incidentTreatmentUpdate.create.mockResolvedValue({
+      id: 'update-id',
+    });
+    prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof prisma) => unknown) => callback(prisma),
+    );
     farmAccess.assertCanAccessFarm.mockResolvedValue(undefined);
     farmAccess.assertCanManageFarm.mockResolvedValue(undefined);
     farmAccess.getAccessibleFarmIds.mockResolvedValue(['farm-id']);
   });
 
   it('starts treatment for an open incident', async () => {
-    await service.startTreatment({ userId: 'technician-id', role: 'TECHNICIAN' }, incident.id);
+    await service.startTreatment(
+      { userId: 'technician-id', role: 'TECHNICIAN' },
+      incident.id,
+    );
 
     expect(farmAccess.assertCanAccessFarm).toHaveBeenCalledWith(
       { userId: 'technician-id', role: 'TECHNICIAN' },
@@ -111,7 +131,11 @@ describe('IncidentsService', () => {
   it('creates an incident for an active crop in an accessible farm', async () => {
     await service.create(
       { userId: 'farmer-id', role: 'FARMER' },
-      { cropId: 'crop-id', title: ' Tôm nổi đầu ', description: ' Phát hiện lúc sáng ' },
+      {
+        cropId: 'crop-id',
+        title: ' Tôm nổi đầu ',
+        description: ' Phát hiện lúc sáng ',
+      },
     );
 
     expect(farmAccess.assertCanAccessFarm).toHaveBeenCalledWith(
@@ -119,15 +143,28 @@ describe('IncidentsService', () => {
       'farm-id',
     );
     expect(prisma.incident.create).toHaveBeenCalledWith({
-      data: { cropId: 'crop-id', title: 'Tôm nổi đầu', description: 'Phát hiện lúc sáng', reporterId: 'farmer-id' },
+      data: {
+        cropId: 'crop-id',
+        title: 'Tôm nổi đầu',
+        description: 'Phát hiện lúc sáng',
+        reporterId: 'farmer-id',
+      },
     });
     expect(prisma.incidentTreatmentUpdate.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ authorId: 'farmer-id', eventType: 'REPORTED', status: 'OPEN' }),
+      data: expect.objectContaining({
+        authorId: 'farmer-id',
+        eventType: 'REPORTED',
+        status: 'OPEN',
+      }),
     });
   });
 
   it('rejects creating an incident for a finished crop', async () => {
-    prisma.crop.findUnique.mockResolvedValue({ id: 'crop-id', status: 'HARVESTED', pond: { farmId: 'farm-id', farm: { id: 'farm-id' } } });
+    prisma.crop.findUnique.mockResolvedValue({
+      id: 'crop-id',
+      status: 'HARVESTED',
+      pond: { farmId: 'farm-id', farm: { id: 'farm-id' } },
+    });
 
     await expect(
       service.create(
@@ -182,16 +219,17 @@ describe('IncidentsService', () => {
 
   it('rejects admin assignment even though admin can view every farm', async () => {
     await expect(
-      service.assign(
-        { userId: 'admin-id', role: 'ADMIN' },
-        incident.id,
-        { assignedToId: 'technician-id' },
-      ),
+      service.assign({ userId: 'admin-id', role: 'ADMIN' }, incident.id, {
+        assignedToId: 'technician-id',
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects reassignment after an incident is resolved', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'RESOLVED' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'RESOLVED',
+    });
 
     await expect(
       service.assign(
@@ -203,39 +241,66 @@ describe('IncidentsService', () => {
   });
 
   it('rejects starting an incident that is not open', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'TREATING' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'TREATING',
+    });
 
     await expect(
-      service.startTreatment({ userId: 'technician-id', role: 'TECHNICIAN' }, incident.id),
+      service.startTreatment(
+        { userId: 'technician-id', role: 'TECHNICIAN' },
+        incident.id,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects a technician when another technician is assigned', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, assignedToId: 'other-technician' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      assignedToId: 'other-technician',
+    });
 
     await expect(
-      service.startTreatment({ userId: 'technician-id', role: 'TECHNICIAN' }, incident.id),
+      service.startTreatment(
+        { userId: 'technician-id', role: 'TECHNICIAN' },
+        incident.id,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects an admin attempting to intervene in an assigned incident', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, assignedToId: 'technician-id' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      assignedToId: 'technician-id',
+    });
 
     await expect(
-      service.startTreatment({ userId: 'admin-id', role: 'ADMIN' }, incident.id),
+      service.startTreatment(
+        { userId: 'admin-id', role: 'ADMIN' },
+        incident.id,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects a technician when the incident has not been assigned', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, assignedToId: null });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      assignedToId: null,
+    });
 
     await expect(
-      service.startTreatment({ userId: 'technician-id', role: 'TECHNICIAN' }, incident.id),
+      service.startTreatment(
+        { userId: 'technician-id', role: 'TECHNICIAN' },
+        incident.id,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('stores a treatment update and changes the incident status', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'TREATING' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'TREATING',
+    });
 
     await service.addTreatmentUpdate(
       { userId: 'technician-id', role: 'TECHNICIAN' },
@@ -254,12 +319,17 @@ describe('IncidentsService', () => {
       }),
     );
     expect(prisma.incident.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'TREATING' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'TREATING' }),
+      }),
     );
   });
 
   it('rejects updates on a resolved incident', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'RESOLVED' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'RESOLVED',
+    });
 
     await expect(
       service.addTreatmentUpdate(
@@ -271,7 +341,10 @@ describe('IncidentsService', () => {
   });
 
   it('rejects treatment updates before treatment has started', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'OPEN' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'OPEN',
+    });
 
     await expect(
       service.addTreatmentUpdate(
@@ -283,7 +356,10 @@ describe('IncidentsService', () => {
   });
 
   it('reopens a resolved incident and records the reason', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'RESOLVED' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'RESOLVED',
+    });
 
     await service.reopen(
       { userId: 'technician-id', role: 'TECHNICIAN' },
@@ -293,7 +369,9 @@ describe('IncidentsService', () => {
 
     expect(prisma.incidentTreatmentUpdate.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ treatment: 'Mở lại sự cố: Tôm tái phát triệu chứng' }),
+        data: expect.objectContaining({
+          treatment: 'Mở lại sự cố: Tôm tái phát triệu chứng',
+        }),
       }),
     );
     expect(prisma.incident.update).toHaveBeenCalledWith({
@@ -303,7 +381,10 @@ describe('IncidentsService', () => {
   });
 
   it('allows the farm manager to reopen a resolved incident', async () => {
-    prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'RESOLVED' });
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'RESOLVED',
+    });
 
     await service.reopen(
       { userId: 'manager-id', role: 'FARM_MANAGER' },

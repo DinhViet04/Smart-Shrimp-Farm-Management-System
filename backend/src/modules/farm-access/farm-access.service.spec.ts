@@ -11,7 +11,10 @@ describe('FarmAccessService', () => {
     const service = new FarmAccessService(prisma as any);
 
     await expect(
-      service.getAccessibleFarmIds({ userId: 'technician-id', role: 'TECHNICIAN' }),
+      service.getAccessibleFarmIds({
+        userId: 'technician-id',
+        role: 'TECHNICIAN',
+      }),
     ).resolves.toEqual(['farm-id']);
 
     expect(prisma.farmStaff.findMany).toHaveBeenCalledWith({

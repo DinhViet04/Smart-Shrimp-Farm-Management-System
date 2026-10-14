@@ -38,7 +38,10 @@ export class AuthController {
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.attachRefreshCookie(await this.authService.register(dto), response);
+    return this.attachRefreshCookie(
+      await this.authService.register(dto),
+      response,
+    );
   }
 
   @Post('login')
@@ -48,7 +51,10 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.attachRefreshCookie(await this.authService.login(dto), response);
+    return this.attachRefreshCookie(
+      await this.authService.login(dto),
+      response,
+    );
   }
 
   @Post('google')
@@ -162,9 +168,7 @@ export class AuthController {
       secure: isProduction,
       sameSite: isProduction ? ('none' as const) : ('lax' as const),
       path: '/api/auth',
-      ...(includeMaxAge
-        ? { maxAge: this.getRefreshExpirationMs() }
-        : {}),
+      ...(includeMaxAge ? { maxAge: this.getRefreshExpirationMs() } : {}),
     };
   }
 

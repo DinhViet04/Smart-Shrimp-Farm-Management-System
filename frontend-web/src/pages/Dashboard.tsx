@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package, TrendingUp, HeartPulse } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
@@ -18,11 +18,30 @@ const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/Survi
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 
+interface CurrentUser {
+  id?: string;
+  name?: string;
+  fullName?: string;
+  email?: string;
+  role?: string;
+  avatarUrl?: string;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser] = useState<CurrentUser | null>(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        return JSON.parse(userStr) as CurrentUser;
+      } catch (e) {
+        console.error('Failed to parse user from localStorage', e);
+      }
+    }
+    return null;
+  });
   const [pondCropConfig, setPondCropConfig] = useState<{
     initialSubTab?: 'ponds' | 'crops';
     initialFarmId?: string;
@@ -76,16 +95,6 @@ export default function Dashboard() {
     setActiveTab('Quản lý Ao/Vụ');
   };
 
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        setCurrentUser(JSON.parse(userStr));
-      } catch (e) {
-        console.error("Failed to parse user from localStorage", e);
-      }
-    }
-  }, []);
 
   const getInitials = (name: string) => {
     if (!name) return 'U';

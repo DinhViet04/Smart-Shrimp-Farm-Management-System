@@ -1,9 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { CreateShrimpSizeSampleDto } from './dto/create-shrimp-size-sample.dto.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 
 @Injectable()
 export class ShrimpSizeService {
@@ -13,7 +20,11 @@ export class ShrimpSizeService {
     private farmAccess: FarmAccessService,
   ) {}
 
-  async createSample(pondId: string, dto: CreateShrimpSizeSampleDto, user: AuthUser) {
+  async createSample(
+    pondId: string,
+    dto: CreateShrimpSizeSampleDto,
+    user: AuthUser,
+  ) {
     await this.assertCanAccessPond(user, pondId);
 
     // 1. Validate inputs and calculate totals
@@ -23,22 +34,28 @@ export class ShrimpSizeService {
 
     let totalCount = 0;
     let totalWeight = 0;
-    
+
     for (const cast of dto.casts) {
       if (cast.count < 0 || cast.weightGram < 0) {
-         throw new BadRequestException('Số lượng và khối lượng tôm phải là số dương.');
+        throw new BadRequestException(
+          'Số lượng và khối lượng tôm phải là số dương.',
+        );
       }
       totalCount += cast.count;
       totalWeight += cast.weightGram;
     }
 
     if (totalCount <= 0 || totalWeight <= 0) {
-      throw new BadRequestException('Tổng số tôm và khối lượng từ 5 mẻ chài phải lớn hơn 0.');
+      throw new BadRequestException(
+        'Tổng số tôm và khối lượng từ 5 mẻ chài phải lớn hơn 0.',
+      );
     }
 
     // 2. Determine DOC
     let doc: number | null = null;
-    const samplingDate = dto.samplingDate ? new Date(dto.samplingDate) : new Date();
+    const samplingDate = dto.samplingDate
+      ? new Date(dto.samplingDate)
+      : new Date();
 
     const activeCrop = await this.prisma.crop.findFirst({
       where: {
@@ -46,20 +63,26 @@ export class ShrimpSizeService {
         status: 'ACTIVE',
       },
       include: {
-        pond: true
-      }
+        pond: true,
+      },
     });
 
     if (!activeCrop) {
-      throw new BadRequestException('Ao này hiện không có vụ nuôi nào đang hoạt động. Không thể ghi nhận mẫu.');
+      throw new BadRequestException(
+        'Ao này hiện không có vụ nuôi nào đang hoạt động. Không thể ghi nhận mẫu.',
+      );
     }
 
     if (activeCrop.startDate && samplingDate < new Date(activeCrop.startDate)) {
-      throw new BadRequestException('Ngày lấy mẫu không thể trước ngày bắt đầu vụ nuôi hiện tại.');
+      throw new BadRequestException(
+        'Ngày lấy mẫu không thể trước ngày bắt đầu vụ nuôi hiện tại.',
+      );
     }
 
     if (activeCrop && activeCrop.startDate) {
-      const diffTime = Math.abs(samplingDate.getTime() - activeCrop.startDate.getTime());
+      const diffTime = Math.abs(
+        samplingDate.getTime() - activeCrop.startDate.getTime(),
+      );
       doc = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
@@ -82,7 +105,8 @@ export class ShrimpSizeService {
 
     if (previousSample) {
       const prevDate = new Date(previousSample.samplingDate);
-      const diffDays = (samplingDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24);
+      const diffDays =
+        (samplingDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24);
       if (diffDays > 0) {
         adgGramPerDay = (abwGram - Number(previousSample.abwGram)) / diffDays;
       }
@@ -96,7 +120,7 @@ export class ShrimpSizeService {
       // Mật độ mẫu (con/m2) = Tổng số tôm / (Số lần chài * Diện tích chài)
       const dMau = totalCount / (5 * dto.netAreaSqM);
       const pondArea = activeCrop.pond.areaSize;
-      
+
       estimatedTotalShrimp = Math.round(dMau * pondArea);
       estimatedBiomassKg = (estimatedTotalShrimp * abwGram) / 1000;
     }
@@ -199,7 +223,8 @@ export class ShrimpSizeService {
       const initialCount = activeCrop?.initialShrimpCount || 0;
       let survivalRate: number | null = null;
       if (sample.estimatedTotalShrimp && initialCount > 0) {
-        survivalRate = (Number(sample.estimatedTotalShrimp) / initialCount) * 100;
+        survivalRate =
+          (Number(sample.estimatedTotalShrimp) / initialCount) * 100;
       }
 
       // Đánh giá dựa trên tốc độ lớn ADG, tỷ lệ sống ước tính và hệ số FCR
@@ -213,21 +238,32 @@ export class ShrimpSizeService {
         level = NotificationLevel.DANGER;
         statusComment = `Cảnh báo: FCR quá cao (${currentFCR} so với mục tiêu ${fcrTarget}), nguy cơ lãng phí & ô nhiễm`;
       } else if (
-        (sample.adgGramPerDay !== null && Number(sample.adgGramPerDay) < 0.1 && (sample.doc || 0) > 30) ||
+        (sample.adgGramPerDay !== null &&
+          Number(sample.adgGramPerDay) < 0.1 &&
+          (sample.doc || 0) > 30) ||
         (survivalRate !== null && survivalRate < 85) ||
         (currentFCR !== null && currentFCR > 1.35)
       ) {
         level = NotificationLevel.WARNING;
-        statusComment = currentFCR !== null && currentFCR > 1.35
-          ? `Hệ số FCR tăng nhẹ (${currentFCR}), cần cân đối lượng cám cho ăn`
-          : 'Tốc độ tăng trọng chậm hoặc tỷ lệ sống dưới mức tối ưu';
+        statusComment =
+          currentFCR !== null && currentFCR > 1.35
+            ? `Hệ số FCR tăng nhẹ (${currentFCR}), cần cân đối lượng cám cho ăn`
+            : 'Tốc độ tăng trọng chậm hoặc tỷ lệ sống dưới mức tối ưu';
       }
 
       const abwStr = Number(sample.abwGram).toFixed(2);
       const sizeStr = Number(sample.sizePerKg).toFixed(1);
-      const adgStr = sample.adgGramPerDay !== null ? `${Number(sample.adgGramPerDay).toFixed(2)} g/ngày` : 'Lần đo đầu';
-      const biomassStr = sample.estimatedBiomassKg ? `${Math.round(Number(sample.estimatedBiomassKg)).toLocaleString()} kg` : '--';
-      const fcrStr = currentFCR !== null ? `${currentFCR} (Mục tiêu: ${fcrTarget})` : 'Đang tính toán';
+      const adgStr =
+        sample.adgGramPerDay !== null
+          ? `${Number(sample.adgGramPerDay).toFixed(2)} g/ngày`
+          : 'Lần đo đầu';
+      const biomassStr = sample.estimatedBiomassKg
+        ? `${Math.round(Number(sample.estimatedBiomassKg)).toLocaleString()} kg`
+        : '--';
+      const fcrStr =
+        currentFCR !== null
+          ? `${currentFCR} (Mục tiêu: ${fcrTarget})`
+          : 'Đang tính toán';
 
       const title = `Tăng trưởng & FCR ${pond.name} (DOC ${sample.doc || '--'}): Size ${sizeStr} con/kg - FCR ${currentFCR !== null ? currentFCR : '--'}`;
       const message = `${technicianName} vừa cập nhật mẫu đo tại ao ${pond.name} (${farm.name}). Trọng lượng: ${abwStr}g/con, ADG: ${adgStr}, Sinh khối: ${biomassStr}, FCR: ${fcrStr}. Đánh giá: ${statusComment}.`;
@@ -288,7 +324,9 @@ export class ShrimpSizeService {
     });
 
     if (!activeCrop) {
-      throw new NotFoundException(`Ao này hiện không có vụ nuôi nào đang hoạt động`);
+      throw new NotFoundException(
+        `Ao này hiện không có vụ nuôi nào đang hoạt động`,
+      );
     }
 
     const sample = await this.prisma.shrimpSizeSample.findFirst({
@@ -354,7 +392,7 @@ export class ShrimpSizeService {
 
     // 3. Tính toán lại ADG cho các mẫu còn lại của vụ active trong ao
     await this.recalculateADG(pondId);
-    
+
     return { success: true, message: 'Đã xóa mẫu đo đạc thành công' };
   }
 
@@ -381,8 +419,11 @@ export class ShrimpSizeService {
       if (i > 0) {
         const current = samples[i];
         const prev = samples[i - 1];
-        
-        const diffDays = (new Date(current.samplingDate).getTime() - new Date(prev.samplingDate).getTime()) / (1000 * 60 * 60 * 24);
+
+        const diffDays =
+          (new Date(current.samplingDate).getTime() -
+            new Date(prev.samplingDate).getTime()) /
+          (1000 * 60 * 60 * 24);
         if (diffDays > 0) {
           adg = (Number(current.abwGram) - Number(prev.abwGram)) / diffDays;
         }
@@ -408,14 +449,26 @@ export class ShrimpSizeService {
     });
 
     if (!activeCrop) {
-      throw new BadRequestException('Ao này hiện không có vụ nuôi nào đang hoạt động.');
+      throw new BadRequestException(
+        'Ao này hiện không có vụ nuôi nào đang hoạt động.',
+      );
     }
 
-    let fcrTarget = 1.20;
-    if (activeCrop.targetTotalFeedKg && activeCrop.targetSurvivalRate && activeCrop.targetHarvestSize && activeCrop.initialShrimpCount) {
-      const expectedHarvestWeight = (activeCrop.initialShrimpCount * (activeCrop.targetSurvivalRate / 100)) / activeCrop.targetHarvestSize;
+    let fcrTarget = 1.2;
+    if (
+      activeCrop.targetTotalFeedKg &&
+      activeCrop.targetSurvivalRate &&
+      activeCrop.targetHarvestSize &&
+      activeCrop.initialShrimpCount
+    ) {
+      const expectedHarvestWeight =
+        (activeCrop.initialShrimpCount *
+          (activeCrop.targetSurvivalRate / 100)) /
+        activeCrop.targetHarvestSize;
       if (expectedHarvestWeight > 0) {
-        fcrTarget = Number((activeCrop.targetTotalFeedKg / expectedHarvestWeight).toFixed(2));
+        fcrTarget = Number(
+          (activeCrop.targetTotalFeedKg / expectedHarvestWeight).toFixed(2),
+        );
       }
     }
 
@@ -457,16 +510,18 @@ export class ShrimpSizeService {
     });
 
     const history = [];
-    let previousDate = activeCrop.startDate ? new Date(activeCrop.startDate) : new Date(0);
+    let previousDate = activeCrop.startDate
+      ? new Date(activeCrop.startDate)
+      : new Date(0);
     let previousBiomass = 0;
-    
+
     let cumulativeFeedAll = 0;
 
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i];
       const currentBiomass = Number(sample.estimatedBiomassKg);
       const sampleDate = new Date(sample.samplingDate);
-      
+
       const periodLogs = feedingLogs.filter((log) => {
         const logDate = new Date(log.feedingDate);
         if (i === 0) {
@@ -475,13 +530,16 @@ export class ShrimpSizeService {
         return logDate > previousDate && logDate <= sampleDate;
       });
 
-      const periodFeed = periodLogs.reduce((sum, log) => sum + (Number(log.feedAmount) || 0), 0);
+      const periodFeed = periodLogs.reduce(
+        (sum, log) => sum + (Number(log.feedAmount) || 0),
+        0,
+      );
       cumulativeFeedAll += periodFeed;
-      
+
       const biomassGain = currentBiomass - previousBiomass;
       let periodFCR = null;
       let status = 'BÌNH THƯỜNG';
-      
+
       if (biomassGain > 0) {
         periodFCR = periodFeed / biomassGain;
         if (periodFCR < 1.2) status = 'TỐT';
@@ -496,7 +554,7 @@ export class ShrimpSizeService {
         feedAmount: periodFeed,
         biomassGain: biomassGain,
         periodFCR: periodFCR !== null ? Number(periodFCR.toFixed(2)) : null,
-        status
+        status,
       });
 
       previousDate = sampleDate;
@@ -505,7 +563,8 @@ export class ShrimpSizeService {
 
     const latestSample = samples[samples.length - 1];
     const totalBiomassGain = Number(latestSample.estimatedBiomassKg);
-    const currentFCR = totalBiomassGain > 0 ? cumulativeFeedAll / totalBiomassGain : null;
+    const currentFCR =
+      totalBiomassGain > 0 ? cumulativeFeedAll / totalBiomassGain : null;
 
     let fcrDiff = null;
     if (history.length >= 2) {

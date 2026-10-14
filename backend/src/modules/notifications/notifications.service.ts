@@ -8,7 +8,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: NotificationsGateway,
-  ) { }
+  ) {}
 
   async createWelcomeNotification(userId: string) {
     const data: Prisma.NotificationUncheckedCreateInput = {
@@ -28,7 +28,12 @@ export class NotificationsService {
   /**
    * Gửi thông báo cho Farmer hoặc Technician khi họ xác nhận tham gia trang trại thành công
    */
-  async createFarmJoinNotification(userId: string, farmId: string, farmName: string, role?: string) {
+  async createFarmJoinNotification(
+    userId: string,
+    farmId: string,
+    farmName: string,
+    role?: string,
+  ) {
     const isTech = role === 'TECHNICIAN';
     const isFarmer = role === 'FARMER';
 
@@ -54,7 +59,13 @@ export class NotificationsService {
     return notification;
   }
 
-  async createDisasterNotification(userId: string, farmId: string, level: NotificationLevel, title: string, message: string) {
+  async createDisasterNotification(
+    userId: string,
+    farmId: string,
+    level: NotificationLevel,
+    title: string,
+    message: string,
+  ) {
     // Để tránh trùng lặp thông báo thiên tai cùng ngày cho cùng 1 farm
     const where: Prisma.NotificationWhereInput = {
       userId,
@@ -94,7 +105,11 @@ export class NotificationsService {
   ) {
     const isTech = role === 'TECHNICIAN';
     const isFarmer = role === 'FARMER';
-    const roleLabel = isTech ? 'Kỹ Thuật Viên' : isFarmer ? 'Nông Dân' : 'nhân sự';
+    const roleLabel = isTech
+      ? 'Kỹ Thuật Viên'
+      : isFarmer
+        ? 'Nông Dân'
+        : 'nhân sự';
 
     const data: Prisma.NotificationUncheckedCreateInput = {
       userId,
@@ -128,7 +143,10 @@ export class NotificationsService {
         ? `Nông dân mới đã tham gia trang trại`
         : `Thành viên mới đã tham gia trang trại`;
 
-    const staffDisplayName = staffName && staffName !== staffEmail ? `${staffName} (${staffEmail})` : (staffName || staffEmail);
+    const staffDisplayName =
+      staffName && staffName !== staffEmail
+        ? `${staffName} (${staffEmail})`
+        : staffName || staffEmail;
     const message = `${roleLabel} ${staffDisplayName} đã chấp nhận lời mời và chính thức tham gia vào trang trại "${farmName}" của bạn.`;
 
     const data: Prisma.NotificationUncheckedCreateInput = {
@@ -146,7 +164,11 @@ export class NotificationsService {
   /**
    * Thông báo cho Manager khi tạo thành công Trang trại
    */
-  async createFarmCreatedNotification(userId: string, farmId: string, farmName: string) {
+  async createFarmCreatedNotification(
+    userId: string,
+    farmId: string,
+    farmName: string,
+  ) {
     const data: Prisma.NotificationUncheckedCreateInput = {
       userId,
       farmId,

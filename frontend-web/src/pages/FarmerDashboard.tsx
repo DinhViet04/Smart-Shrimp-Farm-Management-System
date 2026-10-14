@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -31,6 +31,15 @@ const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 
+interface CurrentUser {
+  id?: string;
+  name?: string;
+  fullName?: string;
+  email?: string;
+  role?: string;
+  avatarUrl?: string;
+}
+
 export default function FarmerDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -38,24 +47,23 @@ export default function FarmerDashboard() {
   const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [envConfig, setEnvConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
   const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string; subTab?: 'record' | 'history' | 'incident' } | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser] = useState<CurrentUser | null>(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        return JSON.parse(userStr) as CurrentUser;
+      } catch (e) {
+        console.error('Failed to parse user from localStorage', e);
+      }
+    }
+    return null;
+  });
 
   const handleNavigateToGrowth = (config: { farmId: string; pondId: string; cropId?: string }) => {
     setGrowthConfig(config);
     setGrowthSubTab('Theo dõi kích cỡ');
     setActiveTab('Theo dõi tăng trưởng');
   };
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        setCurrentUser(JSON.parse(userStr));
-      } catch (e) {
-        console.error("Failed to parse user from localStorage", e);
-      }
-    }
-  }, []);
 
   const getInitials = (name: string) => {
     if (!name) return 'U';

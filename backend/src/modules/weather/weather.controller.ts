@@ -20,10 +20,12 @@ export class WeatherController {
   ) {
     const latNum = lat ? parseFloat(lat) : undefined;
     const lonNum = lon ? parseFloat(lon) : undefined;
-    
+
     // Auto-sync disaster alerts if farmId is provided
     if (farmId) {
-      this.weatherService.syncDisasterAlerts(farmId, req.user.userId).catch(e => console.error(e));
+      this.weatherService
+        .syncDisasterAlerts(farmId, req.user.userId)
+        .catch((e) => console.error(e));
     }
 
     return this.weatherService.getWeather({
@@ -44,6 +46,9 @@ export class WeatherController {
       return { success: false, message: 'farmId is required' };
     }
     await this.weatherService.syncDisasterAlerts(farmId, req.user.userId);
-    return { success: true, message: 'Đã đồng bộ cảnh báo thiên tai thành công' };
+    return {
+      success: true,
+      message: 'Đã đồng bộ cảnh báo thiên tai thành công',
+    };
   }
 }

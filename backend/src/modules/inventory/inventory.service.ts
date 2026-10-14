@@ -49,7 +49,9 @@ export class InventoryService {
 
       if (inventory.quantity && inventory.quantity > 0) {
         const packageType = inventory.packageType || 'đơn vị';
-        const packageInfo = inventory.packageQty ? `+${inventory.packageQty} ${packageType}` : '';
+        const packageInfo = inventory.packageQty
+          ? `+${inventory.packageQty} ${packageType}`
+          : '';
         await tx.inventoryUsageLog.create({
           data: {
             inventoryId: inventory.id,
@@ -181,7 +183,11 @@ export class InventoryService {
     });
   }
 
-  async recordImport(id: string, data: CreateInventoryImportDto, user: AuthUser) {
+  async recordImport(
+    id: string,
+    data: CreateInventoryImportDto,
+    user: AuthUser,
+  ) {
     const inventory = await this.findOne(id);
     await this.farmAccess.assertCanAccessFarm(user, inventory.farmId);
 
@@ -207,10 +213,7 @@ export class InventoryService {
     const nextQuantity = inventory.quantity + quantityAdded;
     const updateData: any = { quantity: nextQuantity };
 
-    if (
-      inventory.weightPerPkg &&
-      inventory.weightPerPkg > 0
-    ) {
+    if (inventory.weightPerPkg && inventory.weightPerPkg > 0) {
       updateData.packageQty = Number(
         (nextQuantity / inventory.weightPerPkg).toFixed(2),
       );
@@ -220,7 +223,9 @@ export class InventoryService {
 
     return this.prisma.$transaction(async (tx) => {
       const packageType = inventory.packageType || 'đơn vị';
-      const packageInfo = packagesAdded ? `+${packagesAdded} ${packageType}` : '';
+      const packageInfo = packagesAdded
+        ? `+${packagesAdded} ${packageType}`
+        : '';
       const noteText = data.notes?.trim() ? ` — ${data.notes.trim()}` : '';
       const formattedNotes = `[NHẬP KHO${packageInfo ? `: ${packageInfo}` : ''}]${noteText}`;
 
@@ -410,11 +415,19 @@ export class InventoryService {
       }),
     ]);
 
-    const exportLogs = logs.filter((log) => !log.notes?.startsWith('[NHẬP KHO'));
+    const exportLogs = logs.filter(
+      (log) => !log.notes?.startsWith('[NHẬP KHO'),
+    );
     const importLogs = logs.filter((log) => log.notes?.startsWith('[NHẬP KHO'));
 
-    const totalUsed = exportLogs.reduce((sum, log) => sum + log.quantityUsed, 0);
-    const totalImported = importLogs.reduce((sum, log) => sum + log.quantityUsed, 0);
+    const totalUsed = exportLogs.reduce(
+      (sum, log) => sum + log.quantityUsed,
+      0,
+    );
+    const totalImported = importLogs.reduce(
+      (sum, log) => sum + log.quantityUsed,
+      0,
+    );
 
     const consumptionByItem = exportLogs.reduce((acc: any[], log) => {
       const existing = acc.find((item) => item.inventoryId === log.inventoryId);
@@ -441,7 +454,10 @@ export class InventoryService {
       if (dates.length > 0) {
         const earliest = Math.min(...dates);
         const latest = Math.max(...dates);
-        effectiveDays = Math.max(1, Math.ceil((latest - earliest) / (1000 * 60 * 60 * 24)));
+        effectiveDays = Math.max(
+          1,
+          Math.ceil((latest - earliest) / (1000 * 60 * 60 * 24)),
+        );
       }
     }
 

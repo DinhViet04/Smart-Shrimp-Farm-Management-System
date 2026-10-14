@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -27,6 +27,15 @@ const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/Survi
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
 
+interface CurrentUser {
+  id?: string;
+  name?: string;
+  fullName?: string;
+  email?: string;
+  role?: string;
+  avatarUrl?: string;
+}
+
 export default function TechnicianDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -34,18 +43,17 @@ export default function TechnicianDashboard() {
   const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [envConfig, setEnvConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
   const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string; subTab?: 'record' | 'history' | 'incident' } | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
+  const [currentUser] = useState<CurrentUser | null>(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
-        setCurrentUser(JSON.parse(userStr));
+        return JSON.parse(userStr) as CurrentUser;
       } catch (e) {
         console.error("Failed to parse user from localStorage", e);
       }
     }
-  }, []);
+    return null;
+  });
 
   const getInitials = (name: string) => {
     if (!name) return 'U';

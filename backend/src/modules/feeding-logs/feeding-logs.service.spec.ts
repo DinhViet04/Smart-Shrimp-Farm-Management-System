@@ -14,7 +14,10 @@ describe('FeedingLogsService grouped list', () => {
         groupBy: jest
           .fn()
           .mockResolvedValueOnce([key])
-          .mockResolvedValueOnce([key, { ...key, feedingDate: new Date('2026-09-30') }]),
+          .mockResolvedValueOnce([
+            key,
+            { ...key, feedingDate: new Date('2026-09-30') },
+          ]),
         findMany: jest.fn().mockResolvedValue([
           {
             id: 'log-id',
@@ -52,7 +55,9 @@ describe('FeedingLogsService grouped list', () => {
       take: 1,
       by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
     });
-    expect(prisma.feedingLog.findMany.mock.calls[0][0].where.AND[1].OR).toHaveLength(1);
+    expect(
+      prisma.feedingLog.findMany.mock.calls[0][0].where.AND[1].OR,
+    ).toHaveLength(1);
     expect(result).toMatchObject({ total: 2, page: 1, size: 1 });
     expect(result.data).toHaveLength(1);
     expect(result.data[0]).toMatchObject({

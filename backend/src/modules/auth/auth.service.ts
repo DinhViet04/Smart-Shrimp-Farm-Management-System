@@ -19,8 +19,6 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
-
-
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -31,17 +29,27 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async register(dto: RegisterDto) {
     // ── Xử LÝ INVITE TOKEN (nếu có) ──
-    let invitePayload: { email: string; farmId: string; role: string; type: string } | null = null;
+    let invitePayload: {
+      email: string;
+      farmId: string;
+      role: string;
+      type: string;
+    } | null = null;
 
     if (dto.inviteToken) {
       try {
-        invitePayload = (await this.jwtService.verifyAsync(dto.inviteToken, {
+        invitePayload = await this.jwtService.verifyAsync<{
+          email: string;
+          farmId: string;
+          role: string;
+          type: string;
+        }>(dto.inviteToken, {
           secret: this.configService.get<string>('JWT_SECRET'),
-        })) as { email: string; farmId: string; role: string; type: string };
+        });
         if (invitePayload?.type !== 'farm_invite') {
           throw new BadRequestException('Token mời không hợp lệ');
         }
@@ -76,7 +84,8 @@ export class AuthService {
       role = invitePayload.role; // Force role từ invitation
     } else {
       const allowedRoles = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'];
-      role = dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
+      role =
+        dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
     }
 
     // Create new user (password is hashed inside UsersService.create)
@@ -104,7 +113,12 @@ export class AuthService {
 
           await this.prisma.farmStaff.upsert({
             where: { farmId_userId: { farmId: farm.id, userId: user.id } },
-            create: { farmId: farm.id, userId: user.id, role: user.role, isActive: true },
+            create: {
+              farmId: farm.id,
+              userId: user.id,
+              role: user.role,
+              isActive: true,
+            },
             update: { isActive: true, role: user.role },
           });
 
@@ -225,7 +239,12 @@ export class AuthService {
 
             await this.prisma.farmStaff.upsert({
               where: { farmId_userId: { farmId: farm.id, userId: user.id } },
-              create: { farmId: farm.id, userId: user.id, role: user.role, isActive: true },
+              create: {
+                farmId: farm.id,
+                userId: user.id,
+                role: user.role,
+                isActive: true,
+              },
               update: { isActive: true, role: user.role },
             });
 
@@ -362,10 +381,7 @@ export class AuthService {
       where: { email: normalizedEmail },
       select: { lastSentAt: true },
     });
-    if (
-      existingOtp &&
-      Date.now() - existingOtp.lastSentAt.getTime() < 60_000
-    ) {
+    if (existingOtp && Date.now() - existingOtp.lastSentAt.getTime() < 60_000) {
       return response;
     }
 
@@ -525,11 +541,14 @@ export class AuthService {
         throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
       }
 
-      const tokens = await this.generateTokens({
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-      }, session.id);
+      const tokens = await this.generateTokens(
+        {
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+        },
+        session.id,
+      );
 
       return tokens;
     } catch {
@@ -607,11 +626,14 @@ export class AuthService {
     }
   }
 
-  private async generateTokens(payload: {
-    sub: string;
-    email: string;
-    role: string;
-  }, replacedSessionId?: string) {
+  private async generateTokens(
+    payload: {
+      sub: string;
+      email: string;
+      role: string;
+    },
+    replacedSessionId?: string,
+  ) {
     const sessionId = randomUUID();
     const refreshExpiresAt = new Date(
       Date.now() + this.getRefreshExpirationMs(),
@@ -625,9 +647,10 @@ export class AuthService {
       this.jwtService.signAsync(
         { ...payload, jti: sessionId, type: 'refresh' },
         {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRATION') ??
-          '7d') as any,
+          secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+          expiresIn: (this.configService.get<string>(
+            'JWT_REFRESH_EXPIRATION',
+          ) ?? '7d') as any,
         },
       ),
     ]);

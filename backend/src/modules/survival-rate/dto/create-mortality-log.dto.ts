@@ -1,4 +1,10 @@
-import { IsString, IsInt, IsOptional, IsDateString, Min } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  IsDateString,
+  Min,
+} from 'class-validator';
 
 export class CreateMortalityLogDto {
   @IsString()

@@ -7,7 +7,9 @@ describe('UsersService account settings', () => {
   it('synchronizes farm assignments when an account becomes a technician', async () => {
     const transactionClient = {
       user: {
-        update: jest.fn().mockResolvedValue({ id: 'user-1', role: Role.TECHNICIAN }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-1', role: Role.TECHNICIAN }),
       },
       farmStaff: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -134,10 +136,7 @@ describe('UsersService account settings', () => {
         }),
       },
     };
-    const service = new UsersService(
-      prisma as any,
-      { get: jest.fn() } as any,
-    );
+    const service = new UsersService(prisma as any, { get: jest.fn() } as any);
 
     await service.updateProfile('user-1', {
       fullName: 'Farmer User',

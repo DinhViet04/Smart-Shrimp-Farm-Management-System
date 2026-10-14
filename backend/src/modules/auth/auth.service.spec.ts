@@ -76,7 +76,11 @@ describe('AuthService password reset', () => {
       jwtService as unknown as JwtService,
       configService as unknown as ConfigService,
       prisma,
-      { createWelcomeNotification: jest.fn(), createFarmJoinNotification: jest.fn(), createStaffJoinedNotification: jest.fn() } as any,
+      {
+        createWelcomeNotification: jest.fn(),
+        createFarmJoinNotification: jest.fn(),
+        createStaffJoinedNotification: jest.fn(),
+      } as any,
     );
   });
 
@@ -102,7 +106,9 @@ describe('AuthService password reset', () => {
   it('does not reveal whether a password-reset email exists', async () => {
     usersService.findByEmail.mockResolvedValue(null);
 
-    const result = await service.forgotPassword({ email: 'missing@example.com' });
+    const result = await service.forgotPassword({
+      email: 'missing@example.com',
+    });
 
     expect(result.message).toContain('Nếu email tồn tại');
     expect(sendMail).not.toHaveBeenCalled();
@@ -183,7 +189,9 @@ describe('AuthService password reset', () => {
       usedAt: null,
       attempts: 0,
     });
-    prisma.passwordResetOtp.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    prisma.passwordResetOtp.updateMany = jest
+      .fn()
+      .mockResolvedValue({ count: 1 });
     prisma.user.update.mockResolvedValue({ id: 'user-1' });
     prisma.refreshSession.updateMany.mockResolvedValue({ count: 2 });
 

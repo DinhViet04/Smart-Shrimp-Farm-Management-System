@@ -44,7 +44,7 @@ const formatVND = (num: number | null | undefined): string => {
   return new Intl.NumberFormat('vi-VN').format(Math.round(num));
 };
 
-const formatDate = (dateVal: any, includeTime: boolean = false): string => {
+const formatDate = (dateVal: string | number | Date | null | undefined, includeTime: boolean = false): string => {
   if (!dateVal) return '--';
   try {
     const d = new Date(dateVal);
@@ -87,12 +87,17 @@ export default function CropDetailReportModal({
   const [report, setReport] = useState<CropDetailedReportResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [prevCropId, setPrevCropId] = useState<string | null>(null);
+
+  if (crop && crop.id !== prevCropId) {
+    setPrevCropId(crop.id);
+    setLoading(true);
+    setError(null);
+  }
 
   useEffect(() => {
     if (!isOpen || !crop) return;
     let isMounted = true;
-    setLoading(true);
-    setError(null);
 
     cropService
       .getDetailedReport(crop.id)
@@ -922,7 +927,7 @@ export default function CropDetailReportModal({
                             <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
                             <YAxis stroke="#94a3b8" fontSize={11} unit="g" />
                             <Tooltip
-                              formatter={(value: any) => [`${value} g/con`, 'Trọng lượng ABW']}
+                              formatter={(value) => [value != null ? `${value} g/con` : '--', 'Trọng lượng ABW']}
                               labelFormatter={(label) => `Thời điểm: ${label}`}
                             />
                             <Legend />

@@ -67,7 +67,11 @@ describe('CropsService harvest summary', () => {
       crop: {
         findUnique: jest.fn().mockResolvedValue(crop),
         findFirst: jest.fn().mockResolvedValue(null),
-        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...crop, ...data })),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) =>
+            Promise.resolve({ ...crop, ...data }),
+          ),
       },
     };
     const farmAccess = {
@@ -98,115 +102,210 @@ describe('CropsService harvest summary', () => {
       actualHarvestDate: '2026-06-01T00:00:00.000Z',
     });
 
-    expect(prisma.crop.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        actualHarvestCount: 80_000,
-        actualHarvestRevenue: 240_000_000,
-        actualHarvestCost: 125_000_000,
-        actualHarvestProfit: 115_000_000,
-        actualHarvestFcr: 1.3,
-        actualHarvestSurvivalRate: 80,
-        harvestEvaluation: expect.stringContaining('2.000 kg'),
-        harvestLessonsLearned: expect.stringContaining('Chưa có vụ thu hoạch trước'),
-        harvestNextRecommendation: expect.stringContaining('mốc tham chiếu'),
+    expect(prisma.crop.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actualHarvestCount: 80_000,
+          actualHarvestRevenue: 240_000_000,
+          actualHarvestCost: 125_000_000,
+          actualHarvestProfit: 115_000_000,
+          actualHarvestFcr: 1.3,
+          actualHarvestSurvivalRate: 80,
+          harvestEvaluation: expect.stringContaining('2.000 kg'),
+          harvestLessonsLearned: expect.stringContaining(
+            'Chưa có vụ thu hoạch trước',
+          ),
+          harvestNextRecommendation: expect.stringContaining('mốc tham chiếu'),
+        }),
       }),
-    }));
+    );
   });
 
   it('rejects harvest values that imply a survival rate above 100 percent', async () => {
     const { service } = createHarvestService();
 
-    await expect(service.harvest(user, 'crop-id', {
-      actualHarvestKg: 3_000,
-      actualHarvestSize: 40,
-      actualHarvestPricePerKg: 120_000,
-      actualHarvestDate: '2026-06-01T00:00:00.000Z',
-    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.harvest(user, 'crop-id', {
+        actualHarvestKg: 3_000,
+        actualHarvestSize: 40,
+        actualHarvestPricePerKg: 120_000,
+        actualHarvestDate: '2026-06-01T00:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('aggregates manager revenue, cost, profit and recent harvests by year', async () => {
-    const harvested = [{
-      id: 'crop-2026', pondId: 'pond-id', initialShrimpCount: 100_000,
-      actualHarvestDate: new Date('2026-06-01T00:00:00.000Z'),
-      actualHarvestKg: 2_000, actualHarvestRevenue: 240_000_000,
-      actualHarvestCost: 125_000_000, actualHarvestProfit: 115_000_000,
-      actualHarvestFcr: 1.3, actualHarvestSurvivalRate: 80,
-      targetSurvivalRate: 75, targetHarvestSize: 40,
-      pond: { id: 'pond-id', name: 'Ao 1', farmId: 'farm-id', farm: { id: 'farm-id', name: 'Trại A' } },
-    }, {
-      id: 'crop-2025', pondId: 'pond-id', initialShrimpCount: 100_000,
-      actualHarvestDate: new Date('2025-06-01T00:00:00.000Z'),
-      actualHarvestKg: 1_000, actualHarvestRevenue: 100_000_000,
-      actualHarvestCost: 70_000_000, actualHarvestProfit: 30_000_000,
-      actualHarvestFcr: 1.5, actualHarvestSurvivalRate: 70,
-      targetSurvivalRate: 75, targetHarvestSize: 40,
-      pond: { id: 'pond-id', name: 'Ao 1', farmId: 'farm-id', farm: { id: 'farm-id', name: 'Trại A' } },
-    }];
-    const prisma = { crop: { findMany: jest.fn().mockResolvedValue(harvested) } };
+    const harvested = [
+      {
+        id: 'crop-2026',
+        pondId: 'pond-id',
+        initialShrimpCount: 100_000,
+        actualHarvestDate: new Date('2026-06-01T00:00:00.000Z'),
+        actualHarvestKg: 2_000,
+        actualHarvestRevenue: 240_000_000,
+        actualHarvestCost: 125_000_000,
+        actualHarvestProfit: 115_000_000,
+        actualHarvestFcr: 1.3,
+        actualHarvestSurvivalRate: 80,
+        targetSurvivalRate: 75,
+        targetHarvestSize: 40,
+        pond: {
+          id: 'pond-id',
+          name: 'Ao 1',
+          farmId: 'farm-id',
+          farm: { id: 'farm-id', name: 'Trại A' },
+        },
+      },
+      {
+        id: 'crop-2025',
+        pondId: 'pond-id',
+        initialShrimpCount: 100_000,
+        actualHarvestDate: new Date('2025-06-01T00:00:00.000Z'),
+        actualHarvestKg: 1_000,
+        actualHarvestRevenue: 100_000_000,
+        actualHarvestCost: 70_000_000,
+        actualHarvestProfit: 30_000_000,
+        actualHarvestFcr: 1.5,
+        actualHarvestSurvivalRate: 70,
+        targetSurvivalRate: 75,
+        targetHarvestSize: 40,
+        pond: {
+          id: 'pond-id',
+          name: 'Ao 1',
+          farmId: 'farm-id',
+          farm: { id: 'farm-id', name: 'Trại A' },
+        },
+      },
+    ];
+    const prisma = {
+      crop: { findMany: jest.fn().mockResolvedValue(harvested) },
+    };
     const farmAccess = {
       assertCanAccessFarm: jest.fn().mockResolvedValue(undefined),
       getAccessibleFarmIds: jest.fn().mockResolvedValue(['farm-id']),
     };
-    const service = new CropsService(prisma as any, farmAccess as any, {} as any);
+    const service = new CropsService(
+      prisma as any,
+      farmAccess as any,
+      {} as any,
+    );
 
     const result = await service.getManagerSummary(user, { year: 2026 });
 
-    expect(result.totals).toEqual(expect.objectContaining({
-      harvestedCrops: 1,
-      revenue: 240_000_000,
-      cost: 125_000_000,
-      profit: 115_000_000,
-      harvestKg: 2_000,
-      targetMet: 1,
-    }));
+    expect(result.totals).toEqual(
+      expect.objectContaining({
+        harvestedCrops: 1,
+        revenue: 240_000_000,
+        cost: 125_000_000,
+        profit: 115_000_000,
+        harvestKg: 2_000,
+        targetMet: 1,
+      }),
+    );
     expect(result.comparison.revenuePercent).toBe(140);
     expect(result.recentHarvests).toHaveLength(1);
     expect(result.farmSummaries).toEqual([
       expect.objectContaining({
         farmId: 'farm-id',
         farmName: 'Trại A',
-        totals: expect.objectContaining({ harvestedCrops: 1, profit: 115_000_000 }),
-        ponds: [expect.objectContaining({
-          pondId: 'pond-id',
-          pondName: 'Ao 1',
-          totals: expect.objectContaining({ averageFcr: 1.3, averageSurvivalRate: 80 }),
-        })],
+        totals: expect.objectContaining({
+          harvestedCrops: 1,
+          profit: 115_000_000,
+        }),
+        ponds: [
+          expect.objectContaining({
+            pondId: 'pond-id',
+            pondName: 'Ao 1',
+            totals: expect.objectContaining({
+              averageFcr: 1.3,
+              averageSurvivalRate: 80,
+            }),
+          }),
+        ],
       }),
     ]);
   });
 
   it('limits manager totals to the selected quarter and compares the same quarter last year', async () => {
-    const harvested = [{
-      id: 'q2-current', pondId: 'pond-id', initialShrimpCount: 100_000,
-      actualHarvestDate: new Date('2026-05-10T00:00:00.000Z'),
-      actualHarvestKg: 2_000, actualHarvestRevenue: 200_000_000,
-      actualHarvestCost: 120_000_000, actualHarvestProfit: 80_000_000,
-      actualHarvestFcr: 1.3, actualHarvestSurvivalRate: 80,
-      targetSurvivalRate: 75, targetHarvestSize: 40,
-      pond: { id: 'pond-id', name: 'Ao 1', farmId: 'farm-id', farm: { id: 'farm-id', name: 'Trại A' } },
-    }, {
-      id: 'q2-previous', pondId: 'pond-id', initialShrimpCount: 100_000,
-      actualHarvestDate: new Date('2025-04-20T00:00:00.000Z'),
-      actualHarvestKg: 1_000, actualHarvestRevenue: 100_000_000,
-      actualHarvestCost: 70_000_000, actualHarvestProfit: 30_000_000,
-      actualHarvestFcr: 1.5, actualHarvestSurvivalRate: 70,
-      targetSurvivalRate: 75, targetHarvestSize: 40,
-      pond: { id: 'pond-id', name: 'Ao 1', farmId: 'farm-id', farm: { id: 'farm-id', name: 'Trại A' } },
-    }];
-    const prisma = { crop: { findMany: jest.fn().mockResolvedValue(harvested) } };
-    const farmAccess = { getAccessibleFarmIds: jest.fn().mockResolvedValue(['farm-id']) };
-    const service = new CropsService(prisma as any, farmAccess as any, {} as any);
+    const harvested = [
+      {
+        id: 'q2-current',
+        pondId: 'pond-id',
+        initialShrimpCount: 100_000,
+        actualHarvestDate: new Date('2026-05-10T00:00:00.000Z'),
+        actualHarvestKg: 2_000,
+        actualHarvestRevenue: 200_000_000,
+        actualHarvestCost: 120_000_000,
+        actualHarvestProfit: 80_000_000,
+        actualHarvestFcr: 1.3,
+        actualHarvestSurvivalRate: 80,
+        targetSurvivalRate: 75,
+        targetHarvestSize: 40,
+        pond: {
+          id: 'pond-id',
+          name: 'Ao 1',
+          farmId: 'farm-id',
+          farm: { id: 'farm-id', name: 'Trại A' },
+        },
+      },
+      {
+        id: 'q2-previous',
+        pondId: 'pond-id',
+        initialShrimpCount: 100_000,
+        actualHarvestDate: new Date('2025-04-20T00:00:00.000Z'),
+        actualHarvestKg: 1_000,
+        actualHarvestRevenue: 100_000_000,
+        actualHarvestCost: 70_000_000,
+        actualHarvestProfit: 30_000_000,
+        actualHarvestFcr: 1.5,
+        actualHarvestSurvivalRate: 70,
+        targetSurvivalRate: 75,
+        targetHarvestSize: 40,
+        pond: {
+          id: 'pond-id',
+          name: 'Ao 1',
+          farmId: 'farm-id',
+          farm: { id: 'farm-id', name: 'Trại A' },
+        },
+      },
+    ];
+    const prisma = {
+      crop: { findMany: jest.fn().mockResolvedValue(harvested) },
+    };
+    const farmAccess = {
+      getAccessibleFarmIds: jest.fn().mockResolvedValue(['farm-id']),
+    };
+    const service = new CropsService(
+      prisma as any,
+      farmAccess as any,
+      {} as any,
+    );
 
-    const result = await service.getManagerSummary(user, { year: 2026, quarter: 2 });
+    const result = await service.getManagerSummary(user, {
+      year: 2026,
+      quarter: 2,
+    });
 
-    expect(prisma.crop.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: [
-          { actualHarvestDate: { gte: new Date('2025-04-01T00:00:00.000Z'), lt: new Date('2025-07-01T00:00:00.000Z') } },
-          { actualHarvestDate: { gte: new Date('2026-04-01T00:00:00.000Z'), lt: new Date('2026-07-01T00:00:00.000Z') } },
-        ],
+    expect(prisma.crop.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              actualHarvestDate: {
+                gte: new Date('2025-04-01T00:00:00.000Z'),
+                lt: new Date('2025-07-01T00:00:00.000Z'),
+              },
+            },
+            {
+              actualHarvestDate: {
+                gte: new Date('2026-04-01T00:00:00.000Z'),
+                lt: new Date('2026-07-01T00:00:00.000Z'),
+              },
+            },
+          ],
+        }),
       }),
-    }));
+    );
     expect(result.quarter).toBe(2);
     expect(result.totals.revenue).toBe(200_000_000);
     expect(result.comparison.revenuePercent).toBe(100);
@@ -228,8 +327,16 @@ describe('CropsService detailed report', () => {
       transferDate: new Date('2026-08-05T00:00:00.000Z'),
       transferSize: 500,
       splitNote: 'Tách từ ao ươm A1',
-      pond: { id: 'pond-1', name: 'Ao nuôi A1', farmId: 'farm-1', farm: { id: 'farm-1', name: 'Trang trại Long' } },
-      parentCrop: { id: 'nursery-1', pond: { id: 'pond-nursery', name: 'Ao ươm A1' } },
+      pond: {
+        id: 'pond-1',
+        name: 'Ao nuôi A1',
+        farmId: 'farm-1',
+        farm: { id: 'farm-1', name: 'Trang trại Long' },
+      },
+      parentCrop: {
+        id: 'nursery-1',
+        pond: { id: 'pond-nursery', name: 'Ao ươm A1' },
+      },
       childCrops: [],
     };
 
@@ -241,24 +348,45 @@ describe('CropsService detailed report', () => {
             id: 'feed-1',
             feedAmount: 50,
             feedingStatus: 'COMPLETED',
-            feedProduct: { id: 'p-1', itemName: 'Cám tôm Grobest', pricePerPackage: 500_000, weightPerPkg: 25 },
+            feedProduct: {
+              id: 'p-1',
+              itemName: 'Cám tôm Grobest',
+              pricePerPackage: 500_000,
+              weightPerPkg: 25,
+            },
           },
         ]),
       },
       waterQualityRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'wq-1', ph: 7.8, dissolvedOxygen: 5.5, temperature: 29, salinity: 15, nh3: 0.01, no2: 0.05 },
+          {
+            id: 'wq-1',
+            ph: 7.8,
+            dissolvedOxygen: 5.5,
+            temperature: 29,
+            salinity: 15,
+            nh3: 0.01,
+            no2: 0.05,
+          },
         ]),
       },
       shrimpSizeSample: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'sample-1', samplingDate: new Date('2026-08-10'), abwGram: 15.5, sizePerKg: 64.5, adgGramPerDay: 0.35 },
+          {
+            id: 'sample-1',
+            samplingDate: new Date('2026-08-10'),
+            abwGram: 15.5,
+            sizePerKg: 64.5,
+            adgGramPerDay: 0.35,
+          },
         ]),
       },
       shrimpHealthRecord: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'health-1', healthStatus: 'NORMAL', severity: 'NORMAL' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'health-1', healthStatus: 'NORMAL', severity: 'NORMAL' },
+          ]),
       },
       incident: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -268,7 +396,13 @@ describe('CropsService detailed report', () => {
           {
             id: 'usage-1',
             quantityUsed: 2,
-            inventory: { id: 'inv-1', itemName: 'Men vi sinh Probiotic', category: 'CHEMICAL', pricePerPackage: 200_000, weightPerPkg: 1 },
+            inventory: {
+              id: 'inv-1',
+              itemName: 'Men vi sinh Probiotic',
+              category: 'CHEMICAL',
+              pricePerPackage: 200_000,
+              weightPerPkg: 1,
+            },
           },
         ]),
       },
@@ -281,8 +415,12 @@ describe('CropsService detailed report', () => {
       assertCanAccessFarm: jest.fn().mockResolvedValue(undefined),
     };
 
-    const service = new CropsService(prisma as any, farmAccess as any, {} as any);
-    const report = await service.getDetailedReport(user as any, 'crop-1');
+    const service = new CropsService(
+      prisma as any,
+      farmAccess as any,
+      {} as any,
+    );
+    const report = await service.getDetailedReport(user, 'crop-1');
 
     expect(farmAccess.assertCanAccessFarm).toHaveBeenCalledWith(user, 'farm-1');
     expect(report.crop.id).toBe('crop-1');

@@ -44,7 +44,7 @@ interface PondSizeDetailProps {
 }
 
 // Helper an toàn chống crash khi format ngày tháng
-const safeFormatDate = (dateVal: any, formatStr: string = 'dd/MM/yyyy') => {
+const safeFormatDate = (dateVal: string | number | Date | null | undefined, formatStr: string = 'dd/MM/yyyy') => {
   if (!dateVal) return '--';
   try {
     const d = new Date(dateVal);
@@ -56,7 +56,7 @@ const safeFormatDate = (dateVal: any, formatStr: string = 'dd/MM/yyyy') => {
 };
 
 // Helper an toàn format số
-const safeFormatNumber = (val: any, decimals?: number) => {
+const safeFormatNumber = (val: string | number | null | undefined, decimals?: number) => {
   if (val === null || val === undefined || isNaN(Number(val))) return '--';
   const num = Number(val);
   return decimals !== undefined ? num.toFixed(decimals) : num.toLocaleString();
@@ -96,14 +96,14 @@ export default function PondSizeDetail({
   }, []);
 
   const canEdit = !viewOnly && (currentUserRole === 'ADMIN' || currentUserRole === 'FARM_MANAGER' || currentUserRole === 'TECHNICIAN');
+  const pondId = pond.id;
 
   const fetchSamples = useCallback(async () => {
-    if (!pond?.id) return;
+    if (!pondId) return;
     try {
-      setError(null);
       const [data, cropsData] = await Promise.all([
-        shrimpSizeService.getSamplesByPond(pond.id),
-        cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true }).catch(() => []),
+        shrimpSizeService.getSamplesByPond(pondId),
+        cropService.getAll({ pondId, status: 'ACTIVE', summary: true }).catch(() => []),
       ]);
       
       const active = Array.isArray(cropsData) && cropsData.length > 0 ? cropsData[0] : null;
@@ -118,16 +118,45 @@ export default function PondSizeDetail({
         );
         setSamples(validSamples);
       }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi tải dữ liệu mẫu tôm');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Lỗi tải dữ liệu mẫu tôm');
       setSamples([]);
       setActiveCrop(null);
     }
-  }, [pond?.id]);
+  }, [pondId]);
 
   useEffect(() => {
-    fetchSamples();
-  }, [fetchSamples]);
+    let isMounted = true;
+    Promise.all([
+      shrimpSizeService.getSamplesByPond(pondId),
+      cropService.getAll({ pondId, status: 'ACTIVE', summary: true }).catch(() => []),
+    ])
+      .then(([data, cropsData]) => {
+        if (!isMounted) return;
+        const active = Array.isArray(cropsData) && cropsData.length > 0 ? cropsData[0] : null;
+        setActiveCrop(active);
+
+        if (!active) {
+          setSamples([]);
+        } else {
+          const activeStartDate = active.startDate ? new Date(active.startDate).getTime() : 0;
+          const validSamples = (Array.isArray(data) ? data : []).filter(
+            (s) => new Date(s.samplingDate).getTime() >= activeStartDate
+          );
+          setSamples(validSamples);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Lỗi tải dữ liệu mẫu tôm');
+        setSamples([]);
+        setActiveCrop(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [pondId]);
 
   // Live Calculations from current casts
   const liveTotals = useMemo(() => {
@@ -193,8 +222,8 @@ export default function PondSizeDetail({
       setSuccessMessage('Ghi nhận mẫu kích cỡ & sinh khối thành công!');
       setTimeout(() => setSuccessMessage(null), 4000);
       await fetchSamples();
-    } catch (err: any) {
-      setError(err.message || 'Lỗi khi lưu dữ liệu mẫu');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Lỗi khi lưu dữ liệu mẫu');
     } finally {
       setIsSubmitting(false);
     }
@@ -208,8 +237,8 @@ export default function PondSizeDetail({
       setSuccessMessage('Đã xóa mẫu đo đạc.');
       setTimeout(() => setSuccessMessage(null), 3000);
       await fetchSamples();
-    } catch (err: any) {
-      setError(err.message || 'Lỗi khi xóa mẫu');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Lỗi khi xóa mẫu');
     }
   };
 
@@ -218,13 +247,14 @@ export default function PondSizeDetail({
   const latestSample = safeSamples.length > 0 ? safeSamples[safeSamples.length - 1] : null;
 
   const chartData = useMemo(() => {
-    return safeSamples.map(s => ({
+    const list = Array.isArray(samples) ? samples : [];
+    return list.map(s => ({
       date: safeFormatDate(s.samplingDate, 'dd/MM'),
       abw: Number(s.abwGram) || 0,
       adg: s.adgGramPerDay ? Number(s.adgGramPerDay) : 0,
       doc: s.doc || 0,
     }));
-  }, [safeSamples]);
+  }, [samples]);
 
   // Phân loại kích cỡ thương phẩm
   const getSizeClassification = (size: number) => {

@@ -4,7 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { FarmAccessService, AuthUser } from '../farm-access/farm-access.service';
+import {
+  FarmAccessService,
+  AuthUser,
+} from '../farm-access/farm-access.service';
 import { CreateDailyFeedingLogDto } from './dto/create-feeding-log.dto';
 import { GetFeedingLogsQueryDto } from './dto/get-feeding-logs.dto';
 import { FeedingStatus, CropStatus } from '@prisma/client';
@@ -28,7 +31,9 @@ export class FeedingLogsService {
       where: { id: dto.pondId, farmId: dto.farmId },
     });
     if (!pond) {
-      throw new NotFoundException('Ao nuôi không tồn tại hoặc không thuộc trang trại này');
+      throw new NotFoundException(
+        'Ao nuôi không tồn tại hoặc không thuộc trang trại này',
+      );
     }
 
     // 3. Verify Crop exists, belongs to Pond, and is ACTIVE
@@ -39,7 +44,9 @@ export class FeedingLogsService {
       throw new NotFoundException('Vụ nuôi không tồn tại');
     }
     if (crop.status !== CropStatus.ACTIVE) {
-      throw new BadRequestException('Chỉ có thể ghi nhận nhật ký thức ăn cho vụ nuôi ĐANG HOẠT ĐỘNG (ACTIVE)');
+      throw new BadRequestException(
+        'Chỉ có thể ghi nhận nhật ký thức ăn cho vụ nuôi ĐANG HOẠT ĐỘNG (ACTIVE)',
+      );
     }
 
     const feedingDateObj = new Date(dto.feedingDate);
@@ -68,20 +75,30 @@ export class FeedingLogsService {
       }
 
       const existingLog = existingLogMap.get(session.feedingSession);
-      const oldAmount = existingLog && existingLog.feedingStatus !== FeedingStatus.SKIPPED
-        ? Number(existingLog.feedAmount) || 0
-        : 0;
+      const oldAmount =
+        existingLog && existingLog.feedingStatus !== FeedingStatus.SKIPPED
+          ? Number(existingLog.feedAmount) || 0
+          : 0;
       const oldProductId = existingLog ? existingLog.feedProductId : null;
 
-      const newAmount = session.feedingStatus !== FeedingStatus.SKIPPED ? Number(session.feedAmount) || 0 : 0;
+      const newAmount =
+        session.feedingStatus !== FeedingStatus.SKIPPED
+          ? Number(session.feedAmount) || 0
+          : 0;
       const newProductId = session.feedProductId;
 
       if (oldProductId && oldProductId !== newProductId) {
         // Credit oldAmount back to oldProductId
-        netDeltas.set(oldProductId, (netDeltas.get(oldProductId) || 0) - oldAmount);
+        netDeltas.set(
+          oldProductId,
+          (netDeltas.get(oldProductId) || 0) - oldAmount,
+        );
         // Deduct newAmount from newProductId if newProductId present
         if (newProductId) {
-          netDeltas.set(newProductId, (netDeltas.get(newProductId) || 0) + newAmount);
+          netDeltas.set(
+            newProductId,
+            (netDeltas.get(newProductId) || 0) + newAmount,
+          );
         }
       } else if (newProductId) {
         // Same product or new log
@@ -98,7 +115,9 @@ export class FeedingLogsService {
         });
 
         if (!inventoryItem) {
-          throw new NotFoundException(`Sản phẩm thức ăn không tồn tại trong kho`);
+          throw new NotFoundException(
+            `Sản phẩm thức ăn không tồn tại trong kho`,
+          );
         }
 
         if (inventoryItem.quantity < netDelta) {
@@ -114,7 +133,10 @@ export class FeedingLogsService {
       const results = [];
 
       for (const session of dto.sessions) {
-        const amount = session.feedingStatus === FeedingStatus.SKIPPED ? 0 : Number(session.feedAmount) || 0;
+        const amount =
+          session.feedingStatus === FeedingStatus.SKIPPED
+            ? 0
+            : Number(session.feedAmount) || 0;
 
         // Upsert FeedingLog
         const log = await tx.feedingLog.upsert({
@@ -167,8 +189,14 @@ export class FeedingLogsService {
             const updatePayload: any = { quantity: nextQuantity };
 
             // Package count: round up — bag still counts until fully consumed
-            if (inv.packageQty !== null && inv.weightPerPkg && inv.weightPerPkg > 0) {
-              updatePayload.packageQty = Math.ceil(nextQuantity / inv.weightPerPkg);
+            if (
+              inv.packageQty !== null &&
+              inv.weightPerPkg &&
+              inv.weightPerPkg > 0
+            ) {
+              updatePayload.packageQty = Math.ceil(
+                nextQuantity / inv.weightPerPkg,
+              );
             }
 
             await tx.inventory.update({
@@ -183,15 +211,23 @@ export class FeedingLogsService {
       // and update/upsert/delete corresponding InventoryUsageLog records to prevent duplicates
       const productTotals = new Map<string, number>();
       for (const session of dto.sessions) {
-        if (session.feedingStatus !== FeedingStatus.SKIPPED && session.feedProductId) {
+        if (
+          session.feedingStatus !== FeedingStatus.SKIPPED &&
+          session.feedProductId
+        ) {
           const amt = Number(session.feedAmount) || 0;
           if (amt > 0) {
-            productTotals.set(session.feedProductId, (productTotals.get(session.feedProductId) || 0) + amt);
+            productTotals.set(
+              session.feedProductId,
+              (productTotals.get(session.feedProductId) || 0) + amt,
+            );
           }
         }
       }
 
-      const pondLabel = pond.name.toLowerCase().startsWith('ao') ? pond.name : `Ao ${pond.name}`;
+      const pondLabel = pond.name.toLowerCase().startsWith('ao')
+        ? pond.name
+        : `Ao ${pond.name}`;
       const notePrefix = `Xuất kho từ Nhật ký cho ăn - ${pondLabel}`;
       const startOfDay = new Date(feedingDateObj);
       startOfDay.setUTCHours(0, 0, 0, 0);
@@ -257,7 +293,8 @@ export class FeedingLogsService {
    * Get list of daily feeding summaries (grouped by Date + Pond + Crop)
    */
   async findAllGrouped(user: AuthUser, query: GetFeedingLogsQueryDto) {
-    const accessibleFarmIds = await this.farmAccessService.getAccessibleFarmIds(user);
+    const accessibleFarmIds =
+      await this.farmAccessService.getAccessibleFarmIds(user);
     if (accessibleFarmIds !== undefined && accessibleFarmIds.length === 0) {
       return { data: [], total: 0, page: query.page, size: query.size };
     }
@@ -371,9 +408,12 @@ export class FeedingLogsService {
       const amountNum = Number(log.feedAmount) || 0;
       entry.totalFeedKg += amountNum;
 
-      if (log.feedingStatus === FeedingStatus.COMPLETED) entry.completedSessions += 1;
-      if (log.feedingStatus === FeedingStatus.SKIPPED) entry.skippedSessions += 1;
-      if (log.feedingStatus === FeedingStatus.DELAYED) entry.delayedSessions += 1;
+      if (log.feedingStatus === FeedingStatus.COMPLETED)
+        entry.completedSessions += 1;
+      if (log.feedingStatus === FeedingStatus.SKIPPED)
+        entry.skippedSessions += 1;
+      if (log.feedingStatus === FeedingStatus.DELAYED)
+        entry.delayedSessions += 1;
 
       entry.sessions.push({
         id: log.id,
@@ -395,9 +435,10 @@ export class FeedingLogsService {
         index,
       ]),
     );
-    groupedList.sort((a, b) =>
-      (groupOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-      (groupOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    groupedList.sort(
+      (a, b) =>
+        (groupOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (groupOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
     );
 
     return {
@@ -473,7 +514,10 @@ export class FeedingLogsService {
     const amountsToReturn = new Map<string, number>();
 
     for (const log of logsToDelete) {
-      if (log.feedingStatus !== FeedingStatus.SKIPPED && Number(log.feedAmount) > 0) {
+      if (
+        log.feedingStatus !== FeedingStatus.SKIPPED &&
+        Number(log.feedAmount) > 0
+      ) {
         const amt = Number(log.feedAmount);
         const pid = log.feedProductId;
         if (pid) {
@@ -503,8 +547,14 @@ export class FeedingLogsService {
           const nextQuantity = inv.quantity + amount;
           const updatePayload: any = { quantity: nextQuantity };
 
-          if (inv.packageQty !== null && inv.weightPerPkg && inv.weightPerPkg > 0) {
-            updatePayload.packageQty = Math.ceil(nextQuantity / inv.weightPerPkg);
+          if (
+            inv.packageQty !== null &&
+            inv.weightPerPkg &&
+            inv.weightPerPkg > 0
+          ) {
+            updatePayload.packageQty = Math.ceil(
+              nextQuantity / inv.weightPerPkg,
+            );
           }
 
           await tx.inventory.update({

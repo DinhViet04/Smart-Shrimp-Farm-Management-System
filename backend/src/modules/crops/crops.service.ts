@@ -140,10 +140,14 @@ export class CropsService {
     query: { farmId?: string; year?: number; quarter?: number },
   ) {
     const year = query.year || new Date().getFullYear();
-    if (!Number.isInteger(year) || year < 2000 || year > new Date().getFullYear() + 1) {
+    if (
+      !Number.isInteger(year) ||
+      year < 2000 ||
+      year > new Date().getFullYear() + 1
+    ) {
       throw new BadRequestException('Năm tổng kết không hợp lệ');
     }
-    if (query.quarter !== undefined && (![1, 2, 3, 4].includes(query.quarter))) {
+    if (query.quarter !== undefined && ![1, 2, 3, 4].includes(query.quarter)) {
       throw new BadRequestException('Quý tổng kết không hợp lệ');
     }
 
@@ -151,15 +155,15 @@ export class CropsService {
       await this.farmAccess.assertCanAccessFarm(user, query.farmId);
     }
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
-    const farmIds = query.farmId
-      ? [query.farmId]
-      : accessibleFarmIds;
+    const farmIds = query.farmId ? [query.farmId] : accessibleFarmIds;
     const startMonth = query.quarter ? (query.quarter - 1) * 3 : 0;
     const monthCount = query.quarter ? 3 : 12;
     const currentStart = new Date(Date.UTC(year, startMonth, 1));
     const currentEnd = new Date(Date.UTC(year, startMonth + monthCount, 1));
     const previousStart = new Date(Date.UTC(year - 1, startMonth, 1));
-    const previousEnd = new Date(Date.UTC(year - 1, startMonth + monthCount, 1));
+    const previousEnd = new Date(
+      Date.UTC(year - 1, startMonth + monthCount, 1),
+    );
 
     const harvested = await this.prisma.crop.findMany({
       where: {
@@ -168,9 +172,7 @@ export class CropsService {
           { actualHarvestDate: { gte: previousStart, lt: previousEnd } },
           { actualHarvestDate: { gte: currentStart, lt: currentEnd } },
         ],
-        ...(farmIds !== undefined
-          ? { pond: { farmId: { in: farmIds } } }
-          : {}),
+        ...(farmIds !== undefined ? { pond: { farmId: { in: farmIds } } } : {}),
       },
       select: {
         id: true,
@@ -198,26 +200,53 @@ export class CropsService {
     });
 
     const current = harvested.filter(
-      (crop) => crop.actualHarvestDate
-        && crop.actualHarvestDate >= currentStart
-        && crop.actualHarvestDate < currentEnd,
+      (crop) =>
+        crop.actualHarvestDate &&
+        crop.actualHarvestDate >= currentStart &&
+        crop.actualHarvestDate < currentEnd,
     );
     const previous = harvested.filter(
-      (crop) => crop.actualHarvestDate
-        && crop.actualHarvestDate >= previousStart
-        && crop.actualHarvestDate < previousEnd,
+      (crop) =>
+        crop.actualHarvestDate &&
+        crop.actualHarvestDate >= previousStart &&
+        crop.actualHarvestDate < previousEnd,
     );
 
     const aggregate = (items: typeof harvested) => {
-      const revenue = items.reduce((sum, crop) => sum + (crop.actualHarvestRevenue || 0), 0);
-      const cost = items.reduce((sum, crop) => sum + (crop.actualHarvestCost || 0), 0);
-      const profit = items.reduce((sum, crop) => sum + (crop.actualHarvestProfit || 0), 0);
-      const harvestKg = items.reduce((sum, crop) => sum + (crop.actualHarvestKg || 0), 0);
-      const fcrValues = items.flatMap((crop) => crop.actualHarvestFcr === null ? [] : [crop.actualHarvestFcr]);
-      const survivalValues = items.flatMap((crop) => crop.actualHarvestSurvivalRate === null ? [] : [crop.actualHarvestSurvivalRate]);
+      const revenue = items.reduce(
+        (sum, crop) => sum + (crop.actualHarvestRevenue || 0),
+        0,
+      );
+      const cost = items.reduce(
+        (sum, crop) => sum + (crop.actualHarvestCost || 0),
+        0,
+      );
+      const profit = items.reduce(
+        (sum, crop) => sum + (crop.actualHarvestProfit || 0),
+        0,
+      );
+      const harvestKg = items.reduce(
+        (sum, crop) => sum + (crop.actualHarvestKg || 0),
+        0,
+      );
+      const fcrValues = items.flatMap((crop) =>
+        crop.actualHarvestFcr === null ? [] : [crop.actualHarvestFcr],
+      );
+      const survivalValues = items.flatMap((crop) =>
+        crop.actualHarvestSurvivalRate === null
+          ? []
+          : [crop.actualHarvestSurvivalRate],
+      );
       const targetMet = items.filter((crop) => {
-        if (!crop.actualHarvestKg || !crop.targetSurvivalRate || !crop.targetHarvestSize) return false;
-        const targetKg = crop.initialShrimpCount * (crop.targetSurvivalRate / 100) / crop.targetHarvestSize;
+        if (
+          !crop.actualHarvestKg ||
+          !crop.targetSurvivalRate ||
+          !crop.targetHarvestSize
+        )
+          return false;
+        const targetKg =
+          (crop.initialShrimpCount * (crop.targetSurvivalRate / 100)) /
+          crop.targetHarvestSize;
         return crop.actualHarvestKg >= targetKg;
       }).length;
       return {
@@ -226,12 +255,23 @@ export class CropsService {
         cost: Math.round(cost),
         profit: Math.round(profit),
         harvestKg: Number(harvestKg.toFixed(2)),
-        profitMargin: revenue > 0 ? Number(((profit / revenue) * 100).toFixed(2)) : 0,
+        profitMargin:
+          revenue > 0 ? Number(((profit / revenue) * 100).toFixed(2)) : 0,
         averageFcr: fcrValues.length
-          ? Number((fcrValues.reduce((sum, value) => sum + value, 0) / fcrValues.length).toFixed(2))
+          ? Number(
+              (
+                fcrValues.reduce((sum, value) => sum + value, 0) /
+                fcrValues.length
+              ).toFixed(2),
+            )
           : null,
         averageSurvivalRate: survivalValues.length
-          ? Number((survivalValues.reduce((sum, value) => sum + value, 0) / survivalValues.length).toFixed(2))
+          ? Number(
+              (
+                survivalValues.reduce((sum, value) => sum + value, 0) /
+                survivalValues.length
+              ).toFixed(2),
+            )
           : null,
         targetMet,
       };
@@ -239,7 +279,9 @@ export class CropsService {
     const totals = aggregate(current);
     const previousTotals = aggregate(previous);
     const percentChange = (value: number, oldValue: number) =>
-      oldValue === 0 ? null : Number((((value - oldValue) / Math.abs(oldValue)) * 100).toFixed(2));
+      oldValue === 0
+        ? null
+        : Number((((value - oldValue) / Math.abs(oldValue)) * 100).toFixed(2));
 
     const farmGroups = new Map<string, typeof current>();
     current.forEach((crop) => {
@@ -247,24 +289,26 @@ export class CropsService {
       items.push(crop);
       farmGroups.set(crop.pond.farmId, items);
     });
-    const farmSummaries = [...farmGroups.entries()].map(([farmId, farmCrops]) => {
-      const pondGroups = new Map<string, typeof current>();
-      farmCrops.forEach((crop) => {
-        const items = pondGroups.get(crop.pondId) || [];
-        items.push(crop);
-        pondGroups.set(crop.pondId, items);
-      });
-      return {
-        farmId,
-        farmName: farmCrops[0].pond.farm.name,
-        totals: aggregate(farmCrops),
-        ponds: [...pondGroups.entries()].map(([pondId, pondCrops]) => ({
-          pondId,
-          pondName: pondCrops[0].pond.name,
-          totals: aggregate(pondCrops),
-        })),
-      };
-    });
+    const farmSummaries = [...farmGroups.entries()].map(
+      ([farmId, farmCrops]) => {
+        const pondGroups = new Map<string, typeof current>();
+        farmCrops.forEach((crop) => {
+          const items = pondGroups.get(crop.pondId) || [];
+          items.push(crop);
+          pondGroups.set(crop.pondId, items);
+        });
+        return {
+          farmId,
+          farmName: farmCrops[0].pond.farm.name,
+          totals: aggregate(farmCrops),
+          ponds: [...pondGroups.entries()].map(([pondId, pondCrops]) => ({
+            pondId,
+            pondName: pondCrops[0].pond.name,
+            totals: aggregate(pondCrops),
+          })),
+        };
+      },
+    );
 
     return {
       year,
@@ -273,13 +317,22 @@ export class CropsService {
       comparison: {
         revenuePercent: percentChange(totals.revenue, previousTotals.revenue),
         profitPercent: percentChange(totals.profit, previousTotals.profit),
-        harvestKgPercent: percentChange(totals.harvestKg, previousTotals.harvestKg),
+        harvestKgPercent: percentChange(
+          totals.harvestKg,
+          previousTotals.harvestKg,
+        ),
       },
       farmSummaries,
       recentHarvests: current.slice(0, 5).map((crop) => {
         let targetMet: boolean | null = null;
-        if (crop.actualHarvestKg && crop.targetSurvivalRate && crop.targetHarvestSize) {
-          const targetKg = crop.initialShrimpCount * (crop.targetSurvivalRate / 100) / crop.targetHarvestSize;
+        if (
+          crop.actualHarvestKg &&
+          crop.targetSurvivalRate &&
+          crop.targetHarvestSize
+        ) {
+          const targetKg =
+            (crop.initialShrimpCount * (crop.targetSurvivalRate / 100)) /
+            crop.targetHarvestSize;
           targetMet = crop.actualHarvestKg >= targetKg;
         }
         return {
@@ -394,7 +447,9 @@ export class CropsService {
     let growthMilestones: any = undefined;
     if (dto.growthMilestones && Array.isArray(dto.growthMilestones)) {
       this.validateGrowthMilestones(dto.growthMilestones);
-      growthMilestones = [...dto.growthMilestones].sort((a, b) => a.day - b.day);
+      growthMilestones = [...dto.growthMilestones].sort(
+        (a, b) => a.day - b.day,
+      );
     }
 
     // Validate farmingModel and stage
@@ -402,7 +457,9 @@ export class CropsService {
 
     if (pond.farm.farmingModel === 'TRADITIONAL') {
       if (dto.stage && dto.stage !== 'COMMERCIAL') {
-        throw new BadRequestException('Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY). Vui lòng để trống hoặc chọn COMMERCIAL.');
+        throw new BadRequestException(
+          'Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY). Vui lòng để trống hoặc chọn COMMERCIAL.',
+        );
       }
       stage = 'COMMERCIAL'; // Force to COMMERCIAL for traditional
     }
@@ -435,11 +492,18 @@ export class CropsService {
         expectedHarvestDate,
         expectedDurationDays,
         stage,
-        expectedTransferDate: stage === 'NURSERY' ? expectedTransferDate : undefined,
+        expectedTransferDate:
+          stage === 'NURSERY' ? expectedTransferDate : undefined,
       },
       include: {
         pond: {
-          select: { id: true, name: true, areaSize: true, depth: true, farmId: true },
+          select: {
+            id: true,
+            name: true,
+            areaSize: true,
+            depth: true,
+            farmId: true,
+          },
         },
       },
     });
@@ -482,7 +546,9 @@ export class CropsService {
     }
 
     const data: any = {};
-    const effectiveStartDate = dto.startDate ? new Date(dto.startDate) : crop.startDate;
+    const effectiveStartDate = dto.startDate
+      ? new Date(dto.startDate)
+      : crop.startDate;
 
     if (dto.startDate) {
       data.startDate = effectiveStartDate;
@@ -500,12 +566,15 @@ export class CropsService {
       data.initialShrimpCount = dto.initialShrimpCount;
     }
     if (dto.status) data.status = dto.status;
-    
-    let currentStage = dto.stage !== undefined ? dto.stage : (crop as any).stage;
+
+    let currentStage =
+      dto.stage !== undefined ? dto.stage : (crop as any).stage;
 
     if (crop.pond.farm.farmingModel === 'TRADITIONAL') {
       if (dto.stage === 'NURSERY') {
-        throw new BadRequestException('Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY).');
+        throw new BadRequestException(
+          'Mô hình nuôi truyền thống không hỗ trợ chia giai đoạn (NURSERY).',
+        );
       }
       currentStage = 'COMMERCIAL';
       if (dto.stage !== undefined) {
@@ -536,9 +605,12 @@ export class CropsService {
       data.expectedTransferDate = null;
     }
 
-    if (dto.targetHarvestSize !== undefined) data.targetHarvestSize = dto.targetHarvestSize;
-    if (dto.targetSurvivalRate !== undefined) data.targetSurvivalRate = dto.targetSurvivalRate;
-    if (dto.targetTotalFeedKg !== undefined) data.targetTotalFeedKg = dto.targetTotalFeedKg;
+    if (dto.targetHarvestSize !== undefined)
+      data.targetHarvestSize = dto.targetHarvestSize;
+    if (dto.targetSurvivalRate !== undefined)
+      data.targetSurvivalRate = dto.targetSurvivalRate;
+    if (dto.targetTotalFeedKg !== undefined)
+      data.targetTotalFeedKg = dto.targetTotalFeedKg;
 
     const existingHarvestDate = (crop as any).expectedHarvestDate;
 
@@ -556,7 +628,9 @@ export class CropsService {
         data.expectedHarvestDate = hDate;
         // Tự động tính số ngày nuôi
         const diffTime = hDate.getTime() - effectiveStartDate.getTime();
-        data.expectedDurationDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        data.expectedDurationDays = Math.round(
+          diffTime / (1000 * 60 * 60 * 24),
+        );
       } else {
         data.expectedHarvestDate = null;
         data.expectedDurationDays = null;
@@ -578,7 +652,9 @@ export class CropsService {
     if (dto.growthMilestones !== undefined) {
       if (Array.isArray(dto.growthMilestones)) {
         this.validateGrowthMilestones(dto.growthMilestones);
-        data.growthMilestones = [...dto.growthMilestones].sort((a, b) => a.day - b.day);
+        data.growthMilestones = [...dto.growthMilestones].sort(
+          (a, b) => a.day - b.day,
+        );
       } else {
         data.growthMilestones = dto.growthMilestones;
       }
@@ -589,14 +665,21 @@ export class CropsService {
       data,
       include: {
         pond: {
-          select: { id: true, name: true, areaSize: true, depth: true, farmId: true },
+          select: {
+            id: true,
+            name: true,
+            areaSize: true,
+            depth: true,
+            farmId: true,
+          },
         },
       },
     });
   }
 
   private validateGrowthMilestones(milestones?: any[]) {
-    if (!milestones || !Array.isArray(milestones) || milestones.length === 0) return;
+    if (!milestones || !Array.isArray(milestones) || milestones.length === 0)
+      return;
 
     for (const m of milestones) {
       if (typeof m.day !== 'number' || m.day <= 0) {
@@ -670,19 +753,26 @@ export class CropsService {
     await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
 
     // 1. Calculate Feed usage from feeding logs
-    const feedMap = new Map<string, {
-      inventoryId: string;
-      itemName: string;
-      category: string;
-      quantityUsed: number;
-      unit: string;
-      unitPrice: number;
-      totalCost: number;
-    }>();
+    const feedMap = new Map<
+      string,
+      {
+        inventoryId: string;
+        itemName: string;
+        category: string;
+        quantityUsed: number;
+        unit: string;
+        unitPrice: number;
+        totalCost: number;
+      }
+    >();
 
     let totalFeedKg = 0;
-    for (const log of (crop.feedingLogs || [])) {
-      if (log.feedingStatus !== 'SKIPPED' && log.feedProductId && log.feedProduct) {
+    for (const log of crop.feedingLogs || []) {
+      if (
+        log.feedingStatus !== 'SKIPPED' &&
+        log.feedProductId &&
+        log.feedProduct
+      ) {
         const amt = Number(log.feedAmount) || 0;
         totalFeedKg += amt;
         const prod = log.feedProduct;
@@ -719,10 +809,7 @@ export class CropsService {
 
     const usageLogs = await (this.prisma.inventoryUsageLog as any).findMany({
       where: {
-        OR: [
-          { cropId: crop.id },
-          { cropId: null, pondId: crop.pondId },
-        ],
+        OR: [{ cropId: crop.id }, { cropId: null, pondId: crop.pondId }],
         usageDate: { gte: startDate, lte: endDate },
       },
       include: {
@@ -744,7 +831,12 @@ export class CropsService {
       const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
       const cost = Math.round(qty * unitPrice);
 
-      const targetMap = inv.category === 'MEDICINE' ? medicineMap : (inv.category === 'CHEMICAL' ? chemicalMap : null);
+      const targetMap =
+        inv.category === 'MEDICINE'
+          ? medicineMap
+          : inv.category === 'CHEMICAL'
+            ? chemicalMap
+            : null;
       if (targetMap) {
         const existing = targetMap.get(inv.id);
         if (existing) {
@@ -766,8 +858,14 @@ export class CropsService {
 
     const medicineLogs = Array.from(medicineMap.values());
     const chemicalLogs = Array.from(chemicalMap.values());
-    const totalMedicineCost = medicineLogs.reduce((sum, m) => sum + m.totalCost, 0);
-    const totalChemicalCost = chemicalLogs.reduce((sum, c) => sum + c.totalCost, 0);
+    const totalMedicineCost = medicineLogs.reduce(
+      (sum, m) => sum + m.totalCost,
+      0,
+    );
+    const totalChemicalCost = chemicalLogs.reduce(
+      (sum, c) => sum + c.totalCost,
+      0,
+    );
 
     const totalCost = totalFeedCost + totalMedicineCost + totalChemicalCost;
 
@@ -782,7 +880,10 @@ export class CropsService {
 
     // 4. Calculate DOC
     const now = new Date();
-    const diffDays = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const diffDays = Math.max(
+      1,
+      Math.round((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+    );
 
     return {
       crop,
@@ -837,7 +938,13 @@ export class CropsService {
         ? new Date(crop.transferDate)
         : new Date();
 
-    const diffDays = Math.max(1, Math.ceil(Math.abs(endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const diffDays = Math.max(
+      1,
+      Math.ceil(
+        Math.abs(endDate.getTime() - startDate.getTime()) /
+          (1000 * 60 * 60 * 24),
+      ),
+    );
 
     // Run parallel queries across all operational tables for this crop and pond
     const [
@@ -917,10 +1024,7 @@ export class CropsService {
       // 6. Inventory usage (medicine, chemical, water treatment)
       (this.prisma.inventoryUsageLog as any).findMany({
         where: {
-          OR: [
-            { cropId: crop.id },
-            { cropId: null, pondId: crop.pondId },
-          ],
+          OR: [{ cropId: crop.id }, { cropId: null, pondId: crop.pondId }],
           usageDate: { gte: startDate, lte: endDate },
         },
         include: {
@@ -959,7 +1063,8 @@ export class CropsService {
           const prod = f.feedProduct;
           const pkgWeight = Number(prod.weightPerPkg) || 1;
           const pricePerPkg = Number(prod.pricePerPackage) || 0;
-          const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
+          const unitPrice =
+            pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
           const cost = amt * unitPrice;
 
           const existing = feedByProductMap.get(prod.id);
@@ -982,25 +1087,39 @@ export class CropsService {
       }
     }
 
-    const feedProductsSummary = Array.from(feedByProductMap.values()).map(p => ({
-      ...p,
-      totalKg: Math.round(p.totalKg * 100) / 100,
-      totalCost: Math.round(p.totalCost),
-    }));
-    const totalFeedCost = feedProductsSummary.reduce((acc, curr) => acc + curr.totalCost, 0);
+    const feedProductsSummary = Array.from(feedByProductMap.values()).map(
+      (p) => ({
+        ...p,
+        totalKg: Math.round(p.totalKg * 100) / 100,
+        totalCost: Math.round(p.totalCost),
+      }),
+    );
+    const totalFeedCost = feedProductsSummary.reduce(
+      (acc, curr) => acc + curr.totalCost,
+      0,
+    );
 
     // ── 2. Water Quality Aggregation ──
     const wqCount = waterQualityRaw.length;
-    let sumPh = 0, sumDo = 0, sumSal = 0, sumTemp = 0, sumAlk = 0, sumNh3 = 0, sumNo2 = 0;
+    let sumPh = 0,
+      sumDo = 0,
+      sumSal = 0,
+      sumTemp = 0,
+      sumAlk = 0,
+      sumNh3 = 0,
+      sumNo2 = 0;
     let validAlkCount = 0;
-    let phAlerts = 0, doAlerts = 0, nh3Alerts = 0, no2Alerts = 0;
+    let phAlerts = 0,
+      doAlerts = 0,
+      nh3Alerts = 0,
+      no2Alerts = 0;
 
     for (const w of waterQualityRaw) {
       const ph = Number(w.ph) || 0;
       const doVal = Number(w.dissolvedOxygen) || 0;
       const sal = Number(w.salinity) || 0;
       const temp = Number(w.temperature) || 0;
-      const alk = Number((w as any).alkalinity) || 0;
+      const alk = Number(w.alkalinity) || 0;
       const nh3 = Number(w.nh3) || 0;
       const no2 = Number(w.no2) || 0;
 
@@ -1021,22 +1140,35 @@ export class CropsService {
       if (no2 > 0.2) no2Alerts++;
     }
 
-    const waterQualityAverages = wqCount > 0 ? {
-      ph: Number((sumPh / wqCount).toFixed(2)),
-      dissolvedOxygen: Number((sumDo / wqCount).toFixed(2)),
-      salinity: Number((sumSal / wqCount).toFixed(1)),
-      temperature: Number((sumTemp / wqCount).toFixed(1)),
-      alkalinity: validAlkCount > 0 ? Number((sumAlk / validAlkCount).toFixed(1)) : null,
-      nh3: Number((sumNh3 / wqCount).toFixed(3)),
-      no2: Number((sumNo2 / wqCount).toFixed(3)),
-    } : null;
+    const waterQualityAverages =
+      wqCount > 0
+        ? {
+            ph: Number((sumPh / wqCount).toFixed(2)),
+            dissolvedOxygen: Number((sumDo / wqCount).toFixed(2)),
+            salinity: Number((sumSal / wqCount).toFixed(1)),
+            temperature: Number((sumTemp / wqCount).toFixed(1)),
+            alkalinity:
+              validAlkCount > 0
+                ? Number((sumAlk / validAlkCount).toFixed(1))
+                : null,
+            nh3: Number((sumNh3 / wqCount).toFixed(3)),
+            no2: Number((sumNo2 / wqCount).toFixed(3)),
+          }
+        : null;
 
     // ── 3. Growth & Biomass Aggregation ──
-    const latestSample = growthSamplesRaw.length > 0 ? growthSamplesRaw[growthSamplesRaw.length - 1] : null;
-    const initialSample = growthSamplesRaw.length > 0 ? growthSamplesRaw[0] : null;
+    const latestSample =
+      growthSamplesRaw.length > 0
+        ? growthSamplesRaw[growthSamplesRaw.length - 1]
+        : null;
+    const initialSample =
+      growthSamplesRaw.length > 0 ? growthSamplesRaw[0] : null;
 
     // ── 4. Health & Mortality Aggregation ──
-    let healthNormal = 0, healthLethargic = 0, healthEdge = 0, healthLossAppetite = 0;
+    let healthNormal = 0,
+      healthLethargic = 0,
+      healthEdge = 0,
+      healthLossAppetite = 0;
     for (const h of healthRecordsRaw) {
       if (h.healthStatus === 'NORMAL') healthNormal++;
       else if (h.healthStatus === 'LETHARGIC') healthLethargic++;
@@ -1044,7 +1176,10 @@ export class CropsService {
       else if (h.healthStatus === 'LOSS_OF_APPETITE') healthLossAppetite++;
     }
 
-    const totalDeadShrimp = mortalityLogsRaw.reduce((sum: number, m: any) => sum + (Number(m.deadQuantityPcs) || 0), 0);
+    const totalDeadShrimp = mortalityLogsRaw.reduce(
+      (sum: number, m: any) => sum + (Number(m.deadQuantityPcs) || 0),
+      0,
+    );
 
     // ── 5. Treatments, Chemical & Medicine Usage ──
     const treatmentsSummary: any[] = [];
@@ -1091,32 +1226,37 @@ export class CropsService {
     const transferInfo = {
       isNursery: crop.stage === 'NURSERY',
       // If this crop was split from a nursery pond
-      splitFromParent: crop.parentCrop ? {
-        parentCropId: crop.parentCrop.id,
-        pondId: crop.parentCrop.pond?.id,
-        pondName: crop.parentCrop.pond?.name || 'Ao ươm',
-        transferDate: crop.transferDate || crop.startDate,
-        transferSize: crop.transferSize || null,
-        initialCountReceived: crop.initialShrimpCount,
-        splitNote: crop.splitNote || null,
-      } : null,
+      splitFromParent: crop.parentCrop
+        ? {
+            parentCropId: crop.parentCrop.id,
+            pondId: crop.parentCrop.pond?.id,
+            pondName: crop.parentCrop.pond?.name || 'Ao ươm',
+            transferDate: crop.transferDate || crop.startDate,
+            transferSize: crop.transferSize || null,
+            initialCountReceived: crop.initialShrimpCount,
+            splitNote: crop.splitNote || null,
+          }
+        : null,
       // If this crop was a nursery and transferred to child ponds
-      splitToChildren: (crop.childCrops && crop.childCrops.length > 0) ? {
-        totalChildPonds: crop.childCrops.length,
-        transferDate: crop.transferDate || crop.expectedTransferDate,
-        actualNurseryHarvest: crop.actualNurseryHarvest,
-        nurserySurvivalRate: crop.nurserySurvivalRate,
-        transferSize: crop.transferSize,
-        splitNote: crop.splitNote,
-        children: crop.childCrops.map((c: any) => ({
-          id: c.id,
-          pondId: c.pond?.id,
-          pondName: c.pond?.name,
-          startDate: c.startDate,
-          initialShrimpCount: c.initialShrimpCount,
-          status: c.status,
-        })),
-      } : null,
+      splitToChildren:
+        crop.childCrops && crop.childCrops.length > 0
+          ? {
+              totalChildPonds: crop.childCrops.length,
+              transferDate: crop.transferDate || crop.expectedTransferDate,
+              actualNurseryHarvest: crop.actualNurseryHarvest,
+              nurserySurvivalRate: crop.nurserySurvivalRate,
+              transferSize: crop.transferSize,
+              splitNote: crop.splitNote,
+              children: crop.childCrops.map((c: any) => ({
+                id: c.id,
+                pondId: c.pond?.id,
+                pondName: c.pond?.name,
+                startDate: c.startDate,
+                initialShrimpCount: c.initialShrimpCount,
+                status: c.status,
+              })),
+            }
+          : null,
     };
 
     // ── 8. Financial Summary ──
@@ -1131,13 +1271,37 @@ export class CropsService {
     const laborCost = crop.harvestLaborCost || 0;
     const otherCost = crop.harvestOtherCost || 0;
 
-    const totalOperationalCost = crop.actualHarvestCost || (finalFeedCost + finalMedicineCost + finalChemicalCost + seedCost + electricityCost + laborCost + otherCost);
-    const profit = crop.actualHarvestProfit !== null && crop.actualHarvestProfit !== undefined
-      ? crop.actualHarvestProfit
-      : (actualRevenue > 0 ? actualRevenue - totalOperationalCost : 0);
+    const totalOperationalCost =
+      crop.actualHarvestCost ||
+      finalFeedCost +
+        finalMedicineCost +
+        finalChemicalCost +
+        seedCost +
+        electricityCost +
+        laborCost +
+        otherCost;
+    const profit =
+      crop.actualHarvestProfit !== null &&
+      crop.actualHarvestProfit !== undefined
+        ? crop.actualHarvestProfit
+        : actualRevenue > 0
+          ? actualRevenue - totalOperationalCost
+          : 0;
 
-    const fcr = crop.actualHarvestFcr || (actualKg > 0 && totalFeedKg > 0 ? Number((totalFeedKg / actualKg).toFixed(2)) : null);
-    const survivalRate = crop.actualHarvestSurvivalRate || (crop.initialShrimpCount > 0 && crop.actualHarvestCount ? Number(((crop.actualHarvestCount / crop.initialShrimpCount) * 100).toFixed(1)) : null);
+    const fcr =
+      crop.actualHarvestFcr ||
+      (actualKg > 0 && totalFeedKg > 0
+        ? Number((totalFeedKg / actualKg).toFixed(2))
+        : null);
+    const survivalRate =
+      crop.actualHarvestSurvivalRate ||
+      (crop.initialShrimpCount > 0 && crop.actualHarvestCount
+        ? Number(
+            ((crop.actualHarvestCount / crop.initialShrimpCount) * 100).toFixed(
+              1,
+            ),
+          )
+        : null);
 
     return {
       crop,
@@ -1237,7 +1401,9 @@ export class CropsService {
     const tomorrow = new Date();
     tomorrow.setHours(23, 59, 59, 999);
     if (harvestDate < startDate) {
-      throw new BadRequestException('Ngày thu hoạch không được trước ngày bắt đầu vụ nuôi');
+      throw new BadRequestException(
+        'Ngày thu hoạch không được trước ngày bắt đầu vụ nuôi',
+      );
     }
     if (harvestDate > tomorrow) {
       throw new BadRequestException('Ngày thu hoạch không được ở tương lai');
@@ -1263,8 +1429,13 @@ export class CropsService {
     const laborCost = dto.harvestLaborCost || 0;
     const otherCost = dto.harvestOtherCost || 0;
     const actualHarvestCost = Math.round(
-      feedCost + medicineCost + chemicalCost + seedCost +
-        electricityCost + laborCost + otherCost,
+      feedCost +
+        medicineCost +
+        chemicalCost +
+        seedCost +
+        electricityCost +
+        laborCost +
+        otherCost,
     );
     const actualHarvestRevenue = Math.round(
       dto.actualHarvestKg * dto.actualHarvestPricePerKg,
@@ -1289,17 +1460,20 @@ export class CropsService {
         actualHarvestSurvivalRate: true,
       },
     });
-    const generatedReview = generateHarvestReview({
-      initialShrimpCount: crop.initialShrimpCount,
-      targetHarvestSize: crop.targetHarvestSize,
-      targetSurvivalRate: crop.targetSurvivalRate,
-      actualHarvestKg: dto.actualHarvestKg,
-      actualHarvestRevenue,
-      actualHarvestCost,
-      actualHarvestProfit,
-      actualHarvestFcr,
-      actualHarvestSurvivalRate,
-    }, previousHarvest);
+    const generatedReview = generateHarvestReview(
+      {
+        initialShrimpCount: crop.initialShrimpCount,
+        targetHarvestSize: crop.targetHarvestSize,
+        targetSurvivalRate: crop.targetSurvivalRate,
+        actualHarvestKg: dto.actualHarvestKg,
+        actualHarvestRevenue,
+        actualHarvestCost,
+        actualHarvestProfit,
+        actualHarvestFcr,
+        actualHarvestSurvivalRate,
+      },
+      previousHarvest,
+    );
 
     return this.prisma.crop.update({
       where: { id },
@@ -1328,7 +1502,17 @@ export class CropsService {
         harvestLessonsLearned: generatedReview.lessonsLearned,
         harvestNextRecommendation: generatedReview.nextRecommendation,
       },
-      include: { pond: { select: { id: true, name: true, areaSize: true, depth: true, farmId: true } } },
+      include: {
+        pond: {
+          select: {
+            id: true,
+            name: true,
+            areaSize: true,
+            depth: true,
+            farmId: true,
+          },
+        },
+      },
     });
   }
 
@@ -1454,9 +1638,10 @@ export class CropsService {
     const nurserySurvivalRate =
       crop.initialShrimpCount > 0
         ? Number(
-            ((dto.actualNurseryHarvest / crop.initialShrimpCount) * 100).toFixed(
-              2,
-            ),
+            (
+              (dto.actualNurseryHarvest / crop.initialShrimpCount) *
+              100
+            ).toFixed(2),
           )
         : 0;
 
@@ -1486,9 +1671,7 @@ export class CropsService {
           if (expectedHarvestDate > transferDate) {
             const diffTime =
               expectedHarvestDate.getTime() - transferDate.getTime();
-            expectedDurationDays = Math.round(
-              diffTime / (1000 * 60 * 60 * 24),
-            );
+            expectedDurationDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
           }
         } else if (dest.expectedDurationDays) {
           expectedDurationDays = dest.expectedDurationDays;
@@ -1538,7 +1721,13 @@ export class CropsService {
    */
   async getGrowthTrajectory90d(
     user: AuthUser,
-    query: { farmId?: string; pondId?: string; cropId?: string; timeRange?: string; year?: string },
+    query: {
+      farmId?: string;
+      pondId?: string;
+      cropId?: string;
+      timeRange?: string;
+      year?: string;
+    },
   ) {
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
@@ -1549,7 +1738,7 @@ export class CropsService {
       } else {
         const firstFarm = await this.prisma.farm.findFirst({
           where: { deletedAt: null },
-          select: { id: true }
+          select: { id: true },
         });
         targetFarmId = firstFarm?.id;
       }
@@ -1620,8 +1809,11 @@ export class CropsService {
         });
 
         if (activeCrop) {
-          const stageName = activeCrop.stage === 'NURSERY' ? 'Vụ Ương Dưỡng' : 'Vụ Thương Phẩm';
-          const startDateStr = new Date(activeCrop.startDate).toLocaleDateString('vi-VN');
+          const stageName =
+            activeCrop.stage === 'NURSERY' ? 'Vụ Ương Dưỡng' : 'Vụ Thương Phẩm';
+          const startDateStr = new Date(
+            activeCrop.startDate,
+          ).toLocaleDateString('vi-VN');
           selectedCropName = `${stageName} (Thả ${startDateStr})`;
           scopeName = `${pond.name} • ${selectedCropName}`;
 
@@ -1629,9 +1821,13 @@ export class CropsService {
           const initialShrimp = activeCrop.initialShrimpCount || 0;
           const targetSurvival = activeCrop.targetSurvivalRate || 80.0;
           const targetSize = activeCrop.targetHarvestSize || 25; // con/kg
-          const targetBiomassKg = initialShrimp > 0
-            ? Math.round((initialShrimp * (targetSurvival / 100)) / (targetSize > 0 ? targetSize : 25))
-            : 0;
+          const targetBiomassKg =
+            initialShrimp > 0
+              ? Math.round(
+                  (initialShrimp * (targetSurvival / 100)) /
+                    (targetSize > 0 ? targetSize : 25),
+                )
+              : 0;
 
           // 2. Lấy mẫu đo đạc kích cỡ thực tế của ao
           const realSamples = await this.prisma.shrimpSizeSample.findMany({
@@ -1658,33 +1854,54 @@ export class CropsService {
             });
 
             // Chỉ nạp các điểm DOC thực tế có trong bảng shrimp_size_samples
-            realSamples.forEach(s => {
+            realSamples.forEach((s) => {
               const doc = s.doc !== null && s.doc !== undefined ? s.doc : 0;
               if (doc === 0) return;
 
               const abw = Number(s.abwGram) || 0;
-              const size = Number(s.sizePerKg) || (abw > 0 ? Math.round(1000 / abw) : null);
-              
+              const size =
+                Number(s.sizePerKg) ||
+                (abw > 0 ? Math.round(1000 / abw) : null);
+
               // Sinh khối thực tế (kg)
-              let biomassKg = s.estimatedBiomassKg 
-                ? Number(s.estimatedBiomassKg) 
-                : (abw > 0 ? (initialShrimp * abw) / 1000 : 0);
+              let biomassKg = s.estimatedBiomassKg
+                ? Number(s.estimatedBiomassKg)
+                : abw > 0
+                  ? (initialShrimp * abw) / 1000
+                  : 0;
               biomassKg = Math.round(biomassKg * 10) / 10;
 
               // Tỉ lệ sống thực tế (SR %)
               let sr = 100.0;
               if (s.estimatedTotalShrimp && initialShrimp > 0) {
-                sr = Math.min(100, Number(((s.estimatedTotalShrimp / initialShrimp) * 100).toFixed(1)));
+                sr = Math.min(
+                  100,
+                  Number(
+                    ((s.estimatedTotalShrimp / initialShrimp) * 100).toFixed(1),
+                  ),
+                );
               } else if (biomassKg > 0 && abw > 0 && initialShrimp > 0) {
                 const estimatedShrimpCount = (biomassKg * 1000) / abw;
-                sr = Math.min(100, Math.max(10, Number(((estimatedShrimpCount / initialShrimp) * 100).toFixed(1))));
+                sr = Math.min(
+                  100,
+                  Math.max(
+                    10,
+                    Number(
+                      ((estimatedShrimpCount / initialShrimp) * 100).toFixed(1),
+                    ),
+                  ),
+                );
               }
               const loss = Number((100 - sr).toFixed(1));
 
               // Sinh khối % so với kế hoạch
-              const biomassPct = targetBiomassKg > 0
-                ? Math.min(100, Number(((biomassKg / targetBiomassKg) * 100).toFixed(2)))
-                : 0;
+              const biomassPct =
+                targetBiomassKg > 0
+                  ? Math.min(
+                      100,
+                      Number(((biomassKg / targetBiomassKg) * 100).toFixed(2)),
+                    )
+                  : 0;
 
               // Tính FCR thực tế từ FeedingLogs tính đến ngày doc
               let fcrRaw: number | null = null;
@@ -1693,7 +1910,9 @@ export class CropsService {
               if (doc >= 10 && feedingLogs.length > 0) {
                 const targetTime = cropStartDate + doc * 24 * 60 * 60 * 1000;
                 const cumFeed = feedingLogs
-                  .filter(f => new Date(f.feedingDate).getTime() <= targetTime)
+                  .filter(
+                    (f) => new Date(f.feedingDate).getTime() <= targetTime,
+                  )
                   .reduce((sum, f) => sum + (Number(f.feedAmount) || 0), 0);
 
                 if (cumFeed > 0 && biomassKg > 0) {
@@ -1719,7 +1938,7 @@ export class CropsService {
           }
         }
       }
-    } 
+    }
     // B. XỬ LÝ KHI CHỌN TOÀN TRANG TRẠI (CHỈ TỔNG HỢP NẾU CÓ DỮ LIỆU THẬT)
     else if (targetFarmId) {
       const farmSamples = await this.prisma.shrimpSizeSample.findMany({
@@ -1735,7 +1954,7 @@ export class CropsService {
       if (farmSamples.length > 0) {
         // Nhóm mẫu theo DOC
         const docSamplesMap = new Map<number, any[]>();
-        farmSamples.forEach(s => {
+        farmSamples.forEach((s) => {
           if (s.doc !== null && s.doc !== undefined) {
             if (!docSamplesMap.has(s.doc)) docSamplesMap.set(s.doc, []);
             docSamplesMap.get(s.doc)!.push(s);
@@ -1755,15 +1974,29 @@ export class CropsService {
           size: null,
         });
 
-        const maxFarmBiomass = Math.max(...farmSamples.map(s => Number(s.estimatedBiomassKg || 0)), 1);
-        const sortedDocs = Array.from(docSamplesMap.keys()).sort((a, b) => a - b);
-        sortedDocs.forEach(d => {
+        const maxFarmBiomass = Math.max(
+          ...farmSamples.map((s) => Number(s.estimatedBiomassKg || 0)),
+          1,
+        );
+        const sortedDocs = Array.from(docSamplesMap.keys()).sort(
+          (a, b) => a - b,
+        );
+        sortedDocs.forEach((d) => {
           if (d === 0) return;
           const samples = docSamplesMap.get(d)!;
-          const avgAbw = samples.reduce((acc, s) => acc + Number(s.abwGram || 0), 0) / samples.length;
-          const avgBiomass = samples.reduce((acc, s) => acc + Number(s.estimatedBiomassKg || 0), 0) / samples.length;
+          const avgAbw =
+            samples.reduce((acc, s) => acc + Number(s.abwGram || 0), 0) /
+            samples.length;
+          const avgBiomass =
+            samples.reduce(
+              (acc, s) => acc + Number(s.estimatedBiomassKg || 0),
+              0,
+            ) / samples.length;
           const size = avgAbw > 0 ? Math.round(1000 / avgAbw) : null;
-          const biomassPct = Math.min(100, Number(((avgBiomass / maxFarmBiomass) * 100).toFixed(2)));
+          const biomassPct = Math.min(
+            100,
+            Number(((avgBiomass / maxFarmBiomass) * 100).toFixed(2)),
+          );
 
           const avgAbwY = Math.min(100, Number((avgAbw * 2).toFixed(1)));
           trajectory.push({
@@ -1784,19 +2017,21 @@ export class CropsService {
 
     // Lọc theo mốc thời gian nếu được chỉ định
     if (query.timeRange === '30') {
-      trajectory = trajectory.filter(d => d.doc <= 30);
+      trajectory = trajectory.filter((d) => d.doc <= 30);
     } else if (query.timeRange === '60') {
-      trajectory = trajectory.filter(d => d.doc >= 30 && d.doc <= 60);
+      trajectory = trajectory.filter((d) => d.doc >= 30 && d.doc <= 60);
     } else if (query.timeRange === '90_END') {
-      trajectory = trajectory.filter(d => d.doc >= 60 && d.doc <= 90);
+      trajectory = trajectory.filter((d) => d.doc >= 60 && d.doc <= 90);
     }
 
     // Nếu không có dữ liệu thực tế nào được ghi nhận
     if (trajectory.length === 0) {
       return {
-        scopeName: selectedPondName 
-          ? `Ao ${selectedPondName} (Chưa có dữ liệu mẫu đo)` 
-          : (farm ? `${farm.name} (Chưa có dữ liệu mẫu đo)` : 'Chưa có dữ liệu'),
+        scopeName: selectedPondName
+          ? `Ao ${selectedPondName} (Chưa có dữ liệu mẫu đo)`
+          : farm
+            ? `${farm.name} (Chưa có dữ liệu mẫu đo)`
+            : 'Chưa có dữ liệu',
         farmName: farm?.name || '',
         pondName: selectedPondName,
         cropName: selectedCropName,

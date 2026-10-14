@@ -24,7 +24,9 @@ const allowedOrigins = (
   },
   namespace: '/notifications',
 })
-export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class NotificationsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -38,7 +40,9 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
+      const token =
+        client.handshake.auth?.token ||
+        client.handshake.headers?.authorization?.split(' ')[1];
       if (!token) {
         client.disconnect();
         return;
@@ -53,20 +57,20 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
       // Join a room specific to this user to easily emit to all their devices
       client.join(`user_${userId}`);
-      
+
       // Also track in memory if needed
       if (!this.userSockets.has(userId)) {
         this.userSockets.set(userId, new Set());
       }
       this.userSockets.get(userId)!.add(client.id);
-
     } catch {
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    const userId = client.data.user?.sub || client.data.user?.userId || client.data.user?.id;
+    const userId =
+      client.data.user?.sub || client.data.user?.userId || client.data.user?.id;
     if (userId && this.userSockets.has(userId)) {
       this.userSockets.get(userId)!.delete(client.id);
       if (this.userSockets.get(userId)!.size === 0) {

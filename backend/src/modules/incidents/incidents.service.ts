@@ -26,20 +26,39 @@ export class IncidentsService {
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
     const where: any = {};
 
+    const cropWhere: any = {};
+
     if (query.farmId) {
       await this.farmAccess.assertCanAccessFarm(user, query.farmId);
-      where.crop = { pond: { farmId: query.farmId } };
-    } else if (query.pondId) {
+      cropWhere.pond = { ...(cropWhere.pond || {}), farmId: query.farmId };
+    } else if (accessibleFarmIds) {
+      cropWhere.pond = { ...(cropWhere.pond || {}), farmId: { in: accessibleFarmIds } };
+    }
+
+    if (query.pondId) {
       const pond = await this.prisma.pond.findUnique({ where: { id: query.pondId } });
       if (!pond) throw new NotFoundException('Không tìm thấy ao nuôi');
       await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
-      where.crop = { pondId: query.pondId };
-    } else if (query.cropId) {
+      cropWhere.pondId = query.pondId;
+    }
+
+    if (query.cropId) {
       const crop = await this.getCropWithFarm(query.cropId);
       await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
-      where.cropId = query.cropId;
-    } else if (accessibleFarmIds) {
-      where.crop = { pond: { farmId: { in: accessibleFarmIds } } };
+
+      const rootId = crop.parentCropId || crop.id;
+      const seasonCrops = await this.prisma.crop.findMany({
+        where: {
+          OR: [{ id: rootId }, { parentCropId: rootId }],
+        },
+        select: { id: true },
+      });
+      const seasonCropIds = seasonCrops.map((c) => c.id);
+      cropWhere.id = { in: seasonCropIds };
+    }
+
+    if (Object.keys(cropWhere).length > 0) {
+      where.crop = cropWhere;
     }
 
     if (query.status) where.status = query.status;

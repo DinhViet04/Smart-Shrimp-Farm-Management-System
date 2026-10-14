@@ -8,7 +8,6 @@ import {
   Wrench,
   Droplets,
   HeartPulse,
-  AlertTriangle,
   TrendingUp,
   Package,
 } from 'lucide-react';
@@ -22,7 +21,6 @@ import { logoutSession } from '../utils/api';
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
-const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
 const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
 const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));

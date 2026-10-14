@@ -30,6 +30,10 @@ import {
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { cropService, type Crop } from '../../services/crop.service';
+import {
+  groupCropsIntoSeasons,
+  findSeasonByCropId,
+} from '../../utils/cropGrouping';
 import { waterQualityService } from '../../services/water-quality.service';
 import { inventoryService } from '../../services/inventory.service';
 import LoadingMotion from '../../components/LoadingMotion';
@@ -306,26 +310,20 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
     return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
   }, [crops, currentYearStr]);
 
-  // Available crops based on farm, pond, and year
-  const availableCrops = useMemo(() => {
-    let list = crops;
-    if (selectedFarmId) {
-      list = list.filter((c) => c.pond?.farmId === selectedFarmId || ponds.find((p) => p.id === c.pondId)?.farmId === selectedFarmId);
-    }
-    if (selectedPondId) {
-      list = list.filter((c) => c.pondId === selectedPondId);
-    }
-    if (selectedYear !== 'ALL') {
-      const yrNum = parseInt(selectedYear, 10);
-      list = list.filter((c) => {
-        if (!c.startDate) return false;
-        const startY = new Date(c.startDate).getFullYear();
-        const endY = c.actualHarvestDate ? new Date(c.actualHarvestDate).getFullYear() : startY;
-        return yrNum >= startY && yrNum <= endY;
-      });
-    }
-    return list;
-  }, [crops, selectedFarmId, selectedPondId, selectedYear, ponds]);
+  // Danh sách toàn bộ Vụ nuôi được gom nhóm chuẩn (Vụ 1 = 2025, Vụ 2, Vụ 3, Vụ 4 = 2026)
+  const allSeasons = useMemo(() => {
+    return groupCropsIntoSeasons(crops, { sortOrder: 'asc' });
+  }, [crops]);
+
+  // Available seasons based on farm, pond, and year
+  const availableSeasons = useMemo(() => {
+    return groupCropsIntoSeasons(crops, {
+      sortOrder: 'asc',
+      farmId: selectedFarmId || undefined,
+      pondId: selectedPondId || undefined,
+      year: selectedYear !== 'ALL' ? selectedYear : undefined,
+    });
+  }, [crops, selectedFarmId, selectedPondId, selectedYear]);
 
   // Load Farm, Pond & Crop overview options
   useEffect(() => {
@@ -925,8 +923,8 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
                   const pId = e.target.value;
                   setSelectedPondId(pId);
                   if (selectedCropId) {
-                    const c = crops.find((item) => item.id === selectedCropId);
-                    if (c && pId && c.pondId !== pId) setSelectedCropId('');
+                    const season = findSeasonByCropId(allSeasons, selectedCropId);
+                    if (season && pId && !season.pondIds.includes(pId)) setSelectedCropId('');
                   }
                   setPage(0);
                 }}
@@ -956,11 +954,12 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
                   const cId = e.target.value;
                   setSelectedCropId(cId);
                   if (cId) {
-                    const c = crops.find((item) => item.id === cId);
-                    if (c) {
-                      if (c.pondId) setSelectedPondId(c.pondId);
-                      const fId = c.pond?.farmId || ponds.find((p) => p.id === c.pondId)?.farmId;
-                      if (fId) setSelectedFarmId(fId);
+                    const season = findSeasonByCropId(allSeasons, cId);
+                    if (season) {
+                      if (season.farmId) setSelectedFarmId(season.farmId);
+                      if (selectedPondId && !season.pondIds.includes(selectedPondId)) {
+                        setSelectedPondId('');
+                      }
                     }
                   }
                   setPage(0);
@@ -968,17 +967,11 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
                 <option value="">Tất cả vụ nuôi</option>
-                {availableCrops.map((c, idx) => {
-                  const pName = c.pond?.name || ponds.find((p) => p.id === c.pondId)?.name || 'Ao';
-                  const stage = c.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm';
-                  const dStr = c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : '';
-                  const statusLabel = c.status === 'ACTIVE' ? '🟢 Đang nuôi' : '⚪ Đã thu';
-                  return (
-                    <option key={c.id} value={c.id}>
-                      {pName} - Vụ {idx + 1} ({stage}) [{statusLabel}] - {dStr}
-                    </option>
-                  );
-                })}
+                {availableSeasons.map((season) => (
+                  <option key={season.rootCropId} value={season.rootCropId}>
+                    {season.displayLabel}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>

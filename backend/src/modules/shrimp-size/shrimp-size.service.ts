@@ -54,6 +54,10 @@ export class ShrimpSizeService {
       throw new BadRequestException('Ao này hiện không có vụ nuôi nào đang hoạt động. Không thể ghi nhận mẫu.');
     }
 
+    if (activeCrop.startDate && samplingDate < new Date(activeCrop.startDate)) {
+      throw new BadRequestException('Ngày lấy mẫu không thể trước ngày bắt đầu vụ nuôi hiện tại.');
+    }
+
     if (activeCrop && activeCrop.startDate) {
       const diffTime = Math.abs(samplingDate.getTime() - activeCrop.startDate.getTime());
       doc = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -63,12 +67,15 @@ export class ShrimpSizeService {
     const abwGram = totalWeight / totalCount;
     const sizePerKg = 1000 / abwGram;
 
-    // 4. Calculate ADG
+    // 4. Calculate ADG (chỉ so sánh với mẫu của vụ active hiện tại)
     let adgGramPerDay: number | null = null;
     const previousSample = await this.prisma.shrimpSizeSample.findFirst({
       where: {
         pondId,
-        samplingDate: { lt: samplingDate },
+        samplingDate: {
+          gte: activeCrop.startDate,
+          lt: samplingDate,
+        },
       },
       orderBy: { samplingDate: 'desc' },
     });
@@ -243,16 +250,54 @@ export class ShrimpSizeService {
 
   async getSamplesByPond(pondId: string, user: AuthUser) {
     await this.assertCanAccessPond(user, pondId);
+
+    // Tìm vụ nuôi đang ACTIVE của ao
+    const activeCrop = await this.prisma.crop.findFirst({
+      where: {
+        pondId,
+        status: 'ACTIVE',
+      },
+    });
+
+    // Khi vụ nuôi đã thu hoạch hoặc ao không có vụ đang hoạt động,
+    // theo dõi tăng trưởng sẽ không hiển thị lịch sử của các vụ cũ trong quá khứ!
+    if (!activeCrop) {
+      return [];
+    }
+
+    // Chỉ lấy các mẫu tăng trưởng thuộc vụ nuôi hiện tại (từ ngày bắt đầu vụ activeCrop.startDate trở đi)
     return this.prisma.shrimpSizeSample.findMany({
-      where: { pondId },
+      where: {
+        pondId,
+        samplingDate: {
+          gte: activeCrop.startDate,
+        },
+      },
       orderBy: { samplingDate: 'asc' },
     });
   }
 
   async getLatestSample(pondId: string, user: AuthUser) {
     await this.assertCanAccessPond(user, pondId);
+
+    const activeCrop = await this.prisma.crop.findFirst({
+      where: {
+        pondId,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!activeCrop) {
+      throw new NotFoundException(`Ao này hiện không có vụ nuôi nào đang hoạt động`);
+    }
+
     const sample = await this.prisma.shrimpSizeSample.findFirst({
-      where: { pondId },
+      where: {
+        pondId,
+        samplingDate: {
+          gte: activeCrop.startDate,
+        },
+      },
       orderBy: { samplingDate: 'desc' },
     });
 
@@ -263,11 +308,28 @@ export class ShrimpSizeService {
   }
 
   /**
-   * Get the current estimated total shrimp count for a pond based on latest sampling.
+   * Get the current estimated total shrimp count for a pond based on latest sampling in the active crop.
    */
   async getCurrentShrimpCount(pondId: string): Promise<number | null> {
+    const activeCrop = await this.prisma.crop.findFirst({
+      where: {
+        pondId,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!activeCrop) {
+      return null;
+    }
+
     const sample = await this.prisma.shrimpSizeSample.findFirst({
-      where: { pondId, estimatedTotalShrimp: { not: null } },
+      where: {
+        pondId,
+        samplingDate: {
+          gte: activeCrop.startDate,
+        },
+        estimatedTotalShrimp: { not: null },
+      },
       orderBy: { samplingDate: 'desc' },
     });
 
@@ -290,15 +352,27 @@ export class ShrimpSizeService {
       where: { id: sampleId },
     });
 
-    // 3. Tính toán lại ADG cho các mẫu còn lại của ao
+    // 3. Tính toán lại ADG cho các mẫu còn lại của vụ active trong ao
     await this.recalculateADG(pondId);
     
     return { success: true, message: 'Đã xóa mẫu đo đạc thành công' };
   }
 
   private async recalculateADG(pondId: string) {
+    const activeCrop = await this.prisma.crop.findFirst({
+      where: {
+        pondId,
+        status: 'ACTIVE',
+      },
+    });
+
+    const whereCondition: any = { pondId };
+    if (activeCrop?.startDate) {
+      whereCondition.samplingDate = { gte: activeCrop.startDate };
+    }
+
     const samples = await this.prisma.shrimpSizeSample.findMany({
-      where: { pondId },
+      where: whereCondition,
       orderBy: { samplingDate: 'asc' },
     });
 
@@ -348,6 +422,9 @@ export class ShrimpSizeService {
     const samples = await this.prisma.shrimpSizeSample.findMany({
       where: {
         pondId,
+        samplingDate: {
+          gte: activeCrop.startDate,
+        },
         estimatedBiomassKg: { not: null },
       },
       orderBy: { samplingDate: 'asc' },

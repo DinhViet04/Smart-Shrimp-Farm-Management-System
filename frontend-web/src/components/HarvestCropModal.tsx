@@ -735,23 +735,37 @@ export default function HarvestCropModal({
                       { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost },
                       { label: 'Nhân công', value: laborCost, setter: setLaborCost },
                       { label: 'Chi phí khác', value: otherCost, setter: setOtherCost },
-                    ].map((item) => (
-                      <label key={item.label} className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-600">{item.label}</span>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1000"
-                            value={item.value}
-                            onChange={(event) => item.setter(event.target.value)}
-                            placeholder="0"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-12 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">VNĐ</span>
+                    ].map((item) => {
+                      const numVal = parseFloat(item.value) || 0;
+                      return (
+                        <div key={item.label} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-700">{item.label}</label>
+                            <span className={`text-[11px] font-black px-2 py-0.5 rounded-md border transition-all ${
+                              numVal > 0
+                                ? 'text-blue-700 bg-blue-100/80 border-blue-200 shadow-2xs'
+                                : 'text-slate-400 bg-slate-100/70 border-slate-200'
+                            }`}>
+                              {numVal > 0 ? `${formatVND(numVal)} đ` : '0 đ'}
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={item.value}
+                              onChange={(event) => item.setter(event.target.value)}
+                              placeholder="0"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-14 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                              VNĐ
+                            </span>
+                          </div>
                         </div>
-                      </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

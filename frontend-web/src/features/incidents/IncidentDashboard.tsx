@@ -107,9 +107,6 @@ export default function IncidentDashboard({
     }
   }, [initialSubTab]);
 
-  const activeTabClass = isFarmer
-    ? 'border-teal-600 text-teal-600'
-    : 'border-indigo-600 text-indigo-600';
   const primaryButtonClass = isFarmer
     ? 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-teal-500/30'
     : 'from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-500/30';

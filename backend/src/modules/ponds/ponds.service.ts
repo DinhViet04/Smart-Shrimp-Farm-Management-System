@@ -169,11 +169,24 @@ export class PondsService {
     ]);
 
     const farmById = new Map(farms.map((farm) => [farm.id, farm]));
-    const overviewPonds = ponds.map(({ sizeSamples, ...pond }) => ({
-      ...pond,
-      farm: farmById.get(pond.farmId),
-      latestSizeSample: sizeSamples?.[0] || null,
-    }));
+    const activeCropByPondId = new Map(
+      crops
+        .filter((c) => c.status === 'ACTIVE')
+        .map((c) => [c.pondId, c])
+    );
+
+    const overviewPonds = ponds.map(({ sizeSamples, ...pond }) => {
+      const activeCrop = activeCropByPondId.get(pond.id);
+      const sample = sizeSamples?.[0] || null;
+      const isSampleFromActiveCrop =
+        Boolean(activeCrop && sample && new Date(sample.samplingDate) >= new Date(activeCrop.startDate));
+
+      return {
+        ...pond,
+        farm: farmById.get(pond.farmId),
+        latestSizeSample: isSampleFromActiveCrop ? sample : null,
+      };
+    });
     const pondById = new Map(overviewPonds.map((pond) => [pond.id, pond]));
     const overviewCrops = crops.map((crop) => ({
       ...crop,

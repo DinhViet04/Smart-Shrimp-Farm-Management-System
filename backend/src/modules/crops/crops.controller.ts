@@ -116,6 +116,12 @@ export class CropsController {
     return this.cropsService.getHarvestSummary(req.user, id);
   }
 
+  @Get(':id/detailed-report')
+  @Roles('FARM_MANAGER', 'ADMIN', 'FARMER', 'TECHNICIAN')
+  getDetailedReport(@Request() req: any, @Param('id') id: string) {
+    return this.cropsService.getDetailedReport(req.user, id);
+  }
+
   @Patch(':id/harvest')
   @Roles('FARM_MANAGER', 'ADMIN')
   harvest(

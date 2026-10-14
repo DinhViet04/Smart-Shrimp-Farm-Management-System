@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package, AlertTriangle, TrendingUp, HeartPulse } from 'lucide-react';
+import { LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package, TrendingUp, HeartPulse } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
 import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
@@ -12,7 +12,6 @@ const FarmList = lazy(() => import('../features/farms/FarmList'));
 const PondCropDashboard = lazy(() => import('../components/PondCropDashboard'));
 const EnvironmentDashboard = lazy(() => import('../features/environment/EnvironmentDashboard'));
 const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
-const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
 const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
 const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));

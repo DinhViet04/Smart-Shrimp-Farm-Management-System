@@ -202,6 +202,9 @@ export class ChatbotService implements OnModuleInit {
   // ── 3.5. SIMILARITY SEARCH ───────────────────────────────────────────────
   private async searchSimilarChunks(questionEmbedding: number[], topK = 3): Promise<ChunkMatch[]> {
     try {
+      if (!this.prisma.knowledgeChunk) {
+        return [];
+      }
       const chunks = await this.prisma.knowledgeChunk.findMany({
         include: {
           document: {
@@ -253,57 +256,53 @@ export class ChatbotService implements OnModuleInit {
     try {
       // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
       if (dto.pondId) {
-        try {
-          const pond = await this.prisma.pond.findUnique({
-            where: { id: dto.pondId },
-            include: {
-              farm: true,
-              crops: { where: { status: 'ACTIVE' }, take: 1 },
-              waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
-            },
-          });
+        const pond = await this.prisma.pond.findUnique({
+          where: { id: dto.pondId },
+          include: {
+            farm: true,
+            crops: { where: { status: 'ACTIVE' }, take: 1 },
+            waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
+          },
+        });
 
-          if (pond) {
-            await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
-            targetPondName = pond.name;
-            const latestWater = pond.waterQualityRecords[0];
-            const activeCrop = pond.crops[0];
+        if (pond) {
+          await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
+          targetPondName = pond.name;
+          const latestWater = pond.waterQualityRecords[0];
+          const activeCrop = pond.crops[0];
 
-            let docDays = 0;
-            if (activeCrop) {
-              const start = new Date(activeCrop.startDate);
-              const now = new Date();
-              docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-            }
-
-            pondContextPayload = {
-              pondId: pond.id,
-              pondName: pond.name,
-              farmName: pond.farm?.name || '',
-              areaSize: pond.areaSize,
-              depth: pond.depth,
-              doc: activeCrop ? docDays : null,
-              initialShrimpCount: activeCrop?.initialShrimpCount || null,
-              stage: activeCrop?.stage || null,
-              latestWaterQuality: latestWater ? {
-                ph: latestWater.ph,
-                dissolvedOxygen: latestWater.dissolvedOxygen,
-                salinity: latestWater.salinity,
-                temperature: latestWater.temperature,
-                nh3: latestWater.nh3,
-                no2: latestWater.no2,
-                alkalinity: (latestWater as any).alkalinity || null,
-              } : null,
-            };
-
-            const shrimpCountFormatted = activeCrop?.initialShrimpCount != null ? Number(activeCrop.initialShrimpCount).toLocaleString() : 'Chưa rõ';
-            pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
-              `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
-              (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
-              (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
+          let docDays = 0;
+          if (activeCrop) {
+            const start = new Date(activeCrop.startDate);
+            const now = new Date();
+            docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
           }
-        } catch (e) {
-          this.logger.warn('Failed to fetch pond realtime context:', e);
+
+          pondContextPayload = {
+            pondId: pond.id,
+            pondName: pond.name,
+            farmName: pond.farm?.name || '',
+            areaSize: pond.areaSize,
+            depth: pond.depth,
+            doc: activeCrop ? docDays : null,
+            initialShrimpCount: activeCrop?.initialShrimpCount || null,
+            stage: activeCrop?.stage || null,
+            latestWaterQuality: latestWater ? {
+              ph: latestWater.ph,
+              dissolvedOxygen: latestWater.dissolvedOxygen,
+              salinity: latestWater.salinity,
+              temperature: latestWater.temperature,
+              nh3: latestWater.nh3,
+              no2: latestWater.no2,
+              alkalinity: (latestWater as any).alkalinity || null,
+            } : null,
+          };
+
+          const shrimpCountFormatted = activeCrop?.initialShrimpCount != null ? Number(activeCrop.initialShrimpCount).toLocaleString() : 'Chưa rõ';
+          pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
+            `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
+            (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
+            (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
         }
       }
 
@@ -388,6 +387,9 @@ YÊU CẦU TRẢ LỜI:
         pondName: targetPondName || undefined,
       };
     } catch (topErr) {
+      if (topErr instanceof HttpException) {
+        throw topErr;
+      }
       this.logger.error('Error handling askChatbot:', topErr);
       return {
         answer: this.buildFallbackResponse(question, [], pondRealtimeContext),

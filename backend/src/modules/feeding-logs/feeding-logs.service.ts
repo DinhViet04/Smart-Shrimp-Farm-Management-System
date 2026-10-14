@@ -272,7 +272,22 @@ export class FeedingLogsService {
       where.farmId = query.farmId;
     }
     if (query.pondId) where.pondId = query.pondId;
-    if (query.cropId) where.cropId = query.cropId;
+    if (query.cropId) {
+      const crop = await this.prisma.crop.findUnique({
+        where: { id: query.cropId },
+        select: { id: true, parentCropId: true },
+      });
+      if (crop) {
+        const rootId = crop.parentCropId || crop.id;
+        const seasonCrops = await this.prisma.crop.findMany({
+          where: { OR: [{ id: rootId }, { parentCropId: rootId }] },
+          select: { id: true },
+        });
+        where.cropId = { in: seasonCrops.map((c) => c.id) };
+      } else {
+        where.cropId = query.cropId;
+      }
+    }
 
     if (query.search) {
       where.OR = [

@@ -234,7 +234,9 @@ export class WaterQualityService {
         include: {
           pond: true,
           childCrops: { include: { pond: true } },
-          parentCrop: { include: { pond: true, childCrops: { include: { pond: true } } } },
+          parentCrop: {
+            include: { pond: true, childCrops: { include: { pond: true } } },
+          },
         },
       });
       if (!crop) {
@@ -244,7 +246,9 @@ export class WaterQualityService {
 
       const root = crop.parentCrop || crop;
       const allSeasonCrops = [root, ...(root.childCrops || [])];
-      const allPondIds = Array.from(new Set(allSeasonCrops.map((c) => c.pondId)));
+      const allPondIds = Array.from(
+        new Set(allSeasonCrops.map((c) => c.pondId)),
+      );
 
       if (pondId) {
         where.pondId = pondId;
@@ -350,8 +354,8 @@ export class WaterQualityService {
         record.h2s !== undefined && record.h2s !== null
           ? Number(record.h2s)
           : record.no2 !== undefined && record.no2 !== null
-          ? Number(record.no2)
-          : 0;
+            ? Number(record.no2)
+            : 0;
 
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
@@ -377,7 +381,10 @@ export class WaterQualityService {
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
         h2s: h2sVal,
-        no2: record.no2 !== undefined && record.no2 !== null ? Number(record.no2) : 0,
+        no2:
+          record.no2 !== undefined && record.no2 !== null
+            ? Number(record.no2)
+            : 0,
         transparency: Number(record.transparency),
         waterColor: record.waterColor ?? undefined,
         overallStatus,
@@ -486,8 +493,8 @@ export class WaterQualityService {
         record.h2s !== undefined && record.h2s !== null
           ? Number(record.h2s)
           : record.no2 !== undefined && record.no2 !== null
-          ? Number(record.no2)
-          : 0;
+            ? Number(record.no2)
+            : 0;
 
       const overallStatus = this.calculateOverallStatus({
         temperature: record.temperature,
@@ -511,7 +518,10 @@ export class WaterQualityService {
         alkalinity: Number(record.alkalinity),
         nh3: Number(record.nh3),
         h2s: h2sVal,
-        no2: record.no2 !== undefined && record.no2 !== null ? Number(record.no2) : 0,
+        no2:
+          record.no2 !== undefined && record.no2 !== null
+            ? Number(record.no2)
+            : 0,
         transparency: Number(record.transparency),
         waterColor: record.waterColor ?? undefined,
         overallStatus,
@@ -519,10 +529,7 @@ export class WaterQualityService {
     });
   }
 
-  async getManagerTrends(
-    user: AuthUser,
-    query: GetManagerWaterTrendsDto,
-  ) {
+  async getManagerTrends(user: AuthUser, query: GetManagerWaterTrendsDto) {
     const days = query.days ?? 7;
     if (query.farmId) {
       await this.farmAccess.assertCanAccessFarm(user, query.farmId);
@@ -530,9 +537,8 @@ export class WaterQualityService {
 
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
     const farmIds = query.farmId ? [query.farmId] : accessibleFarmIds;
-    const pondFilter = farmIds === undefined
-      ? undefined
-      : { farmId: { in: farmIds } };
+    const pondFilter =
+      farmIds === undefined ? undefined : { farmId: { in: farmIds } };
 
     const rangeEnd = new Date();
     rangeEnd.setUTCHours(23, 59, 59, 999);
@@ -562,34 +568,43 @@ export class WaterQualityService {
 
     const latestRecords = latestGroups.length
       ? await this.prisma.waterQualityRecord.findMany({
-        where: {
-          ...(pondFilter ? { pond: pondFilter } : {}),
-          OR: latestGroups.flatMap((group) => group._max.recordTime
-            ? [{ pondId: group.pondId, recordTime: group._max.recordTime }]
-            : []),
-        },
-        select: {
-          pondId: true,
-          recordTime: true,
-          temperature: true,
-          ph: true,
-          dissolvedOxygen: true,
-          salinity: true,
-          alkalinity: true,
-          nh3: true,
-          h2s: true,
-          no2: true,
-          transparency: true,
-          waterColor: true,
-        },
-      })
+          where: {
+            ...(pondFilter ? { pond: pondFilter } : {}),
+            OR: latestGroups.flatMap((group) =>
+              group._max.recordTime
+                ? [{ pondId: group.pondId, recordTime: group._max.recordTime }]
+                : [],
+            ),
+          },
+          select: {
+            pondId: true,
+            recordTime: true,
+            temperature: true,
+            ph: true,
+            dissolvedOxygen: true,
+            salinity: true,
+            alkalinity: true,
+            nh3: true,
+            h2s: true,
+            no2: true,
+            transparency: true,
+            waterColor: true,
+          },
+        })
       : [];
 
-    const buckets = new Map<string, { doSum: number; phSum: number; count: number }>();
+    const buckets = new Map<
+      string,
+      { doSum: number; phSum: number; count: number }
+    >();
     for (let offset = 0; offset < days; offset += 1) {
       const date = new Date(rangeStart);
       date.setUTCDate(rangeStart.getUTCDate() + offset);
-      buckets.set(date.toISOString().slice(0, 10), { doSum: 0, phSum: 0, count: 0 });
+      buckets.set(date.toISOString().slice(0, 10), {
+        doSum: 0,
+        phSum: 0,
+        count: 0,
+      });
     }
 
     trendRecords.forEach((record) => {
@@ -607,8 +622,12 @@ export class WaterQualityService {
       toDate: rangeEnd.toISOString(),
       series: [...buckets.entries()].map(([date, bucket]) => ({
         date,
-        averageDo: bucket.count ? Number((bucket.doSum / bucket.count).toFixed(2)) : null,
-        averagePh: bucket.count ? Number((bucket.phSum / bucket.count).toFixed(2)) : null,
+        averageDo: bucket.count
+          ? Number((bucket.doSum / bucket.count).toFixed(2))
+          : null,
+        averagePh: bucket.count
+          ? Number((bucket.phSum / bucket.count).toFixed(2))
+          : null,
         sampleCount: bucket.count,
       })),
       latestByPond: latestRecords.map((record) => {
@@ -706,8 +725,8 @@ export class WaterQualityService {
   }
 
   private getNh3Status(v: number): 'Optimal' | 'Warning' | 'Danger' {
-    if (v <= 0.30) return 'Optimal';
-    if (v > 0.30 && v <= 0.50) return 'Warning';
+    if (v <= 0.3) return 'Optimal';
+    if (v > 0.3 && v <= 0.5) return 'Warning';
     return 'Danger';
   }
 
@@ -731,7 +750,12 @@ export class WaterQualityService {
 
   private getWaterColorStatus(v: string): 'Optimal' | 'Warning' | 'Danger' {
     const val = v.toLowerCase().trim();
-    if (val.includes('xanh lục') || val.includes('xanh vỏ đậu') || val.includes('màu nâu nhạt') || val.includes('nâu nhạt')) {
+    if (
+      val.includes('xanh lục') ||
+      val.includes('xanh vỏ đậu') ||
+      val.includes('màu nâu nhạt') ||
+      val.includes('nâu nhạt')
+    ) {
       return 'Optimal';
     }
     if (val.includes('đỏ') || val.includes('đen')) {

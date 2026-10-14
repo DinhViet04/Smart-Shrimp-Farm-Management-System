@@ -12,11 +12,24 @@ describe('WaterQualityService manager trends', () => {
   it('returns seven daily buckets and the latest measurement for every accessible pond', async () => {
     const prisma = {
       waterQualityRecord: {
-        findMany: jest.fn()
+        findMany: jest
+          .fn()
           .mockResolvedValueOnce([
-            { recordTime: new Date('2026-10-01T01:00:00.000Z'), dissolvedOxygen: 4, ph: 8 },
-            { recordTime: new Date('2026-10-01T05:00:00.000Z'), dissolvedOxygen: 6, ph: 8.4 },
-            { recordTime: new Date('2026-10-07T01:00:00.000Z'), dissolvedOxygen: 3, ph: 7.2 },
+            {
+              recordTime: new Date('2026-10-01T01:00:00.000Z'),
+              dissolvedOxygen: 4,
+              ph: 8,
+            },
+            {
+              recordTime: new Date('2026-10-01T05:00:00.000Z'),
+              dissolvedOxygen: 6,
+              ph: 8.4,
+            },
+            {
+              recordTime: new Date('2026-10-07T01:00:00.000Z'),
+              dissolvedOxygen: 3,
+              ph: 7.2,
+            },
           ])
           .mockResolvedValueOnce([
             {
@@ -35,7 +48,10 @@ describe('WaterQualityService manager trends', () => {
             },
           ]),
         groupBy: jest.fn().mockResolvedValue([
-          { pondId: 'pond-id', _max: { recordTime: new Date('2026-10-07T01:00:00.000Z') } },
+          {
+            pondId: 'pond-id',
+            _max: { recordTime: new Date('2026-10-07T01:00:00.000Z') },
+          },
         ]),
       },
     };

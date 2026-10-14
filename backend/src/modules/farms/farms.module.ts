@@ -12,4 +12,3 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
   providers: [FarmsService],
 })
 export class FarmsModule {}
-

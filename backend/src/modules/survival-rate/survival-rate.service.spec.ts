@@ -62,7 +62,9 @@ describe('SurvivalRateService', () => {
         'crop-1',
       );
 
-      expect(mockShrimpSizeService.getCurrentShrimpCount).toHaveBeenCalledWith('pond-1');
+      expect(mockShrimpSizeService.getCurrentShrimpCount).toHaveBeenCalledWith(
+        'pond-1',
+      );
       expect(result).toEqual({
         cropId: 'crop-1',
         pondName: 'Ao A1',

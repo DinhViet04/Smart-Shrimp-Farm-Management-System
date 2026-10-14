@@ -6,7 +6,7 @@ import * as nodemailer from 'nodemailer';
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  constructor(private readonly configService: ConfigService) { }
+  constructor(private readonly configService: ConfigService) {}
 
   private createTransporter() {
     return nodemailer.createTransport({
@@ -37,7 +37,8 @@ export class EmailService {
     inviteLink: string;
   }) {
     const { toEmail, toName, farmName, managerName, role, inviteLink } = params;
-    const roleLabel = role === 'FARMER' ? 'Nông Dân (Farmer)' : 'Kỹ Thuật Viên (Technician)';
+    const roleLabel =
+      role === 'FARMER' ? 'Nông Dân (Farmer)' : 'Kỹ Thuật Viên (Technician)';
     const roleColor = role === 'FARMER' ? '#16a34a' : '#0891b2';
     const roleBg = role === 'FARMER' ? '#dcfce7' : '#cffafe';
 
@@ -140,8 +141,16 @@ export class EmailService {
     inviteLink: string;
     expiresInDays?: number;
   }) {
-    const { toEmail, farmName, managerName, role, inviteLink, expiresInDays = 7 } = params;
-    const roleLabel = role === 'FARMER' ? 'Nông Dân (Farmer)' : 'Kỹ Thuật Viên (Technician)';
+    const {
+      toEmail,
+      farmName,
+      managerName,
+      role,
+      inviteLink,
+      expiresInDays = 7,
+    } = params;
+    const roleLabel =
+      role === 'FARMER' ? 'Nông Dân (Farmer)' : 'Kỹ Thuật Viên (Technician)';
     const roleColor = role === 'FARMER' ? '#16a34a' : '#0891b2';
     const roleBg = role === 'FARMER' ? '#dcfce7' : '#cffafe';
 

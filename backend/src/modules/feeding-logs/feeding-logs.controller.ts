@@ -27,7 +27,9 @@ export class FeedingLogsController {
   @Roles('FARMER', 'ADMIN', 'FARM_MANAGER')
   async createOrUpdate(@Req() req: any, @Body() dto: CreateDailyFeedingLogDto) {
     const user = { userId: req.user.userId, role: req.user.role };
-    this.logger.log(`POST /feeding-logs - user: ${user.userId}, farm: ${dto.farmId}, pond: ${dto.pondId}, sessions: ${dto.sessions?.length}`);
+    this.logger.log(
+      `POST /feeding-logs - user: ${user.userId}, farm: ${dto.farmId}, pond: ${dto.pondId}, sessions: ${dto.sessions?.length}`,
+    );
     try {
       return await this.feedingLogsService.createOrUpdateDailyLog(user, dto);
     } catch (err) {
@@ -39,7 +41,9 @@ export class FeedingLogsController {
   @Get()
   async findAll(@Req() req: any, @Query() query: GetFeedingLogsQueryDto) {
     const user = { userId: req.user.userId, role: req.user.role };
-    this.logger.log(`GET /feeding-logs - user: ${user.userId}, query: ${JSON.stringify(query)}`);
+    this.logger.log(
+      `GET /feeding-logs - user: ${user.userId}, query: ${JSON.stringify(query)}`,
+    );
     try {
       return await this.feedingLogsService.findAllGrouped(user, query);
     } catch (err) {
@@ -58,7 +62,10 @@ export class FeedingLogsController {
     try {
       return await this.feedingLogsService.getDailyDetails(user, pondId, date);
     } catch (err) {
-      this.logger.error(`GET /feeding-logs/details ERROR: ${err.message}`, err.stack);
+      this.logger.error(
+        `GET /feeding-logs/details ERROR: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -73,11 +80,22 @@ export class FeedingLogsController {
     @Query('date') date: string,
   ) {
     const user = { userId: req.user.userId, role: req.user.role };
-    this.logger.log(`DELETE /feeding-logs/daily - user: ${user.userId}, farm: ${farmId}, pond: ${pondId}, crop: ${cropId}, date: ${date}`);
+    this.logger.log(
+      `DELETE /feeding-logs/daily - user: ${user.userId}, farm: ${farmId}, pond: ${pondId}, crop: ${cropId}, date: ${date}`,
+    );
     try {
-      return await this.feedingLogsService.deleteDailyLog(user, farmId, pondId, cropId, date);
+      return await this.feedingLogsService.deleteDailyLog(
+        user,
+        farmId,
+        pondId,
+        cropId,
+        date,
+      );
     } catch (err) {
-      this.logger.error(`DELETE /feeding-logs/daily ERROR: ${err.message}`, err.stack);
+      this.logger.error(
+        `DELETE /feeding-logs/daily ERROR: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }

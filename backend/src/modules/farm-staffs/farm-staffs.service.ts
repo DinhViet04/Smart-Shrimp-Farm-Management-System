@@ -19,7 +19,7 @@ export class FarmStaffsService {
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async findAll(user: AuthUser, farmId?: string) {
     const where: any = {};

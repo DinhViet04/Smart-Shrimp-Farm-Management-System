@@ -37,19 +37,21 @@ describe('PondsService overview', () => {
     };
     const prisma = {
       farm: {
-        findMany: jest.fn().mockResolvedValue([
-          (({ ponds: _ponds, ...farmData }) => farmData)(farm),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            (({ ponds: _ponds, ...farmData }) => farmData)(farm),
+          ]),
       },
       pond: {
-        findMany: jest.fn().mockResolvedValue([
-          (({ crops: _crops, ...pondData }) => pondData)(farm.ponds[0]),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            (({ crops: _crops, ...pondData }) => pondData)(farm.ponds[0]),
+          ]),
       },
       crop: {
-        findMany: jest.fn().mockResolvedValue([
-          farm.ponds[0].crops[0],
-        ]),
+        findMany: jest.fn().mockResolvedValue([farm.ponds[0].crops[0]]),
       },
     };
     const farmAccess = {
@@ -79,7 +81,9 @@ describe('PondsService overview', () => {
       { startDate: 'desc' },
     ]);
     expect(pondQuery.select.sizeSamples.take).toBe(1);
-    expect(pondQuery.select.sizeSamples.orderBy).toEqual({ samplingDate: 'desc' });
+    expect(pondQuery.select.sizeSamples.orderBy).toEqual({
+      samplingDate: 'desc',
+    });
     expect(result.farms).toHaveLength(1);
     expect(result.farms[0]).not.toHaveProperty('ponds');
     expect(result.ponds[0]).toMatchObject({

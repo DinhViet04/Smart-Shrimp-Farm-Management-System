@@ -4,7 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { FarmAccessService, AuthUser } from '../farm-access/farm-access.service.js';
+import {
+  FarmAccessService,
+  AuthUser,
+} from '../farm-access/farm-access.service.js';
 import { ShrimpSizeService } from '../shrimp-size/shrimp-size.service.js';
 import { CreateMortalityLogDto } from './dto/create-mortality-log.dto.js';
 import { UpdateHarvestCountDto } from './dto/update-harvest-count.dto.js';
@@ -50,7 +53,11 @@ export class SurvivalRateService {
     const stockingQuantity = crop.initialShrimpCount;
 
     // Constraint: Check for missing or zero stocking quantity
-    if (stockingQuantity === undefined || stockingQuantity === null || stockingQuantity <= 0) {
+    if (
+      stockingQuantity === undefined ||
+      stockingQuantity === null ||
+      stockingQuantity <= 0
+    ) {
       throw new BadRequestException('Chưa có dữ liệu thả giống');
     }
 
@@ -62,7 +69,10 @@ export class SurvivalRateService {
     let harvestCount = 0;
     let isRecordedHarvest = false;
 
-    if (crop.actualHarvestCount !== null && crop.actualHarvestCount !== undefined) {
+    if (
+      crop.actualHarvestCount !== null &&
+      crop.actualHarvestCount !== undefined
+    ) {
       harvestCount = crop.actualHarvestCount;
       isRecordedHarvest = true;
     } else if (
@@ -83,7 +93,9 @@ export class SurvivalRateService {
     }
 
     // Determine current estimated count: sampling > recorded harvest > stocking quantity
-    const currentShrimpCount = estimatedShrimpCount ?? (isRecordedHarvest ? harvestCount : stockingQuantity);
+    const currentShrimpCount =
+      estimatedShrimpCount ??
+      (isRecordedHarvest ? harvestCount : stockingQuantity);
 
     // Step 3: Survival_Rate = (Current_Shrimp_Count / stockingQuantity) * 100
     const rawRate = (currentShrimpCount / stockingQuantity) * 100;
@@ -115,7 +127,11 @@ export class SurvivalRateService {
   /**
    * Update actual harvest count / yield for a crop.
    */
-  async updateHarvestCount(user: AuthUser, cropId: string, dto: UpdateHarvestCountDto) {
+  async updateHarvestCount(
+    user: AuthUser,
+    cropId: string,
+    dto: UpdateHarvestCountDto,
+  ) {
     const crop = await this.prisma.crop.findUnique({
       where: { id: cropId },
       include: { pond: { select: { farmId: true } } },
@@ -130,8 +146,14 @@ export class SurvivalRateService {
     }
 
     let actualHarvestCount = dto.actualHarvestCount;
-    if (actualHarvestCount === undefined && dto.actualHarvestKg && dto.actualHarvestSize) {
-      actualHarvestCount = Math.round(dto.actualHarvestKg * dto.actualHarvestSize);
+    if (
+      actualHarvestCount === undefined &&
+      dto.actualHarvestKg &&
+      dto.actualHarvestSize
+    ) {
+      actualHarvestCount = Math.round(
+        dto.actualHarvestKg * dto.actualHarvestSize,
+      );
     }
 
     await this.prisma.crop.update({
@@ -195,7 +217,9 @@ export class SurvivalRateService {
       await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
     }
 
-    const recordedDate = dto.recordedDate ? new Date(dto.recordedDate) : new Date();
+    const recordedDate = dto.recordedDate
+      ? new Date(dto.recordedDate)
+      : new Date();
 
     const log = await this.prisma.mortalityLog.create({
       data: {

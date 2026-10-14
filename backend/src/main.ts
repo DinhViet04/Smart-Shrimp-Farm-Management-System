@@ -31,7 +31,9 @@ async function bootstrap() {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+  const allowedOrigins = Array.from(
+    new Set([...defaultOrigins, ...envOrigins]),
+  );
 
   // Only allow configured frontends and local dev tools (Expo Web/Mobile)
   app.enableCors({
@@ -41,7 +43,9 @@ async function bootstrap() {
       const isAllowed =
         allowedOrigins.includes(origin) ||
         (process.env.NODE_ENV !== 'production' &&
-          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin));
+          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(
+            origin,
+          ));
 
       if (isAllowed) {
         return callback(null, true);

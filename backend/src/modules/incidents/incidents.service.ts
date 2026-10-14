@@ -5,7 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service.js';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service.js';
 import { CreateIncidentDto } from './dto/create-incident.dto.js';
 import { GetIncidentsDto } from './dto/get-incidents.dto.js';
 import { AssignIncidentDto } from './dto/assign-incident.dto.js';
@@ -32,11 +35,16 @@ export class IncidentsService {
       await this.farmAccess.assertCanAccessFarm(user, query.farmId);
       cropWhere.pond = { ...(cropWhere.pond || {}), farmId: query.farmId };
     } else if (accessibleFarmIds) {
-      cropWhere.pond = { ...(cropWhere.pond || {}), farmId: { in: accessibleFarmIds } };
+      cropWhere.pond = {
+        ...(cropWhere.pond || {}),
+        farmId: { in: accessibleFarmIds },
+      };
     }
 
     if (query.pondId) {
-      const pond = await this.prisma.pond.findUnique({ where: { id: query.pondId } });
+      const pond = await this.prisma.pond.findUnique({
+        where: { id: query.pondId },
+      });
       if (!pond) throw new NotFoundException('Không tìm thấy ao nuôi');
       await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
       cropWhere.pondId = query.pondId;
@@ -76,7 +84,13 @@ export class IncidentsService {
         select: {
           id: true,
           startDate: true,
-          pond: { select: { id: true, name: true, farm: { select: { id: true, name: true } } } },
+          pond: {
+            select: {
+              id: true,
+              name: true,
+              farm: { select: { id: true, name: true } },
+            },
+          },
         },
       },
       reporter: { select: { id: true, fullName: true, role: true } },
@@ -108,7 +122,9 @@ export class IncidentsService {
         reporter: { select: { id: true, fullName: true, role: true } },
         assignedTo: { select: { id: true, fullName: true, email: true } },
         updates: {
-          include: { author: { select: { id: true, fullName: true, role: true } } },
+          include: {
+            author: { select: { id: true, fullName: true, role: true } },
+          },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -123,7 +139,9 @@ export class IncidentsService {
     const crop = await this.getCropWithFarm(dto.cropId);
     await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
     if (crop.status !== 'ACTIVE') {
-      throw new BadRequestException('Chỉ được ghi nhận sự cố cho vụ nuôi đang hoạt động');
+      throw new BadRequestException(
+        'Chỉ được ghi nhận sự cố cho vụ nuôi đang hoạt động',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -154,7 +172,9 @@ export class IncidentsService {
     const farmId = incident.crop.pond.farmId;
     await this.farmAccess.assertCanManageFarm(user, farmId);
     if (user.role !== 'FARM_MANAGER') {
-      throw new ForbiddenException('Chỉ quản lý trang trại được phân công kỹ thuật viên');
+      throw new ForbiddenException(
+        'Chỉ quản lý trang trại được phân công kỹ thuật viên',
+      );
     }
     if (incident.status === 'RESOLVED') {
       throw new BadRequestException('Không thể phân công lại sự cố đã xử lý');
@@ -170,14 +190,18 @@ export class IncidentsService {
       include: { user: { select: { id: true, fullName: true, email: true } } },
     });
     if (!technician) {
-      throw new BadRequestException('Kỹ thuật viên chưa được phân công vào trang trại này');
+      throw new BadRequestException(
+        'Kỹ thuật viên chưa được phân công vào trang trại này',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.incident.update({
         where: { id },
         data: { assignedToId: dto.assignedToId },
-        include: { assignedTo: { select: { id: true, fullName: true, email: true } } },
+        include: {
+          assignedTo: { select: { id: true, fullName: true, email: true } },
+        },
       });
       await tx.incidentTreatmentUpdate.create({
         data: {
@@ -196,7 +220,9 @@ export class IncidentsService {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
     if (incident.status !== 'OPEN') {
-      throw new BadRequestException('Chỉ có thể bắt đầu điều trị sự cố đang mở');
+      throw new BadRequestException(
+        'Chỉ có thể bắt đầu điều trị sự cố đang mở',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -224,14 +250,20 @@ export class IncidentsService {
     });
   }
 
-  async addTreatmentUpdate(user: AuthUser, id: string, dto: CreateTreatmentUpdateDto) {
+  async addTreatmentUpdate(
+    user: AuthUser,
+    id: string,
+    dto: CreateTreatmentUpdateDto,
+  ) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
     if (incident.status === 'RESOLVED') {
       throw new BadRequestException('Không thể cập nhật sự cố đã đóng');
     }
     if (incident.status === 'OPEN') {
-      throw new BadRequestException('Vui lòng bắt đầu điều trị trước khi cập nhật tiến trình');
+      throw new BadRequestException(
+        'Vui lòng bắt đầu điều trị trước khi cập nhật tiến trình',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -245,7 +277,9 @@ export class IncidentsService {
           status: 'TREATING',
           eventType: 'TREATMENT',
         },
-        include: { author: { select: { id: true, fullName: true, role: true } } },
+        include: {
+          author: { select: { id: true, fullName: true, role: true } },
+        },
       });
 
       await tx.incident.update({
@@ -277,7 +311,9 @@ export class IncidentsService {
           status: 'RESOLVED',
           eventType: 'RESOLVED',
         },
-        include: { author: { select: { id: true, fullName: true, role: true } } },
+        include: {
+          author: { select: { id: true, fullName: true, role: true } },
+        },
       });
       await tx.incident.update({
         where: { id },
@@ -308,7 +344,9 @@ export class IncidentsService {
           status: 'TREATING',
           eventType: 'REOPENED',
         },
-        include: { author: { select: { id: true, fullName: true, role: true } } },
+        include: {
+          author: { select: { id: true, fullName: true, role: true } },
+        },
       });
       await tx.incident.update({
         where: { id },
@@ -336,19 +374,30 @@ export class IncidentsService {
     return incident;
   }
 
-  private async assertCanTreat(user: AuthUser, incident: Awaited<ReturnType<IncidentsService['getIncident']>>) {
+  private async assertCanTreat(
+    user: AuthUser,
+    incident: Awaited<ReturnType<IncidentsService['getIncident']>>,
+  ) {
     await this.farmAccess.assertCanAccessFarm(user, incident.crop.pond.farmId);
     if (user.role === 'FARM_MANAGER') {
       return;
     }
     if (user.role !== 'TECHNICIAN' || incident.assignedToId !== user.userId) {
-      throw new ForbiddenException('Chỉ kỹ thuật viên được phân công hoặc Quản lý trang trại mới có thể điều trị sự cố');
+      throw new ForbiddenException(
+        'Chỉ kỹ thuật viên được phân công hoặc Quản lý trang trại mới có thể điều trị sự cố',
+      );
     }
   }
 
-  private async assertCanReopen(user: AuthUser, incident: Awaited<ReturnType<IncidentsService['getIncident']>>) {
+  private async assertCanReopen(
+    user: AuthUser,
+    incident: Awaited<ReturnType<IncidentsService['getIncident']>>,
+  ) {
     if (user.role === 'FARM_MANAGER') {
-      await this.farmAccess.assertCanManageFarm(user, incident.crop.pond.farmId);
+      await this.farmAccess.assertCanManageFarm(
+        user,
+        incident.crop.pond.farmId,
+      );
       return;
     }
     await this.assertCanTreat(user, incident);

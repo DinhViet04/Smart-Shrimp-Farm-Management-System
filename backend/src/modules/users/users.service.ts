@@ -237,7 +237,9 @@ export class UsersService {
     confirmPassword?: string,
   ) {
     if (!newPassword || !confirmPassword) {
-      throw new BadRequestException('Mật khẩu mới và xác nhận mật khẩu là bắt buộc');
+      throw new BadRequestException(
+        'Mật khẩu mới và xác nhận mật khẩu là bắt buộc',
+      );
     }
 
     if (newPassword !== confirmPassword) {
@@ -255,7 +257,10 @@ export class UsersService {
       if (!currentPassword) {
         throw new BadRequestException('Vui lòng nhập mật khẩu hiện tại');
       }
-      const isCurrentValid = await bcrypt.compare(currentPassword, user.password!);
+      const isCurrentValid = await bcrypt.compare(
+        currentPassword,
+        user.password!,
+      );
       if (!isCurrentValid) {
         throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
       }
@@ -272,7 +277,11 @@ export class UsersService {
     });
 
     // Send email notification to user's Gmail
-    await this.sendPasswordChangeNotification(user.email, user.fullName, hasExistingPassword);
+    await this.sendPasswordChangeNotification(
+      user.email,
+      user.fullName,
+      hasExistingPassword,
+    );
 
     return {
       message: hasExistingPassword

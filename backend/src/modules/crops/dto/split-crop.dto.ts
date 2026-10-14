@@ -71,7 +71,9 @@ export class SplitCropDto {
   splitNote?: string;
 
   @IsArray({ message: 'Danh sách ao nhận tôm phải là một mảng' })
-  @ArrayMinSize(1, { message: 'Cần ít nhất 1 ao thành phẩm để tách/chuyển tôm' })
+  @ArrayMinSize(1, {
+    message: 'Cần ít nhất 1 ao thành phẩm để tách/chuyển tôm',
+  })
   @ValidateNested({ each: true })
   @Type(() => SplitDestinationDto)
   destinations: SplitDestinationDto[];

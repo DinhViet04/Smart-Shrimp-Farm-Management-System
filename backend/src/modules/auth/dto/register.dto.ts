@@ -45,4 +45,3 @@ export class RegisterDto {
   @IsString()
   inviteToken?: string;
 }
-

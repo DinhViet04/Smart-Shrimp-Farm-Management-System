@@ -1,4 +1,11 @@
-import { IsDateString, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class HarvestCropDto {
@@ -73,5 +80,4 @@ export class HarvestCropDto {
   @IsString({ message: 'Ghi chú thu hoạch phải là chuỗi văn bản' })
   @MaxLength(1000, { message: 'Ghi chú thu hoạch tối đa 1000 ký tự' })
   harvestNote?: string;
-
 }

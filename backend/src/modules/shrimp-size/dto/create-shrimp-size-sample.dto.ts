@@ -1,4 +1,14 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, ValidateNested, IsArray, ArrayMinSize, ArrayMaxSize } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  ValidateNested,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ShrimpCastDto {

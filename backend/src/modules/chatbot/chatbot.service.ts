@@ -1,9 +1,17 @@
-import { HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service';
 
 interface ChunkMatch {
   documentTitle: string;
@@ -25,9 +33,13 @@ export class ChatbotService implements OnModuleInit {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
       this.openai = new OpenAI({ apiKey: this.apiKey });
-      this.logger.log('OpenAI ChatGPT API initialized successfully for RAG Chatbot.');
+      this.logger.log(
+        'OpenAI ChatGPT API initialized successfully for RAG Chatbot.',
+      );
     } else {
-      this.logger.warn('OPENAI_API_KEY not found in environment. Chatbot will use built-in local semantic matching fallback.');
+      this.logger.warn(
+        'OPENAI_API_KEY not found in environment. Chatbot will use built-in local semantic matching fallback.',
+      );
     }
   }
 
@@ -36,7 +48,9 @@ export class ChatbotService implements OnModuleInit {
     try {
       const docCount = await this.prisma.knowledgeDocument.count();
       if (docCount === 0) {
-        this.logger.log('Seeding initial smart shrimp farming knowledge documents...');
+        this.logger.log(
+          'Seeding initial smart shrimp farming knowledge documents...',
+        );
         await this.seedDefaultKnowledge();
       }
     } catch (err) {
@@ -54,7 +68,10 @@ export class ChatbotService implements OnModuleInit {
         });
         return response.data[0].embedding;
       } catch (err) {
-        this.logger.warn('OpenAI embedding failed, falling back to local vectorizer:', err.message);
+        this.logger.warn(
+          'OpenAI embedding failed, falling back to local vectorizer:',
+          err.message,
+        );
       }
     }
     // Fallback: Tạo vector 64 chiều đơn giản nếu chưa có API Key
@@ -63,10 +80,14 @@ export class ChatbotService implements OnModuleInit {
 
   private createLocalVector(text: string, dimensions = 64): number[] {
     const vector = new Array(dimensions).fill(0);
-    const words = text.toLowerCase().replace(/[^\w\sà-ỹ]/g, '').split(/\s+/).filter(Boolean);
+    const words = text
+      .toLowerCase()
+      .replace(/[^\w\sà-ỹ]/g, '')
+      .split(/\s+/)
+      .filter(Boolean);
     if (words.length === 0) return vector;
 
-    words.forEach(word => {
+    words.forEach((word) => {
       let hash = 0;
       for (let i = 0; i < word.length; i++) {
         hash = (hash << 5) - hash + word.charCodeAt(i);
@@ -77,7 +98,7 @@ export class ChatbotService implements OnModuleInit {
     });
 
     const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
-    return norm > 0 ? vector.map(val => val / norm) : vector;
+    return norm > 0 ? vector.map((val) => val / norm) : vector;
   }
 
   private cosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -96,7 +117,11 @@ export class ChatbotService implements OnModuleInit {
   }
 
   // ── 2. CHUNKING LOGIC ─────────────────────────────────────────────────────
-  private splitTextIntoChunks(text: string, maxChunkLength = 600, overlap = 100): string[] {
+  private splitTextIntoChunks(
+    text: string,
+    maxChunkLength = 600,
+    overlap = 100,
+  ): string[] {
     if (!text || text.length <= maxChunkLength) return [text.trim()];
 
     const chunks: string[] = [];
@@ -109,7 +134,7 @@ export class ChatbotService implements OnModuleInit {
         const punctuationIndex = Math.max(
           text.lastIndexOf('\n', endIndex),
           text.lastIndexOf('. ', endIndex),
-          text.lastIndexOf('? ', endIndex)
+          text.lastIndexOf('? ', endIndex),
         );
 
         if (punctuationIndex > startIndex + 150) {
@@ -144,7 +169,7 @@ export class ChatbotService implements OnModuleInit {
     });
 
     const chunkTexts = this.splitTextIntoChunks(dto.content);
-    
+
     for (let i = 0; i < chunkTexts.length; i++) {
       const chunkContent = chunkTexts[i];
       const embedding = await this.getEmbedding(chunkContent);
@@ -200,7 +225,10 @@ export class ChatbotService implements OnModuleInit {
   }
 
   // ── 3.5. SIMILARITY SEARCH ───────────────────────────────────────────────
-  private async searchSimilarChunks(questionEmbedding: number[], topK = 3): Promise<ChunkMatch[]> {
+  private async searchSimilarChunks(
+    questionEmbedding: number[],
+    topK = 3,
+  ): Promise<ChunkMatch[]> {
     try {
       if (!this.prisma.knowledgeChunk) {
         return [];
@@ -275,7 +303,12 @@ export class ChatbotService implements OnModuleInit {
           if (activeCrop) {
             const start = new Date(activeCrop.startDate);
             const now = new Date();
-            docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+            docDays = Math.max(
+              1,
+              Math.floor(
+                (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+              ),
+            );
           }
 
           pondContextPayload = {
@@ -287,27 +320,38 @@ export class ChatbotService implements OnModuleInit {
             doc: activeCrop ? docDays : null,
             initialShrimpCount: activeCrop?.initialShrimpCount || null,
             stage: activeCrop?.stage || null,
-            latestWaterQuality: latestWater ? {
-              ph: latestWater.ph,
-              dissolvedOxygen: latestWater.dissolvedOxygen,
-              salinity: latestWater.salinity,
-              temperature: latestWater.temperature,
-              nh3: latestWater.nh3,
-              no2: latestWater.no2,
-              alkalinity: (latestWater as any).alkalinity || null,
-            } : null,
+            latestWaterQuality: latestWater
+              ? {
+                  ph: latestWater.ph,
+                  dissolvedOxygen: latestWater.dissolvedOxygen,
+                  salinity: latestWater.salinity,
+                  temperature: latestWater.temperature,
+                  nh3: latestWater.nh3,
+                  no2: latestWater.no2,
+                  alkalinity: (latestWater as any).alkalinity || null,
+                }
+              : null,
           };
 
-          const shrimpCountFormatted = activeCrop?.initialShrimpCount != null ? Number(activeCrop.initialShrimpCount).toLocaleString() : 'Chưa rõ';
-          pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
+          const shrimpCountFormatted =
+            activeCrop?.initialShrimpCount != null
+              ? Number(activeCrop.initialShrimpCount).toLocaleString()
+              : 'Chưa rõ';
+          pondRealtimeContext =
+            `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
             `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
-            (activeCrop ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n` : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
-            (latestWater ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n` : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
+            (activeCrop
+              ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n`
+              : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
+            (latestWater
+              ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n`
+              : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
         }
       }
 
       // 2. Gọi sang Python AI Microservice (FastAPI on :8000)
-      const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+      const aiServiceUrl =
+        process.env.AI_SERVICE_URL || 'http://localhost:8000';
       try {
         const response = await fetch(`${aiServiceUrl}/api/v1/chat/ask`, {
           method: 'POST',
@@ -331,7 +375,10 @@ export class ChatbotService implements OnModuleInit {
           };
         }
       } catch (pythonErr: any) {
-        this.logger.warn('Python AI Service is unreachable, using built-in NestJS RAG fallback:', pythonErr?.message || pythonErr);
+        this.logger.warn(
+          'Python AI Service is unreachable, using built-in NestJS RAG fallback:',
+          pythonErr?.message || pythonErr,
+        );
       }
 
       // 3. Fallback: Embedding câu hỏi & Cosine search nội bộ nếu Python Service chưa chạy
@@ -341,9 +388,15 @@ export class ChatbotService implements OnModuleInit {
 
       if (this.openai && this.apiKey) {
         try {
-          const contextDocuments = topChunks.length > 0
-            ? topChunks.map((c: ChunkMatch, i: number) => `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`).join('\n\n')
-            : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
+          const contextDocuments =
+            topChunks.length > 0
+              ? topChunks
+                  .map(
+                    (c: ChunkMatch, i: number) =>
+                      `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`,
+                  )
+                  .join('\n\n')
+              : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
 
           const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
 Nhiệm vụ của bạn là giải đáp câu hỏi của người nuôi tôm dựa trên TÀI LIỆU KHO TRI THỨC và DỮ LIỆU THỰC TẾ được cung cấp dưới đây.
@@ -370,10 +423,18 @@ YÊU CẦU TRẢ LỜI:
           answerText = completion.choices[0]?.message?.content || '';
         } catch (openaiErr) {
           this.logger.error('OpenAI chat completion failed:', openaiErr);
-          answerText = this.buildFallbackResponse(question, topChunks, pondRealtimeContext);
+          answerText = this.buildFallbackResponse(
+            question,
+            topChunks,
+            pondRealtimeContext,
+          );
         }
       } else {
-        answerText = this.buildFallbackResponse(question, topChunks, pondRealtimeContext);
+        answerText = this.buildFallbackResponse(
+          question,
+          topChunks,
+          pondRealtimeContext,
+        );
       }
 
       return {
@@ -399,7 +460,11 @@ YÊU CẦU TRẢ LỜI:
     }
   }
 
-  private buildFallbackResponse(question: string, topChunks: ChunkMatch[], pondRealtimeContext: string): string {
+  private buildFallbackResponse(
+    question: string,
+    topChunks: ChunkMatch[],
+    pondRealtimeContext: string,
+  ): string {
     let response = '';
 
     if (pondRealtimeContext) {
@@ -408,12 +473,13 @@ YÊU CẦU TRẢ LỜI:
 
     if (topChunks.length > 0) {
       response += `📚 **Dựa trên tài liệu kỹ thuật nuôi tôm:**\n\n`;
-      topChunks.forEach((chunk, idx) => {
+      topChunks.forEach((chunk) => {
         response += `• **Từ "${chunk.documentTitle}" (Độ liên quan ${Math.round(chunk.score * 100)}%):**\n${chunk.content}\n\n`;
       });
       response += `💡 *Lời khuyên kỹ thuật:* Bạn nên kiểm tra kỹ các thông số ao thực tế vào mỗi buổi sáng và chiều để có biện pháp điều chỉnh kịp thời.`;
     } else {
-      response += `🤖 Cảm ơn bạn đã hỏi về: **"${question}"**.\n\n` +
+      response +=
+        `🤖 Cảm ơn bạn đã hỏi về: **"${question}"**.\n\n` +
         `Hiện tại trong kho tài liệu chưa có đoạn trích nào khớp chính xác với câu hỏi này. Bạn có thể tải thêm tài liệu quy chuẩn vào hệ thống hoặc hỏi về các chủ đề: **Chỉ số pH, Oxy hòa tan, FCR, Khí độc NH3/NO2, và Bệnh phân trắng**.`;
     }
 
@@ -462,6 +528,8 @@ YÊU CẦU TRẢ LỜI:
     for (const docDto of initialDocs) {
       await this.createDocument(docDto, 'SYSTEM_SEED');
     }
-    this.logger.log('Seed completed: 3 knowledge documents with OpenAI vector chunks successfully created.');
+    this.logger.log(
+      'Seed completed: 3 knowledge documents with OpenAI vector chunks successfully created.',
+    );
   }
 }

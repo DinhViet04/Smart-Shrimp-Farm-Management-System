@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Activity, 
   TrendingUp, AlertCircle, PieChart, Scale,
@@ -40,7 +40,7 @@ interface PondBiomassDetailProps {
   onNavigateTab?: (tab: GrowthTabType) => void;
 }
 
-const safeFormatDate = (dateVal: any, formatStr: string = 'dd/MM/yyyy') => {
+const safeFormatDate = (dateVal: string | number | Date | null | undefined, formatStr: string = 'dd/MM/yyyy') => {
   if (!dateVal) return '--';
   try {
     const d = new Date(dateVal);
@@ -59,40 +59,54 @@ export default function PondBiomassDetail({
   const [samples, setSamples] = useState<ShrimpSizeSample[]>([]);
   const [activeCrop, setActiveCrop] = useState<Crop | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [prevPondId, setPrevPondId] = useState<string>(pond.id);
 
-  const fetchSamples = useCallback(async () => {
-    if (!pond?.id) return;
-    try {
-      setIsLoading(true);
-      setError(null);
-      const [data, crops] = await Promise.all([
-        shrimpSizeService.getSamplesByPond(pond.id),
-        cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true }).catch(() => []),
-      ]);
-      const active = crops && crops.length > 0 ? crops[0] : null;
-      setActiveCrop(active);
+  if (pond.id !== prevPondId) {
+    setPrevPondId(pond.id);
+    setIsLoading(true);
+    setError(null);
+  }
 
-      if (!active) {
-        setSamples([]);
-      } else {
-        const activeStartDate = active.startDate ? new Date(active.startDate).getTime() : 0;
-        const validSamples = (Array.isArray(data) ? data : []).filter(
-          (s) => new Date(s.samplingDate).getTime() >= activeStartDate
-        );
-        setSamples(validSamples);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi tải dữ liệu sinh khối');
-      setSamples([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pond?.id]);
+  const pondId = pond.id;
 
   useEffect(() => {
-    fetchSamples();
-  }, [fetchSamples]);
+    let isMounted = true;
+
+    Promise.all([
+      shrimpSizeService.getSamplesByPond(pondId),
+      cropService.getAll({ pondId, status: 'ACTIVE', summary: true }).catch(() => []),
+    ])
+      .then(([data, crops]) => {
+        if (!isMounted) return;
+        const active = crops && crops.length > 0 ? crops[0] : null;
+        setActiveCrop(active);
+
+        if (!active) {
+          setSamples([]);
+        } else {
+          const activeStartDate = active.startDate ? new Date(active.startDate).getTime() : 0;
+          const validSamples = (Array.isArray(data) ? data : []).filter(
+            (s) => new Date(s.samplingDate).getTime() >= activeStartDate
+          );
+          setSamples(validSamples);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Lỗi tải dữ liệu sinh khối');
+        setSamples([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [pondId]);
 
   // Lọc ra các mẫu có đo sinh khối (có netAreaSqM)
   const safeSamples = Array.isArray(samples) ? samples : [];
@@ -104,13 +118,13 @@ export default function PondBiomassDetail({
   const previousSample = biomassSamples.length > 1 ? biomassSamples[biomassSamples.length - 2] : null;
 
   // Tính tỷ lệ sống ước tính = (estimatedTotalShrimp / initialShrimpCount) * 100
-  const estimatedSurvivalRate = useMemo(() => {
-    if (!latestSample || !latestSample.estimatedTotalShrimp || !activeCrop || !activeCrop.initialShrimpCount) {
+  const estimatedSurvivalRate = (() => {
+    if (!latestSample?.estimatedTotalShrimp || !activeCrop?.initialShrimpCount) {
       return null;
     }
     const rate = (Number(latestSample.estimatedTotalShrimp) / activeCrop.initialShrimpCount) * 100;
     return Math.min(100, Math.max(0, Number(rate.toFixed(1))));
-  }, [latestSample, activeCrop]);
+  })();
 
   // Tính chênh lệch sinh khối so với lần trước
   const biomassDiff = latestSample && previousSample 
@@ -317,7 +331,7 @@ export default function PondBiomassDetail({
                         padding: '12px 16px',
                       }}
                       labelStyle={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '4px' }}
-                      formatter={(val: any) => [`${Number(val).toLocaleString()} kg`, 'Sinh khối']}
+                      formatter={(val) => [`${Number(val || 0).toLocaleString()} kg`, 'Sinh khối']}
                     />
                     <Area
                       type="monotone"

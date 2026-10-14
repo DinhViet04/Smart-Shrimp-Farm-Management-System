@@ -23,7 +23,7 @@ export class FarmsService {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async create(data: CreateFarmDto) {
     const exists = await this.prisma.farm.findFirst({
@@ -32,7 +32,9 @@ export class FarmsService {
     if (exists) throw new BadRequestException('Ten nong trai da ton tai');
 
     if (!data.ownerId) {
-      throw new BadRequestException('Vui lòng chỉ định chủ trang trại (ownerId)');
+      throw new BadRequestException(
+        'Vui lòng chỉ định chủ trang trại (ownerId)',
+      );
     }
 
     const { ponds_count, staffIds, ...farmData } = data;
@@ -358,7 +360,11 @@ export class FarmsService {
     role: 'FARMER' | 'TECHNICIAN',
     requesterId: string,
     requesterRole: string,
-  ): Promise<{ status: 'assigned' | 'invited'; message: string; email: string }> {
+  ): Promise<{
+    status: 'assigned' | 'invited';
+    message: string;
+    email: string;
+  }> {
     // 1. Kiểm tra quyền quản lý farm
     await this.farmAccess.assertCanManageFarm(
       { userId: requesterId, role: requesterRole },
@@ -380,7 +386,8 @@ export class FarmsService {
     });
 
     // Lấy URL frontend
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
 
     // Tạo JWT invite token (7 ngày)
     const inviteToken = await this.jwtService.signAsync(

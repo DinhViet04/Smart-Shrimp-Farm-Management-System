@@ -332,6 +332,12 @@ export default function CropManagement({
   }, [formData.startDate, formData.expectedTransferDate]);
 
   // ── Fetch Initial Data ───────────────────────────────────────────────────────
+  const [prevViewFilters, setPrevViewFilters] = useState({ activeView, filterStatus });
+  if (prevViewFilters.activeView !== activeView || prevViewFilters.filterStatus !== filterStatus) {
+    setPrevViewFilters({ activeView, filterStatus });
+    setLoading(true);
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -344,30 +350,41 @@ export default function CropManagement({
       setFarms(overview.farms);
       setPonds(overview.ponds);
       setCrops(cropsData);
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi khi tải dữ liệu vụ nuôi', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Lỗi khi tải dữ liệu vụ nuôi', 'error');
     } finally {
       setLoading(false);
     }
   }, [activeView, filterStatus]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    let isMounted = true;
+    Promise.all([
+      pondService.getOverview(),
+      cropService.getAll({
+        status: activeView === 'active' ? 'ACTIVE' : filterStatus || undefined,
+      }),
+    ])
+      .then(([overview, cropsData]) => {
+        if (!isMounted) return;
+        setFarms(overview.farms);
+        setPonds(overview.ponds);
+        setCrops(cropsData);
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        showToast(err instanceof Error ? err.message : 'Lỗi khi tải dữ liệu vụ nuôi', 'error');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
 
-  useEffect(() => {
-    if (initialEditCrop) {
-      openEditModal(initialEditCrop);
-      onClearEditCrop?.();
-    }
-  }, [initialEditCrop]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (initialCreateCropConfig && ponds.length > 0) {
-      openAddModal(initialCreateCropConfig.farmId, initialCreateCropConfig.pondId);
-      onClearCreateCropConfig?.();
-    }
-  }, [initialCreateCropConfig, ponds]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      isMounted = false;
+    };
+  }, [activeView, filterStatus]);
 
   // ── Available Filter Options ──────────────────────────────────────────────
   const availableYears = useMemo(() => {
@@ -568,7 +585,7 @@ export default function CropManagement({
       startDate: dateStr,
       initialShrimpCount: crop.initialShrimpCount.toString(),
       status: crop.status,
-      stage: (crop.stage as any) || 'COMMERCIAL',
+      stage: (crop.stage as 'NURSERY' | 'COMMERCIAL') || 'COMMERCIAL',
       expectedTransferDate: transferDateStr || (dateStr ? addDaysToDateString(dateStr, 25) : ''),
       targetHarvestSize: crop.targetHarvestSize?.toString() || '30',
       targetSurvivalRate: crop.targetSurvivalRate?.toString() || '85',
@@ -579,6 +596,24 @@ export default function CropManagement({
     setFormErrors({});
     setShowModal(true);
   };
+
+  useEffect(() => {
+    if (initialEditCrop) {
+      queueMicrotask(() => {
+        openEditModal(initialEditCrop);
+        onClearEditCrop?.();
+      });
+    }
+  }, [initialEditCrop]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (initialCreateCropConfig && ponds.length > 0) {
+      queueMicrotask(() => {
+        openAddModal(initialCreateCropConfig.farmId, initialCreateCropConfig.pondId);
+        onClearCreateCropConfig?.();
+      });
+    }
+  }, [initialCreateCropConfig, ponds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Date Change Handlers ──────────────────────────────────────────────────
   const handleStartDateChange = (newStartDate: string) => {
@@ -595,8 +630,6 @@ export default function CropManagement({
     }));
   };
 
-
-
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!window.confirm('Bạn có chắc chắn muốn xóa vụ nuôi này? ⚠️ CẢNH BÁO: Hành động này sẽ xóa toàn bộ dữ liệu liên quan (nhật ký, thông số...) và không thể khôi phục!')) return;
@@ -604,8 +637,8 @@ export default function CropManagement({
       await cropService.remove(id);
       showToast('Xóa vụ nuôi thành công!', 'success');
       fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Không thể xóa vụ nuôi', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Không thể xóa vụ nuôi', 'error');
     }
   };
 
@@ -735,8 +768,8 @@ export default function CropManagement({
 
       setShowModal(false);
       fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Lỗi khi lưu vụ nuôi', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Lỗi khi lưu vụ nuôi', 'error');
     } finally {
       setSaving(false);
     }
@@ -1789,7 +1822,7 @@ export default function CropManagement({
                                           e.stopPropagation();
                                           onNavigateToGrowth?.({
                                             farmId: farmGroup.id,
-                                            pondId: crop.pondId || (crop.pond as any)?.id,
+                                            pondId: crop.pondId || crop.pond?.id,
                                             cropId: crop.id,
                                           });
                                         }}

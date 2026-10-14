@@ -75,7 +75,7 @@ export class WeatherService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -220,9 +220,11 @@ export class WeatherService {
         const farm = await this.prisma.farm.findUnique({
           where: { id: options.farmId },
           include: {
-        owner: { select: { id: true, isActive: true } },
-        staff: { include: { user: { select: { id: true, isActive: true } } } },
-      },
+            owner: { select: { id: true, isActive: true } },
+            staff: {
+              include: { user: { select: { id: true, isActive: true } } },
+            },
+          },
         });
 
         if (farm) {
@@ -310,22 +312,29 @@ export class WeatherService {
   async syncDisasterAlerts(farmId: string, userId: string) {
     const farm = await this.prisma.farm.findUnique({
       where: { id: farmId },
-      select: { name: true, address: true, location: true, owner: true, staff: { include: { user: true } } },
+      select: {
+        name: true,
+        address: true,
+        location: true,
+        owner: true,
+        staff: { include: { user: true } },
+      },
     });
 
     if (!farm) return;
 
     const targetUserIds = new Set<string>();
     if (farm.owner && farm.owner.isActive) targetUserIds.add(farm.owner.id);
-    farm.staff.forEach(staff => {
-      if (staff.isActive && staff.user && staff.user.isActive) targetUserIds.add(staff.user.id);
+    farm.staff.forEach((staff) => {
+      if (staff.isActive && staff.user && staff.user.isActive)
+        targetUserIds.add(staff.user.id);
     });
 
     if (targetUserIds.size === 0) return;
 
     const farmAddr = farm.address || farm.location || farm.name;
     const geo = await this.geocodeAddress(farmAddr);
-    
+
     // Default to Ben Tre if resolution fails
     const lat = geo.lat || 10.2415;
     const lon = geo.lon || 106.3759;
@@ -384,15 +393,17 @@ export class WeatherService {
             await this.notificationsService.createDisasterNotification(
               uid,
               farmId,
-              levelEnum as any,
+              levelEnum,
               title,
-              message
+              message,
             );
           }
         }
       }
     } catch (err: any) {
-      this.logger.error(`Failed to sync disaster alerts for farm ${farmId}: ${err.message}`);
+      this.logger.error(
+        `Failed to sync disaster alerts for farm ${farmId}: ${err.message}`,
+      );
     }
   }
 }

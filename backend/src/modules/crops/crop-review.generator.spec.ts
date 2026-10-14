@@ -36,18 +36,21 @@ describe('generateHarvestReview', () => {
   });
 
   it('recommends reviewing evidence when targets worsen', () => {
-    const result = generateHarvestReview({
-      ...current,
-      actualHarvestKg: 1_500,
-      actualHarvestProfit: -10_000_000,
-      actualHarvestFcr: 1.6,
-      actualHarvestSurvivalRate: 60,
-    }, {
-      actualHarvestKg: 1_800,
-      actualHarvestProfit: 20_000_000,
-      actualHarvestFcr: 1.4,
-      actualHarvestSurvivalRate: 70,
-    });
+    const result = generateHarvestReview(
+      {
+        ...current,
+        actualHarvestKg: 1_500,
+        actualHarvestProfit: -10_000_000,
+        actualHarvestFcr: 1.6,
+        actualHarvestSurvivalRate: 60,
+      },
+      {
+        actualHarvestKg: 1_800,
+        actualHarvestProfit: 20_000_000,
+        actualHarvestFcr: 1.4,
+        actualHarvestSurvivalRate: 70,
+      },
+    );
 
     expect(result.nextRecommendation).toContain('Rà soát giá bán');
     expect(result.nextRecommendation).toContain('nhật ký môi trường');

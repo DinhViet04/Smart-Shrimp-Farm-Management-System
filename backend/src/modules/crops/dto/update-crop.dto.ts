@@ -67,15 +67,17 @@ export class UpdateCropDto {
 
   @IsOptional()
   @IsIn(['NURSERY', 'COMMERCIAL'], {
-    message: 'Giai đoạn vụ nuôi phải là NURSERY (Ương dưỡng) hoặc COMMERCIAL (Nuôi thương phẩm)',
+    message:
+      'Giai đoạn vụ nuôi phải là NURSERY (Ương dưỡng) hoặc COMMERCIAL (Nuôi thương phẩm)',
   })
   stage?: string;
 
   @IsOptional()
   @IsDateString(
     {},
-    { message: 'expectedTransferDate phải là định dạng ngày hợp lệ (ISO 8601)' },
+    {
+      message: 'expectedTransferDate phải là định dạng ngày hợp lệ (ISO 8601)',
+    },
   )
   expectedTransferDate?: string;
 }
-

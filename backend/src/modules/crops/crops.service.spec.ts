@@ -212,3 +212,93 @@ describe('CropsService harvest summary', () => {
     expect(result.comparison.revenuePercent).toBe(100);
   });
 });
+
+describe('CropsService detailed report', () => {
+  const user = { userId: 'manager-id', role: 'FARM_MANAGER' };
+
+  it('aggregates all operational data across feeding, water quality, growth, health and treatments', async () => {
+    const crop = {
+      id: 'crop-1',
+      pondId: 'pond-1',
+      startDate: new Date('2026-07-17T00:00:00.000Z'),
+      initialShrimpCount: 100_000,
+      status: 'ACTIVE',
+      stage: 'COMMERCIAL',
+      parentCropId: 'nursery-1',
+      transferDate: new Date('2026-08-05T00:00:00.000Z'),
+      transferSize: 500,
+      splitNote: 'Tách từ ao ươm A1',
+      pond: { id: 'pond-1', name: 'Ao nuôi A1', farmId: 'farm-1', farm: { id: 'farm-1', name: 'Trang trại Long' } },
+      parentCrop: { id: 'nursery-1', pond: { id: 'pond-nursery', name: 'Ao ươm A1' } },
+      childCrops: [],
+    };
+
+    const prisma = {
+      crop: { findUnique: jest.fn().mockResolvedValue(crop) },
+      feedingLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'feed-1',
+            feedAmount: 50,
+            feedingStatus: 'COMPLETED',
+            feedProduct: { id: 'p-1', itemName: 'Cám tôm Grobest', pricePerPackage: 500_000, weightPerPkg: 25 },
+          },
+        ]),
+      },
+      waterQualityRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'wq-1', ph: 7.8, dissolvedOxygen: 5.5, temperature: 29, salinity: 15, nh3: 0.01, no2: 0.05 },
+        ]),
+      },
+      shrimpSizeSample: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'sample-1', samplingDate: new Date('2026-08-10'), abwGram: 15.5, sizePerKg: 64.5, adgGramPerDay: 0.35 },
+        ]),
+      },
+      shrimpHealthRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'health-1', healthStatus: 'NORMAL', severity: 'NORMAL' },
+        ]),
+      },
+      incident: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      inventoryUsageLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'usage-1',
+            quantityUsed: 2,
+            inventory: { id: 'inv-1', itemName: 'Men vi sinh Probiotic', category: 'CHEMICAL', pricePerPackage: 200_000, weightPerPkg: 1 },
+          },
+        ]),
+      },
+      mortalityLog: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+
+    const farmAccess = {
+      assertCanAccessFarm: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new CropsService(prisma as any, farmAccess as any, {} as any);
+    const report = await service.getDetailedReport(user as any, 'crop-1');
+
+    expect(farmAccess.assertCanAccessFarm).toHaveBeenCalledWith(user, 'farm-1');
+    expect(report.crop.id).toBe('crop-1');
+    expect(report.transferInfo.splitFromParent).toEqual({
+      parentCropId: 'nursery-1',
+      pondId: 'pond-nursery',
+      pondName: 'Ao ươm A1',
+      transferDate: new Date('2026-08-05T00:00:00.000Z'),
+      transferSize: 500,
+      initialCountReceived: 100_000,
+      splitNote: 'Tách từ ao ươm A1',
+    });
+    expect(report.feeding.totalFeedKg).toBe(50);
+    expect(report.waterQuality.averages?.ph).toBe(7.8);
+    expect(report.growth.samples.length).toBe(1);
+    expect(report.health.summary.normal).toBe(1);
+    expect(report.treatmentsAndSupplies.totalChemicalCost).toBe(400_000);
+  });
+});

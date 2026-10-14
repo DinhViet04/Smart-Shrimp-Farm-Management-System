@@ -31,6 +31,10 @@ import {
   DEFAULT_FEEDING_SESSIONS,
   type DailyFeedingGroup,
 } from '../../services/feeding-log.service';
+import {
+  groupCropsIntoSeasons,
+  findSeasonByCropId,
+} from '../../utils/cropGrouping';
 import InventoryActionModal from './InventoryActionModal';
 
 interface InventoryUsageHistoryViewProps {
@@ -104,7 +108,7 @@ export default function InventoryUsageHistoryView({
   useEffect(() => {
     const fetchCrops = async () => {
       try {
-        const cropsData = await cropService.getAll({ summary: true });
+        const cropsData = await cropService.getAll();
         const farmCrops = (cropsData || []).filter(
           (c) => c.pond?.farmId === farmId || ponds.some((p) => p.id === c.pondId)
         );
@@ -239,6 +243,15 @@ export default function InventoryUsageHistoryView({
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [logs, feedingGroups]);
 
+  // Danh sách Vụ nuôi được gom nhóm chuẩn (Vụ 1 = 2025, Vụ 2, Vụ 3, Vụ 4 = 2026)
+  const seasons = useMemo(() => {
+    return groupCropsIntoSeasons(crops, { sortOrder: 'asc' });
+  }, [crops]);
+
+  const activeSeason = useMemo(() => {
+    return findSeasonByCropId(seasons, selectedCropId);
+  }, [seasons, selectedCropId]);
+
   // Lọc nhật ký cho ăn hàng ngày
   const filteredFeedingGroups = useMemo(() => {
     return feedingGroups.filter((group) => {
@@ -247,7 +260,13 @@ export default function InventoryUsageHistoryView({
         if (String(groupYear) !== selectedYear) return false;
       }
       if (selectedPondId !== 'ALL' && group.pondId !== selectedPondId) return false;
-      if (selectedCropId !== 'ALL' && group.cropId !== selectedCropId) return false;
+      if (selectedCropId !== 'ALL') {
+        if (activeSeason) {
+          if (!activeSeason.cropIds.includes(group.cropId)) return false;
+        } else if (group.cropId !== selectedCropId) {
+          return false;
+        }
+      }
 
       // Danh mục: Feeding chỉ gồm thức ăn cám (FEED)
       if (categoryFilter !== 'ALL' && categoryFilter !== 'FEED') {
@@ -277,7 +296,7 @@ export default function InventoryUsageHistoryView({
 
       return true;
     });
-  }, [feedingGroups, selectedYear, selectedPondId, selectedCropId, searchQuery, categoryFilter]);
+  }, [feedingGroups, selectedYear, selectedPondId, selectedCropId, activeSeason, searchQuery, categoryFilter]);
 
   // Lọc cơ sở cho danh sách logs biến động kho
   const filteredLogsBase = useMemo(() => {
@@ -304,10 +323,11 @@ export default function InventoryUsageHistoryView({
         const pondName = targetPond?.name?.toLowerCase() || '';
         const notesLower = (log.notes || '').toLowerCase();
         const matchesPond =
-          pondName &&
-          (notesLower.includes(pondName) ||
-            notesLower.includes(`ao ${pondName}`) ||
-            notesLower.includes(`ao: ${pondName}`));
+          (log.pondId && log.pondId === selectedPondId) ||
+          (pondName &&
+            (notesLower.includes(pondName) ||
+              notesLower.includes(`ao ${pondName}`) ||
+              notesLower.includes(`ao: ${pondName}`)));
         if (!matchesPond) return false;
       }
 
@@ -316,32 +336,66 @@ export default function InventoryUsageHistoryView({
         // Nhập kho là nhập về kho tổng trang trại, không thuộc về một vụ nuôi cụ thể
         if (isImport) return false;
 
-        const targetCrop = crops.find((c) => c.id === selectedCropId);
-        if (targetCrop) {
-          // Vụ nuôi luôn thuộc về một ao nuôi cụ thể: targetCrop.pondId
-          const targetPond = ponds.find((p) => p.id === targetCrop.pondId) || targetCrop.pond;
-          const targetPondName = (targetPond?.name || '').toLowerCase();
-          const notesLower = (log.notes || '').toLowerCase();
+        if (activeSeason) {
+          // A. Nếu bản ghi có cropId
+          if (log.cropId) {
+            if (!activeSeason.cropIds.includes(log.cropId)) return false;
+          } else {
+            // B. Khớp theo danh sách ao và thời gian vụ nuôi
+            const notesLower = (log.notes || '').toLowerCase();
+            const matchesAnyPond =
+              (log.pondId && activeSeason.pondIds.includes(log.pondId)) ||
+              activeSeason.pondNames.some((pName) => {
+                const pLower = pName.toLowerCase();
+                return (
+                  notesLower.includes(pLower) ||
+                  notesLower.includes(`ao ${pLower}`) ||
+                  notesLower.includes(`ao: ${pLower}`)
+                );
+              });
 
-          // Kiểm tra xem giao dịch xuất kho này có dành cho ao của vụ này không
-          const matchesPond =
-            targetPondName &&
-            (notesLower.includes(targetPondName) ||
-              notesLower.includes(`ao ${targetPondName}`) ||
-              notesLower.includes(`ao: ${targetPondName}`));
+            if (!matchesAnyPond) return false;
 
-          if (!matchesPond) return false;
+            const logTime = new Date(log.usageDate).getTime();
+            const seasonStart = new Date(activeSeason.startDate).getTime();
+            const seasonEnd = activeSeason.endDate
+              ? new Date(activeSeason.endDate).getTime() + 86400000
+              : Infinity;
 
-          // Kiểm tra mốc thời gian của vụ nuôi
-          const logTime = new Date(log.usageDate).getTime();
-          const cropStart = new Date(targetCrop.startDate).getTime();
-          const cropEnd = targetCrop.expectedHarvestDate
-            ? new Date(targetCrop.expectedHarvestDate).getTime()
-            : targetCrop.status === 'HARVESTED'
-            ? new Date(targetCrop.updatedAt || '').getTime()
-            : Infinity;
+            if (logTime < seasonStart || logTime > seasonEnd) return false;
+          }
+        } else {
+          // Fallback khi chọn cropId đơn lẻ
+          const targetCrop = crops.find((c) => c.id === selectedCropId);
+          if (targetCrop) {
+            if (log.cropId) {
+              if (log.cropId !== selectedCropId) return false;
+            } else {
+              const targetPond = ponds.find((p) => p.id === targetCrop.pondId) || targetCrop.pond;
+              const targetPondName = (targetPond?.name || '').toLowerCase();
+              const notesLower = (log.notes || '').toLowerCase();
+              const matchesPond =
+                (log.pondId && log.pondId === targetCrop.pondId) ||
+                (targetPondName &&
+                  (notesLower.includes(targetPondName) ||
+                    notesLower.includes(`ao ${targetPondName}`) ||
+                    notesLower.includes(`ao: ${targetPondName}`)));
 
-          if (logTime < cropStart || logTime > cropEnd) return false;
+              if (!matchesPond) return false;
+
+              const logTime = new Date(log.usageDate).getTime();
+              const cropStart = new Date(targetCrop.startDate).getTime();
+              const cropEnd = targetCrop.actualHarvestDate
+                ? new Date(targetCrop.actualHarvestDate).getTime() + 86400000
+                : targetCrop.expectedHarvestDate
+                ? new Date(targetCrop.expectedHarvestDate).getTime() + 86400000
+                : targetCrop.status === 'HARVESTED'
+                ? new Date(targetCrop.updatedAt || '').getTime() + 86400000
+                : Infinity;
+
+              if (logTime < cropStart || logTime > cropEnd) return false;
+            }
+          }
         }
       }
 
@@ -358,7 +412,7 @@ export default function InventoryUsageHistoryView({
 
       return true;
     });
-  }, [logs, selectedYear, categoryFilter, selectedPondId, selectedCropId, searchQuery, ponds, crops]);
+  }, [logs, selectedYear, categoryFilter, selectedPondId, selectedCropId, activeSeason, searchQuery, ponds, crops]);
 
   // Lọc theo Loại biến động (Nhập / Xuất / Tất cả)
   const activeMovementLogs = useMemo(() => {
@@ -748,18 +802,20 @@ export default function InventoryUsageHistoryView({
                   const newCropId = e.target.value;
                   setSelectedCropId(newCropId);
                   if (newCropId !== 'ALL') {
-                    const c = crops.find((crop) => crop.id === newCropId);
-                    if (c?.pondId) {
-                      setSelectedPondId(c.pondId);
+                    const season = findSeasonByCropId(seasons, newCropId);
+                    if (season && selectedPondId !== 'ALL') {
+                      if (!season.pondIds.includes(selectedPondId)) {
+                        setSelectedPondId('ALL');
+                      }
                     }
                   }
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8"
               >
                 <option value="ALL">Tất cả vụ nuôi</option>
-                {crops.map((crop, idx) => (
-                  <option key={crop.id} value={crop.id}>
-                    Vụ {idx + 1} ({crop.pond?.name || 'Ao'} - {new Date(crop.startDate).toLocaleDateString('vi-VN')})
+                {seasons.map((season) => (
+                  <option key={season.rootCropId} value={season.rootCropId}>
+                    {season.displayLabel}
                   </option>
                 ))}
               </select>
@@ -780,8 +836,8 @@ export default function InventoryUsageHistoryView({
                   const newPondId = e.target.value;
                   setSelectedPondId(newPondId);
                   if (selectedCropId !== 'ALL') {
-                    const c = crops.find((crop) => crop.id === selectedCropId);
-                    if (c && c.pondId !== newPondId) {
+                    const season = findSeasonByCropId(seasons, selectedCropId);
+                    if (season && newPondId !== 'ALL' && !season.pondIds.includes(newPondId)) {
                       setSelectedCropId('ALL');
                     }
                   }

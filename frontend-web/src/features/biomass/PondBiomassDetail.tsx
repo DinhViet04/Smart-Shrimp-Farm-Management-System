@@ -70,11 +70,17 @@ export default function PondBiomassDetail({
         shrimpSizeService.getSamplesByPond(pond.id),
         cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true }).catch(() => []),
       ]);
-      setSamples(Array.isArray(data) ? data : []);
-      if (crops && crops.length > 0) {
-        setActiveCrop(crops[0]);
+      const active = crops && crops.length > 0 ? crops[0] : null;
+      setActiveCrop(active);
+
+      if (!active) {
+        setSamples([]);
       } else {
-        setActiveCrop(null);
+        const activeStartDate = active.startDate ? new Date(active.startDate).getTime() : 0;
+        const validSamples = (Array.isArray(data) ? data : []).filter(
+          (s) => new Date(s.samplingDate).getTime() >= activeStartDate
+        );
+        setSamples(validSamples);
       }
     } catch (err: any) {
       setError(err.message || 'Lỗi tải dữ liệu sinh khối');

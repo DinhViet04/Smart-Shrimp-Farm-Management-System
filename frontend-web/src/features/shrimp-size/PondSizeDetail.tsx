@@ -101,14 +101,22 @@ export default function PondSizeDetail({
     if (!pond?.id) return;
     try {
       setError(null);
-      const data = await shrimpSizeService.getSamplesByPond(pond.id);
-      setSamples(Array.isArray(data) ? data : []);
+      const [data, cropsData] = await Promise.all([
+        shrimpSizeService.getSamplesByPond(pond.id),
+        cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true }).catch(() => []),
+      ]);
       
-      const cropsData = await cropService.getAll({ pondId: pond.id, status: 'ACTIVE', summary: true });
-      if (Array.isArray(cropsData) && cropsData.length > 0) {
-        setActiveCrop(cropsData[0]);
+      const active = Array.isArray(cropsData) && cropsData.length > 0 ? cropsData[0] : null;
+      setActiveCrop(active);
+
+      if (!active) {
+        setSamples([]);
       } else {
-        setActiveCrop(null);
+        const activeStartDate = active.startDate ? new Date(active.startDate).getTime() : 0;
+        const validSamples = (Array.isArray(data) ? data : []).filter(
+          (s) => new Date(s.samplingDate).getTime() >= activeStartDate
+        );
+        setSamples(validSamples);
       }
     } catch (err: any) {
       setError(err.message || 'Lỗi tải dữ liệu mẫu tôm');

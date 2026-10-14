@@ -11,7 +11,6 @@ import {
   Leaf,
   Package,
   HeartPulse,
-  AlertTriangle,
   TrendingUp,
 } from 'lucide-react';
 
@@ -27,7 +26,6 @@ const EnvironmentDashboard = lazy(() => import('../features/environment/Environm
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 const PondCropDashboard = lazy(() => import('../components/PondCropDashboard'));
 const FeedingLogDashboard = lazy(() => import('../features/feeding-logs/FeedingLogDashboard'));
-const IncidentDashboard = lazy(() => import('../features/incidents/IncidentDashboard'));
 const ShrimpSizeDashboard = lazy(() => import('../features/shrimp-size/ShrimpSizeDashboard'));
 const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard'));
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));

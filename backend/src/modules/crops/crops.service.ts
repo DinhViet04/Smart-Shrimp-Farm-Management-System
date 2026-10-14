@@ -78,6 +78,8 @@ export class CropsService {
           expectedDurationDays: true,
           stage: true,
           expectedTransferDate: true,
+          transferDate: true,
+          actualHarvestDate: true,
           parentCropId: true,
           createdAt: true,
           updatedAt: true,
@@ -795,6 +797,417 @@ export class CropsService {
         medicineLogs,
         chemicalLogs,
         availableInventory,
+      },
+    };
+  }
+
+  async getDetailedReport(user: AuthUser, id: string) {
+    const crop = await (this.prisma.crop as any).findUnique({
+      where: { id },
+      include: {
+        pond: {
+          include: {
+            farm: true,
+          },
+        },
+        parentCrop: {
+          include: {
+            pond: true,
+          },
+        },
+        childCrops: {
+          include: {
+            pond: true,
+          },
+          orderBy: { startDate: 'asc' },
+        },
+      },
+    });
+
+    if (!crop) {
+      throw new NotFoundException('Không tìm thấy vụ nuôi');
+    }
+
+    await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+
+    const startDate = new Date(crop.startDate);
+    const endDate = crop.actualHarvestDate
+      ? new Date(crop.actualHarvestDate)
+      : crop.transferDate && crop.stage === 'NURSERY'
+        ? new Date(crop.transferDate)
+        : new Date();
+
+    const diffDays = Math.max(1, Math.ceil(Math.abs(endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+    // Run parallel queries across all operational tables for this crop and pond
+    const [
+      feedingLogsRaw,
+      waterQualityRaw,
+      growthSamplesRaw,
+      healthRecordsRaw,
+      incidentsRaw,
+      usageLogsRaw,
+      mortalityLogsRaw,
+    ] = await Promise.all([
+      // 1. Feeding logs
+      (this.prisma.feedingLog as any).findMany({
+        where: { cropId: crop.id },
+        include: {
+          feedProduct: true,
+          creator: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: [{ feedingDate: 'desc' }, { feedingSession: 'desc' }],
+      }),
+      // 2. Water quality measurements for this pond during crop lifecycle
+      (this.prisma.waterQualityRecord as any).findMany({
+        where: {
+          pondId: crop.pondId,
+          recordTime: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        include: {
+          creator: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { recordTime: 'desc' },
+      }),
+      // 3. Shrimp size & biomass samples
+      (this.prisma.shrimpSizeSample as any).findMany({
+        where: {
+          pondId: crop.pondId,
+          samplingDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: { samplingDate: 'asc' },
+      }),
+      // 4. Shrimp health clinical checks
+      (this.prisma.shrimpHealthRecord as any).findMany({
+        where: {
+          OR: [
+            { cropId: crop.id },
+            {
+              pondId: crop.pondId,
+              recordTime: { gte: startDate, lte: endDate },
+            },
+          ],
+        },
+        include: {
+          recorder: { select: { id: true, fullName: true, role: true } },
+        },
+        orderBy: { recordTime: 'desc' },
+      }),
+      // 5. Incidents
+      (this.prisma.incident as any).findMany({
+        where: { cropId: crop.id },
+        include: {
+          reporter: { select: { id: true, fullName: true } },
+          assignedTo: { select: { id: true, fullName: true } },
+          updates: {
+            include: {
+              author: { select: { id: true, fullName: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      // 6. Inventory usage (medicine, chemical, water treatment)
+      (this.prisma.inventoryUsageLog as any).findMany({
+        where: {
+          OR: [
+            { cropId: crop.id },
+            { cropId: null, pondId: crop.pondId },
+          ],
+          usageDate: { gte: startDate, lte: endDate },
+        },
+        include: {
+          inventory: true,
+          creator: { select: { id: true, fullName: true } },
+        },
+        orderBy: { usageDate: 'desc' },
+      }),
+      // 7. Mortality logs
+      (this.prisma.mortalityLog as any).findMany({
+        where: { cropId: crop.id },
+        include: {
+          creator: { select: { id: true, fullName: true } },
+        },
+        orderBy: { recordedDate: 'desc' },
+      }),
+    ]);
+
+    // ── 1. Feeding Aggregation ──
+    let totalFeedKg = 0;
+    let completedSessions = 0;
+    let skippedSessions = 0;
+    let delayedSessions = 0;
+    const feedByProductMap = new Map<string, any>();
+
+    for (const f of feedingLogsRaw) {
+      const amt = Number(f.feedAmount) || 0;
+      if (f.feedingStatus === 'SKIPPED') {
+        skippedSessions++;
+      } else {
+        if (f.feedingStatus === 'COMPLETED') completedSessions++;
+        if (f.feedingStatus === 'DELAYED') delayedSessions++;
+        totalFeedKg += amt;
+
+        if (f.feedProduct) {
+          const prod = f.feedProduct;
+          const pkgWeight = Number(prod.weightPerPkg) || 1;
+          const pricePerPkg = Number(prod.pricePerPackage) || 0;
+          const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
+          const cost = amt * unitPrice;
+
+          const existing = feedByProductMap.get(prod.id);
+          if (existing) {
+            existing.totalKg += amt;
+            existing.totalCost += cost;
+            existing.sessionCount += 1;
+          } else {
+            feedByProductMap.set(prod.id, {
+              productId: prod.id,
+              itemName: prod.itemName,
+              unit: prod.unit || 'kg',
+              unitPrice: Math.round(unitPrice),
+              totalKg: amt,
+              totalCost: cost,
+              sessionCount: 1,
+            });
+          }
+        }
+      }
+    }
+
+    const feedProductsSummary = Array.from(feedByProductMap.values()).map(p => ({
+      ...p,
+      totalKg: Math.round(p.totalKg * 100) / 100,
+      totalCost: Math.round(p.totalCost),
+    }));
+    const totalFeedCost = feedProductsSummary.reduce((acc, curr) => acc + curr.totalCost, 0);
+
+    // ── 2. Water Quality Aggregation ──
+    const wqCount = waterQualityRaw.length;
+    let sumPh = 0, sumDo = 0, sumSal = 0, sumTemp = 0, sumAlk = 0, sumNh3 = 0, sumNo2 = 0;
+    let validAlkCount = 0;
+    let phAlerts = 0, doAlerts = 0, nh3Alerts = 0, no2Alerts = 0;
+
+    for (const w of waterQualityRaw) {
+      const ph = Number(w.ph) || 0;
+      const doVal = Number(w.dissolvedOxygen) || 0;
+      const sal = Number(w.salinity) || 0;
+      const temp = Number(w.temperature) || 0;
+      const alk = Number((w as any).alkalinity) || 0;
+      const nh3 = Number(w.nh3) || 0;
+      const no2 = Number(w.no2) || 0;
+
+      sumPh += ph;
+      sumDo += doVal;
+      sumSal += sal;
+      sumTemp += temp;
+      sumNh3 += nh3;
+      sumNo2 += no2;
+      if (alk > 0) {
+        sumAlk += alk;
+        validAlkCount++;
+      }
+
+      if (ph < 7.5 || ph > 8.5) phAlerts++;
+      if (doVal < 4.0) doAlerts++;
+      if (nh3 > 0.1) nh3Alerts++;
+      if (no2 > 0.2) no2Alerts++;
+    }
+
+    const waterQualityAverages = wqCount > 0 ? {
+      ph: Number((sumPh / wqCount).toFixed(2)),
+      dissolvedOxygen: Number((sumDo / wqCount).toFixed(2)),
+      salinity: Number((sumSal / wqCount).toFixed(1)),
+      temperature: Number((sumTemp / wqCount).toFixed(1)),
+      alkalinity: validAlkCount > 0 ? Number((sumAlk / validAlkCount).toFixed(1)) : null,
+      nh3: Number((sumNh3 / wqCount).toFixed(3)),
+      no2: Number((sumNo2 / wqCount).toFixed(3)),
+    } : null;
+
+    // ── 3. Growth & Biomass Aggregation ──
+    const latestSample = growthSamplesRaw.length > 0 ? growthSamplesRaw[growthSamplesRaw.length - 1] : null;
+    const initialSample = growthSamplesRaw.length > 0 ? growthSamplesRaw[0] : null;
+
+    // ── 4. Health & Mortality Aggregation ──
+    let healthNormal = 0, healthLethargic = 0, healthEdge = 0, healthLossAppetite = 0;
+    for (const h of healthRecordsRaw) {
+      if (h.healthStatus === 'NORMAL') healthNormal++;
+      else if (h.healthStatus === 'LETHARGIC') healthLethargic++;
+      else if (h.healthStatus === 'EDGE_GATHERING') healthEdge++;
+      else if (h.healthStatus === 'LOSS_OF_APPETITE') healthLossAppetite++;
+    }
+
+    const totalDeadShrimp = mortalityLogsRaw.reduce((sum: number, m: any) => sum + (Number(m.deadQuantityPcs) || 0), 0);
+
+    // ── 5. Treatments, Chemical & Medicine Usage ──
+    const treatmentsSummary: any[] = [];
+    let totalMedicineCost = 0;
+    let totalChemicalCost = 0;
+
+    for (const u of usageLogsRaw) {
+      const inv = u.inventory;
+      if (!inv || inv.deletedAt) continue;
+      const qty = Number(u.quantityUsed) || 0;
+      const pkgWeight = Number(inv.weightPerPkg) || 1;
+      const pricePerPkg = Number(inv.pricePerPackage) || 0;
+      const unitPrice = pkgWeight > 0 ? pricePerPkg / pkgWeight : pricePerPkg;
+      const cost = Math.round(qty * unitPrice);
+
+      if (inv.category === 'MEDICINE') totalMedicineCost += cost;
+      if (inv.category === 'CHEMICAL') totalChemicalCost += cost;
+
+      treatmentsSummary.push({
+        id: u.id,
+        inventoryId: inv.id,
+        itemName: inv.itemName,
+        category: inv.category,
+        quantityUsed: qty,
+        unit: inv.unit || 'đơn vị',
+        unitPrice: Math.round(unitPrice),
+        totalCost: cost,
+        usageDate: u.usageDate,
+        notes: u.notes,
+        creatorName: u.creator?.fullName || 'Hệ thống',
+      });
+    }
+
+    // ── 6. Incidents Overview ──
+    const incidentsSummary = {
+      total: incidentsRaw.length,
+      open: incidentsRaw.filter((i: any) => i.status === 'OPEN').length,
+      treating: incidentsRaw.filter((i: any) => i.status === 'TREATING').length,
+      resolved: incidentsRaw.filter((i: any) => i.status === 'RESOLVED').length,
+      list: incidentsRaw,
+    };
+
+    // ── 7. Transfer & Nursery Relationship ──
+    const transferInfo = {
+      isNursery: crop.stage === 'NURSERY',
+      // If this crop was split from a nursery pond
+      splitFromParent: crop.parentCrop ? {
+        parentCropId: crop.parentCrop.id,
+        pondId: crop.parentCrop.pond?.id,
+        pondName: crop.parentCrop.pond?.name || 'Ao ươm',
+        transferDate: crop.transferDate || crop.startDate,
+        transferSize: crop.transferSize || null,
+        initialCountReceived: crop.initialShrimpCount,
+        splitNote: crop.splitNote || null,
+      } : null,
+      // If this crop was a nursery and transferred to child ponds
+      splitToChildren: (crop.childCrops && crop.childCrops.length > 0) ? {
+        totalChildPonds: crop.childCrops.length,
+        transferDate: crop.transferDate || crop.expectedTransferDate,
+        actualNurseryHarvest: crop.actualNurseryHarvest,
+        nurserySurvivalRate: crop.nurserySurvivalRate,
+        transferSize: crop.transferSize,
+        splitNote: crop.splitNote,
+        children: crop.childCrops.map((c: any) => ({
+          id: c.id,
+          pondId: c.pond?.id,
+          pondName: c.pond?.name,
+          startDate: c.startDate,
+          initialShrimpCount: c.initialShrimpCount,
+          status: c.status,
+        })),
+      } : null,
+    };
+
+    // ── 8. Financial Summary ──
+    const actualKg = crop.actualHarvestKg || 0;
+    const actualSize = crop.actualHarvestSize || 0;
+    const actualRevenue = crop.actualHarvestRevenue || 0;
+    const finalFeedCost = crop.harvestFeedCost || totalFeedCost;
+    const finalMedicineCost = crop.harvestMedicineCost || totalMedicineCost;
+    const finalChemicalCost = crop.harvestChemicalCost || totalChemicalCost;
+    const seedCost = crop.harvestSeedCost || 0;
+    const electricityCost = crop.harvestElectricityCost || 0;
+    const laborCost = crop.harvestLaborCost || 0;
+    const otherCost = crop.harvestOtherCost || 0;
+
+    const totalOperationalCost = crop.actualHarvestCost || (finalFeedCost + finalMedicineCost + finalChemicalCost + seedCost + electricityCost + laborCost + otherCost);
+    const profit = crop.actualHarvestProfit !== null && crop.actualHarvestProfit !== undefined
+      ? crop.actualHarvestProfit
+      : (actualRevenue > 0 ? actualRevenue - totalOperationalCost : 0);
+
+    const fcr = crop.actualHarvestFcr || (actualKg > 0 && totalFeedKg > 0 ? Number((totalFeedKg / actualKg).toFixed(2)) : null);
+    const survivalRate = crop.actualHarvestSurvivalRate || (crop.initialShrimpCount > 0 && crop.actualHarvestCount ? Number(((crop.actualHarvestCount / crop.initialShrimpCount) * 100).toFixed(1)) : null);
+
+    return {
+      crop,
+      doc: diffDays,
+      transferInfo,
+      feeding: {
+        totalFeedKg: Math.round(totalFeedKg * 100) / 100,
+        totalFeedCost,
+        totalSessions: feedingLogsRaw.length,
+        completedSessions,
+        skippedSessions,
+        delayedSessions,
+        productsSummary: feedProductsSummary,
+        recentLogs: feedingLogsRaw,
+      },
+      waterQuality: {
+        totalMeasurements: wqCount,
+        averages: waterQualityAverages,
+        alerts: {
+          ph: phAlerts,
+          dissolvedOxygen: doAlerts,
+          nh3: nh3Alerts,
+          no2: no2Alerts,
+          total: phAlerts + doAlerts + nh3Alerts + no2Alerts,
+        },
+        recentRecords: waterQualityRaw,
+      },
+      growth: {
+        totalSamples: growthSamplesRaw.length,
+        initialSample,
+        latestSample,
+        samples: growthSamplesRaw,
+      },
+      health: {
+        totalInspections: healthRecordsRaw.length,
+        summary: {
+          normal: healthNormal,
+          lethargic: healthLethargic,
+          edgeGathering: healthEdge,
+          lossOfAppetite: healthLossAppetite,
+        },
+        records: healthRecordsRaw,
+        totalDeadShrimp,
+        mortalityLogs: mortalityLogsRaw,
+      },
+      treatmentsAndSupplies: {
+        totalMaterialsUsed: treatmentsSummary.length,
+        totalMedicineCost,
+        totalChemicalCost,
+        totalTreatmentCost: totalMedicineCost + totalChemicalCost,
+        items: treatmentsSummary,
+      },
+      incidents: incidentsSummary,
+      financial: {
+        actualKg,
+        actualSize,
+        actualRevenue,
+        costs: {
+          feed: finalFeedCost,
+          medicine: finalMedicineCost,
+          chemical: finalChemicalCost,
+          seed: seedCost,
+          electricity: electricityCost,
+          labor: laborCost,
+          other: otherCost,
+          total: totalOperationalCost,
+        },
+        profit,
+        fcr,
+        survivalRate,
       },
     };
   }

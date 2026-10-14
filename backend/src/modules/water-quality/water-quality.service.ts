@@ -231,18 +231,37 @@ export class WaterQualityService {
     if (cropId) {
       const crop = await this.prisma.crop.findUnique({
         where: { id: cropId },
-        include: { pond: true },
+        include: {
+          pond: true,
+          childCrops: { include: { pond: true } },
+          parentCrop: { include: { pond: true, childCrops: { include: { pond: true } } } },
+        },
       });
       if (!crop) {
         throw new NotFoundException('Không tìm thấy vụ nuôi');
       }
       await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
-      where.pondId = crop.pondId;
 
-      cropStartDate = new Date(crop.startDate);
-      if (crop.actualHarvestDate) {
-        cropEndDate = new Date(crop.actualHarvestDate);
-        cropEndDate.setHours(23, 59, 59, 999);
+      const root = crop.parentCrop || crop;
+      const allSeasonCrops = [root, ...(root.childCrops || [])];
+      const allPondIds = Array.from(new Set(allSeasonCrops.map((c) => c.pondId)));
+
+      if (pondId) {
+        where.pondId = pondId;
+      } else {
+        where.pondId = { in: allPondIds };
+      }
+
+      cropStartDate = new Date(root.startDate);
+      const isAnyActive = allSeasonCrops.some((c) => c.status === 'ACTIVE');
+      if (!isAnyActive) {
+        const harvestTimes = allSeasonCrops
+          .filter((c) => c.actualHarvestDate)
+          .map((c) => new Date(c.actualHarvestDate!).getTime());
+        if (harvestTimes.length > 0) {
+          cropEndDate = new Date(Math.max(...harvestTimes));
+          cropEndDate.setHours(23, 59, 59, 999);
+        }
       }
     } else if (pondId) {
       const pond = await this.prisma.pond.findUnique({
@@ -403,13 +422,25 @@ export class WaterQualityService {
     if (cropId) {
       const crop = await this.prisma.crop.findUnique({
         where: { id: cropId },
+        include: {
+          childCrops: true,
+          parentCrop: { include: { childCrops: true } },
+        },
       });
       if (crop) {
-        filterStartDate = new Date(crop.startDate);
-        if (crop.actualHarvestDate) {
-          const cEnd = new Date(crop.actualHarvestDate);
-          cEnd.setHours(23, 59, 59, 999);
-          filterEndDate = cEnd;
+        const root = crop.parentCrop || crop;
+        const allSeasonCrops = [root, ...(root.childCrops || [])];
+        filterStartDate = new Date(root.startDate);
+        const isAnyActive = allSeasonCrops.some((c) => c.status === 'ACTIVE');
+        if (!isAnyActive) {
+          const harvestTimes = allSeasonCrops
+            .filter((c) => c.actualHarvestDate)
+            .map((c) => new Date(c.actualHarvestDate!).getTime());
+          if (harvestTimes.length > 0) {
+            const cEnd = new Date(Math.max(...harvestTimes));
+            cEnd.setHours(23, 59, 59, 999);
+            filterEndDate = cEnd;
+          }
         }
       }
     }

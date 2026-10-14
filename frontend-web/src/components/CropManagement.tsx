@@ -41,7 +41,7 @@ import { pondService } from '../services/pond.service';
 import { cropService, type Crop } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
 import HarvestCropModal from './HarvestCropModal';
-import HarvestDetailModal from './HarvestDetailModal';
+import CropDetailReportModal from './CropDetailReportModal';
 import { analyzeCropHistory, type HistoryMetricKey } from '../utils/cropHistoryAnalysis';
 
 const formatVND = (num: number | null | undefined): string => {
@@ -1768,20 +1768,20 @@ export default function CropManagement({
 
                               {/* Card Footer Actions */}
                               <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  {crop.status !== 'ACTIVE' ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setHarvestDetailCrop(crop);
-                                      }}
-                                      className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105"
-                                      title="Xem báo cáo chi tiết thu hoạch và đối chiếu với kế hoạch ban đầu"
-                                    >
-                                      <Target className="w-3.5 h-3.5 text-blue-600" /> Báo cáo chi tiết vụ nuôi
-                                    </button>
-                                  ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setHarvestDetailCrop(crop);
+                                    }}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105"
+                                    title="Xem báo cáo chi tiết vụ nuôi, phân tích kỹ thuật và tài chính toàn diện"
+                                  >
+                                    <Target className="w-3.5 h-3.5 text-blue-600" /> Báo cáo chi tiết vụ nuôi
+                                  </button>
+
+                                  {crop.status === 'ACTIVE' && (
                                     <>
                                       <button
                                         type="button"
@@ -2385,9 +2385,9 @@ export default function CropManagement({
         />
       )}
 
-      {/* Harvest Detail & Target Comparison Modal */}
+      {/* Comprehensive Crop Detailed Report Modal */}
       {harvestDetailCrop && (
-        <HarvestDetailModal
+        <CropDetailReportModal
           isOpen={!!harvestDetailCrop}
           crop={harvestDetailCrop}
           onClose={() => setHarvestDetailCrop(null)}

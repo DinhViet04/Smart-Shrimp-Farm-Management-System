@@ -183,6 +183,263 @@ export interface HarvestSummaryResponse {
   };
 }
 
+export interface FeedProductUsageSummary {
+  productId: string;
+  itemName: string;
+  unit: string;
+  unitPrice: number;
+  totalKg: number;
+  totalCost: number;
+  sessionCount: number;
+}
+
+export interface DetailedFeedingLog {
+  id: string;
+  feedingDate: string;
+  feedingSession: string;
+  feedingTime: string;
+  feedAmount: number;
+  feedingMethod: 'MANUAL' | 'AUTO';
+  feedingStatus: 'COMPLETED' | 'SKIPPED' | 'DELAYED';
+  note?: string | null;
+  feedProduct?: {
+    id: string;
+    itemName: string;
+    unit: string;
+    pricePerPackage?: number;
+    weightPerPkg?: number;
+  };
+  creator?: {
+    id: string;
+    fullName: string;
+    role: string;
+  };
+}
+
+export interface DetailedWaterQualityRecord {
+  id: string;
+  recordTime: string;
+  temperature: number;
+  ph: number;
+  dissolvedOxygen: number;
+  salinity: number;
+  alkalinity?: number | null;
+  nh3: number;
+  no2: number;
+  h2s?: number | null;
+  transparency?: number;
+  waterColor?: string | null;
+  note?: string | null;
+  creator?: {
+    id: string;
+    fullName: string;
+    role: string;
+  };
+}
+
+export interface DetailedGrowthSample {
+  id: string;
+  samplingDate: string;
+  doc?: number | null;
+  sampleCount: number;
+  sampleWeightGram: number;
+  sampleLengthCm?: number | null;
+  abwGram: number;
+  sizePerKg: number;
+  adgGramPerDay?: number | null;
+  notes?: string | null;
+  netAreaSqM?: number | null;
+  estimatedTotalShrimp?: number | null;
+  estimatedBiomassKg?: number | null;
+}
+
+export interface DetailedHealthRecord {
+  id: string;
+  recordTime: string;
+  healthStatus: 'NORMAL' | 'LETHARGIC' | 'EDGE_GATHERING' | 'LOSS_OF_APPETITE';
+  severity: 'NORMAL' | 'MILD' | 'MODERATE' | 'SEVERE';
+  affectedPercentage: number;
+  note?: string | null;
+  recorder?: {
+    id: string;
+    fullName: string;
+    role: string;
+  };
+}
+
+export interface DetailedIncidentUpdate {
+  id: string;
+  treatment: string;
+  observation?: string | null;
+  result?: string | null;
+  status: string;
+  eventType: string;
+  createdAt: string;
+  author?: {
+    id: string;
+    fullName: string;
+  };
+}
+
+export interface DetailedIncident {
+  id: string;
+  title: string;
+  description: string;
+  treatment?: string | null;
+  status: 'OPEN' | 'TREATING' | 'RESOLVED';
+  startedAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  reporter?: {
+    id: string;
+    fullName: string;
+  };
+  assignedTo?: {
+    id: string;
+    fullName: string;
+  };
+  updates?: DetailedIncidentUpdate[];
+}
+
+export interface DetailedTreatmentItem {
+  id: string;
+  inventoryId: string;
+  itemName: string;
+  category: 'FEED' | 'MEDICINE' | 'CHEMICAL';
+  quantityUsed: number;
+  unit: string;
+  unitPrice: number;
+  totalCost: number;
+  usageDate: string;
+  notes?: string | null;
+  creatorName: string;
+}
+
+export interface DetailedMortalityLog {
+  id: string;
+  recordedDate: string;
+  deadQuantityPcs: number;
+  cause?: string | null;
+  note?: string | null;
+  creator?: {
+    id: string;
+    fullName: string;
+  };
+}
+
+export interface CropDetailedReportResponse {
+  crop: Crop;
+  doc: number;
+  transferInfo: {
+    isNursery: boolean;
+    splitFromParent: {
+      parentCropId: string;
+      pondId?: string;
+      pondName: string;
+      transferDate: string;
+      transferSize?: number | null;
+      initialCountReceived: number;
+      splitNote?: string | null;
+    } | null;
+    splitToChildren: {
+      totalChildPonds: number;
+      transferDate?: string;
+      actualNurseryHarvest?: number;
+      nurserySurvivalRate?: number;
+      transferSize?: number;
+      splitNote?: string;
+      children: Array<{
+        id: string;
+        pondId?: string;
+        pondName: string;
+        startDate: string;
+        initialShrimpCount: number;
+        status: string;
+      }>;
+    } | null;
+  };
+  feeding: {
+    totalFeedKg: number;
+    totalFeedCost: number;
+    totalSessions: number;
+    completedSessions: number;
+    skippedSessions: number;
+    delayedSessions: number;
+    productsSummary: FeedProductUsageSummary[];
+    recentLogs: DetailedFeedingLog[];
+  };
+  waterQuality: {
+    totalMeasurements: number;
+    averages: {
+      ph: number;
+      dissolvedOxygen: number;
+      salinity: number;
+      temperature: number;
+      alkalinity: number | null;
+      nh3: number;
+      no2: number;
+    } | null;
+    alerts: {
+      ph: number;
+      dissolvedOxygen: number;
+      nh3: number;
+      no2: number;
+      total: number;
+    };
+    recentRecords: DetailedWaterQualityRecord[];
+  };
+  growth: {
+    totalSamples: number;
+    initialSample: DetailedGrowthSample | null;
+    latestSample: DetailedGrowthSample | null;
+    samples: DetailedGrowthSample[];
+  };
+  health: {
+    totalInspections: number;
+    summary: {
+      normal: number;
+      lethargic: number;
+      edgeGathering: number;
+      lossOfAppetite: number;
+    };
+    records: DetailedHealthRecord[];
+    totalDeadShrimp: number;
+    mortalityLogs: DetailedMortalityLog[];
+  };
+  treatmentsAndSupplies: {
+    totalMaterialsUsed: number;
+    totalMedicineCost: number;
+    totalChemicalCost: number;
+    totalTreatmentCost: number;
+    items: DetailedTreatmentItem[];
+  };
+  incidents: {
+    total: number;
+    open: number;
+    treating: number;
+    resolved: number;
+    list: DetailedIncident[];
+  };
+  financial: {
+    actualKg: number;
+    actualSize: number;
+    actualRevenue: number;
+    costs: {
+      feed: number;
+      medicine: number;
+      chemical: number;
+      seed: number;
+      electricity: number;
+      labor: number;
+      other: number;
+      total: number;
+    };
+    profit: number;
+    fcr: number | null;
+    survivalRate: number | null;
+  };
+}
+
 export interface ManagerHarvestSummary {
   year: number;
   quarter: number | null;
@@ -341,6 +598,18 @@ export const cropService = {
       throw new Error(data?.message || 'Không thể tải thông tin thu hoạch');
     }
     return data as HarvestSummaryResponse;
+  },
+
+  /**
+   * GET /api/crops/:id/detailed-report
+   */
+  getDetailedReport: async (id: string): Promise<CropDetailedReportResponse> => {
+    const response = await apiFetch(`${apiUrl}/api/crops/${id}/detailed-report`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể tải báo cáo chi tiết vụ nuôi');
+    }
+    return data as CropDetailedReportResponse;
   },
 
   getManagerSummary: async (filters: { farmId?: string; year?: number; quarter?: number } = {}): Promise<ManagerHarvestSummary> => {

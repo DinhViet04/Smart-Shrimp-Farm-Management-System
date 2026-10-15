@@ -4,7 +4,6 @@ import {
   RotateCcw,
   Eye,
   AlertCircle,
-  AlertTriangle,
   FileText,
   Filter,
   RefreshCw,
@@ -13,8 +12,9 @@ import {
   Waves,
   Layers,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
-  Stethoscope,
   Search,
   Package,
   History,
@@ -51,58 +51,15 @@ interface IncidentTreatmentHistoryProps {
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Chờ xử lý',
-  TREATING: 'Đang điều trị',
-  RESOLVED: 'Đã xử lý xong',
+  TREATING: 'Chờ xử lý',
+  RESOLVED: 'Đã xử lý',
 };
 
 const STATUS_STYLES: Record<IncidentStatus, string> = {
   OPEN: 'bg-amber-50 text-amber-700 border-amber-200',
-  TREATING: 'bg-blue-50 text-blue-700 border-blue-200',
+  TREATING: 'bg-amber-50 text-amber-700 border-amber-200',
   RESOLVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
-
-const STATUS_CONFIG: Record<
-  IncidentStatus,
-  {
-    label: string;
-    badgeStyle: string;
-    headerBg: string;
-    headerText: string;
-    headerBorder: string;
-    icon: typeof AlertTriangle;
-    emptyText: string;
-  }
-> = {
-  OPEN: {
-    label: 'Chờ xử lý',
-    badgeStyle: 'bg-amber-50 text-amber-700 border-amber-200',
-    headerBg: 'bg-amber-500/10 border-amber-200/80 text-amber-900',
-    headerText: 'text-amber-600',
-    headerBorder: 'border-amber-200',
-    icon: AlertTriangle,
-    emptyText: 'Không có sự cố chờ xử lý',
-  },
-  TREATING: {
-    label: 'Đang điều trị',
-    badgeStyle: 'bg-blue-50 text-blue-700 border-blue-200',
-    headerBg: 'bg-blue-500/10 border-blue-200/80 text-blue-900',
-    headerText: 'text-blue-600',
-    headerBorder: 'border-blue-200',
-    icon: Stethoscope,
-    emptyText: 'Không có sự cố đang điều trị',
-  },
-  RESOLVED: {
-    label: 'Đã xử lý xong',
-    badgeStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    headerBg: 'bg-emerald-500/10 border-emerald-200/80 text-emerald-900',
-    headerText: 'text-emerald-600',
-    headerBorder: 'border-emerald-200',
-    icon: CheckCircle2,
-    emptyText: 'Không có sự cố đã xử lý xong',
-  },
-};
-
-const ALL_STATUSES: IncidentStatus[] = ['OPEN', 'TREATING', 'RESOLVED'];
 
 export default function IncidentTreatmentHistory({
   initialFarmId,
@@ -143,7 +100,7 @@ export default function IncidentTreatmentHistory({
   const [ponds, setPonds] = useState<Pond[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
 
-  // Filter states (Identical to Water Quality History)
+  // Filter states
   const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
   const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
   const [selectedCropId, setSelectedCropId] = useState('');
@@ -153,12 +110,12 @@ export default function IncidentTreatmentHistory({
 
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | IncidentStatus>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Data & Pagination state
   const [rawIncidents, setRawIncidents] = useState<Incident[]>([]);
-  const [, setPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 9;
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -252,12 +209,15 @@ export default function IncidentTreatmentHistory({
   );
 
   // Fetch Incidents History safely
+  // Fetch Incidents History safely (chỉ lấy các sự cố ĐÃ XỬ LÝ)
   const fetchIncidentsHistory = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
       const res = await incidentService.getAll();
-      setRawIncidents(res.content || []);
+      const allIncidents: Incident[] = res.content || [];
+      const resolvedOnly = allIncidents.filter((inc) => inc.status === 'RESOLVED');
+      setRawIncidents(resolvedOnly);
     } catch (err: any) {
       setErrorMsg(err.message || 'Lỗi khi tải lịch sử điều trị sự cố');
     } finally {
@@ -269,9 +229,9 @@ export default function IncidentTreatmentHistory({
     fetchIncidentsHistory();
   }, [fetchIncidentsHistory]);
 
-  // Filter incidents client-side for 100% resilience and instant responsiveness
+  // Filter incidents client-side (toàn bộ là sự cố ĐÃ XỬ LÝ)
   const filteredIncidents = useMemo(() => {
-    let list = rawIncidents;
+    let list = rawIncidents.filter((inc) => inc.status === 'RESOLVED');
     if (selectedFarmId) {
       list = list.filter(
         (inc) =>
@@ -285,23 +245,21 @@ export default function IncidentTreatmentHistory({
     if (selectedCropId) {
       list = list.filter((inc) => inc.crop?.id === selectedCropId);
     }
-    if (statusFilter !== 'ALL') {
-      list = list.filter((inc) => inc.status === statusFilter);
-    }
     if (selectedYear !== 'ALL') {
       const yNum = parseInt(selectedYear, 10);
       list = list.filter((inc) => {
-        const incDate = new Date(inc.createdAt);
+        const dateToCheck = inc.resolvedAt || inc.createdAt;
+        const incDate = new Date(dateToCheck);
         return incDate.getFullYear() === yNum;
       });
     }
     if (fromDate) {
       const fTime = new Date(fromDate).getTime();
-      list = list.filter((inc) => new Date(inc.createdAt).getTime() >= fTime);
+      list = list.filter((inc) => new Date(inc.resolvedAt || inc.createdAt).getTime() >= fTime);
     }
     if (toDate) {
       const tTime = new Date(toDate).getTime() + 86400000;
-      list = list.filter((inc) => new Date(inc.createdAt).getTime() <= tTime);
+      list = list.filter((inc) => new Date(inc.resolvedAt || inc.createdAt).getTime() <= tTime);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -321,7 +279,6 @@ export default function IncidentTreatmentHistory({
     selectedFarmId,
     selectedPondId,
     selectedCropId,
-    statusFilter,
     selectedYear,
     fromDate,
     toDate,
@@ -336,9 +293,8 @@ export default function IncidentTreatmentHistory({
     setSelectedCropId('');
     setFromDate('');
     setToDate('');
-    setStatusFilter('ALL');
     setSearchQuery('');
-    setPage(0);
+    setCurrentPage(1);
   };
 
   // Open full details dialog
@@ -355,15 +311,38 @@ export default function IncidentTreatmentHistory({
     }
   };
 
-  // Quick statistics calculation
+  // Quick statistics calculation for completed history
   const stats = useMemo(() => {
     const total = filteredIncidents.length;
-    const resolved = filteredIncidents.filter((i) => i.status === 'RESOLVED').length;
-    const treating = filteredIncidents.filter((i) => i.status === 'TREATING').length;
-    const open = filteredIncidents.filter((i) => i.status === 'OPEN').length;
-    const totalUpdates = filteredIncidents.reduce((acc, curr) => acc + (curr._count?.updates || curr.updates?.length || 0), 0);
-    return { total, resolved, treating, open, totalUpdates };
+    const pondSet = new Set<string>();
+    const cropSet = new Set<string>();
+    filteredIncidents.forEach((i) => {
+      if (i.crop?.pond?.id) pondSet.add(i.crop.pond.id);
+      if (i.crop?.id) cropSet.add(i.crop.id);
+    });
+    const totalUpdates = filteredIncidents.reduce(
+      (acc, curr) => acc + (curr._count?.updates || curr.updates?.length || 0),
+      0
+    );
+    return {
+      total,
+      uniquePonds: pondSet.size,
+      uniqueCrops: cropSet.size,
+      totalUpdates,
+    };
   }, [filteredIncidents]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE));
+  const paginatedIncidents = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredIncidents.slice(start, start + PAGE_SIZE);
+  }, [filteredIncidents, currentPage, PAGE_SIZE]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [totalPages, currentPage]);
 
   const formatDate = (iso: string) => {
     if (!iso) return '-';
@@ -410,35 +389,35 @@ export default function IncidentTreatmentHistory({
         </div>
       </div>
 
-      {/* ── Quick KPI Stat Chips ───────────────────────────────────────────── */}
+      {/* ── Quick KPI Stat Chips (Lịch sử đã xử lý) ───────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-            <Stethoscope className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Tổng sự cố</span>
-            <span className="text-lg font-black text-slate-800">{stats.total}</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Đang điều trị</span>
-            <span className="text-lg font-black text-amber-700">{stats.treating}</span>
-          </div>
-        </div>
-
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Đã xử lý xong</span>
-            <span className="text-lg font-black text-emerald-700">{stats.resolved}</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Sự cố đã xử lý</span>
+            <span className="text-lg font-black text-emerald-700">{stats.total}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center font-bold">
+            <Waves className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Ao nuôi khắc phục</span>
+            <span className="text-lg font-black text-cyan-700">{stats.uniquePonds}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Vụ nuôi liên quan</span>
+            <span className="text-lg font-black text-indigo-700">{stats.uniqueCrops}</span>
           </div>
         </div>
 
@@ -447,13 +426,13 @@ export default function IncidentTreatmentHistory({
             <Package className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Lần ghi nhận</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Nhật ký điều trị</span>
             <span className="text-lg font-black text-purple-700">{stats.totalUpdates}</span>
           </div>
         </div>
       </div>
 
-      {/* ── Bộ Lọc Tìm Kiếm (Tương tự như phần môi trường nước) ───────────────── */}
+      {/* ── Bộ Lọc Tìm Kiếm Chi Tiết ────────────────────────────────────────── */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
@@ -465,7 +444,6 @@ export default function IncidentTreatmentHistory({
             selectedCropId ||
             fromDate ||
             toDate ||
-            statusFilter !== 'ALL' ||
             searchQuery) && (
             <button
               onClick={handleResetFilters}
@@ -476,7 +454,7 @@ export default function IncidentTreatmentHistory({
           )}
         </div>
 
-        {/* Grid 6 columns identical to WaterQualityHistory */}
+        {/* Grid 6 columns */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
           {/* 1. Lọc theo Năm */}
           <div>
@@ -497,7 +475,7 @@ export default function IncidentTreatmentHistory({
                       if (cYr !== yr) setSelectedCropId('');
                     }
                   }
-                  setPage(0);
+                  setCurrentPage(1);
                 }}
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
@@ -525,7 +503,7 @@ export default function IncidentTreatmentHistory({
                   setSelectedFarmId(e.target.value);
                   setSelectedPondId('');
                   setSelectedCropId('');
-                  setPage(0);
+                  setCurrentPage(1);
                 }}
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
@@ -556,7 +534,7 @@ export default function IncidentTreatmentHistory({
                     const season = findSeasonByCropId(allSeasons, selectedCropId);
                     if (season && pId && !season.pondIds.includes(pId)) setSelectedCropId('');
                   }
-                  setPage(0);
+                  setCurrentPage(1);
                 }}
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
@@ -592,7 +570,7 @@ export default function IncidentTreatmentHistory({
                       }
                     }
                   }
-                  setPage(0);
+                  setCurrentPage(1);
                 }}
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
@@ -618,7 +596,7 @@ export default function IncidentTreatmentHistory({
               value={fromDate}
               onChange={(e) => {
                 setFromDate(e.target.value);
-                setPage(0);
+                setCurrentPage(1);
               }}
               className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
             />
@@ -635,44 +613,27 @@ export default function IncidentTreatmentHistory({
               value={toDate}
               onChange={(e) => {
                 setToDate(e.target.value);
-                setPage(0);
+                setCurrentPage(1);
               }}
               className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
             />
           </div>
         </div>
 
-        {/* Extra row: Search input & Status dropdown */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1 border-t border-slate-100/80">
-          <div className="relative md:col-span-2">
+        {/* Extra row: Search input full width (Đã bỏ filter trạng thái) */}
+        <div className="pt-1 border-t border-slate-100/80">
+          <div className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setPage(0);
+                setCurrentPage(1);
               }}
-              placeholder="Tìm theo tiêu đề sự cố, triệu chứng, người phụ trách hoặc tên thuốc..."
+              placeholder="Tìm kiếm sự cố đã xử lý theo tiêu đề, triệu chứng, người phụ trách, thuốc hoặc phác đồ..."
               className={`w-full pl-10 pr-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`}
             />
-          </div>
-
-          <div className="relative">
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as any);
-                setPage(0);
-              }}
-              className={`w-full px-3.5 py-2.5 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
-            >
-              <option value="ALL">Tất cả trạng thái điều trị</option>
-              <option value="OPEN">Chờ xử lý</option>
-              <option value="TREATING">Đang điều trị</option>
-              <option value="RESOLVED">Đã xử lý xong</option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
       </div>
@@ -700,187 +661,194 @@ export default function IncidentTreatmentHistory({
           </p>
         </div>
       ) : (
-        (() => {
-          const visibleStatuses: IncidentStatus[] =
-            statusFilter !== 'ALL' ? [statusFilter] : ALL_STATUSES;
+        <div className="space-y-6">
+          {/* Grid 3 cột các thẻ sự cố đã xử lý */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {paginatedIncidents.map((inc) => {
+              const cropInfo = getCropDetail(inc);
+              const latestUpdate = inc.updates?.[0];
+              const resolvedDate = inc.resolvedAt || inc.updatedAt || inc.createdAt;
 
-          return (
-            <div
-              className={`grid gap-6 ${
-                visibleStatuses.length === 1
-                  ? 'grid-cols-1 max-w-2xl mx-auto'
-                  : 'grid-cols-1 lg:grid-cols-3'
-              }`}
-            >
-              {visibleStatuses.map((statusKey) => {
-                const config = STATUS_CONFIG[statusKey];
-                const StatusIcon = config.icon;
-                const statusItems = filteredIncidents.filter((inc) => inc.status === statusKey);
-
-                return (
-                  <div
-                    key={statusKey}
-                    className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 sm:p-5 shadow-sm backdrop-blur-xl min-h-[500px]"
-                  >
-                    {/* Header Cột / Thẻ Dọc Trạng Thái */}
-                    <div
-                      className={`flex items-center justify-between rounded-2xl border ${config.headerBorder} ${config.headerBg} p-3.5 mb-4 shadow-xs`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-xs ${config.headerText}`}
-                        >
-                          <StatusIcon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-extrabold text-slate-800 text-base leading-tight">
-                            {config.label}
-                          </h3>
-                          <span className="text-xs font-medium text-slate-500">
-                            {statusItems.length} sự cố
-                          </span>
-                        </div>
+              return (
+                <div
+                  key={inc.id}
+                  onClick={() => handleOpenIncidentDetail(inc)}
+                  className={`w-full group rounded-3xl border border-slate-100 bg-white p-5 text-left shadow-sm shadow-slate-200/50 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
+                    isFarmer
+                      ? 'hover:border-teal-300 hover:shadow-teal-500/10'
+                      : 'hover:border-indigo-300 hover:shadow-indigo-500/10'
+                  } cursor-pointer flex flex-col justify-between space-y-4`}
+                >
+                  <div className="space-y-3.5">
+                    {/* Header: Ngày hoàn thành & Badge Đã xử lý */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                        <Calendar className={`w-3.5 h-3.5 ${themeText500}`} />
+                        <span>{formatDate(resolvedDate)}</span>
                       </div>
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-bold ${config.badgeStyle}`}
-                      >
-                        {statusItems.length}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Đã xử lý
                       </span>
                     </div>
 
-                    {/* Danh Sách Thẻ Sự Cố Theo Trạng Thái */}
-                    <div className="flex-1 space-y-4">
-                      {statusItems.length === 0 ? (
-                        <div className="flex h-52 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-center">
-                          <StatusIcon className="mb-2.5 h-8 w-8 text-slate-300" />
-                          <p className="text-sm font-bold text-slate-400">{config.emptyText}</p>
+                    {/* Tiêu đề & Mô tả */}
+                    <div>
+                      <h4
+                        className={`text-base font-extrabold text-slate-800 ${
+                          isFarmer ? 'group-hover:text-teal-600' : 'group-hover:text-indigo-600'
+                        } transition-colors line-clamp-2 leading-snug`}
+                      >
+                        {inc.title}
+                      </h4>
+                      <p className="mt-1 text-xs font-medium text-slate-500 line-clamp-2 leading-relaxed">
+                        {inc.description}
+                      </p>
+                    </div>
+
+                    {/* Thông tin Trang trại - Ao nuôi - Vụ nuôi */}
+                    <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-100 space-y-2">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                        {/* Trang trại */}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200">
+                          <Building2 className="w-3 h-3 text-emerald-600" />
+                          <span>
+                            Trang trại: <strong>{inc.crop?.pond?.farm?.name || 'Trang trại'}</strong>
+                          </span>
+                        </span>
+
+                        {/* Ao nuôi */}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-cyan-50 text-cyan-800 rounded-lg border border-cyan-200">
+                          <Waves className="w-3 h-3 text-cyan-600" />
+                          <span>
+                            Ao: <strong>{inc.crop?.pond?.name || 'Ao nuôi'}</strong>
+                          </span>
+                        </span>
+                      </div>
+
+                      {/* Vụ nuôi */}
+                      {cropInfo && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50/70 px-2.5 py-1 rounded-lg border border-indigo-100">
+                          <Layers className="w-3 h-3 text-indigo-500 shrink-0" />
+                          <span className="truncate">
+                            {cropInfo.seasonName ? `${cropInfo.seasonName} · ` : ''}
+                            {cropInfo.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}{' '}
+                            {cropInfo.status === 'ACTIVE' ? '(Đang nuôi)' : '(Đã thu)'} • Bắt đầu:{' '}
+                            {new Date(cropInfo.startDate).toLocaleDateString('vi-VN')}
+                          </span>
                         </div>
-                      ) : (
-                        statusItems.map((inc) => {
-                          const cropInfo = getCropDetail(inc);
-                          const latestUpdate = inc.updates?.[0];
+                      )}
+                    </div>
 
-                          return (
-                            <div
-                              key={inc.id}
-                              onClick={() => handleOpenIncidentDetail(inc)}
-                              className={`w-full group rounded-2xl border border-white/80 bg-white p-4 sm:p-5 text-left shadow-sm shadow-slate-200/60 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
-                                isFarmer
-                                  ? 'hover:border-teal-300 hover:shadow-teal-500/10'
-                                  : 'hover:border-indigo-300 hover:shadow-indigo-500/10'
-                              } cursor-pointer space-y-3.5`}
-                            >
-                              {/* Top Header: Date/Time & Status */}
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                                  <Calendar className={`w-3.5 h-3.5 ${themeText500}`} />
-                                  <span>{formatDate(inc.createdAt)}</span>
-                                </div>
-                                <span
-                                  className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${STATUS_STYLES[inc.status]}`}
-                                >
-                                  {STATUS_LABELS[inc.status]}
-                                </span>
-                              </div>
+                    {/* Người phụ trách & Phác đồ điều trị */}
+                    <div className="space-y-1.5 text-xs border-t border-slate-100 pt-2.5">
+                      <div className="flex items-center justify-between text-slate-500">
+                        <span>Phụ trách:</span>
+                        <strong className="text-slate-700">
+                          {inc.assignedTo?.fullName || 'Chưa phân công'}
+                        </strong>
+                      </div>
 
-                              {/* Title & Description */}
-                              <div>
-                                <h4
-                                  className={`text-base font-extrabold text-slate-800 ${
-                                    isFarmer ? 'group-hover:text-teal-600' : 'group-hover:text-indigo-600'
-                                  } transition-colors line-clamp-2 leading-snug`}
-                                >
-                                  {inc.title}
-                                </h4>
-                                <p className="mt-1 text-xs font-medium text-slate-500 line-clamp-2 leading-relaxed">
-                                  {inc.description}
-                                </p>
-                              </div>
-
-                              {/* RÕ THÔNG TIN TRANG TRẠI - AO - VỤ NUÔI */}
-                              <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-100 space-y-2">
-                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-                                  {/* Trang trại */}
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200">
-                                    <Building2 className="w-3 h-3 text-emerald-600" />
-                                    <span>
-                                      Trang trại: <strong>{inc.crop?.pond?.farm?.name || 'Trang trại'}</strong>
-                                    </span>
-                                  </span>
-
-                                  {/* Ao nuôi */}
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-cyan-50 text-cyan-800 rounded-lg border border-cyan-200">
-                                    <Waves className="w-3 h-3 text-cyan-600" />
-                                    <span>
-                                      Ao: <strong>{inc.crop?.pond?.name || 'Ao nuôi'}</strong>
-                                    </span>
-                                  </span>
-                                </div>
-
-                                {/* Vụ nuôi */}
-                                {cropInfo && (
-                                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50/70 px-2.5 py-1 rounded-lg border border-indigo-100">
-                                    <Layers className="w-3 h-3 text-indigo-500 shrink-0" />
-                                    <span className="truncate">
-                                      {cropInfo.seasonName ? `${cropInfo.seasonName} · ` : ''}
-                                      {cropInfo.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}{' '}
-                                      {cropInfo.status === 'ACTIVE' ? '(Đang nuôi)' : '(Đã thu)'} • Bắt đầu:{' '}
-                                      {new Date(cropInfo.startDate).toLocaleDateString('vi-VN')}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Người phụ trách & Cập nhật gần nhất */}
-                              <div className="space-y-1.5 text-xs border-t border-slate-100 pt-2.5">
-                                <div className="flex items-center justify-between text-slate-500">
-                                  <span>Phụ trách:</span>
-                                  <strong className="text-slate-700">
-                                    {inc.assignedTo?.fullName || 'Chưa phân công'}
-                                  </strong>
-                                </div>
-
-                                {(latestUpdate || inc.treatment) && (
-                                  <div className="rounded-xl bg-indigo-50/50 p-2 border border-indigo-100/60">
-                                    <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wide block mb-0.5">
-                                      Điều trị gần nhất:
-                                    </span>
-                                    <p className="text-[11px] font-semibold text-slate-700 line-clamp-1">
-                                      {latestUpdate?.treatment || inc.treatment}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Card Footer: View Detail */}
-                              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px]">
-                                <span className="font-bold text-slate-400">
-                                  {inc._count?.updates ?? inc.updates?.length ?? 0} nhật ký cập nhật
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenIncidentDetail(inc);
-                                  }}
-                                  className={`font-bold ${
-                                    isFarmer ? 'text-teal-600 hover:text-teal-700' : 'text-indigo-600 hover:text-indigo-700'
-                                  } flex items-center gap-1 group-hover:translate-x-0.5 transition-transform cursor-pointer`}
-                                >
-                                  <Eye className="w-3.5 h-3.5" /> Xem chi tiết
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
+                      {(latestUpdate || inc.treatment) && (
+                        <div className="rounded-xl bg-indigo-50/50 p-2.5 border border-indigo-100/60">
+                          <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wide block mb-0.5">
+                            Phác đồ / Cập nhật điều trị:
+                          </span>
+                          <p className="text-[11px] font-semibold text-slate-700 line-clamp-2">
+                            {latestUpdate?.treatment || inc.treatment}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Card Footer: Lần cập nhật & Nút xem chi tiết */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px]">
+                    <span className="font-bold text-slate-400">
+                      {inc._count?.updates ?? inc.updates?.length ?? 0} nhật ký cập nhật
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenIncidentDetail(inc);
+                      }}
+                      className={`font-bold ${
+                        isFarmer ? 'text-teal-600 hover:text-teal-700' : 'text-indigo-600 hover:text-indigo-700'
+                      } flex items-center gap-1 group-hover:translate-x-0.5 transition-transform cursor-pointer`}
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Xem chi tiết
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Thanh Phân Trang Đầy Đủ ────────────────────────────────────────── */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 sm:px-6 rounded-2xl border border-slate-100 shadow-xs">
+            <div className="text-xs font-semibold text-slate-500">
+              Hiển thị <span className="font-bold text-slate-800">{(currentPage - 1) * PAGE_SIZE + 1}</span> -{' '}
+              <span className="font-bold text-slate-800">
+                {Math.min(currentPage * PAGE_SIZE, filteredIncidents.length)}
+              </span>{' '}
+              trên tổng số <span className="font-bold text-emerald-600">{filteredIncidents.length}</span> sự cố đã hoàn thành
             </div>
-          );
-        })()
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Trước</span>
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    return (
+                      page === 1 ||
+                      page === totalPages ||
+                      Math.abs(page - currentPage) <= 1
+                    );
+                  })
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const hasGap = prev && page - prev > 1;
+                    return (
+                      <span key={page} className="flex items-center">
+                        {hasGap && <span className="px-1 text-slate-400 text-xs">...</span>}
+                        <button
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                            currentPage === page
+                              ? isFarmer
+                                ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                                : 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </span>
+                    );
+                  })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
+              >
+                <span className="hidden sm:inline">Sau</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Dialog Xem Chi Tiết Sự Cố & Lịch Sử Điều Trị Đầy Đủ ─────────────── */}

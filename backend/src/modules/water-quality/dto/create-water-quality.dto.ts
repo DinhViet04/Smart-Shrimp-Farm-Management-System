@@ -13,8 +13,8 @@ import {
  * Validation ranges match the business rules defined in FE-23.
  */
 export class CreateWaterQualityDto {
-  /** UUID of the pond this measurement belongs to */
-  @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
+  /** ID of the pond this measurement belongs to */
+  @IsString({ message: 'pondId phải là chuỗi hợp lệ' })
   pondId: string;
 
   /** ISO 8601 timestamp of when the measurement was taken */

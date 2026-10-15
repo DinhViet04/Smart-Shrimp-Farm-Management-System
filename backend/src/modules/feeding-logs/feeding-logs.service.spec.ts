@@ -1,4 +1,8 @@
 import { FeedingLogsService } from './feeding-logs.service.js';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { CreateDailyFeedingLogDto } from './dto/create-feeding-log.dto.js';
+import { FeedingMethod, FeedingSession, FeedingStatus } from '@prisma/client';
 
 describe('FeedingLogsService grouped list', () => {
   it('paginates feeding-day groups before loading session rows', async () => {
@@ -88,5 +92,27 @@ describe('FeedingLogsService grouped list', () => {
     ).rejects.toThrow('forbidden');
 
     expect(prisma.feedingLog.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('validates CreateDailyFeedingLogDto successfully with string feedProductId like inv-feed-005', async () => {
+    const dto = plainToInstance(CreateDailyFeedingLogDto, {
+      farmId: 'farm-001',
+      pondId: 'pond-001',
+      cropId: 'crop-001',
+      feedingDate: '2026-10-15',
+      sessions: [
+        {
+          feedingSession: FeedingSession.SESSION_1,
+          feedingTime: '06:00',
+          feedProductId: 'inv-feed-005',
+          feedAmount: 10.5,
+          feedingMethod: FeedingMethod.MANUAL,
+          feedingStatus: FeedingStatus.COMPLETED,
+        },
+      ],
+    });
+
+    const errors = await validate(dto);
+    expect(errors.length).toBe(0);
   });
 });

@@ -84,21 +84,25 @@ export default function BiomassDashboard({
   useEffect(() => {
     if (initialPondId && ponds.length > 0) {
       const match = ponds.find((p) => p.id === initialPondId);
-      if (match) {
+      if (match && selectedPond?.id !== match.id) {
         setSelectedPond(match);
-        onSelectPond?.(match.id);
       }
     }
-  }, [initialPondId, ponds]);
+  }, [initialPondId, ponds, selectedPond]);
 
   // If a pond is selected, render the detail view
   if (selectedPond) {
     return (
       <PondBiomassDetail
         pond={selectedPond}
+        availablePonds={ponds}
+        onSelectPond={(pId) => {
+          const match = ponds.find((p) => p.id === pId);
+          if (match) setSelectedPond(match);
+          onSelectPond?.(pId);
+        }}
         onBack={() => {
           setSelectedPond(null);
-          onSelectPond?.('');
         }}
         onNavigateTab={onNavigateTab}
       />

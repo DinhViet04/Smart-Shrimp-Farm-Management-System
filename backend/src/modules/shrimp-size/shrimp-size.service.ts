@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -25,6 +26,11 @@ export class ShrimpSizeService {
     dto: CreateShrimpSizeSampleDto,
     user: AuthUser,
   ) {
+    if (user.role !== 'TECHNICIAN') {
+      throw new ForbiddenException(
+        'Chỉ kỹ thuật viên (Technician) mới có quyền ghi nhận mẫu kích cỡ.',
+      );
+    }
     await this.assertCanAccessPond(user, pondId);
 
     // 1. Validate inputs and calculate totals
@@ -80,10 +86,11 @@ export class ShrimpSizeService {
     }
 
     if (activeCrop && activeCrop.startDate) {
-      const diffTime = Math.abs(
-        samplingDate.getTime() - activeCrop.startDate.getTime(),
-      );
-      doc = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (samplingDate.getTime() < new Date(activeCrop.startDate).getTime()) {
+        throw new BadRequestException('Ngày lấy mẫu không được trước ngày thả giống');
+      }
+      const diffTime = samplingDate.getTime() - new Date(activeCrop.startDate).getTime();
+      doc = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
     }
 
     // 3. Calculate ABW and Size
@@ -96,8 +103,8 @@ export class ShrimpSizeService {
       where: {
         pondId,
         samplingDate: {
-          gte: activeCrop.startDate,
           lt: samplingDate,
+          gte: activeCrop.startDate,
         },
       },
       orderBy: { samplingDate: 'desc' },
@@ -375,6 +382,11 @@ export class ShrimpSizeService {
   }
 
   async deleteSample(pondId: string, sampleId: string, user: AuthUser) {
+    if (user.role !== 'TECHNICIAN') {
+      throw new ForbiddenException(
+        'Chỉ kỹ thuật viên (Technician) mới có quyền xóa mẫu kích cỡ.',
+      );
+    }
     await this.assertCanAccessPond(user, pondId);
     // 1. Kiểm tra mẫu có tồn tại và thuộc ao này không
     const sample = await this.prisma.shrimpSizeSample.findFirst({
@@ -446,6 +458,9 @@ export class ShrimpSizeService {
         pondId,
         status: 'ACTIVE',
       },
+      include: {
+        parentCrop: true,
+      },
     });
 
     if (!activeCrop) {
@@ -510,11 +525,16 @@ export class ShrimpSizeService {
     });
 
     const history = [];
-    let previousDate = activeCrop.startDate
-      ? new Date(activeCrop.startDate)
-      : new Date(0);
-    let previousBiomass = 0;
+    let previousDate = activeCrop.startDate ? new Date(activeCrop.startDate) : new Date(0);
 
+    // Xác định sinh khối ban đầu: Nếu là ao thương phẩm nhận tôm từ ao ương chuyển sang (có transferSize)
+    let initialBiomass = 0;
+    if (activeCrop.parentCrop?.transferSize && activeCrop.parentCrop.transferSize > 0) {
+      initialBiomass = activeCrop.initialShrimpCount / activeCrop.parentCrop.transferSize;
+    } else if (activeCrop.transferSize && activeCrop.transferSize > 0) {
+      initialBiomass = activeCrop.initialShrimpCount / activeCrop.transferSize;
+    }
+    let previousBiomass = initialBiomass;
     let cumulativeFeedAll = 0;
 
     for (let i = 0; i < samples.length; i++) {
@@ -535,8 +555,7 @@ export class ShrimpSizeService {
         0,
       );
       cumulativeFeedAll += periodFeed;
-
-      const biomassGain = currentBiomass - previousBiomass;
+      const biomassGain = Math.max(0, currentBiomass - previousBiomass);
       let periodFCR = null;
       let status = 'BÌNH THƯỜNG';
 
@@ -552,7 +571,7 @@ export class ShrimpSizeService {
         periodName: `Lần đo ${i + 1}`,
         date: sample.samplingDate,
         feedAmount: periodFeed,
-        biomassGain: biomassGain,
+        biomassGain: Number(biomassGain.toFixed(2)),
         periodFCR: periodFCR !== null ? Number(periodFCR.toFixed(2)) : null,
         status,
       });
@@ -562,9 +581,8 @@ export class ShrimpSizeService {
     }
 
     const latestSample = samples[samples.length - 1];
-    const totalBiomassGain = Number(latestSample.estimatedBiomassKg);
-    const currentFCR =
-      totalBiomassGain > 0 ? cumulativeFeedAll / totalBiomassGain : null;
+    const totalBiomassGain = Math.max(0, Number(latestSample.estimatedBiomassKg) - initialBiomass);
+    const currentFCR = totalBiomassGain > 0 ? cumulativeFeedAll / totalBiomassGain : null;
 
     let fcrDiff = null;
     if (history.length >= 2) {

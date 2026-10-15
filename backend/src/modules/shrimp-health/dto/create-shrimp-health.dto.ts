@@ -14,13 +14,13 @@ import {
  * DTO for creating a new shrimp health record (FE-21).
  */
 export class CreateShrimpHealthDto {
-  @IsUUID('4', { message: 'farmId phải là UUID hợp lệ' })
+  @IsString({ message: 'farmId phải là chuỗi hợp lệ' })
   farmId: string;
 
-  @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
+  @IsString({ message: 'pondId phải là chuỗi hợp lệ' })
   pondId: string;
 
-  @IsUUID('4', { message: 'cropId phải là UUID hợp lệ' })
+  @IsString({ message: 'cropId phải là chuỗi hợp lệ' })
   cropId: string;
 
   @IsDateString(

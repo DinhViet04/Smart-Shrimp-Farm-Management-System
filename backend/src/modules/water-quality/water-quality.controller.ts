@@ -55,7 +55,8 @@ export class WaterQualityController {
   @Roles('FARMER', 'FARM_MANAGER', 'TECHNICIAN', 'ADMIN')
   getTrends(
     @Request() req: any,
-    @Query('pondId') pondId: string,
+    @Query('pondId') pondId?: string,
+    @Query('farmId') farmId?: string,
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
     @Query('cropId') cropId?: string,
@@ -68,6 +69,7 @@ export class WaterQualityController {
       req.user,
       cropId,
       year ? Number(year) : undefined,
+      farmId,
     );
   }
 }

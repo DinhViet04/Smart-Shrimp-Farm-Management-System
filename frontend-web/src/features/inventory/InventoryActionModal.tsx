@@ -57,6 +57,7 @@ export default function InventoryActionModal({
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -120,10 +121,11 @@ export default function InventoryActionModal({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!activeItem || !actionType) return;
+    setErrorMessage(null);
 
     if (actionType === 'IMPORT') {
       if (!numImportPackages || numImportPackages <= 0) {
-        alert(`Vui lòng nhập số lượng ${packageType.toLowerCase()} lớn hơn 0`);
+        setErrorMessage(`Vui lòng nhập số lượng ${packageType.toLowerCase()} lớn hơn 0`);
         return;
       }
 
@@ -138,19 +140,19 @@ export default function InventoryActionModal({
         onSuccess(`Ghi nhận nhập kho thành công: +${formatNumber(numImportPackages)} ${packageType}!`);
         onClose();
       } catch (error: any) {
-        alert(error.message || 'Có lỗi xảy ra khi nhập kho');
+        setErrorMessage(error.message || 'Có lỗi xảy ra khi nhập kho');
       } finally {
         setIsSubmitting(false);
       }
     } else {
       // EXPORT
       if (!numExportQuantity || numExportQuantity <= 0) {
-        alert('Số lượng xuất phải lớn hơn 0');
+        setErrorMessage('Số lượng xuất phải lớn hơn 0');
         return;
       }
 
       if (isExportExceeded) {
-        alert(`Số lượng xuất (${formatNumber(numExportQuantity)} ${activeItem.unit}) vượt quá tồn kho (${formatNumber(activeItem.quantity)} ${activeItem.unit})`);
+        setErrorMessage(`Số lượng xuất (${formatNumber(numExportQuantity)} ${activeItem.unit}) vượt quá tồn kho (${formatNumber(activeItem.quantity)} ${activeItem.unit})`);
         return;
       }
 
@@ -169,7 +171,7 @@ export default function InventoryActionModal({
         onSuccess(`Ghi nhận xuất kho thành công: -${formatNumber(numExportQuantity)} ${activeItem.unit}!`);
         onClose();
       } catch (error: any) {
-        alert(error.message || 'Có lỗi xảy ra khi xuất kho');
+        setErrorMessage(error.message || 'Có lỗi xảy ra khi xuất kho');
       } finally {
         setIsSubmitting(false);
       }
@@ -256,6 +258,23 @@ export default function InventoryActionModal({
               <PackageMinus className="w-4 h-4 text-emerald-600" /> Xuất Kho
             </button>
           </div>
+
+          {/* Error Notice Banner */}
+          {errorMessage && (
+            <div className="mt-3 p-3 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-between text-rose-800 text-xs font-semibold animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setErrorMessage(null)} 
+                className="text-rose-400 hover:text-rose-600 p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Body Form */}

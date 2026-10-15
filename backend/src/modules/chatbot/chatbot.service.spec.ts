@@ -19,7 +19,12 @@ describe('ChatbotService access control', () => {
         .fn()
         .mockRejectedValue(new ForbiddenException('forbidden')),
     };
-    const service = new ChatbotService(prisma as any, farmAccess as any);
+    const weatherService = {
+      getWeather: jest.fn(),
+      isWeatherInquiry: jest.fn().mockReturnValue(false),
+      buildWeatherContextString: jest.fn(),
+    };
+    const service = new ChatbotService(prisma as any, farmAccess as any, weatherService as any);
 
     await expect(
       service.ask(

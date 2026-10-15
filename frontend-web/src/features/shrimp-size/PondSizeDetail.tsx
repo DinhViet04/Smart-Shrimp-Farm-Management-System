@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, Activity, Plus, Trash2, TrendingUp, AlertCircle, 
   Scale, Calculator, CheckCircle2, Waves, Calendar, Clock,
-  Sparkles, Info
+  Sparkles, Info, AlertTriangle, Loader2, X, ChevronDown
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -38,6 +38,8 @@ interface ShrimpSizeSample {
 
 interface PondSizeDetailProps {
   pond: Pond;
+  availablePonds?: Pond[];
+  onSelectPond?: (pondId: string) => void;
   viewOnly?: boolean;
   onBack: () => void;
   onNavigateTab?: (tab: GrowthTabType) => void;
@@ -64,6 +66,8 @@ const safeFormatNumber = (val: string | number | null | undefined, decimals?: nu
 
 export default function PondSizeDetail({ 
   pond, 
+  availablePonds,
+  onSelectPond,
   viewOnly = false, 
   onBack,
   onNavigateTab
@@ -72,6 +76,8 @@ export default function PondSizeDetail({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [activeCrop, setActiveCrop] = useState<Crop | null>(null);
+  const [sampleToDelete, setSampleToDelete] = useState<ShrimpSizeSample | null>(null);
+  const [isDeletingSample, setIsDeletingSample] = useState(false);
 
   // Form states
   const [netAreaSqM, setNetAreaSqM] = useState<number | ''>('');
@@ -85,7 +91,7 @@ export default function PondSizeDetail({
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Role check
+  // Role check: Chỉ TECHNICIAN mới có quyền ghi nhận mẫu kích cỡ mới
   const currentUserRole = useMemo(() => {
     try {
       const u = localStorage.getItem('user');
@@ -95,7 +101,7 @@ export default function PondSizeDetail({
     }
   }, []);
 
-  const canEdit = !viewOnly && (currentUserRole === 'ADMIN' || currentUserRole === 'FARM_MANAGER' || currentUserRole === 'TECHNICIAN');
+  const canEdit = !viewOnly && currentUserRole === 'TECHNICIAN';
   const pondId = pond.id;
 
   const fetchSamples = useCallback(async () => {
@@ -229,16 +235,22 @@ export default function PondSizeDetail({
     }
   };
 
-  const handleDelete = async (sampleId: string) => {
-    if (!pond?.id) return;
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bản ghi này? Hành động này sẽ tính toán lại ADG.')) return;
+  const handleDelete = (sample: ShrimpSizeSample) => {
+    setSampleToDelete(sample);
+  };
+
+  const confirmDeleteSample = async () => {
+    if (!pond?.id || !sampleToDelete) return;
     try {
-      await shrimpSizeService.deleteSample(pond.id, sampleId);
-      setSuccessMessage('Đã xóa mẫu đo đạc.');
+      setIsDeletingSample(true);
+      await shrimpSizeService.deleteSample(pond.id, sampleToDelete.id);
+      setSuccessMessage('Đã xóa mẫu đo đạc thành công.');
       setTimeout(() => setSuccessMessage(null), 3000);
-      await fetchSamples();
+      setSampleToDelete(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Lỗi khi xóa mẫu');
+    } finally {
+      setIsDeletingSample(false);
     }
   };
 
@@ -292,9 +304,26 @@ export default function PondSizeDetail({
           <span className="text-slate-300">|</span>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Ao Nuôi:</span>
-            <span className="text-sm font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-lg">
-              {pond?.name || '--'}
-            </span>
+            {availablePonds && availablePonds.length > 1 ? (
+              <div className="relative">
+                <select
+                  value={pond?.id}
+                  onChange={(e) => onSelectPond?.(e.target.value)}
+                  className="pl-3 pr-8 py-1.5 bg-blue-50/80 border border-blue-200 text-blue-900 font-extrabold rounded-xl text-sm outline-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 appearance-none hover:bg-blue-100/60 transition-colors"
+                >
+                  {availablePonds.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-blue-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            ) : (
+              <span className="text-sm font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-lg">
+                {pond?.name || '--'}
+              </span>
+            )}
           </div>
         </div>
 
@@ -724,7 +753,7 @@ export default function PondSizeDetail({
                       <td className="px-6 py-4 text-right">
                         <button
                           type="button"
-                          onClick={() => handleDelete(sample.id)}
+                          onClick={() => handleDelete(sample)}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                           title="Xóa bản ghi này"
                         >
@@ -739,6 +768,92 @@ export default function PondSizeDetail({
           </div>
         )}
       </div>
+
+      {/* Modal Xác nhận xóa bản ghi mẫu đo kích cỡ tôm */}
+      {sampleToDelete && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => !isDeletingSample && setSampleToDelete(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+          >
+            <div className="h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500"></div>
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-inner">
+                  <AlertTriangle className="w-6 h-6 animate-pulse" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !isDeletingSample && setSampleToDelete(null)}
+                  disabled={isDeletingSample}
+                  className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Đóng"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <h3 className="text-xl font-black text-slate-800 tracking-tight">
+                Xác nhận xóa mẫu đo?
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Bản ghi đo kích cỡ và trọng lượng sẽ bị xóa khỏi lịch sử ao.
+              </p>
+
+              <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400">Ngày đo mẫu:</span>
+                  <span className="font-bold text-slate-700">{safeFormatDate(sampleToDelete.samplingDate, 'dd/MM/yyyy')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400">Tuổi tôm (DOC):</span>
+                  <span className="font-bold text-teal-700">{sampleToDelete.doc ? `DOC ${sampleToDelete.doc}` : '--'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-400">Trọng lượng bình quân:</span>
+                  <span className="font-black text-blue-600">{safeFormatNumber(sampleToDelete.abwGram, 2)} g ({safeFormatNumber(sampleToDelete.sizePerKg, 1)} con/kg)</span>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left text-xs text-amber-900 leading-relaxed font-medium">
+                ⚠️ Việc xóa bản ghi này sẽ kích hoạt tính toán lại tốc độ tăng trưởng hàng ngày (ADG) của các lần đo kế tiếp!
+              </div>
+
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSampleToDelete(null)}
+                  disabled={isDeletingSample}
+                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteSample}
+                  disabled={isDeletingSample}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-rose-500/25 hover:shadow-rose-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {isDeletingSample ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang xóa...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Xác nhận xóa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

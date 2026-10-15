@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Droplets, User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck, Building2, FlaskConical, Users, CheckCircle2, Gift, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  User, Mail, Phone, Lock, ArrowRight, ArrowLeft, ShieldCheck,
+  Building2, FlaskConical, Users, CheckCircle2, Gift, AlertTriangle,
+  Eye, EyeOff, Activity, LineChart, Waves
+} from 'lucide-react';
 import { verifyInviteToken } from '../services/farm.service';
 
 const getDashboardPath = (role?: string) => {
@@ -16,6 +21,32 @@ const getDashboardPath = (role?: string) => {
       return '/dashboard';
   }
 };
+
+function Bubble({ style }: { style: React.CSSProperties }) {
+  return (
+    <div
+      className="absolute rounded-full pointer-events-none bubble border border-cyan-300/40"
+      style={{
+        ...style,
+        background: 'radial-gradient(circle at 35% 35%, rgba(255,255,255,0.5) 0%, rgba(103,232,249,0.15) 60%, rgba(6,182,212,0.3) 100%)',
+        backdropFilter: 'blur(1px)',
+        boxShadow: 'inset -2px -2px 4px rgba(6,182,212,0.3), 0 0 6px rgba(103,232,249,0.2)',
+      }}
+    />
+  );
+}
+
+const BUBBLES = [
+  { size: 14, left: '8%', bottom: '12%', duration: 9, delay: 0 },
+  { size: 9, left: '18%', bottom: '5%', duration: 12, delay: 1.5 },
+  { size: 20, left: '28%', bottom: '8%', duration: 10, delay: 0.5 },
+  { size: 7, left: '42%', bottom: '15%', duration: 14, delay: 2 },
+  { size: 12, left: '55%', bottom: '6%', duration: 11, delay: 3 },
+  { size: 18, left: '68%', bottom: '10%', duration: 8, delay: 4 },
+  { size: 10, left: '78%', bottom: '14%', duration: 13, delay: 1 },
+  { size: 6, left: '88%', bottom: '4%', duration: 15, delay: 2.5 },
+  { size: 16, left: '92%', bottom: '9%', duration: 10, delay: 0.8 },
+];
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -46,6 +77,8 @@ export default function RegisterPage() {
   const [serverError, setServerError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
   // Verify invite token on mount
@@ -84,7 +117,7 @@ export default function RegisterPage() {
       if (value.length < 8) {
         return 'Tối thiểu 8 ký tự';
       } else if (!passwordRegex.test(value)) {
-        return 'Phải chứa hoa, thường, số/ký tự đặc biệt';
+        return 'Phải chứa chữ hoa, thường, số/ký tự đặc biệt';
       }
     } else if (id === 'confirmPassword') {
       if (value !== currentData.password) {
@@ -129,7 +162,9 @@ export default function RegisterPage() {
       if (!res.ok) {
         setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Lỗi kết nối Google'));
       } else {
-        localStorage.removeItem('refreshToken');
+        if (data.refreshToken) {
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('user', JSON.stringify(data.user));
         navigate(getDashboardPath(data.user.role));
@@ -161,9 +196,9 @@ export default function RegisterPage() {
           }
         } else if (googleBtnRef.current) {
           googleBtnRef.current.innerHTML = `
-            <div class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-white/70 hover:bg-white backdrop-blur-sm border border-slate-300/50 rounded-2xl cursor-pointer transition-all text-slate-700 font-semibold text-sm shadow-sm group">
-              <svg viewBox="0 0 24 24" width="22" height="22" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)"><path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/><path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.369 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/><path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/><path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.109 -17.884 43.989 -14.754 43.989 Z"/></g></svg>
-              <span class="ml-1 group-hover:text-blue-600 transition-colors">Tiếp tục với Google</span>
+            <div class="flex items-center justify-center gap-2.5 w-full px-3 py-2 bg-white/80 hover:bg-white border border-slate-200 rounded-lg cursor-pointer transition-all text-slate-700 font-semibold text-xs shadow-sm hover:shadow group">
+              <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)"><path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/><path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.369 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/><path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/><path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.109 -17.884 43.989 -14.754 43.989 Z"/></g></svg>
+              <span>Tiếp tục với Google</span>
             </div>
           `;
         }
@@ -195,7 +230,6 @@ export default function RegisterPage() {
             password: formData.password,
             role: formData.role,
             ...(formData.phone && { phone: formData.phone }),
-            // Gửi kèm invite token nếu có
             ...(inviteTokenFromUrl && { inviteToken: inviteTokenFromUrl }),
           }),
         });
@@ -205,16 +239,15 @@ export default function RegisterPage() {
           setServerError(Array.isArray(data.message) ? data.message[0] : (data.message || 'Có lỗi xảy ra'));
         } else {
           if (data.accessToken && data.user) {
-            localStorage.removeItem('refreshToken');
+            if (data.refreshToken) {
+              localStorage.setItem('refreshToken', data.refreshToken);
+            }
             localStorage.setItem('accessToken', data.accessToken);
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Nếu đăng ký qua invitation → chào mừng + redirect đến dashboard
             if (data.joinedFarm) {
               setServerError('');
-              // Hiển thị welcome message ngắn, sau đó redirect
               setIsLoading(false);
-              // Sử dụng serverError để show success (hack UI)
               navigate(getDashboardPath(data.user.role || formData.role), {
                 state: { welcomeFarm: data.joinedFarm.name }
               });
@@ -254,284 +287,409 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 font-sans selection:bg-cyan-200 overflow-hidden bg-slate-900">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen relative flex items-center justify-center p-2 sm:p-3 lg:p-4 font-sans selection:bg-cyan-200 lg:overflow-hidden overflow-y-auto bg-slate-950">
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
+        @keyframes riseBubble {
+          0%   { transform: translateY(0) scale(0.8); opacity: 0; }
+          10%  { opacity: 1; }
+          80%  { opacity: 0.7; }
+          100% { transform: translateY(-100vh) translateX(20px) scale(1.1); opacity: 0; }
         }
-        @keyframes slowZoom {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.08); }
-          100% { transform: scale(1); }
+        @keyframes lightRay {
+          0%,100% { opacity: 0.35; transform: scaleX(1); }
+          50%      { opacity: 0.55; transform: scaleX(1.08); }
         }
-        .animate-float { animation: float 6s ease-in-out infinite; }
-        .animate-slow-zoom { animation: slowZoom 25s ease-in-out infinite; }
+        .bubble   { animation: riseBubble var(--dur,10s) var(--delay,0s) ease-in infinite; }
+        .light-ray { animation: lightRay 5s ease-in-out infinite; }
+
+        .glass-input:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(34,211,238,0.45), inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+        .btn-submit {
+          background: linear-gradient(90deg, #0ea5e9 0%, #0284c7 100%);
+        }
+        .btn-submit:hover { filter: brightness(1.08); }
+        .btn-submit:active { transform: scale(0.99); }
       `}</style>
 
-      {/* Deep Ocean Background with Enhanced Saturation and Caustics */}
+      {/* ── Background image ── */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <img
-          src="anhnen.png"
-          alt="Ocean Coral Reef"
-          className="w-full h-full object-cover animate-slow-zoom saturate-150 contrast-125"
+          src="/anhnen.png"
+          alt=""
+          aria-hidden="true"
+          className="w-full h-full object-cover saturate-[1.3] contrast-110"
         />
-        {/* Water Caustics light effect (Color Dodge) */}
-        <div className="absolute inset-0 bg-cyan-400/10 mix-blend-color-dodge"></div>
-        {/* Deep vignette shadow */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-900/60"></div>
+        {/* Deep vignette */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/80 via-cyan-950/50 to-slate-950/85" />
+        {/* Caustic light overlay */}
+        <div className="absolute inset-0 bg-cyan-400/5 mix-blend-color-dodge" />
 
-        {/* Lively glowing orbs representing underwater light rays */}
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-300/10 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[120px] animate-pulse mix-blend-screen" style={{ animationDelay: '2s' }}></div>
+        {/* Animated light rays */}
+        <div className="absolute top-0 left-1/4 w-1 h-3/4 origin-top light-ray"
+          style={{ background: 'linear-gradient(180deg,rgba(103,232,249,0.3) 0%,transparent 100%)', transform: 'rotate(-8deg)', filter: 'blur(8px)' }} />
+        <div className="absolute top-0 left-2/5 w-1.5 h-2/3 origin-top light-ray"
+          style={{ background: 'linear-gradient(180deg,rgba(186,230,253,0.2) 0%,transparent 100%)', transform: 'rotate(4deg)', filter: 'blur(10px)', animationDelay: '1.5s' }} />
+        <div className="absolute top-0 right-1/4 w-1 h-3/5 origin-top light-ray"
+          style={{ background: 'linear-gradient(180deg,rgba(103,232,249,0.25) 0%,transparent 100%)', transform: 'rotate(12deg)', filter: 'blur(7px)', animationDelay: '3s' }} />
+
+        {/* Rising bubbles */}
+        {BUBBLES.map((b, i) => (
+          <Bubble
+            key={i}
+            style={{
+              width: b.size,
+              height: b.size,
+              left: b.left,
+              bottom: b.bottom,
+              '--dur': `${b.duration}s`,
+              '--delay': `${b.delay}s`,
+            } as React.CSSProperties}
+          />
+        ))}
       </div>
 
-      {/* Centered Frosted Glass Panel */}
-      <div className="relative z-10 w-full max-w-4xl bg-white/5 backdrop-blur-2xl border border-white/20 rounded-[2.5rem] shadow-[0_35px_60px_-15px_rgba(0,10,30,0.6)] flex flex-col md:flex-row overflow-hidden my-8 animate-float">
+      {/* ── Glow orbs ── */}
+      <div className="absolute top-1/3 left-1/5 w-96 h-96 rounded-full bg-cyan-500/10 blur-[100px] pointer-events-none animate-pulse" />
+      <div className="absolute bottom-1/4 right-1/5 w-80 h-80 rounded-full bg-sky-500/15 blur-[90px] pointer-events-none animate-pulse" style={{ animationDelay: '2.5s' }} />
 
-        {/* Left Side: System Information */}
-        <div className="hidden md:flex flex-col justify-between w-5/12 p-10 bg-cyan-900/30 backdrop-blur-md border-r border-white/10 relative">
+      {/* ── Main card ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="relative z-10 w-full max-w-4xl lg:max-w-[55rem] my-auto flex flex-col md:flex-row overflow-hidden rounded-2xl md:rounded-[1.75rem]"
+        style={{
+          boxShadow: '0 25px 60px -15px rgba(0,10,30,0.7), 0 0 0 1px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12)',
+        }}
+      >
+        {/* ── Left panel (đồng bộ với LoginPage) ── */}
+        <div
+          className="hidden md:flex flex-col justify-between w-5/12 p-5 lg:p-6 relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(145deg, rgba(6,30,60,0.92) 0%, rgba(7,55,80,0.88) 60%, rgba(4,40,70,0.95) 100%)',
+            borderRight: '1px solid rgba(255,255,255,0.07)',
+          }}
+        >
+          {/* Decorative corner glow */}
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-cyan-500/10 blur-[60px] pointer-events-none" />
+          <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-sky-600/10 blur-[60px] pointer-events-none" />
 
+          {/* Top: Logo + headline */}
           <div className="relative z-10">
-            {/* Image Logo */}
-            <Link to="/" className="flex items-center gap-3 group inline-flex mb-12">
-              <img src="/logonen.jpg" alt="SSFM Logo" className="w-12 h-12 rounded-full object-cover bg-white shadow-lg border-2 border-white/80 group-hover:scale-105 transition-transform duration-500" />
-              <span className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">SSFM</span>
+            <Link to="/" className="flex items-center gap-2.5 group mb-3.5 w-fit">
+              <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/20 shadow-md shadow-black/30">
+                <img src="/logonen.jpg" alt="SSFM Logo" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              </div>
+              <span className="text-xl font-bold tracking-tight text-white">SSFM</span>
             </Link>
 
-            {/* Serif Typography for elegance */}
-            <h2 className="text-[2.25rem] font-serif font-semibold text-white mb-5 leading-snug drop-shadow-sm">Tạo Tài Khoản</h2>
-
-            {/* High-end Sans-serif description */}
-            <p className="text-slate-100 font-sans text-[15px] leading-relaxed tracking-wide mb-10 opacity-90">
-              Tham gia hệ sinh thái trang trại kỹ thuật số. Giám sát hệ thống ao nuôi với công nghệ AI và 5T Care Loop.
+            <h2 className="text-white text-xl lg:text-[1.35rem] font-extrabold leading-tight tracking-tight mb-1.5">
+              Quản lý trang trại<br />
+              <span className="text-cyan-300">thông minh</span>
+            </h2>
+            <p className="text-slate-300/70 text-xs leading-relaxed mb-3.5">
+              Nền tảng giám sát và quản lý nuôi tôm toàn diện — từ chất lượng nước đến hiệu quả sản xuất.
             </p>
 
-            {/* Minimalist Feature List */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shadow-sm backdrop-blur-sm">
-                  <ShieldCheck className="w-4 h-4 text-cyan-200" strokeWidth={1.5} />
+            {/* Features */}
+            <div className="space-y-2">
+              {[
+                { icon: Activity, color: 'text-cyan-300', bg: 'bg-cyan-500/10', label: 'Giám sát thời gian thực' },
+                { icon: LineChart, color: 'text-sky-300', bg: 'bg-sky-500/10', label: 'Báo cáo & Phân tích sinh trưởng' },
+                { icon: ShieldCheck, color: 'text-teal-300', bg: 'bg-teal-500/10', label: 'Cảnh báo & Kiểm soát dịch bệnh' },
+                { icon: Waves, color: 'text-blue-300', bg: 'bg-blue-500/10', label: 'Theo dõi môi trường ao nuôi' },
+              ].map(({ icon: Icon, color, bg, label }) => (
+                <div key={label} className="flex items-center gap-2.5 group cursor-default">
+                  <div className={`w-7 h-7 rounded-lg ${bg} border border-white/10 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform`}>
+                    <Icon className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.6} />
+                  </div>
+                  <span className="text-xs text-slate-200 font-medium">{label}</span>
                 </div>
-                <span className="text-[15px] font-medium tracking-wide text-white">Bảo mật dữ liệu tuyệt đối</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shadow-sm backdrop-blur-sm">
-                  <Droplets className="w-4 h-4 text-blue-200" strokeWidth={1.5} />
-                </div>
-                <span className="text-[15px] font-medium tracking-wide text-white">Tối ưu hoá nguồn nước</span>
-              </div>
+              ))}
             </div>
           </div>
 
-          <div className="relative z-10 mt-12 text-[13px] font-medium tracking-wide text-slate-300/60">
-            © 2026 Smart Shrimp Farm Management
+          {/* Bottom: Contact info & copyright */}
+          <div className="relative z-10 pt-2.5">
+            {/* Support box */}
+            <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm mb-2 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-md bg-cyan-500/15 border border-cyan-400/20 flex items-center justify-center text-cyan-300 flex-shrink-0">
+                  <Phone className="w-3 h-3" />
+                </div>
+                <div className="text-[11px] leading-tight">
+                  <span className="text-slate-300/70 block text-[9.5px]">Hotline kỹ thuật:</span>
+                  <a href="tel:0123456789" className="text-cyan-300 hover:text-cyan-200 font-bold tracking-wide transition-colors">
+                    0123 456 789 <span className="text-[9px] text-slate-300/60 font-normal">(24/7)</span>
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-md bg-sky-500/15 border border-sky-400/20 flex items-center justify-center text-sky-300 flex-shrink-0">
+                  <Mail className="w-3 h-3" />
+                </div>
+                <div className="text-[11px] leading-tight">
+                  <span className="text-slate-300/70 block text-[9.5px]">Email hỗ trợ:</span>
+                  <a href="mailto:support@ssfm.com" className="text-sky-300 hover:text-sky-200 font-medium transition-colors">
+                    support@ssfm.com
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-1.5" />
+            <p className="text-[10px] text-slate-400/50 font-medium tracking-wide">
+              © 2026 Smart Shrimp Farm Management
+            </p>
           </div>
         </div>
 
-        {/* Right Side: Registration Form */}
-        <div className="w-full md:w-7/12 p-8 sm:p-10 lg:p-12 bg-white/40 backdrop-blur-xl relative">
-          {/* Back to Login Button */}
-          <Link to="/login" className="absolute top-6 right-6 sm:top-8 sm:right-8 flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors bg-white/50 hover:bg-white/80 px-3 py-1.5 rounded-full shadow-sm backdrop-blur-sm border border-white/40">
-            <ArrowLeft className="w-4 h-4" strokeWidth={2} />
+        {/* ── Right panel: Registration Form ── */}
+        <div
+          className="w-full md:w-7/12 p-4 sm:p-5 lg:px-7 lg:py-4.5 relative flex flex-col justify-between"
+          style={{
+            background: 'linear-gradient(160deg, rgba(240,249,255,0.96) 0%, rgba(224,242,254,0.97) 100%)',
+            backdropFilter: 'blur(24px)',
+          }}
+        >
+          {/* Back to Login link */}
+          <div className="flex items-center justify-between mb-2">
+            {/* Mobile logo */}
+            <div className="md:hidden flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200">
+                <img src="/logonen.jpg" alt="SSFM Logo" className="w-full h-full object-cover" />
+              </div>
+              <span className="text-base font-bold text-slate-800">SSFM</span>
+            </div>
 
-          </Link>
-
-          {/* Mobile Logo */}
-          <div className="md:hidden flex items-center gap-3 mb-8">
-            <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-lg border-2 border-white/80" />
-            <span className="text-2xl font-bold text-slate-900">SSFM</span>
+            <Link
+              to={inviteTokenFromUrl ? `/login?inviteToken=${inviteTokenFromUrl}` : '/login'}
+              className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-cyan-700 transition-colors bg-white/70 hover:bg-white px-2.5 py-0.5 rounded-full border border-slate-200 shadow-sm"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              <span>Đăng nhập</span>
+            </Link>
           </div>
 
-          <div className="mb-8">
-            {inviteTokenFromUrl ? (
-              inviteInfo.loading ? (
-                <div className="flex items-center gap-3 p-4 bg-blue-50/80 rounded-2xl border border-blue-200 mb-4">
-                  <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
-                  <p className="text-sm text-blue-700 font-semibold">Đang xác thực lời mời...</p>
-                </div>
-              ) : inviteInfo.valid ? (
-                <div className="p-4 bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-2xl border-2 border-emerald-300 mb-6 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                      <Gift className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-extrabold text-emerald-800 leading-snug">
-                        🎉 Bạn được mời tham gia trang trại!
-                      </p>
-                      <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
-                        <strong>{inviteInfo.managerName}</strong> mời bạn vào trang trại <strong>&ldquo;{inviteInfo.farmName}&rdquo;</strong>{' '}
-                        với vai trò <span className={`font-bold px-1.5 py-0.5 rounded-md text-[10px] ${
-                          inviteInfo.role === 'FARMER'
-                            ? 'bg-emerald-200 text-emerald-800'
-                            : 'bg-cyan-200 text-cyan-800'
-                        }`}>{inviteInfo.role === 'FARMER' ? 'Nông Dân' : 'Kỹ Thuật Viên'}</span>.
-                      </p>
-                      <p className="text-[10px] text-emerald-600 mt-1">
-                        ✅ Sau khi đăng ký, bạn sẽ tự động tham gia trang trại này.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 bg-red-50 rounded-2xl border border-red-200 mb-4 flex items-start gap-3">
-                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-bold text-red-700">Link mời không hợp lệ</p>
-                    <p className="text-xs text-red-600 mt-0.5">{inviteInfo.reason || 'Token đã hết hạn hoặc bị sai.'}</p>
-                  </div>
-                </div>
-              )
-            ) : null}
-            <h1 className="text-[2rem] font-bold text-slate-900 mb-2 tracking-tight">
-              {inviteTokenFromUrl && inviteInfo.valid ? 'Tạo Tài Khoản & Gia Nhập' : 'Đăng Ký Mới'}
+          {/* Heading */}
+          <div className="mb-2">
+            <h1 className="text-xl lg:text-2xl font-extrabold text-slate-900 tracking-tight leading-none mb-0.5">
+              {inviteTokenFromUrl && inviteInfo.valid ? 'Tạo Tài Khoản & Gia Nhập' : 'Tạo Tài Khoản'}
             </h1>
-            <p className="text-slate-600 text-[15px]">
+            <p className="text-slate-500 text-xs">
               {inviteTokenFromUrl && inviteInfo.valid
                 ? `Hoàn tất đăng ký để tham gia "${inviteInfo.farmName}".`
-                : 'Điền thông tin của bạn để thiết lập trang trại.'}
+                : 'Điền thông tin để đăng ký tài khoản SSFM.'}
             </p>
           </div>
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* Invite Banner */}
+          <AnimatePresence>
+            {inviteTokenFromUrl && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-2.5"
+              >
+                {inviteInfo.loading ? (
+                  <div className="flex items-center gap-2 p-2.5 bg-blue-50/90 rounded-lg border border-blue-200">
+                    <div className="w-3.5 h-3.5 border-2 border-cyan-500/30 border-t-cyan-600 rounded-full animate-spin flex-shrink-0" />
+                    <p className="text-xs text-cyan-800 font-semibold">Đang xác thực lời mời...</p>
+                  </div>
+                ) : inviteInfo.valid ? (
+                  <div className="p-2.5 bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-xl border border-emerald-300 shadow-sm">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+                        <Gift className="w-3.5 h-3.5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-extrabold text-emerald-800 leading-snug">
+                          🎉 Bạn được mời tham gia trang trại!
+                        </p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5 leading-tight">
+                          <strong>{inviteInfo.managerName}</strong> mời bạn vào <strong>&ldquo;{inviteInfo.farmName}&rdquo;</strong>{' '}
+                          với vai trò <span className={`font-bold px-1 py-0.2 rounded text-[9.5px] ${inviteInfo.role === 'FARMER'
+                              ? 'bg-emerald-200 text-emerald-800'
+                              : 'bg-cyan-200 text-cyan-800'
+                            }`}>{inviteInfo.role === 'FARMER' ? 'Nông Dân' : 'Kỹ Thuật Viên'}</span>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-red-50 rounded-xl border border-red-200 flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-red-700">Link mời không hợp lệ</p>
+                      <p className="text-[10px] text-red-600 mt-0.5">{inviteInfo.reason || 'Token đã hết hạn hoặc bị sai.'}</p>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <form className="space-y-2" onSubmit={handleSubmit}>
+            {/* Full Name & Phone */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Full Name */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest" htmlFor="fullName">
-                  Họ và Tên <span className="text-blue-600">*</span>
+              <div className="space-y-0.5">
+                <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider" htmlFor="fullName">
+                  Họ và Tên <span className="text-cyan-600">*</span>
                 </label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.8} />
                   <input
                     id="fullName"
                     type="text"
                     value={formData.fullName}
                     onChange={handleChange}
-                    className={`w-full pl-11 pr-4 py-3 rounded-2xl bg-indigo-50/60 shadow-inner border ${errors.fullName ? 'border-red-400' : 'border-white/40'} focus:bg-white/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-900 placeholder-slate-400 text-[14px] font-medium`}
+                    onFocus={() => setFocusedField('fullName')}
+                    onBlur={() => setFocusedField(null)}
+                    className={`glass-input w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/70 border ${errors.fullName ? 'border-red-300' : 'border-slate-200'} text-slate-900 text-xs sm:text-[13px] font-medium placeholder-slate-400 transition-all duration-200 hover:border-slate-300`}
+                    style={{ boxShadow: focusedField === 'fullName' ? '0 0 0 2px rgba(6,182,212,0.3)' : 'inset 0 1px 3px rgba(0,0,0,0.04)' }}
                     placeholder="Nguyễn Văn A"
                   />
                 </div>
-                {errors.fullName && <p className="text-[11px] text-red-600 font-bold">{errors.fullName}</p>}
+                {errors.fullName && <p className="text-[10px] text-red-500 font-semibold">{errors.fullName}</p>}
               </div>
 
               {/* Phone */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest" htmlFor="phone">
+              <div className="space-y-0.5">
+                <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider" htmlFor="phone">
                   Số Điện Thoại
                 </label>
-                <div className="relative group">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.8} />
                   <input
                     id="phone"
                     type="tel"
                     maxLength={10}
                     value={formData.phone}
                     onChange={handleChange}
-                    className={`w-full pl-11 pr-4 py-3 rounded-2xl bg-indigo-50/60 shadow-inner border ${errors.phone ? 'border-red-400' : 'border-white/40'} focus:bg-white/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-900 placeholder-slate-400 text-[14px] font-medium`}
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
+                    className={`glass-input w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/70 border ${errors.phone ? 'border-red-300' : 'border-slate-200'} text-slate-900 text-xs sm:text-[13px] font-medium placeholder-slate-400 transition-all duration-200 hover:border-slate-300`}
+                    style={{ boxShadow: focusedField === 'phone' ? '0 0 0 2px rgba(6,182,212,0.3)' : 'inset 0 1px 3px rgba(0,0,0,0.04)' }}
                     placeholder="0912345678"
                   />
                 </div>
-                {errors.phone && <p className="text-[11px] text-red-600 font-bold">{errors.phone}</p>}
+                {errors.phone && <p className="text-[10px] text-red-500 font-semibold">{errors.phone}</p>}
               </div>
             </div>
 
             {/* Email */}
-            <div className="space-y-2">
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest" htmlFor="email">
-                Địa chỉ Email <span className="text-blue-600">*</span>
+            <div className="space-y-0.5">
+              <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider" htmlFor="email">
+                Địa chỉ Email <span className="text-cyan-600">*</span>
               </label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.8} />
                 <input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className={`w-full pl-11 pr-4 py-3 rounded-2xl bg-indigo-50/60 shadow-inner border ${errors.email ? 'border-red-400' : 'border-white/40'} focus:bg-white/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-900 placeholder-slate-400 text-[14px] font-medium`}
-                  placeholder="hungncqde180400@fpt.edu.vn"
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
+                  className={`glass-input w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/70 border ${errors.email ? 'border-red-300' : 'border-slate-200'} text-slate-900 text-xs sm:text-[13px] font-medium placeholder-slate-400 transition-all duration-200 hover:border-slate-300`}
+                  style={{ boxShadow: focusedField === 'email' ? '0 0 0 2px rgba(6,182,212,0.3)' : 'inset 0 1px 3px rgba(0,0,0,0.04)' }}
+                  placeholder="name@example.com"
                 />
               </div>
-              {errors.email && <p className="text-[11px] text-red-600 font-bold">{errors.email}</p>}
+              {errors.email && <p className="text-[10px] text-red-500 font-semibold">{errors.email}</p>}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Password & Confirm Password */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Password */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest" htmlFor="password">
-                  Mật Khẩu <span className="text-blue-600">*</span>
+              <div className="space-y-0.5">
+                <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider" htmlFor="password">
+                  Mật Khẩu <span className="text-cyan-600">*</span>
                 </label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.8} />
                   <input
                     id="password"
-                    type={showPassword ? "text" : "password"}
+                    type={showPassword ? 'text' : 'password'}
                     value={formData.password}
                     onChange={handleChange}
-                    className={`w-full pl-11 pr-10 py-3 rounded-2xl bg-indigo-50/60 shadow-inner border ${errors.password ? 'border-red-400' : 'border-white/40'} focus:bg-white/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-900 placeholder-slate-400 text-[14px] font-medium tracking-widest`}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="••••••••"
+                    className={`glass-input w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/70 border ${errors.password ? 'border-red-300' : 'border-slate-200'} text-slate-900 text-xs sm:text-[13px] font-medium placeholder-slate-400 transition-all duration-200 hover:border-slate-300 tracking-widest`}
+                    style={{ boxShadow: focusedField === 'password' ? '0 0 0 2px rgba(6,182,212,0.3)' : 'inset 0 1px 3px rgba(0,0,0,0.04)' }}
                   />
                   <button
                     type="button"
                     tabIndex={-1}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 focus:outline-none transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-cyan-600 transition-colors p-0.5"
                   >
-                    {showPassword ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    )}
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" strokeWidth={1.8} /> : <Eye className="w-3.5 h-3.5" strokeWidth={1.8} />}
                   </button>
                 </div>
-                {errors.password && <p className="text-[11px] text-red-600 font-bold leading-tight">{errors.password}</p>}
+                {errors.password && <p className="text-[10px] text-red-500 font-semibold leading-tight">{errors.password}</p>}
               </div>
 
               {/* Confirm Password */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest" htmlFor="confirmPassword">
-                  Xác nhận <span className="text-blue-600">*</span>
+              <div className="space-y-0.5">
+                <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider" htmlFor="confirmPassword">
+                  Xác nhận <span className="text-cyan-600">*</span>
                 </label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-600 transition-colors" strokeWidth={1.5} />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.8} />
                   <input
                     id="confirmPassword"
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className={`w-full pl-11 pr-4 py-3 rounded-2xl bg-indigo-50/60 shadow-inner border ${errors.confirmPassword ? 'border-red-400' : 'border-white/40'} focus:bg-white/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-slate-900 placeholder-slate-400 text-[14px] font-medium tracking-widest`}
+                    onFocus={() => setFocusedField('confirmPassword')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="••••••••"
+                    className={`glass-input w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/70 border ${errors.confirmPassword ? 'border-red-300' : 'border-slate-200'} text-slate-900 text-xs sm:text-[13px] font-medium placeholder-slate-400 transition-all duration-200 hover:border-slate-300 tracking-widest`}
+                    style={{ boxShadow: focusedField === 'confirmPassword' ? '0 0 0 2px rgba(6,182,212,0.3)' : 'inset 0 1px 3px rgba(0,0,0,0.04)' }}
                   />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-cyan-600 transition-colors p-0.5"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" strokeWidth={1.8} /> : <Eye className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                  </button>
                 </div>
-                {errors.confirmPassword && <p className="text-[11px] text-red-600 font-bold leading-tight">{errors.confirmPassword}</p>}
+                {errors.confirmPassword && <p className="text-[10px] text-red-500 font-semibold leading-tight">{errors.confirmPassword}</p>}
               </div>
             </div>
 
             {/* Role Selection */}
-            <div className="space-y-2">
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-widest">
-                Chọn Vai Trò (Role) <span className="text-blue-600">*</span>
+            <div className="space-y-1 pt-0.5">
+              <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider">
+                Chọn Vai Trò (Role) <span className="text-cyan-600">*</span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {/* Farm Manager */}
                 <button
                   type="button"
                   onClick={() => handleRoleSelect('FARM_MANAGER')}
-                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                    formData.role === 'FARM_MANAGER'
-                      ? 'bg-blue-600/15 border-blue-600 ring-2 ring-blue-500/30 shadow-sm text-blue-950'
-                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
-                  }`}
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'FARM_MANAGER'
+                      ? 'bg-sky-500/10 border-sky-500 ring-2 ring-sky-400/40 shadow-sm text-sky-950'
+                      : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
+                    }`}
                 >
                   {formData.role === 'FARM_MANAGER' && (
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 absolute top-2.5 right-2.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-sky-600 absolute top-1.5 right-1.5" />
                   )}
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 flex items-center justify-center mb-1.5">
-                    <Building2 className="w-3.5 h-3.5" />
+                  <div className="w-5 h-5 rounded bg-sky-500/15 text-sky-600 flex items-center justify-center mb-0.5">
+                    <Building2 className="w-3 h-3" />
                   </div>
                   <div>
-                    <div className="text-[12px] font-bold">Quản Lý Trang Trại</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Chủ trang trại, quản lý ao & nhân sự</div>
+                    <div className="text-[11px] font-bold leading-tight">Quản Lý Trang Trại</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 leading-tight">Chủ trại, quản lý ao & nhân sự</div>
                   </div>
                 </button>
 
@@ -539,21 +697,20 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => handleRoleSelect('TECHNICIAN')}
-                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                    formData.role === 'TECHNICIAN'
-                      ? 'bg-cyan-600/15 border-cyan-600 ring-2 ring-cyan-500/30 shadow-sm text-cyan-950'
-                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
-                  }`}
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'TECHNICIAN'
+                      ? 'bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-400/40 shadow-sm text-cyan-950'
+                      : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
+                    }`}
                 >
                   {formData.role === 'TECHNICIAN' && (
-                    <CheckCircle2 className="w-4 h-4 text-cyan-600 absolute top-2.5 right-2.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-cyan-600 absolute top-1.5 right-1.5" />
                   )}
-                  <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-600 flex items-center justify-center mb-1.5">
-                    <FlaskConical className="w-3.5 h-3.5" />
+                  <div className="w-5 h-5 rounded bg-cyan-500/15 text-cyan-600 flex items-center justify-center mb-0.5">
+                    <FlaskConical className="w-3 h-3" />
                   </div>
                   <div>
-                    <div className="text-[12px] font-bold">Kỹ Thuật Viên</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Đo nước, sức khỏe tôm & mẫu 5T</div>
+                    <div className="text-[11px] font-bold leading-tight">Kỹ Thuật Viên</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 leading-tight">Đo nước, sức khỏe tôm & mẫu 5T</div>
                   </div>
                 </button>
 
@@ -561,76 +718,96 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => handleRoleSelect('FARMER')}
-                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                    formData.role === 'FARMER'
-                      ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/30 shadow-sm text-emerald-950'
-                      : 'bg-white/50 hover:bg-white/80 border-white/60 text-slate-700'
-                  }`}
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'FARMER'
+                      ? 'bg-teal-500/10 border-teal-500 ring-2 ring-teal-400/40 shadow-sm text-teal-950'
+                      : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
+                    }`}
                 >
                   {formData.role === 'FARMER' && (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 absolute top-2.5 right-2.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 absolute top-1.5 right-1.5" />
                   )}
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center mb-1.5">
-                    <Users className="w-3.5 h-3.5" />
+                  <div className="w-5 h-5 rounded bg-teal-500/15 text-teal-600 flex items-center justify-center mb-0.5">
+                    <Users className="w-3 h-3" />
                   </div>
                   <div>
-                    <div className="text-[12px] font-bold">Nông Dân</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Ghi nhận cho ăn & nhật ký ao hằng ngày</div>
+                    <div className="text-[11px] font-bold leading-tight">Nông Dân</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 leading-tight">Ghi nhận cho ăn & nhật ký ao</div>
                   </div>
                 </button>
               </div>
             </div>
 
-            {serverError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-2xl text-sm font-medium border border-red-100 flex items-start gap-2">
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                {serverError}
-              </div>
-            )}
+            {/* Error message */}
+            <AnimatePresence>
+              {serverError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-start gap-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg p-2 text-xs font-medium"
+                >
+                  <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  {serverError}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
+            {/* Submit button - static blue, no smooth/shimmer animation */}
             <button
+              id="register-submit-btn"
               type="submit"
               disabled={isLoading}
-              className={`w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3.5 px-4 rounded-2xl transition-all flex justify-center items-center mt-5 shadow-lg shadow-blue-900/20 hover:shadow-xl hover:shadow-blue-900/30 hover:-translate-y-0.5 group ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`btn-submit w-full text-white font-bold py-2.5 px-5 rounded-lg flex items-center justify-center gap-2 text-[14px] shadow-md shadow-cyan-900/20 transition-all duration-200 mt-1 ${isLoading ? 'opacity-70 cursor-not-allowed' : 'hover:brightness-105 hover:shadow-lg hover:shadow-cyan-900/30'
+                }`}
             >
               {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                   Đang xử lý...
-                </span>
+                </>
               ) : (
-                <span className="flex items-center gap-2 text-[15px]">
+                <>
                   Hoàn Tất Đăng Ký
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
-                </span>
+                  <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.2} />
+                </>
               )}
             </button>
           </form>
 
-          {/* Social Auth */}
-          <div className="mt-7">
-            <div className="relative flex py-3 items-center">
-              <div className="flex-grow border-t border-slate-300/40"></div>
-              <span className="flex-shrink mx-4 text-slate-500 text-[10px] font-extrabold uppercase tracking-widest">Hoặc tiếp tục với</span>
-              <div className="flex-grow border-t border-slate-300/40"></div>
-            </div>
-            <div className="mt-4 flex justify-center" ref={googleBtnRef}></div>
+          {/* Divider */}
+          <div className="my-2 flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Hoặc tiếp tục với</span>
+            <div className="flex-1 h-px bg-slate-200" />
           </div>
 
-          <p className="mt-7 text-center text-[14px] text-slate-600 font-medium">
+          {/* Google Auth */}
+          <div className="flex justify-center" ref={googleBtnRef} />
+
+          {/* Login Link */}
+          <p className="mt-2 text-center text-xs text-slate-500 font-medium">
             Đã có tài khoản?{' '}
             <Link
               to={inviteTokenFromUrl ? `/login?inviteToken=${inviteTokenFromUrl}` : '/login'}
-              className="font-bold text-blue-600 hover:text-blue-800 transition-colors"
+              className="font-bold text-cyan-600 hover:text-cyan-800 transition-colors"
             >
               Đăng nhập ngay
             </Link>
           </p>
+
+          {/* Mobile support note */}
+          <div className="md:hidden mt-2 pt-2 border-t border-slate-200/60 text-center">
+            <p className="text-[10px] text-slate-500 font-medium">
+              Hỗ trợ kỹ thuật: <a href="tel:0123456789" className="text-cyan-700 font-bold hover:underline">0123 456 789</a> (24/7) • <a href="mailto:support@ssfm.com" className="text-cyan-700 font-medium hover:underline">support@ssfm.com</a>
+            </p>
+          </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

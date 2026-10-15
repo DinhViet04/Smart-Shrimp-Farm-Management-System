@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  ResponsiveContainer, ComposedChart, XAxis, YAxis, 
+import {
+  ResponsiveContainer, ComposedChart, XAxis, YAxis,
   CartesianGrid, Tooltip, Area, Line, AreaChart, ReferenceArea
 } from 'recharts';
-import { 
+import {
   Activity, AlertCircle, Loader2, RefreshCw, ShieldCheck,
   Droplets, Thermometer, FlaskConical, Wind, Waves
 } from 'lucide-react';
@@ -46,8 +46,8 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   if (!item) return null;
 
   const sizeText = item.size ? `${item.size} con/kg` : 'Chưa thu hoạch';
-  const fcrText = item.fcr_raw !== null && item.fcr_raw !== undefined 
-    ? `${Number(item.fcr_raw).toFixed(2)}` 
+  const fcrText = item.fcr_raw !== null && item.fcr_raw !== undefined
+    ? `${Number(item.fcr_raw).toFixed(2)}`
     : 'Chưa tính (DOC < 10)';
 
   return (
@@ -158,14 +158,14 @@ export default function TechnicianOverviewDashboard({
   type ParamKey = 'temperature' | 'ph' | 'dissolvedOxygen' | 'salinity' | 'alkalinity' | 'nh3' | 'h2s' | 'transparency';
 
   const ENV_PARAM_CONFIG: Record<ParamKey, { name: string; unit: string; color: string; icon: React.ReactNode; optimal: number[]; warningHigh?: number[]; warningLow?: number[]; domain: number[] }> = {
-    temperature:      { name: 'Nhiệt độ',  unit: '°C',   color: '#f43f5e', icon: <Thermometer className="w-3.5 h-3.5" />, optimal: [25, 30], warningHigh: [30, 33], warningLow: [20, 25], domain: [15, 40] },
-    ph:               { name: 'pH',         unit: '',      color: '#8b5cf6', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [8.2, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.5, 8.2], domain: [5.0, 10.0] },
-    dissolvedOxygen:  { name: 'DO (Oxy)',   unit: 'mg/L',  color: '#0ea5e9', icon: <Wind className="w-3.5 h-3.5" />, optimal: [4, 10], warningLow: [3, 4], domain: [0, 15] },
-    salinity:         { name: 'Độ mặn',     unit: '‰',     color: '#10b981', icon: <Waves className="w-3.5 h-3.5" />, optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
-    alkalinity:       { name: 'Độ kiềm',    unit: 'mg/L',  color: '#f59e0b', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [100, 160], warningHigh: [160, 200], warningLow: [80, 100], domain: [50, 250] },
-    nh3:              { name: 'NH3',         unit: 'mg/L',  color: '#d946ef', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.30], warningHigh: [0.30, 0.50], domain: [0, 1.0] },
-    h2s:              { name: 'H2S',         unit: 'mg/L',  color: '#f97316', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.03], warningHigh: [0.03, 0.05], domain: [0, 0.2] },
-    transparency:     { name: 'Độ trong',   unit: 'cm',    color: '#06b6d4', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [25, 40], warningHigh: [40, 50], warningLow: [20, 25], domain: [0, 70] },
+    temperature: { name: 'Nhiệt độ', unit: '°C', color: '#f43f5e', icon: <Thermometer className="w-3.5 h-3.5" />, optimal: [25, 30], warningHigh: [30, 33], warningLow: [20, 25], domain: [15, 40] },
+    ph: { name: 'pH', unit: '', color: '#8b5cf6', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [8.2, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.5, 8.2], domain: [5.0, 10.0] },
+    dissolvedOxygen: { name: 'DO (Oxy)', unit: 'mg/L', color: '#0ea5e9', icon: <Wind className="w-3.5 h-3.5" />, optimal: [4, 10], warningLow: [3, 4], domain: [0, 15] },
+    salinity: { name: 'Độ mặn', unit: '‰', color: '#10b981', icon: <Waves className="w-3.5 h-3.5" />, optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
+    alkalinity: { name: 'Độ kiềm', unit: 'mg/L', color: '#f59e0b', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [100, 160], warningHigh: [160, 200], warningLow: [80, 100], domain: [50, 250] },
+    nh3: { name: 'NH3', unit: 'mg/L', color: '#d946ef', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.30], warningHigh: [0.30, 0.50], domain: [0, 1.0] },
+    h2s: { name: 'H2S', unit: 'mg/L', color: '#f97316', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.03], warningHigh: [0.03, 0.05], domain: [0, 0.2] },
+    transparency: { name: 'Độ trong', unit: 'cm', color: '#06b6d4', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [25, 40], warningHigh: [40, 50], warningLow: [20, 25], domain: [0, 70] },
   };
 
   const [envTimeRange, setEnvTimeRange] = useState<WQTimeRange>('7d');
@@ -185,7 +185,7 @@ export default function TechnicianOverviewDashboard({
       try {
         let fromDate = new Date();
         if (envTimeRange === '24h') fromDate = subHours(new Date(), 24);
-        if (envTimeRange === '7d')  fromDate = subDays(new Date(), 7);
+        if (envTimeRange === '7d') fromDate = subDays(new Date(), 7);
         if (envTimeRange === '30d') fromDate = subDays(new Date(), 30);
         const data = await waterQualityService.getTrends(pondId, fromDate.toISOString());
         setEnvData(data);
@@ -221,7 +221,7 @@ export default function TechnicianOverviewDashboard({
     try {
       const date = new Date(tickItem);
       if (envTimeRange === '24h') return format(date, 'HH:mm');
-      if (envTimeRange === '7d')  return format(date, 'dd/MM HH:mm');
+      if (envTimeRange === '7d') return format(date, 'dd/MM HH:mm');
       return format(date, 'dd/MM');
     } catch { return ''; }
   };
@@ -343,22 +343,20 @@ export default function TechnicianOverviewDashboard({
 
   return (
     <div className="space-y-6 w-full max-w-[1400px] mx-auto pb-12 animate-in fade-in duration-300">
-      
+
       {/* ── 1. HEADER TOOLBAR & FILTER CONTROLS ─────────────────────────────────── */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-5">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">
-              Giám Sát Tăng Trưởng 90 Ngày Chuẩn Hóa
+              Giám Sát Tăng Trưởng
             </h1>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full border border-indigo-100/60 shadow-xs">
               <Activity className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
               {scopeName}
             </span>
           </div>
-          <p className="text-xs font-semibold text-slate-400">
-            Không gian chuẩn hóa: Trục X (0 - 90 DOC) • Trục Y độc nhất (0 - 100 điểm) • Tối ưu phân tích đa chỉ số
-          </p>
+
         </div>
 
         {/* Toolbar Selectors */}
@@ -418,11 +416,11 @@ export default function TechnicianOverviewDashboard({
               {ponds.map((p) => {
                 const pondCrops = crops.filter(c => c.pondId === p.id);
                 const activeCrop = pondCrops.find(c => c.status === 'ACTIVE');
-                const label = activeCrop 
-                  ? `Ao ${p.name} (🟢 Đang nuôi)` 
-                  : pondCrops.length > 0 
-                  ? `Ao ${p.name} (⚪ Đã thu hoạch)` 
-                  : `Ao ${p.name}`;
+                const label = activeCrop
+                  ? `Ao ${p.name} (🟢 Đang nuôi)`
+                  : pondCrops.length > 0
+                    ? `Ao ${p.name} (⚪ Đã thu hoạch)`
+                    : `Ao ${p.name}`;
                 return (
                   <option key={p.id} value={p.id}>{label}</option>
                 );
@@ -483,7 +481,7 @@ export default function TechnicianOverviewDashboard({
 
       {/* ── 2. MAIN INTERACTIVE CHART CARD ─────────────────────────────────────── */}
       <div className="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-xs">
-        
+
         {/* Interactive Legend Guide Bar */}
         <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -498,11 +496,10 @@ export default function TechnicianOverviewDashboard({
             <button
               type="button"
               onClick={() => toggleSeries('sr')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                visibleSeries.sr
-                  ? 'bg-white text-slate-800 border-emerald-300 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
-              }`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${visibleSeries.sr
+                ? 'bg-white text-slate-800 border-emerald-300 shadow-2xs'
+                : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
+                }`}
             >
               <span className="w-3.5 h-1 bg-[#2e7d32] rounded-full"></span>
               Tỉ lệ sống SR (0 - 100%)
@@ -512,11 +509,10 @@ export default function TechnicianOverviewDashboard({
             <button
               type="button"
               onClick={() => toggleSeries('loss')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                visibleSeries.loss
-                  ? 'bg-white text-slate-800 border-slate-400 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
-              }`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${visibleSeries.loss
+                ? 'bg-white text-slate-800 border-slate-400 shadow-2xs'
+                : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
+                }`}
             >
               <span className="w-3.5 border-t-2 border-dashed border-[#757575]"></span>
               Hao hụt (0 - 100%)
@@ -526,11 +522,10 @@ export default function TechnicianOverviewDashboard({
             <button
               type="button"
               onClick={() => toggleSeries('abw')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                visibleSeries.abw
-                  ? 'bg-white text-slate-800 border-blue-300 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
-              }`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${visibleSeries.abw
+                ? 'bg-white text-slate-800 border-blue-300 shadow-2xs'
+                : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
+                }`}
             >
               <span className="w-3.5 h-1 bg-[#1976d2] rounded-full"></span>
               ABW (50g = Y 100)
@@ -540,11 +535,10 @@ export default function TechnicianOverviewDashboard({
             <button
               type="button"
               onClick={() => toggleSeries('biomass')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                visibleSeries.biomass
-                  ? 'bg-white text-slate-800 border-purple-300 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
-              }`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${visibleSeries.biomass
+                ? 'bg-white text-slate-800 border-purple-300 shadow-2xs'
+                : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
+                }`}
             >
               <span className="w-3.5 h-1 bg-[#7b1fa2] rounded-full"></span>
               Sinh khối (% mục tiêu)
@@ -554,11 +548,10 @@ export default function TechnicianOverviewDashboard({
             <button
               type="button"
               onClick={() => toggleSeries('fcr')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${
-                visibleSeries.fcr
-                  ? 'bg-white text-slate-800 border-red-300 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
-              }`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer border ${visibleSeries.fcr
+                ? 'bg-white text-slate-800 border-red-300 shadow-2xs'
+                : 'bg-slate-100 text-slate-400 border-slate-200 line-through opacity-50'
+                }`}
             >
               <span className="w-3.5 border-t-2 border-dashed border-[#d32f2f]"></span>
               FCR quy đổi (Điểm Y ÷ 50)
@@ -585,10 +578,10 @@ export default function TechnicianOverviewDashboard({
                 margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                
+
                 {/* Trục X: DOC từ 0 đến 90 ngày */}
-                <XAxis 
-                  dataKey="doc" 
+                <XAxis
+                  dataKey="doc"
                   tickFormatter={(val) => `DOC ${val}`}
                   stroke="#cbd5e1"
                   tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }}
@@ -596,8 +589,8 @@ export default function TechnicianOverviewDashboard({
                 />
 
                 {/* Trục Y: Duy nhất thang 0 - 100 chuẩn hóa */}
-                <YAxis 
-                  domain={[0, 100]} 
+                <YAxis
+                  domain={[0, 100]}
                   ticks={[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
                   stroke="#cbd5e1"
                   tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
@@ -763,8 +756,8 @@ export default function TechnicianOverviewDashboard({
             <span className="text-sm font-bold text-slate-400"></span>
           </div>
           <p className="text-[11px] font-semibold text-red-600 mt-2">
-            {latestPoint && latestPoint.fcr_raw !== null && latestPoint.fcr_raw !== undefined 
-              ? `Điểm Y = ${(latestPoint.fcr_raw * 50).toFixed(1)} (FCR × 50)` 
+            {latestPoint && latestPoint.fcr_raw !== null && latestPoint.fcr_raw !== undefined
+              ? `Điểm Y = ${(latestPoint.fcr_raw * 50).toFixed(1)} (FCR × 50)`
               : 'Chưa có nhật ký cho ăn'}
           </p>
         </div>
@@ -797,9 +790,8 @@ export default function TechnicianOverviewDashboard({
                     key={val}
                     type="button"
                     onClick={() => setEnvTimeRange(val)}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      envTimeRange === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                    }`}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${envTimeRange === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
                   >
                     {val === '24h' ? '24 Giờ' : val === '7d' ? '7 Ngày' : '30 Ngày'}
                   </button>
@@ -837,11 +829,10 @@ export default function TechnicianOverviewDashboard({
                     key={key}
                     type="button"
                     onClick={() => setActiveEnvParam(key)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-white shadow-sm'
-                        : 'bg-slate-50/50 border-slate-200 text-slate-400 hover:bg-white hover:text-slate-600'
-                    }`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${isActive
+                      ? 'bg-white shadow-sm'
+                      : 'bg-slate-50/50 border-slate-200 text-slate-400 hover:bg-white hover:text-slate-600'
+                      }`}
                     style={{
                       borderColor: isActive ? cfg.color : undefined,
                       color: isActive ? cfg.color : undefined,
@@ -902,7 +893,7 @@ export default function TechnicianOverviewDashboard({
                           if (!active || !payload?.length) return null;
                           const data = payload[0].payload;
                           const statusColor = data.overallStatus === 'Optimal' ? '#10b981' : data.overallStatus === 'Warning' ? '#f59e0b' : '#f43f5e';
-                          const statusText  = data.overallStatus === 'Optimal' ? 'Tối ưu' : data.overallStatus === 'Warning' ? 'Cảnh báo' : 'Nguy hiểm';
+                          const statusText = data.overallStatus === 'Optimal' ? 'Tối ưu' : data.overallStatus === 'Warning' ? 'Cảnh báo' : 'Nguy hiểm';
                           return (
                             <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl min-w-[180px] text-xs font-sans">
                               <p className="font-bold text-slate-700 mb-1.5 border-b border-slate-100 pb-1.5">
@@ -954,9 +945,8 @@ export default function TechnicianOverviewDashboard({
                       key={key}
                       type="button"
                       onClick={() => setActiveEnvParam(key)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                        isActive ? 'border-opacity-60 shadow-sm' : 'bg-white border-slate-100 hover:border-slate-200'
-                      }`}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${isActive ? 'border-opacity-60 shadow-sm' : 'bg-white border-slate-100 hover:border-slate-200'
+                        }`}
                       style={isActive ? { borderColor: cfg.color, backgroundColor: `${cfg.color}08` } : {}}
                     >
                       <div className="flex items-center gap-1 mb-2" style={{ color: cfg.color }}>

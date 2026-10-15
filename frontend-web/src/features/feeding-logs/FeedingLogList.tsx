@@ -12,6 +12,8 @@ import {
   Edit2,
   Save,
   Loader2,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import LoadingMotion from '../../components/LoadingMotion';
@@ -49,10 +51,17 @@ export default function FeedingLogList() {
   }>>({} as any);
   const [modalFeedProducts, setModalFeedProducts] = useState<any[]>([]);
   const [isSavingModal, setIsSavingModal] = useState(false);
+  const [modalCachedAmounts, setModalCachedAmounts] = useState<Record<string, number>>({});
 
   // Selected item for Delete Confirmation Modal
   const [groupToDelete, setGroupToDelete] = useState<DailyFeedingGroup | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   useEffect(() => {
     farmService.getAll().then(setFarms).catch(console.error);
@@ -89,19 +98,25 @@ export default function FeedingLogList() {
         .catch(console.error);
 
       const map: any = {};
+      const cache: Record<string, number> = {};
       DEFAULT_FEEDING_SESSIONS.forEach((defItem) => {
         const found = selectedGroup.sessions.find(
           (s) => s.feedingSession === defItem.session,
         );
+        const amt = found?.feedAmount || 0;
         map[defItem.session] = {
           feedingSession: defItem.session,
           feedingTime: found?.feedingTime || defItem.defaultTime,
           feedProductId: found?.feedProductId || '',
-          feedAmount: found?.feedAmount || 0,
+          feedAmount: amt,
           feedingStatus: found?.feedingStatus || 'SKIPPED',
         };
+        if (amt > 0) {
+          cache[defItem.session] = amt;
+        }
       });
       setEditingSessions(map);
+      setModalCachedAmounts(cache);
       setIsEditingModal(false);
     }
   }, [selectedGroup]);
@@ -146,9 +161,10 @@ export default function FeedingLogList() {
       });
 
       setSelectedGroup(null);
+      showToast('Cập nhật lịch sử cho ăn thành công!', 'success');
       fetchLogs();
     } catch (err: any) {
-      alert(err.message || 'Không thể cập nhật lịch sử cho ăn');
+      showToast(err.message || 'Không thể cập nhật lịch sử cho ăn', 'error');
     } finally {
       setIsSavingModal(false);
     }
@@ -165,9 +181,10 @@ export default function FeedingLogList() {
         groupToDelete.feedingDate
       );
       setGroupToDelete(null);
+      showToast('Xoá nhật ký cho ăn thành công!', 'success');
       fetchLogs();
     } catch (err: any) {
-      alert(err.message || 'Không thể xoá nhật ký cho ăn');
+      showToast(err.message || 'Không thể xoá nhật ký cho ăn', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -474,31 +491,42 @@ export default function FeedingLogList() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
                           {/* Status selector */}
                           <div className="sm:col-span-2 flex items-center gap-1">
-                            {(['COMPLETED', 'DELAYED', 'SKIPPED'] as FeedingStatus[]).map((st) => (
+                            {(['COMPLETED', 'SKIPPED'] as FeedingStatus[]).map((st) => (
                               <button
                                 key={st}
                                 type="button"
                                 onClick={() =>
-                                  setEditingSessions((prev) => ({
-                                    ...prev,
-                                    [sKey]: {
-                                      ...prev[sKey],
-                                      feedingStatus: st,
-                                      feedAmount: st === 'SKIPPED' ? 0 : prev[sKey]?.feedAmount || 0,
-                                    },
-                                  }))
+                                  setEditingSessions((prev) => {
+                                    const cur = prev[sKey];
+                                    let nextAmt = cur?.feedAmount || 0;
+                                    if (st === 'COMPLETED') {
+                                      if ((!nextAmt || nextAmt <= 0) && modalCachedAmounts[sKey] > 0) {
+                                        nextAmt = modalCachedAmounts[sKey];
+                                      }
+                                    } else {
+                                      if (nextAmt > 0) {
+                                        setModalCachedAmounts((c) => ({ ...c, [sKey]: nextAmt }));
+                                      }
+                                    }
+                                    return {
+                                      ...prev,
+                                      [sKey]: {
+                                        ...cur,
+                                        feedingStatus: st,
+                                        feedAmount: nextAmt,
+                                      },
+                                    };
+                                  })
                                 }
-                                className={`flex-1 py-1 px-2 rounded-lg text-[11px] font-extrabold border transition-all flex items-center justify-center gap-1 ${
+                                className={`flex-1 py-1 px-2.5 rounded-lg text-[11px] font-extrabold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
                                   ed.feedingStatus === st
                                     ? st === 'COMPLETED'
                                       ? 'bg-emerald-600 text-white border-emerald-600'
-                                      : st === 'DELAYED'
-                                      ? 'bg-amber-500 text-white border-amber-500'
                                       : 'bg-slate-700 text-white border-slate-700'
                                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                                 }`}
                               >
-                                {st === 'COMPLETED' ? 'Hoàn thành' : st === 'DELAYED' ? 'Trễ cử' : 'Bỏ cử'}
+                                {st === 'COMPLETED' ? 'Hoàn thành' : 'Bỏ cử'}
                               </button>
                             ))}
                           </div>
@@ -510,18 +538,31 @@ export default function FeedingLogList() {
                               step="0.01"
                               min="0"
                               disabled={ed.feedingStatus === 'SKIPPED'}
-                              value={ed.feedingStatus === 'SKIPPED' ? 0 : ed.feedAmount}
-                              onChange={(e) =>
+                              value={ed.feedAmount > 0 ? ed.feedAmount : (modalCachedAmounts[sKey] > 0 ? modalCachedAmounts[sKey] : (ed.feedingStatus === 'SKIPPED' ? 0 : ''))}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
                                 setEditingSessions((prev) => ({
                                   ...prev,
-                                  [sKey]: { ...prev[sKey], feedAmount: parseFloat(e.target.value) || 0 },
-                                }))
-                              }
-                              className="w-full text-xs font-bold text-slate-800 outline-none text-right"
+                                  [sKey]: { ...prev[sKey], feedAmount: val },
+                                }));
+                                if (val > 0) {
+                                  setModalCachedAmounts((c) => ({ ...c, [sKey]: val }));
+                                }
+                              }}
+                              className={`w-full text-xs font-bold outline-none text-right ${
+                                ed.feedingStatus === 'SKIPPED' ? 'text-slate-400 bg-slate-50' : 'text-slate-800'
+                              }`}
                             />
                             <span className="text-[11px] text-slate-400 font-bold">kg</span>
                           </div>
                         </div>
+
+                        {/* Skipped note in modal */}
+                        {ed.feedingStatus === 'SKIPPED' && (
+                          <div className="text-[10px] text-slate-500 font-semibold italic flex items-center gap-1 mt-1">
+                            <span>✓ Đã bỏ cử: Lượng ăn (+{ed.feedAmount || modalCachedAmounts[sKey] || 0} kg) được cộng lại vào kho (vẫn lưu để dùng lại khi bật lại Hoàn thành).</span>
+                          </div>
+                        )}
 
                         {/* Product selection dropdown */}
                         {ed.feedingStatus !== 'SKIPPED' && (
@@ -562,6 +603,19 @@ export default function FeedingLogList() {
                 <p className="text-2xl font-black text-emerald-400">
                   {isEditingModal ? editingTotalKg.toFixed(2) : selectedGroup.totalFeedKg.toFixed(1)} kg
                 </p>
+                {isEditingModal && selectedGroup.totalFeedKg !== editingTotalKg && (
+                  <p className="text-xs font-bold mt-0.5">
+                    {editingTotalKg < selectedGroup.totalFeedKg ? (
+                      <span className="text-emerald-400">
+                        +{Math.round((selectedGroup.totalFeedKg - editingTotalKg) * 100) / 100} kg hoàn lại vào kho
+                      </span>
+                    ) : (
+                      <span className="text-amber-400">
+                        +{Math.round((editingTotalKg - selectedGroup.totalFeedKg) * 100) / 100} kg xuất thêm từ kho
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -638,6 +692,24 @@ export default function FeedingLogList() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className={`px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-bold border ${
+            toast.type === 'success' 
+              ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/25' 
+              : 'bg-rose-600 text-white border-rose-500 shadow-rose-500/25'
+          }`}>
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{toast.message}</span>
           </div>
         </div>
       )}

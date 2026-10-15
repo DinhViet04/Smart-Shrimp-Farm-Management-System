@@ -74,6 +74,8 @@ export default function NotificationDropdown({
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'UNREAD' | 'ALERT'>('ALL');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -232,21 +234,26 @@ export default function NotificationDropdown({
     }
   };
 
-  const clearAllNotifications = async () => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tất cả thông báo không?')) {
-      return;
-    }
+  const clearAllNotifications = () => {
+    setShowClearConfirm(true);
+  };
+
+  const handleConfirmClearAll = async () => {
     const previous = [...notifications];
     setNotifications([]);
     setSelectedItem(null);
+    setShowClearConfirm(false);
 
     try {
+      setIsClearing(true);
       await notificationService.clearAllNotifications();
       toast.success('Đã xóa tất cả thông báo');
     } catch (err) {
       console.error('Failed to clear all notifications', err);
       toast.error('Không thể xóa tất cả thông báo');
       setNotifications(previous);
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -658,6 +665,49 @@ export default function NotificationDropdown({
                     className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer shadow-sm"
                   >
                     Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {showClearConfirm &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => !isClearing && setShowClearConfirm(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+            >
+              <div className="h-1.5 bg-gradient-to-r from-rose-500 to-amber-500"></div>
+              <div className="p-6 text-center">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 mb-3 shadow-inner">
+                  <Trash2 className="w-6 h-6 animate-pulse" />
+                </div>
+                <h3 className="text-lg font-black text-slate-800">Xóa tất cả thông báo?</h3>
+                <p className="text-xs text-slate-500 mt-1 mb-5 leading-relaxed">
+                  Hành động này sẽ xóa toàn bộ danh sách thông báo hiện có của bạn và không thể khôi phục.
+                </p>
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirm(false)}
+                    disabled={isClearing}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmClearAll}
+                    disabled={isClearing}
+                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isClearing ? 'Đang xóa...' : 'Xóa tất cả'}
                   </button>
                 </div>
               </div>

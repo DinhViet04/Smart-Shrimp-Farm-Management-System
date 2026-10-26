@@ -14,7 +14,7 @@ import {
 import { Type } from 'class-transformer';
 
 export class SplitDestinationDto {
-  @IsString({ message: 'pondId phải là chuỗi hợp lệ' })
+  @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
   pondId: string;
 
   @IsInt({ message: 'Số lượng tôm chuyển vào phải là số nguyên' })

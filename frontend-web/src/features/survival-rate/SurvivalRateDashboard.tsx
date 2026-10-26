@@ -105,13 +105,6 @@ export default function SurvivalRateDashboard({
       setPonds(pondsData);
       if (farmsData.length > 0) {
         setSelectedFarmId((prev) => {
-          if (initialPondId) {
-            const pondMatch = pondsData.find((p: any) => p.id === initialPondId);
-            if (pondMatch && farmsData.some((f: Farm) => f.id === pondMatch.farmId)) {
-              onSelectFarm?.(pondMatch.farmId);
-              return pondMatch.farmId;
-            }
-          }
           if (initialFarmId && farmsData.some((f: Farm) => f.id === initialFarmId)) {
             onSelectFarm?.(initialFarmId);
             return initialFarmId;
@@ -132,34 +125,13 @@ export default function SurvivalRateDashboard({
     return ponds.filter((p) => p.farmId === selectedFarmId);
   }, [ponds, selectedFarmId]);
 
-  // Sync when initialPondId changes
-  useEffect(() => {
-    if (initialPondId && ponds.length > 0) {
-      const matchPond = ponds.find((p) => p.id === initialPondId);
-      if (matchPond) {
-        if (matchPond.farmId !== selectedFarmId) {
-          setSelectedFarmId(matchPond.farmId);
-          onSelectFarm?.(matchPond.farmId);
-        }
-        if (selectedPondId !== matchPond.id) {
-          setSelectedPondId(matchPond.id);
-        }
-      }
-    }
-  }, [initialPondId, ponds, selectedFarmId, selectedPondId]);
-
   // When selected farm changes, update ponds & select pond
   useEffect(() => {
     if (farmPonds.length > 0) {
       if (initialPondId && farmPonds.some((p) => p.id === initialPondId)) {
-        if (selectedPondId !== initialPondId) {
-          setSelectedPondId(initialPondId);
-        }
+        setSelectedPondId(initialPondId);
+        onSelectPond?.(initialPondId);
       } else {
-        const matchAny = ponds.find((p) => p.id === initialPondId);
-        if (matchAny && matchAny.farmId !== selectedFarmId) {
-          return;
-        }
         setSelectedPondId((prev) => {
           if (prev && farmPonds.some((p) => p.id === prev)) return prev;
           const chosen = farmPonds[0].id;
@@ -169,11 +141,13 @@ export default function SurvivalRateDashboard({
       }
     } else {
       setSelectedPondId('');
+      onSelectPond?.('');
       setCrops([]);
       setSelectedCropId('');
+      onSelectCrop?.('');
       setStats(null);
     }
-  }, [selectedFarmId, farmPonds, initialPondId, ponds]);
+  }, [selectedFarmId, farmPonds, initialPondId]);
 
   // Fetch crops for selected pond
   const fetchCropsForPond = useCallback(async (pondId: string) => {

@@ -20,7 +20,7 @@ export class ShrimpSizeController {
   constructor(private readonly shrimpSizeService: ShrimpSizeService) {}
 
   @Post()
-  @Roles('TECHNICIAN')
+  @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN')
   async createSample(
     @Param('pondId') pondId: string,
     @Body() dto: CreateShrimpSizeSampleDto,
@@ -48,7 +48,7 @@ export class ShrimpSizeController {
   }
 
   @Delete(':sampleId')
-  @Roles('TECHNICIAN')
+  @Roles('FARM_MANAGER', 'ADMIN', 'TECHNICIAN')
   async deleteSample(
     @Param('pondId') pondId: string,
     @Param('sampleId') sampleId: string,

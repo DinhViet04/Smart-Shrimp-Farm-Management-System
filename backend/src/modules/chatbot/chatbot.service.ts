@@ -1,17 +1,17 @@
 import {
-  ForbiddenException,
   HttpException,
   Injectable,
   Logger,
-  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
-import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service';
-import { WeatherService, WeatherData } from './weather.service';
+import {
+  AuthUser,
+  FarmAccessService,
+} from '../farm-access/farm-access.service';
 
 interface ChunkMatch {
   documentTitle: string;
@@ -29,7 +29,6 @@ export class ChatbotService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
-    private readonly weatherService: WeatherService,
   ) {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
@@ -271,20 +270,6 @@ export class ChatbotService implements OnModuleInit {
     }
   }
 
-  private isCasualGreeting(question: string): boolean {
-    if (!question) return false;
-    const q = question.toLowerCase().trim();
-    const patterns = [
-      /^(chào|xin chào|hello|hi|helo|alo|hey|ê|hế lô)(\s+.*)?$/i,
-      /^(tao|tôi|mình|anh|chị|em)\s+tên\s+(là\s+)?([a-zA-ZÀ-ỹ\s]+)$/i,
-      /^(bạn|mày|em)\s+là\s+ai/i,
-      /^(giới thiệu|gioi thieu)(\s+về\s+bạn)?/i,
-      /^(cảm ơn|cam on|thanks|thank you|ok|oke|được rồi|tạm biệt|bye)$/i,
-      /^test$/i,
-    ];
-    return patterns.some((p) => p.test(q));
-  }
-
   // ── 4. RAG RETRIEVAL & CHATGPT GENERATION (Python AI Service + OpenAI) ──────
   async ask(dto: AskChatbotDto, currentUser: AuthUser) {
     const question = dto.question?.trim() || '';
@@ -299,200 +284,68 @@ export class ChatbotService implements OnModuleInit {
     try {
       // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
       if (dto.pondId) {
-        try {
-          const pond = await this.prisma.pond.findUnique({
-            where: { id: dto.pondId },
-            include: {
-              farm: true,
-              crops: { where: { status: 'ACTIVE' }, take: 1 },
-              waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
-            },
-          });
+        const pond = await this.prisma.pond.findUnique({
+          where: { id: dto.pondId },
+          include: {
+            farm: true,
+            crops: { where: { status: 'ACTIVE' }, take: 1 },
+            waterQualityRecords: { orderBy: { recordTime: 'desc' }, take: 1 },
+          },
+        });
 
-          if (pond) {
-            await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
-            targetPondName = pond.name;
-            const latestWater = pond.waterQualityRecords[0];
-            const activeCrop = pond.crops[0];
+        if (pond) {
+          await this.farmAccess.assertCanAccessFarm(currentUser, pond.farmId);
+          targetPondName = pond.name;
+          const latestWater = pond.waterQualityRecords[0];
+          const activeCrop = pond.crops[0];
 
-            let docDays = 0;
-            if (activeCrop) {
-              const start = new Date(activeCrop.startDate);
-              const now = new Date();
-              docDays = Math.max(1, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-            }
-
-            // Tính thể tích nước ao (m³) và mật độ tôm (con/m²) để AI tính liều lượng chính xác
-            const areaSize = Number(pond.areaSize) || 0;
-            const depth = Number(pond.depth) || 1.2;
-            const waterVolume = Math.round(areaSize * depth * 100) / 100; // m³
-            const shrimpCount = activeCrop?.initialShrimpCount ? Number(activeCrop.initialShrimpCount) : 0;
-            const shrimpDensity = areaSize > 0 && shrimpCount > 0 ? Math.round((shrimpCount / areaSize) * 10) / 10 : null; // con/m²
-
-            pondContextPayload = {
-              pondId: pond.id,
-              pondName: pond.name,
-              farmName: pond.farm?.name || '',
-              farmLocation: pond.farm?.location || pond.farm?.address || null,
-              areaSize,
-              depth,
-              waterVolume,
-              shrimpDensity,
-              doc: activeCrop ? docDays : null,
-              initialShrimpCount: shrimpCount || null,
-              stage: activeCrop?.stage || null,
-              latestWaterQuality: latestWater ? {
-                ph: latestWater.ph,
-                dissolvedOxygen: latestWater.dissolvedOxygen,
-                salinity: latestWater.salinity,
-                temperature: latestWater.temperature,
-                nh3: latestWater.nh3,
-                no2: latestWater.no2,
-                alkalinity: (latestWater as any).alkalinity || null,
-              } : null,
-            };
-
-            const shrimpCountFormatted = shrimpCount > 0 ? shrimpCount.toLocaleString('vi-VN') : 'Chưa rõ';
-            pondRealtimeContext = `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()} - DÙNG ĐỂ TÍNH LIỀU LƯỢNG THUỐC CHÍNH XÁC]:\n` +
-              `- Diện tích ao: ${areaSize} m²\n` +
-              `- Độ sâu trung bình: ${depth} m\n` +
-              `- ⚠️ THỂ TÍCH NƯỚC AO (ĐÃ TÍNH): ${waterVolume} m³ (= ${areaSize} m² × ${depth} m) — AI BẮT BUỘC dùng số này để tính tổng lượng thuốc/hóa chất cần dùng cho ao\n` +
-              `- Trang trại: ${pond.farm?.name || 'Không rõ'}\n` +
-              (activeCrop
-                ? `- Vụ nuôi đang chạy: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi - DOC: ${docDays} ngày)\n` +
-                  `- Số lượng giống thả: ${shrimpCountFormatted} con\n` +
-                  (shrimpDensity ? `- Mật độ nuôi: ${shrimpDensity} con/m²\n` : '') +
-                  (activeCrop.stage ? `- Giai đoạn phát triển: ${activeCrop.stage}\n` : '')
-                : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
-              (latestWater
-                ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan (DO): ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L${ (latestWater as any).alkalinity ? `, Kiềm: ${(latestWater as any).alkalinity} mg/L` : ''}.\n`
-                : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
+          let docDays = 0;
+          if (activeCrop) {
+            const start = new Date(activeCrop.startDate);
+            const now = new Date();
+            docDays = Math.max(
+              1,
+              Math.floor(
+                (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+              ),
+            );
           }
-        } catch (e) {
-          if (e instanceof ForbiddenException) {
-            throw e;
-          }
-          this.logger.warn('Failed to fetch pond realtime context:', e);
-        }
-      }
 
-      // 1.1 Thu thập tồn kho thuốc & hóa chất của trang trại để AI đối chiếu
-      let targetFarmId: string | null = null;
-      if (pondContextPayload?.pondId) {
-        try {
-          const pondObj = await this.prisma.pond.findUnique({
-            where: { id: pondContextPayload.pondId },
-            select: { farmId: true },
-          });
-          targetFarmId = pondObj?.farmId || null;
-        } catch {
-          /* ignore */
-        }
-      }
-
-      if (!targetFarmId) {
-        const uid = (currentUser as any)?.userId || (currentUser as any)?.id;
-        if (uid) {
-          try {
-            const accessible = await this.farmAccess.getAccessibleFarmIds(currentUser);
-            if (accessible && accessible.length > 0) {
-              targetFarmId = accessible[0];
-            } else {
-              const userFarm = await this.prisma.farm.findFirst({
-                where: {
-                  OR: [
-                    { ownerId: uid, deletedAt: null },
-                    { staff: { some: { userId: uid, isActive: true } }, deletedAt: null },
-                  ],
-                },
-                select: { id: true },
-              });
-              targetFarmId = userFarm?.id || null;
-            }
-          } catch (farmErr) {
-            this.logger.debug?.(`Could not find farm for user: ${farmErr}`);
-          }
-        }
-      }
-
-      let farmInventory: any[] = [];
-      if (targetFarmId) {
-        try {
-          farmInventory = await this.prisma.inventory.findMany({
-            where: {
-              farmId: targetFarmId,
-              deletedAt: null,
-              category: { in: ['MEDICINE', 'CHEMICAL'] },
-            },
-            select: {
-              itemName: true,
-              category: true,
-              quantity: true,
-              unit: true,
-              description: true,
-              minThreshold: true,
-            },
-            orderBy: [{ category: 'asc' }, { itemName: 'asc' }],
-          });
-        } catch (invErr) {
-          this.logger.warn('Failed to fetch farm inventory for chatbot:', invErr);
-        }
-      }
-
-      let inventoryRealtimeContext = '';
-      if (farmInventory.length > 0) {
-        inventoryRealtimeContext = `\n[DANH MỤC THUỐC & HÓA CHẤT HIỆN CÓ TRONG KHO VẬT TƯ CỦA TRANG TRẠI (TỔNG CỘNG: ${farmInventory.length} MẶT HÀNG)]:\n` +
-          farmInventory
-            .map((item, idx) => {
-              const catLabel = item.category === 'MEDICINE' ? 'Thuốc / Men vi sinh' : 'Hóa chất / Khoáng';
-              return `- [${idx + 1}] Tên: "${item.itemName}" | Loại: ${catLabel} | Tồn kho thực tế: ${item.quantity} ${item.unit}${
-                item.description ? ` | Công dụng: ${item.description}` : ''
-              }`;
-            })
-            .join('\n') + '\n';
-      } else {
-        inventoryRealtimeContext = '\n[KHO VẬT TƯ THUỐC & HÓA CHẤT CỦA TRANG TRẠI]: Kho hiện tại chưa có mặt hàng thuốc hoặc hóa chất nào được nhập sẵn.\n';
-      }
-
-      pondRealtimeContext += inventoryRealtimeContext;
-      if (!pondContextPayload) pondContextPayload = {};
-      pondContextPayload.inventory = farmInventory;
-
-      // 1.1 Kiểm tra xem người dùng CÓ HỎI về thời tiết hay không
-      let weatherData: WeatherData | null = null;
-      const isAskingWeather = this.weatherService.isWeatherInquiry(question);
-      if (isAskingWeather) {
-        try {
-          let farmLocationHint = '';
-          if (pondContextPayload?.farmLocation) {
-            farmLocationHint = pondContextPayload.farmLocation;
-          } else {
-            const uid = (currentUser as any)?.userId || (currentUser as any)?.id;
-            if (uid) {
-              try {
-                const userFarm = await this.prisma.farm.findFirst({
-                  where: { ownerId: uid, deletedAt: null },
-                  select: { location: true, address: true, name: true },
-                });
-                if (userFarm) {
-                  farmLocationHint = userFarm.location || userFarm.address || userFarm.name || '';
+          pondContextPayload = {
+            pondId: pond.id,
+            pondName: pond.name,
+            farmName: pond.farm?.name || '',
+            areaSize: pond.areaSize,
+            depth: pond.depth,
+            doc: activeCrop ? docDays : null,
+            initialShrimpCount: activeCrop?.initialShrimpCount || null,
+            stage: activeCrop?.stage || null,
+            latestWaterQuality: latestWater
+              ? {
+                  ph: latestWater.ph,
+                  dissolvedOxygen: latestWater.dissolvedOxygen,
+                  salinity: latestWater.salinity,
+                  temperature: latestWater.temperature,
+                  nh3: latestWater.nh3,
+                  no2: latestWater.no2,
+                  alkalinity: (latestWater as any).alkalinity || null,
                 }
-              } catch (dbFarmErr) {
-                this.logger.debug?.(`Could not query farm for user ${uid}: ${dbFarmErr}`);
-              }
-            }
-          }
+              : null,
+          };
 
-          weatherData = await this.weatherService.getWeather(question, farmLocationHint);
-          if (weatherData) {
-            if (!pondContextPayload) {
-              pondContextPayload = {};
-            }
-            pondContextPayload.weather = weatherData;
-            pondRealtimeContext += this.weatherService.buildWeatherContextString(weatherData);
-          }
-        } catch (weatherErr) {
-          this.logger.warn('Could not fetch realtime weather data:', weatherErr);
+          const shrimpCountFormatted =
+            activeCrop?.initialShrimpCount != null
+              ? Number(activeCrop.initialShrimpCount).toLocaleString()
+              : 'Chưa rõ';
+          pondRealtimeContext =
+            `\n[DỮ LIỆU THỰC TẾ AO NUÔI ${pond.name.toUpperCase()}]:\n` +
+            `- Diện tích: ${pond.areaSize} m², Độ sâu: ${pond.depth} m (Trang trại: ${pond.farm?.name || 'Không rõ'})\n` +
+            (activeCrop
+              ? `- Vụ nuôi: Bắt đầu ${new Date(activeCrop.startDate).toLocaleDateString('vi-VN')} (Ngày nuôi: ${docDays} ngày), Số lượng giống: ${shrimpCountFormatted} con\n`
+              : '- Trạng thái: Chưa có vụ nuôi nào đang hoạt động\n') +
+            (latestWater
+              ? `- Chỉ số đo nước gần nhất: pH: ${latestWater.ph ?? 'Chưa đo'}, Oxy hòa tan: ${latestWater.dissolvedOxygen ?? 'Chưa đo'} mg/L, Độ mặn: ${latestWater.salinity ?? 'Chưa đo'}‰, Nhiệt độ: ${latestWater.temperature ?? 'Chưa đo'}°C, Khí độc NH3: ${latestWater.nh3 ?? 'Chưa đo'} mg/L, NO2: ${latestWater.no2 ?? 'Chưa đo'} mg/L.\n`
+              : '- Chưa có bản ghi đo chất lượng nước gần đây.\n');
         }
       }
 
@@ -515,13 +368,10 @@ export class ChatbotService implements OnModuleInit {
           const aiData = await response.json();
           return {
             answer: aiData.answer,
-            sources: [],
+            sources: aiData.sources || [],
             pondName: targetPondName || aiData.pondName || undefined,
             recommendations: aiData.recommendations || [],
-            sourceType: undefined,
-            hasLocalKnowledge: false,
-            weather: isAskingWeather ? (aiData.weather || weatherData || undefined) : undefined,
-            poweredBy: 'Python AI Service (FastAPI Hybrid RAG)',
+            poweredBy: 'Python AI Service (FastAPI + ChromaDB)',
           };
         }
       } catch (pythonErr: any) {
@@ -532,73 +382,34 @@ export class ChatbotService implements OnModuleInit {
       }
 
       // 3. Fallback: Embedding câu hỏi & Cosine search nội bộ nếu Python Service chưa chạy
-      const isGreeting = this.isCasualGreeting(question);
-      let topChunks: ChunkMatch[] = [];
-      if (!isGreeting) {
-        const questionEmbedding = await this.getEmbedding(question);
-        const rawChunks = await this.searchSimilarChunks(questionEmbedding, 3);
-        // Chỉ giữ lại các chunk có độ khớp thực sự cao (>= 0.40)
-        topChunks = rawChunks.filter((c: ChunkMatch) => c.score >= 0.40);
-      }
-      const hasLocalMatch = topChunks.some((c: ChunkMatch) => c.score >= 0.55);
+      const questionEmbedding = await this.getEmbedding(question);
+      const topChunks = await this.searchSimilarChunks(questionEmbedding, 3);
       let answerText = '';
 
       if (this.openai && this.apiKey) {
         try {
-          const contextDocuments = topChunks.length > 0
-            ? topChunks.map((c: ChunkMatch, i: number) => `[TÀI LIỆU CẨM NANG ${i + 1} - "${c.documentTitle}" (Độ khớp ${Math.round(c.score * 100)}%)]: ${c.content}`).join('\n\n')
-            : 'Kho tài liệu cẩm nang nội bộ trang trại hiện chưa có đoạn trích nào khớp với câu hỏi này.';
+          const contextDocuments =
+            topChunks.length > 0
+              ? topChunks
+                  .map(
+                    (c: ChunkMatch, i: number) =>
+                      `[TÀI LIỆU THAM KHẢO ${i + 1} - "${c.documentTitle}"]: ${c.content}`,
+                  )
+                  .join('\n\n')
+              : 'Không tìm thấy tài liệu phù hợp trong kho tri thức.';
 
           const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
-Nhiệm vụ của bạn là tư vấn, giải đáp chuyên môn kỹ thuật sâu sắc cho người nuôi tôm và kỹ thuật viên.
+Nhiệm vụ của bạn là giải đáp câu hỏi của người nuôi tôm dựa trên TÀI LIỆU KHO TRI THỨC và DỮ LIỆU THỰC TẾ được cung cấp dưới đây.
 
 ${pondRealtimeContext}
 
-KHO TÀI LIỆU CẨM NANG NỘI BỘ TRANG TRẠI (RAG CONTEXT):
+KHO TÀI LIỆU TRÍCH XUẤT (RAG CONTEXT):
 ${contextDocuments}
 
-NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
-1. [ƯU TIÊN SỐ 1 - CẨM NANG NỘI BỘ & SỐ LIỆU AO]:
-   - Nếu KHO TÀI LIỆU CẨM NANG NỘI BỘ ở trên có thông tin/quy trình liên quan, bạn BẮT BUỘC PHẢI ƯU TIÊN SỐ 1 dùng dữ liệu này làm căn cứ cốt lõi.
-   - Nếu có dữ liệu ao thực tế, hãy đối chiếu sát sao với chỉ số cẩm nang để đưa ra phác đồ cấp bách theo thứ tự ưu tiên 1, 2, 3.
-
-2. [ƯU TIÊN SỐ 2 - TRI THỨC MỞ RỘNG TỪ CHUYÊN GIA AI OPENAI]:
-   - Nếu cẩm nang nội bộ KHÔNG CÓ hoặc KHÔNG ĐỦ CHI TIẾT để giải đáp trọn vẹn, bạn TUYỆT ĐỐI KHÔNG TỪ CHỐI BỎ CUỘC.
-   - Hãy tự động khai thác KHO TRI THỨC CHUYÊN SÂU CỦA BẠN (về sinh học tôm, quản lý môi trường nước, bệnh học thủy sản, dinh dưỡng & FCR) để giải thích cặn kẽ, khoa học và đưa ra phác đồ thực hành rõ ràng.
-
-3. [XỬ LÝ DỮ LIỆU THỜI TIẾT]:
-   - CHỈ ĐỀ CẬP ĐẾN THỜI TIẾT KHI NGƯỜI DÙNG CÓ HỎI VỀ THỜI TIẾT.
-   - Nếu câu hỏi KHÔNG hỏi về thời tiết, TUYỆT ĐỐI KHÔNG tự ý chèn thông tin thời tiết vào câu trả lời.
-
-4. [QUY TẮC TRÌNH BÀY & NGUỒN THAM KHẢO]:
-   - TUYỆT ĐỐI KHÔNG thêm bất kỳ dòng ghi chú nào về "Nguồn tham khảo", "Cẩm nang", "Tài liệu" hay "Tri thức OpenAI" ở cuối câu trả lời.
-   - Trả lời trực tiếp vào trọng tâm câu hỏi, bằng tiếng Việt chuyên nghiệp, giọng điệu kỹ sư giàu kinh nghiệm, thân thiện, dễ hiểu.
-   - Bố cục rõ ràng: Dùng gạch đầu dòng, in đậm các từ khóa, liều lượng quan trọng.
-
-5. [TÍNH LIỀU LƯỢNG THUỐC/HÓA CHẤT CHÍNH XÁC THEO DỮ LIỆU AO THỰC TẾ - BẮT BUỘC TUYỆT ĐỐI]:
-   Khi tư vấn về thuốc, hóa chất, khoáng chất, men vi sinh hoặc bất kỳ chế phẩm nào cần dùng cho ao:
-   a. BẮT BUỘC SỬ DỤNG CÁC SỐ LIỆU AO SAU ĐÂY ĐỂ TÍNH LIỀU LƯỢNG THỰC TẾ:
-      - Thể tích nước ao (m³) = [đọc từ DỮ LIỆU THỰC TẾ AO NUÔI ở trên, đã được tính sẵn]
-      - Diện tích ao (m²) = [đọc từ DỮ LIỆU THỰC TẾ AO NUÔI ở trên]
-      - Số lượng tôm (con) và mật độ (con/m²) = [đọc từ DỮ LIỆU THỰC TẾ AO NUÔI ở trên]
-   b. Công thức tính liều lượng PHẢI HIỂN THỊ RÕ RÀNG:
-      - Nếu liều chuẩn tính theo m³ nước: Tổng lượng cần dùng = [liều mg/L hoặc g/m³] × [thể tích ao m³]
-      - Nếu liều chuẩn tính theo m² diện tích ao: Tổng lượng = [liều g/m² hoặc mL/m²] × [diện tích ao m²]
-      - Nếu liều chuẩn tính theo kg tôm sinh khối: ước tính sinh khối = [số lượng tôm] × [khối lượng trung bình ước tính theo DOC] rồi tính tổng lượng
-       - Vi du trinh bay: "Lieu chuan: 2 g/m3 -> Ao [the tich ao] m3 can dung: **[the tich] x 2 = [ket qua] g** tong cong"
-   c. Luôn nêu rõ: Cách pha loãng (hòa trong bao nhiêu lít nước trước khi tạt), thời điểm tạt trong ngày, tần suất sử dụng.
-
-6. [QUY TẮC ĐỐI CHIẾU KHO VẬT TƯ & TƯ VẤN THUỐC / HÓA CHẤT - BẮT BUỘC]:
-   Khi câu hỏi hoặc vấn đề liên quan đến bệnh tôm, sự cố sức khỏe, điều trị, xử lý môi trường nước hoặc hỏi về việc dùng thuốc/hóa chất:
-   a. Hãy phân tích cặn kẽ nguyên nhân và đưa ra các loại thuốc, hoạt chất hoặc hóa chất cần thiết để chữa trị theo chuẩn chuyên môn bệnh học thủy sản.
-   b. BẮT BUỘC ĐỐI CHIẾU VỚI [DANH MỤC THUỐC & HÓA CHẤT HIỆN CÓ TRONG KHO VẬT TƯ CỦA TRANG TRẠI] ở trên:
-      - Đối với thuốc/hóa chất ĐÃ CÓ TRONG KHO:
-        * Đặt nhãn nổi bật: "✅ [CÓ SẴN TRONG KHO - Tồn: X <đơn vị>]"
-        * Nêu rõ công dụng của thuốc đối với ca bệnh này, tính toán LIỀU LƯỢNG TUYỆT ĐỐI cần dùng cho ao (theo quy tắc số 5 ở trên) và hướng dẫn cách dùng chi tiết (thời điểm dùng trong ngày, cách hòa nước tạt ao hoặc cách trộn thức ăn).
-      - Đối với thuốc/hóa chất CHƯA CÓ TRONG KHO:
-        * BẮT BUỘC thông báo rõ ràng bằng nhãn cảnh báo: "⚠️ [KHO HIỆN CHƯA CÓ THUỐC NÀY - Cần mua bổ sung]"
-        * ĐỒNG THỜI VẪN PHẢI NÊU ĐẦY ĐỦ: Tên thuốc/hoạt chất cần mua, CÔNG DỤNG của thuốc đối với bệnh này, LIỀU LƯỢNG tính sẵn theo số liệu ao thực tế (quy tắc số 5) và CÁCH DÙNG chi tiết.
-        * Nếu trong kho có mặt hàng khác cùng nhóm công dụng có thể dùng tạm thời để sơ cứu, hãy gợi ý phương án thay thế tạm thời cho người nuôi.`;
+YÊU CẦU TRẢ LỜI:
+1. Trả lời bằng tiếng Việt thân thiện, văn phong kỹ sư chuyên môn nuôi tôm, gạch đầu dòng rõ ràng, súc tích.
+2. Ưu tiên dựa trên dữ liệu tài liệu đã cung cấp. Nếu câu hỏi có nhắc tới chỉ số ao thật, hãy phân tích dựa trên dữ liệu đo của ao.
+3. Cuối câu trả lời, hãy nêu rõ nguồn tài liệu tham khảo đã dùng để người nuôi yên tâm.`;
 
           const completion = await this.openai.chat.completions.create({
             model: 'gpt-4o-mini',
@@ -627,12 +438,14 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
       }
 
       return {
-        answer: this.stripReferenceSources(answerText),
-        sources: [],
+        answer: answerText,
+        sources: topChunks.map((c: ChunkMatch) => ({
+          title: c.documentTitle,
+          chunkIndex: c.chunkIndex,
+          snippet: (c.content || '').slice(0, 160) + '...',
+          relevanceScore: c.score,
+        })),
         pondName: targetPondName || undefined,
-        sourceType: undefined,
-        hasLocalKnowledge: false,
-        weather: undefined,
       };
     } catch (topErr) {
       if (topErr instanceof HttpException) {
@@ -640,7 +453,7 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
       }
       this.logger.error('Error handling askChatbot:', topErr);
       return {
-        answer: this.stripReferenceSources(this.buildFallbackResponse(question, [], pondRealtimeContext)),
+        answer: this.buildFallbackResponse(question, [], pondRealtimeContext),
         sources: [],
         pondName: targetPondName || undefined,
       };
@@ -659,23 +472,18 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
     }
 
     if (topChunks.length > 0) {
+      response += `📚 **Dựa trên tài liệu kỹ thuật nuôi tôm:**\n\n`;
       topChunks.forEach((chunk) => {
-        response += `${chunk.content}\n\n`;
+        response += `• **Từ "${chunk.documentTitle}" (Độ liên quan ${Math.round(chunk.score * 100)}%):**\n${chunk.content}\n\n`;
       });
       response += `💡 *Lời khuyên kỹ thuật:* Bạn nên kiểm tra kỹ các thông số ao thực tế vào mỗi buổi sáng và chiều để có biện pháp điều chỉnh kịp thời.`;
     } else {
-      response += `🤖 Cảm ơn bạn đã hỏi về: **"${question}"**.\n\n` +
-        `Hiện tại trong kho tài liệu chưa có nội dung khớp trực tiếp với câu hỏi này. Bạn có thể hỏi về các chủ đề: **Chỉ số pH, Oxy hòa tan, FCR, Khí độc NH3/NO2, và Bệnh phân trắng**.`;
+      response +=
+        `🤖 Cảm ơn bạn đã hỏi về: **"${question}"**.\n\n` +
+        `Hiện tại trong kho tài liệu chưa có đoạn trích nào khớp chính xác với câu hỏi này. Bạn có thể tải thêm tài liệu quy chuẩn vào hệ thống hoặc hỏi về các chủ đề: **Chỉ số pH, Oxy hòa tan, FCR, Khí độc NH3/NO2, và Bệnh phân trắng**.`;
     }
 
     return response;
-  }
-
-  private stripReferenceSources(text: string): string {
-    if (!text) return '';
-    return text
-      .replace(/(?:\r?\n)+\s*(?:📖\s*|📚\s*)?(?:Nguồn\s*(?:tham\s*khảo|trích\s*dẫn)?|Tài\s*liệu\s*tham\s*khảo|Cẩm\s*nang\s*tham\s*khảo)[\s\S]*$/i, '')
-      .trim();
   }
 
   // ── 5. SEED INITIAL KNOWLEDGE DOCUMENTS ────────────────────────────────────

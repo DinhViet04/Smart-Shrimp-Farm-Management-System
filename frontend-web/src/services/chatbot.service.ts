@@ -9,30 +9,10 @@ export interface ChatbotSource {
   relevanceScore: number;
 }
 
-export interface RealtimeWeather {
-  cityName: string;
-  temperature: number;
-  feelsLike: number;
-  humidity: number;
-  description: string;
-  windSpeed: number;
-  rain1h: number;
-  cloudiness?: number;
-  isRaining: boolean;
-  isHot: boolean;
-  isCold: boolean;
-  isWindy: boolean;
-  provider: string;
-  recordedAt: string;
-}
-
 export interface ChatbotResponse {
   answer: string;
   sources?: ChatbotSource[];
   pondName?: string;
-  sourceType?: 'LOCAL_DOCUMENT' | 'OPENAI_KNOWLEDGE' | 'HYBRID';
-  hasLocalKnowledge?: boolean;
-  weather?: RealtimeWeather;
 }
 
 export interface KnowledgeDoc {

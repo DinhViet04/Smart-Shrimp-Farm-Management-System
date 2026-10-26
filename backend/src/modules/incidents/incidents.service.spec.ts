@@ -240,10 +240,10 @@ describe('IncidentsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects starting an incident that is resolved', async () => {
+  it('rejects starting an incident that is not open', async () => {
     prisma.incident.findUnique.mockResolvedValue({
       ...incident,
-      status: 'RESOLVED',
+      status: 'TREATING',
     });
 
     await expect(
@@ -340,17 +340,17 @@ describe('IncidentsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects treatment updates for resolved incidents', async () => {
+  it('rejects treatment updates before treatment has started', async () => {
     prisma.incident.findUnique.mockResolvedValue({
       ...incident,
-      status: 'RESOLVED',
+      status: 'OPEN',
     });
 
     await expect(
       service.addTreatmentUpdate(
         { userId: 'technician-id', role: 'TECHNICIAN' },
         incident.id,
-        { treatment: 'Cập nhật sự cố đã giải quyết' },
+        { treatment: 'Bỏ qua bước bắt đầu' },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -376,7 +376,7 @@ describe('IncidentsService', () => {
     );
     expect(prisma.incident.update).toHaveBeenCalledWith({
       where: { id: incident.id },
-      data: { status: 'OPEN', resolvedAt: null },
+      data: { status: 'TREATING', resolvedAt: null },
     });
   });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
 import { supplierService } from '../../services/supplier.service';
 import { pondService } from '../../services/pond.service';
@@ -56,8 +56,6 @@ export default function InventoryManagement() {
   });
   const [supplierErrors, setSupplierErrors] = useState<{ phone?: string; email?: string }>({});
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
-  const [supplierToDelete, setSupplierToDelete] = useState<any | null>(null);
-  const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -261,22 +259,15 @@ export default function InventoryManagement() {
     }
   };
 
-  const handleDeleteSupplier = (supplier: any) => {
-    setSupplierToDelete(supplier);
-  };
+  const handleDeleteSupplier = async (supplier: any) => {
+    if (!window.confirm(`Xóa nhà cung cấp "${supplier.name}"?`)) return;
 
-  const confirmDeleteSupplier = async () => {
-    if (!supplierToDelete) return;
     try {
-      setIsDeletingSupplier(true);
-      await supplierService.remove(supplierToDelete.id);
+      await supplierService.remove(supplier.id);
       showToast('Xóa nhà cung cấp thành công', 'success');
-      setSupplierToDelete(null);
       fetchSuppliers(selectedFarmId);
     } catch (error: any) {
       showToast(error.message || 'Không thể xóa nhà cung cấp', 'error');
-    } finally {
-      setIsDeletingSupplier(false);
     }
   };
 
@@ -1423,86 +1414,6 @@ export default function InventoryManagement() {
                   'Xóa ngay'
                 )}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Supplier Delete Confirmation Modal */}
-      {supplierToDelete && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => !isDeletingSupplier && setSupplierToDelete(null)}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
-          >
-            <div className="h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500"></div>
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-inner">
-                  <AlertTriangle className="w-6 h-6 animate-pulse" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => !isDeletingSupplier && setSupplierToDelete(null)}
-                  disabled={isDeletingSupplier}
-                  className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
-                  title="Đóng"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <h3 className="text-xl font-black text-slate-800 tracking-tight">
-                Xóa nhà cung cấp?
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Nhà cung cấp sẽ bị gỡ khỏi danh sách đối tác của trang trại.
-              </p>
-
-              <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-slate-400">Tên nhà cung cấp:</span>
-                  <span className="font-bold text-slate-800">{supplierToDelete.name}</span>
-                </div>
-                {supplierToDelete.phone && (
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-slate-400">Số điện thoại:</span>
-                    <span className="font-medium text-slate-600">{supplierToDelete.phone}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSupplierToDelete(null)}
-                  disabled={isDeletingSupplier}
-                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeleteSupplier}
-                  disabled={isDeletingSupplier}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-rose-500/25 hover:shadow-rose-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {isDeletingSupplier ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Đang xóa...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      <span>Xác nhận xóa</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
           </div>
         </div>

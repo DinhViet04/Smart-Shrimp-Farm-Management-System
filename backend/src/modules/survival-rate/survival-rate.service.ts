@@ -92,10 +92,10 @@ export class SurvivalRateService {
       isRecordedHarvest = true;
     }
 
-    // Determine current estimated count: Ground Truth (harvestCount if harvested) > sampling > stocking quantity
-    const currentShrimpCount = isRecordedHarvest
-      ? harvestCount
-      : (estimatedShrimpCount ?? stockingQuantity);
+    // Determine current estimated count: sampling > recorded harvest > stocking quantity
+    const currentShrimpCount =
+      estimatedShrimpCount ??
+      (isRecordedHarvest ? harvestCount : stockingQuantity);
 
     // Step 3: Survival_Rate = (Current_Shrimp_Count / stockingQuantity) * 100
     const rawRate = (currentShrimpCount / stockingQuantity) * 100;

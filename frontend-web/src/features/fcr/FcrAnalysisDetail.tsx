@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, Download, AlertCircle, Target,
-  TrendingDown, TrendingUp, Minus, ChevronDown
+  TrendingDown, TrendingUp, Minus
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { shrimpSizeService } from '../../services/shrimpSizeService';
@@ -37,13 +37,11 @@ interface FCRAnalysisData {
 
 interface FcrAnalysisDetailProps {
   pond: Pond;
-  availablePonds?: Pond[];
-  onSelectPond?: (pondId: string) => void;
   onBack: () => void;
   onNavigateTab?: (tab: GrowthTabType) => void;
 }
 
-export default function FcrAnalysisDetail({ pond, availablePonds, onSelectPond, onBack }: FcrAnalysisDetailProps) {
+export default function FcrAnalysisDetail({ pond, onBack }: FcrAnalysisDetailProps) {
   const [data, setData] = useState<FCRAnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -156,27 +154,7 @@ export default function FcrAnalysisDetail({ pond, availablePonds, onSelectPond, 
           </button>
           <div>
             <h2 className="text-2xl font-black text-slate-800">Phân tích FCR (Hệ số chuyển đổi thức ăn)</h2>
-            {availablePonds && availablePonds.length > 1 ? (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm font-medium text-slate-500">Ao nuôi:</span>
-                <div className="relative inline-block">
-                  <select
-                    value={pond.id}
-                    onChange={(e) => onSelectPond?.(e.target.value)}
-                    className="appearance-none bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-sm rounded-lg pl-3 pr-8 py-1 border border-indigo-200 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm"
-                  >
-                    {availablePonds.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-indigo-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm font-medium text-slate-500 mt-1">Ao nuôi: <span className="text-indigo-600 font-bold">{pond.name}</span></p>
-            )}
+            <p className="text-sm font-medium text-slate-500 mt-1">Ao nuôi: <span className="text-indigo-600 font-bold">{pond.name}</span></p>
           </div>
         </div>
         <div className="flex gap-3">

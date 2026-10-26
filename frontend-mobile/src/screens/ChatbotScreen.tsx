@@ -27,6 +27,7 @@ import {
   Compass,
   Calendar,
   Layers,
+  BookOpen,
   X,
   Plus,
   Sparkles,
@@ -54,13 +55,6 @@ const QUICK_PROMPTS = [
 export interface ChatbotScreenProps {
   onClose?: () => void;
 }
-
-const stripReferenceSources = (text: string): string => {
-  if (!text) return '';
-  return text
-    .replace(/(?:\r?\n)+\s*(?:📖\s*|📚\s*)?(?:Nguồn\s*(?:tham\s*khảo|trích\s*dẫn)?|Tài\s*liệu\s*tham\s*khảo|Cẩm\s*nang\s*tham\s*khảo)[\s\S]*$/i, '')
-    .trim();
-};
 
 export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
   // Navigation tabs: 'chat' | 'history'
@@ -272,10 +266,10 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
-        text: stripReferenceSources(result.answer),
+        text: result.answer,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         timestamp: Date.now(),
-        sources: [],
+        sources: result.sources,
         pondName: result.pondName || (currentPond ? currentPond.name : undefined),
         recommendations: result.recommendations,
         poweredBy: result.poweredBy,
@@ -329,8 +323,7 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
 
   // Markdown-like text formatter
   const renderFormattedText = (rawText: string) => {
-    const cleanedText = stripReferenceSources(rawText);
-    const lines = cleanedText.split('\n');
+    const lines = rawText.split('\n');
     return lines.map((line, idx) => {
       if (!line.trim()) {
         return <View key={idx} style={{ height: 6 }} />;
@@ -399,6 +392,32 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
 
           {/* Formatted Content */}
           <View style={styles.aiContentContainer}>{renderFormattedText(item.text)}</View>
+
+          {/* Citations / 5T Manual Sources */}
+          {item.sources && item.sources.length > 0 && (
+            <View style={styles.sourcesContainer}>
+              <Text style={styles.sourcesHeader}>Cẩm nang tham khảo:</Text>
+              <View style={styles.sourcePillList}>
+                {item.sources.map((src, sIdx) => {
+                  const title = typeof src === 'string' ? src : src.title;
+                  const score = typeof src === 'object' && src.relevanceScore
+                    ? Math.round(src.relevanceScore * 100)
+                    : null;
+                  return (
+                    <View key={sIdx} style={styles.sourcePill}>
+                      <BookOpen size={11} color="#059669" />
+                      <Text style={styles.sourcePillTitle} numberOfLines={1}>
+                        {title}
+                      </Text>
+                      {score !== null && (
+                        <Text style={styles.sourcePillScore}>{score}%</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           {/* AI Toolbar (Copy & Time) */}
           {item.id !== 'welcome-chatgpt' && (
@@ -987,6 +1006,47 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 12,
+  },
+
+  // Citations / 5T Sources
+  sourcesContainer: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  sourcesHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 6,
+  },
+  sourcePillList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  sourcePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  sourcePillTitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#334155',
+    maxWidth: 160,
+  },
+  sourcePillScore: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
   },
 
   // AI Toolbar (Copy & Time)

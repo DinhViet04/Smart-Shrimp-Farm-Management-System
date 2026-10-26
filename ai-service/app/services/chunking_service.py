@@ -60,30 +60,4 @@ class ChunkingService:
             logger.error(f"Error extracting text from PDF: {e}")
             raise ValueError(f"Không thể đọc file PDF: {str(e)}")
 
-    def extract_text_from_docx(self, docx_bytes: bytes) -> str:
-        """Đọc văn bản từ file Word (.docx) bằng chuẩn zipfile + XML của Python."""
-        import zipfile
-        import xml.etree.ElementTree as ET
-        try:
-            with zipfile.ZipFile(io.BytesIO(docx_bytes)) as z:
-                if "word/document.xml" not in z.namelist():
-                    raise ValueError("File .docx không hợp lệ (không tìm thấy cấu trúc word/document.xml)")
-                xml_content = z.read("word/document.xml")
-                tree = ET.fromstring(xml_content)
-                
-                paragraphs = []
-                for p in tree.iter():
-                    if p.tag.endswith('p'):
-                        p_text = "".join(t.text for t in p.iter() if t.tag.endswith('t') and t.text)
-                        if p_text.strip():
-                            paragraphs.append(p_text.strip())
-                
-                if not paragraphs:
-                    paragraphs = [t.text.strip() for t in tree.iter() if t.tag.endswith('t') and t.text and t.text.strip()]
-                
-                return "\n\n".join(paragraphs).strip()
-        except Exception as e:
-            logger.error(f"Error extracting text from DOCX: {e}")
-            raise ValueError(f"Không thể đọc file DOCX: {str(e)}")
-
 chunking_service = ChunkingService()

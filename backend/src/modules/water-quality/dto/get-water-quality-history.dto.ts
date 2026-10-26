@@ -10,15 +10,15 @@ import { Type } from 'class-transformer';
 
 export class GetWaterQualityHistoryDto {
   @IsOptional()
-  @IsString({ message: 'farmId phải là chuỗi hợp lệ' })
+  @IsUUID('4', { message: 'farmId phải là UUID hợp lệ' })
   farmId?: string;
 
   @IsOptional()
-  @IsString({ message: 'pondId phải là chuỗi hợp lệ' })
+  @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
   pondId?: string;
 
   @IsOptional()
-  @IsString({ message: 'cropId phải là chuỗi hợp lệ' })
+  @IsUUID('4', { message: 'cropId phải là UUID hợp lệ' })
   cropId?: string;
 
   @IsOptional()

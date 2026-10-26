@@ -13,10 +13,7 @@ import {
   Cpu,
   Calendar,
   ArrowRight,
-  Eye,
-  AlertTriangle,
-  Loader2,
-  X
+  Eye
 } from 'lucide-react';
 import PondDetailPanel from './PondDetailPanel';
 import LoadingMotion from './LoadingMotion';
@@ -41,8 +38,6 @@ export default function PondManagement({
   const [showModal, setShowModal] = useState(false);
   const [editingPond, setEditingPond] = useState<string | null>(null);
   const [viewingPond, setViewingPond] = useState<any | null>(null);
-  const [pondToDelete, setPondToDelete] = useState<{ id: string; name: string; farmName?: string } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     areaSize: '',
@@ -144,28 +139,15 @@ export default function PondManagement({
     setShowModal(true);
   };
 
-  const handleDelete = (e: React.MouseEvent, pond: any) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    const farm = farms.find(f => f.id === pond.farmId);
-    setPondToDelete({
-      id: pond.id,
-      name: pond.name,
-      farmName: farm?.name || '',
-    });
-  };
-
-  const confirmDeletePond = async () => {
-    if (!pondToDelete) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa ao này? \n\n⚠️ CẢNH BÁO: Việc xoá ao nuôi sẽ làm MẤT TOÀN BỘ dữ liệu liên quan (các vụ nuôi, nhật ký, thông số...) và không thể khôi phục!')) return;
     try {
-      setIsDeleting(true);
-      await pondService.remove(pondToDelete.id);
-      showToast(`Xóa ao nuôi "${pondToDelete.name}" thành công!`, 'success');
-      setPondToDelete(null);
+      await pondService.remove(id);
+      showToast('Xóa ao nuôi thành công!', 'success');
       fetchData();
     } catch (error: any) {
       showToast(error.message || 'Lỗi khi xóa ao nuôi', 'error');
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -586,9 +568,9 @@ export default function PondManagement({
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button 
-                                  onClick={(e) => handleDelete(e, pond)} 
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer" 
-                                  title="Xóa ao"
+                                  onClick={(e) => handleDelete(e, pond.id)} 
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors" 
+                                  title="Xóa"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -707,116 +689,6 @@ export default function PondManagement({
         onClose={() => setViewingPond(null)} 
         onEditCrop={onEditCrop}
       />
-
-      {/* Cửa sổ xác nhận xóa ao nuôi (thay thế hộp thoại localhost của trình duyệt) */}
-      {pondToDelete && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => !isDeleting && setPondToDelete(null)}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
-          >
-            {/* Top Danger Accent Gradient Bar */}
-            <div className="h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500"></div>
-
-            <div className="p-6">
-              {/* Header with Danger Icon & Close Button */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-inner">
-                  <AlertTriangle className="w-6 h-6 animate-pulse" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => !isDeleting && setPondToDelete(null)}
-                  disabled={isDeleting}
-                  className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
-                  title="Đóng"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Title & Subtitle */}
-              <h3 className="text-xl font-black text-slate-800 tracking-tight">
-                Xác nhận xóa ao nuôi?
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Ao nuôi sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu hệ thống.
-              </p>
-
-              {/* Target Pond Badge */}
-              <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
-                  <Waves className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-slate-400">Ao nuôi chuẩn bị xóa:</p>
-                  <p className="text-base font-black text-slate-800 truncate">
-                    {pondToDelete.name}
-                  </p>
-                  {pondToDelete.farmName && (
-                    <p className="text-xs font-medium text-slate-500 truncate">
-                      Thuộc trang trại: {pondToDelete.farmName}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Detailed Warning Box */}
-              <div className="mt-4 p-4 rounded-2xl bg-rose-50/80 border border-rose-200/70 text-left space-y-2">
-                <div className="flex items-center gap-2 text-rose-800 font-bold text-xs uppercase tracking-wider">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  Cảnh báo dữ liệu quan trọng
-                </div>
-                <p className="text-xs text-rose-900 leading-relaxed font-medium">
-                  Việc xoá ao nuôi sẽ làm <strong className="font-black text-rose-700 underline">MẤT TOÀN BỘ dữ liệu liên quan</strong> và không thể khôi phục:
-                </p>
-                <ul className="text-xs text-rose-800/90 list-disc list-inside space-y-1 font-medium pl-1">
-                  <li>Tất cả các vụ nuôi gắn với ao này (đang nuôi & lịch sử)</li>
-                  <li>Nhật ký chăm sóc hàng ngày & lịch cho ăn</li>
-                  <li>Dữ liệu đo đạc chỉ số môi trường (pH, DO, kiềm...)</li>
-                  <li>Lịch sử đo kích thước và biểu đồ tăng trưởng tôm</li>
-                </ul>
-                <p className="text-[11px] font-bold text-rose-600 pt-1 border-t border-rose-200/60">
-                  ⚠️ Thao tác này không thể hoàn tác sau khi xác nhận!
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-6 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPondToDelete(null)}
-                  disabled={isDeleting}
-                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeletePond}
-                  disabled={isDeleting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-rose-500/25 hover:shadow-rose-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {isDeleting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Đang xóa...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      <span>Xác nhận xóa</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -12,15 +12,15 @@ import {
 
 export class GetIncidentsDto {
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   farmId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   pondId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID('4')
   cropId?: string;
 
   @IsOptional()
@@ -51,7 +51,7 @@ export class GetIncidentsDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(500)
+  @Max(100)
   size?: number;
 
   @IsOptional()

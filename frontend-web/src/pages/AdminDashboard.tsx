@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import NotificationDropdown from '../components/NotificationDropdown';
 import { apiFetch, logoutSession } from '../utils/api';
 import LoadingMotion from '../components/LoadingMotion';
-import toast from 'react-hot-toast';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -217,13 +216,12 @@ export default function AdminDashboard() {
       });
       if (response.ok) {
         setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-        toast.success('Cập nhật quyền thành công!');
       } else {
-        toast.error('Cập nhật quyền thất bại!');
+        alert('Cập nhật quyền thất bại!');
       }
     } catch (error) {
       console.error('Error updating role:', error);
-      toast.error('Lỗi kết nối máy chủ!');
+      alert('Lỗi kết nối!');
     }
   };
 
@@ -235,13 +233,12 @@ export default function AdminDashboard() {
       });
       if (response.ok) {
         setUsers(users.map(u => u.id === userId ? { ...u, isActive: newStatus } : u));
-        toast.success(`Đã ${newStatus ? 'kích hoạt' : 'khóa'} tài khoản thành công!`);
       } else {
-        toast.error('Cập nhật trạng thái thất bại!');
+        alert('Cập nhật trạng thái thất bại!');
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      toast.error('Lỗi kết nối máy chủ!');
+      alert('Lỗi kết nối!');
     }
   };
 

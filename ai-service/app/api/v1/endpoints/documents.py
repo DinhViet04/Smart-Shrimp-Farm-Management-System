@@ -56,9 +56,6 @@ async def upload_document_file(
         if file_name.lower().endswith(".pdf"):
             content = chunking_service.extract_text_from_pdf(file_bytes)
             file_type = "pdf"
-        elif file_name.lower().endswith(".docx"):
-            content = chunking_service.extract_text_from_docx(file_bytes)
-            file_type = "docx"
         else:
             content = file_bytes.decode("utf-8", errors="ignore")
             file_type = "text"

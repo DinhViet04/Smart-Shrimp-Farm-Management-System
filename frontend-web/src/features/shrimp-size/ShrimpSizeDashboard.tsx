@@ -85,26 +85,22 @@ export default function ShrimpSizeDashboard({
   useEffect(() => {
     if (initialPondId && ponds.length > 0) {
       const match = ponds.find((p) => p.id === initialPondId);
-      if (match && selectedPond?.id !== match.id) {
+      if (match) {
         setSelectedPond(match);
+        onSelectPond?.(match.id);
       }
     }
-  }, [initialPondId, ponds, selectedPond]);
+  }, [initialPondId, ponds]);
 
   // If a pond is selected, render the detail view
   if (selectedPond) {
     return (
       <PondSizeDetail
         pond={selectedPond}
-        availablePonds={ponds}
-        onSelectPond={(pId) => {
-          const match = ponds.find((p) => p.id === pId);
-          if (match) setSelectedPond(match);
-          onSelectPond?.(pId);
-        }}
         viewOnly={viewOnly}
         onBack={() => {
           setSelectedPond(null);
+          onSelectPond?.('');
         }}
         onNavigateTab={onNavigateTab}
       />

@@ -1,45 +1,78 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowRight,
   Bot,
   Building2,
   CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
-  Filter,
   History,
   Layers,
   Plus,
   RefreshCw,
-  RotateCcw,
+  Search,
   Stethoscope,
   Waves,
   X,
 } from 'lucide-react';
 import { incidentService, type Incident, type IncidentStatus, type IncidentTechnician } from '../../services/incident.service';
-import { cropService, type Crop } from '../../services/crop.service';
-import { pondService, type OverviewPond } from '../../services/pond.service';
+import { type Crop } from '../../services/crop.service';
+import { pondService } from '../../services/pond.service';
 import LoadingMotion from '../../components/LoadingMotion';
 import TreatmentWorkspace from './TreatmentWorkspace';
 import IncidentTreatmentHistory from './IncidentTreatmentHistory';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
-  OPEN: 'Sự cố mới (Chờ xử lý)',
+  OPEN: 'Chờ xử lý',
   TREATING: 'Đang điều trị',
-  RESOLVED: 'Đã hoàn tất điều trị',
+  RESOLVED: 'Đã xử lý',
 };
 
 const STATUS_STYLES: Record<IncidentStatus, string> = {
   OPEN: 'bg-amber-50 text-amber-700 border-amber-200',
-  TREATING: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  TREATING: 'bg-blue-50 text-blue-700 border-blue-200',
   RESOLVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
-export type IncidentSubTab = 'incident' | 'treatment' | 'history';
+const STATUS_CONFIG: Record<IncidentStatus, {
+  label: string;
+  badgeStyle: string;
+  headerBg: string;
+  headerText: string;
+  headerBorder: string;
+  icon: typeof AlertTriangle;
+  emptyText: string;
+}> = {
+  OPEN: {
+    label: 'Chờ xử lý',
+    badgeStyle: 'bg-amber-50 text-amber-700 border-amber-200',
+    headerBg: 'bg-amber-500/10 border-amber-200/80 text-amber-900',
+    headerText: 'text-amber-600',
+    headerBorder: 'border-amber-200',
+    icon: AlertTriangle,
+    emptyText: 'Không có sự cố chờ xử lý',
+  },
+  TREATING: {
+    label: 'Đang điều trị',
+    badgeStyle: 'bg-blue-50 text-blue-700 border-blue-200',
+    headerBg: 'bg-blue-500/10 border-blue-200/80 text-blue-900',
+    headerText: 'text-blue-600',
+    headerBorder: 'border-blue-200',
+    icon: Stethoscope,
+    emptyText: 'Không có sự cố đang điều trị',
+  },
+  RESOLVED: {
+    label: 'Đã xử lý',
+    badgeStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    headerBg: 'bg-emerald-500/10 border-emerald-200/80 text-emerald-900',
+    headerText: 'text-emerald-600',
+    headerBorder: 'border-emerald-200',
+    icon: CheckCircle2,
+    emptyText: 'Không có sự cố đã xử lý',
+  },
+};
+
+const ALL_STATUSES: IncidentStatus[] = ['OPEN', 'TREATING', 'RESOLVED'];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Đã xảy ra lỗi';
@@ -50,14 +83,10 @@ type CreateIncidentErrors = Partial<Record<'cropId' | 'title' | 'description', s
 
 export default function IncidentDashboard({
   role,
-  initialSubTab = 'incident',
-  initialIncidentId,
-  onClearInitialIncidentId,
+  initialSubTab = 'board',
 }: {
   role: IncidentRole;
-  initialSubTab?: 'incident' | 'treatment' | 'history' | 'board';
-  initialIncidentId?: string;
-  onClearInitialIncidentId?: () => void;
+  initialSubTab?: 'board' | 'history';
 }) {
   const adminView = role === 'ADMIN';
   const canCreate = role !== 'ADMIN';
@@ -70,58 +99,22 @@ export default function IncidentDashboard({
       return undefined;
     }
   });
-  const [subTab, setSubTab] = useState<IncidentSubTab>(() => {
-    if (initialSubTab === 'history') return 'history';
-    if (initialSubTab === 'treatment') return 'treatment';
-    return 'incident';
-  });
+  const [subTab, setSubTab] = useState<'board' | 'history'>(initialSubTab);
 
   useEffect(() => {
     if (initialSubTab) {
-      if (initialSubTab === 'history') setSubTab('history');
-      else if (initialSubTab === 'treatment') setSubTab('treatment');
-      else setSubTab('incident');
+      setSubTab(initialSubTab);
     }
   }, [initialSubTab]);
-
-  // Tự động mở ca điều trị nếu được truyền initialIncidentId (từ luồng kiểm tra sức khỏe)
-  useEffect(() => {
-    if (initialIncidentId) {
-      let isMounted = true;
-      (async () => {
-        try {
-          const inc = await incidentService.getById(initialIncidentId);
-          if (isMounted && inc) {
-            setActiveWorkspaceIncident(inc);
-            setSubTab(inc.status === 'RESOLVED' ? 'history' : 'treatment');
-            if (onClearInitialIncidentId) {
-              onClearInitialIncidentId();
-            }
-          }
-        } catch (err) {
-          console.error('Failed to auto open initialIncidentId:', err);
-        }
-      })();
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [initialIncidentId, onClearInitialIncidentId]);
 
   const primaryButtonClass = isFarmer
     ? 'from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 shadow-teal-500/30'
     : 'from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-500/30';
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Incident | null>(null);
-
-  // Filter states: Ao nuôi và Vụ nuôi
-  const [ponds, setPonds] = useState<OverviewPond[]>([]);
-  const [allCrops, setAllCrops] = useState<Crop[]>([]);
-  const [selectedPondId, setSelectedPondId] = useState('');
-  const [selectedCropId, setSelectedCropId] = useState('');
-
-  const [categoryPage, setCategoryPage] = useState(1);
-
+  const [status, setStatus] = useState('');
+  const [search, setSearch] = useState('');
+  const [assignedToMe, setAssignedToMe] = useState(role === 'TECHNICIAN');
   const [loading, setLoading] = useState(true);
   const [loadingCrops, setLoadingCrops] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -137,62 +130,14 @@ export default function IncidentDashboard({
   const [technicians, setTechnicians] = useState<IncidentTechnician[]>([]);
   const [activeWorkspaceIncident, setActiveWorkspaceIncident] = useState<Incident | null>(null);
 
-  // Load danh sách ao nuôi và vụ nuôi cho bộ lọc
-  useEffect(() => {
-    let isMounted = true;
-    async function loadFilterMetadata() {
-      try {
-        const [overview, cropsData] = await Promise.allSettled([
-          pondService.getOverview(),
-          cropService.getAll(),
-        ]);
-        if (!isMounted) return;
-        if (overview.status === 'fulfilled') {
-          setPonds(overview.value.ponds || []);
-          if (cropsData.status === 'fulfilled' && cropsData.value.length > 0) {
-            setAllCrops(cropsData.value);
-          } else {
-            setAllCrops(overview.value.crops || []);
-          }
-        } else if (cropsData.status === 'fulfilled') {
-          setAllCrops(cropsData.value);
-        }
-      } catch (err) {
-        console.error('Failed to load ponds/crops metadata:', err);
-      }
-    }
-    loadFilterMetadata();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Vụ nuôi được lọc theo Ao nuôi đã chọn
-  const filteredCrops = useMemo(() => {
-    if (!selectedPondId) return allCrops;
-    return allCrops.filter(
-      (crop) => crop.pondId === selectedPondId || crop.pond?.id === selectedPondId
-    );
-  }, [allCrops, selectedPondId]);
-
-  const handlePondChange = (pondId: string) => {
-    setSelectedPondId(pondId);
-    if (selectedCropId) {
-      const crop = allCrops.find((c) => c.id === selectedCropId);
-      if (crop && pondId && crop.pondId !== pondId && crop.pond?.id !== pondId) {
-        setSelectedCropId('');
-      }
-    }
-  };
-
   const loadIncidents = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const response = await incidentService.getAll({
-        pondId: selectedPondId || undefined,
-        cropId: selectedCropId || undefined,
-        size: 300,
+        status: status || undefined,
+        assignedToMe: adminView ? false : assignedToMe,
+        search: search.trim() || undefined,
       });
       setIncidents(response.content);
     } catch (requestError) {
@@ -200,52 +145,12 @@ export default function IncidentDashboard({
     } finally {
       setLoading(false);
     }
-  }, [selectedCropId, selectedPondId]);
+  }, [adminView, assignedToMe, search, status]);
 
   useEffect(() => {
     const timeout = window.setTimeout(loadIncidents, 250);
     return () => window.clearTimeout(timeout);
   }, [loadIncidents]);
-
-  // Danh sách sự cố sau khi qua bộ lọc Ao và Vụ nuôi
-  const filteredIncidents = useMemo(() => {
-    return incidents.filter((item) => {
-      if (selectedPondId && item.crop?.pond?.id !== selectedPondId) return false;
-      if (selectedCropId && item.crop?.id !== selectedCropId) return false;
-      return true;
-    });
-  }, [incidents, selectedPondId, selectedCropId]);
-
-  // 1. Sự cố mới phát sinh (Chờ can thiệp / chưa bắt đầu điều trị)
-  const openIncidents = useMemo(() => {
-    return filteredIncidents.filter((item) => item.status === 'OPEN' && !item.startedAt);
-  }, [filteredIncidents]);
-
-  // 2. Quá trình điều trị (Đang can thiệp / có thể điều trị nhiều đợt)
-  const treatingIncidents = useMemo(() => {
-    return filteredIncidents.filter(
-      (item) => item.status === 'TREATING' || (item.status === 'OPEN' && !!item.startedAt)
-    );
-  }, [filteredIncidents]);
-
-  // 3. Đã hoàn tất điều trị (Tôm đã khỏi bệnh)
-  const resolvedIncidents = useMemo(() => {
-    return filteredIncidents.filter((item) => item.status === 'RESOLVED');
-  }, [filteredIncidents]);
-
-  const activeFilterCount = [
-    Boolean(selectedPondId),
-    Boolean(selectedCropId),
-  ].filter(Boolean).length;
-
-  const handleResetFilters = () => {
-    setSelectedPondId('');
-    setSelectedCropId('');
-  };
-
-  useEffect(() => {
-    setCategoryPage(1);
-  }, [selectedPondId, selectedCropId, subTab]);
 
   const loadActiveCrops = useCallback(async () => {
     if (!canCreate) return;
@@ -378,23 +283,20 @@ export default function IncidentDashboard({
     setActiveWorkspaceIncident(inc);
   };
 
-  const handleStartTreatmentDirectly = async (incident: Incident) => {
+  const startTreatment = async () => {
+    if (!selected) return;
+    setSaving(true);
     try {
-      setSaving(true);
-      setError('');
-      let targetInc = incident;
-      if (incident.status === 'OPEN') {
-        targetInc = await incidentService.startTreatment(incident.id);
-      }
-      setIncidents((prev) =>
-        prev.map((item) => (item.id === targetInc.id ? { ...item, status: 'TREATING' } : item))
-      );
-      setSubTab('treatment');
-      openTreatmentWorkspace(targetInc);
+      const updated = await incidentService.startTreatment(selected.id);
+      const fullIncident: Incident = {
+        ...selected,
+        ...updated,
+        crop: updated.crop || selected.crop,
+      };
+      setSelected(null);
+      setActiveWorkspaceIncident(fullIncident);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
-      setSubTab('treatment');
-      openTreatmentWorkspace(incident);
     } finally {
       setSaving(false);
     }
@@ -432,44 +334,14 @@ export default function IncidentDashboard({
 
   return (
     <div className="relative mx-auto w-full max-w-7xl space-y-6">
-      {/* ── Chế độ xem: 1. Sự cố | 2. Quá trình điều trị | 3. Lịch sử (Segmented Control Pill Switcher) ── */}
+      {/* ── Chế độ xem: Bảng theo dõi / Lịch sử (Segmented Control Pill Switcher) ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="inline-flex items-center p-1 bg-white/90 rounded-xl border border-slate-200/60 shadow-inner flex-wrap gap-1">
-          {/* Tab 1: 1. Sự cố */}
+        <div className="inline-flex items-center p-1 bg-white/90 rounded-xl border border-slate-200/60 shadow-inner">
           <button
             type="button"
-            onClick={() => {
-              setSubTab('incident');
-              setCategoryPage(1);
-            }}
+            onClick={() => setSubTab('board')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              subTab === 'incident'
-                ? isFarmer
-                  ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/30'
-                  : 'bg-amber-600 text-white shadow-sm shadow-amber-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>1. Sự cố</span>
-            {openIncidents.length > 0 && (
-              <span className={`ml-0.5 rounded-full px-2 py-0.5 text-[10px] font-black ${
-                subTab === 'incident' ? 'bg-white text-amber-700' : 'bg-amber-100 text-amber-700'
-              }`}>
-                {openIncidents.length}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 2: 2. Quá trình điều trị */}
-          <button
-            type="button"
-            onClick={() => {
-              setSubTab('treatment');
-              setCategoryPage(1);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              subTab === 'treatment'
+              subTab === 'board'
                 ? isFarmer
                   ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
                   : 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
@@ -477,17 +349,9 @@ export default function IncidentDashboard({
             }`}
           >
             <Stethoscope className="w-3.5 h-3.5" />
-            <span>2. Quá trình điều trị</span>
-            {treatingIncidents.length > 0 && (
-              <span className={`ml-0.5 rounded-full px-2 py-0.5 text-[10px] font-black ${
-                subTab === 'treatment' ? 'bg-white text-indigo-700' : 'bg-indigo-100 text-indigo-700'
-              }`}>
-                {treatingIncidents.length}
-              </span>
-            )}
+            <span>Bảng theo dõi & Xử lý</span>
           </button>
 
-          {/* Tab 3: 3. Lịch sử & Nhật ký điều trị */}
           <button
             type="button"
             onClick={() => setSubTab('history')}
@@ -500,32 +364,20 @@ export default function IncidentDashboard({
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>3. Lịch sử & Nhật ký điều trị</span>
-            {resolvedIncidents.length > 0 && (
-              <span className={`ml-0.5 rounded-full px-2 py-0.5 text-[10px] font-black ${
-                subTab === 'history' ? 'bg-white text-indigo-700' : 'bg-slate-200 text-slate-700'
-              }`}>
-                {resolvedIncidents.length}
-              </span>
-            )}
+            <span>Lịch sử & Nhật ký điều trị</span>
           </button>
         </div>
 
         <div className="hidden sm:flex items-center gap-2 pr-3 text-xs text-slate-500 font-medium">
-          {subTab === 'incident' ? (
+          {subTab === 'board' ? (
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              Sự cố mới phát sinh tại ao nuôi · Chờ tiếp nhận & phân công
-            </span>
-          ) : subTab === 'treatment' ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-              Đang trong phác đồ can thiệp · Cập nhật thuốc nhiều lần đến khi khỏi bệnh
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Giám sát sự cố đang diễn ra & phân công kỹ thuật
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Hồ sơ điều trị hoàn tất khi tôm đã hết bệnh
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              Tra cứu đầy đủ hồ sơ điều trị, vật tư & tiến trình theo vụ nuôi
             </span>
           )}
         </div>
@@ -583,77 +435,22 @@ export default function IncidentDashboard({
               </div>
             </div>
 
-            {/* ── Bộ lọc sự cố: Tìm kiếm, Ao nuôi, Vụ nuôi, Năm, Từ ngày - Đến ngày ── */}
-            <div className="mt-5 pt-4 border-t border-slate-200/70 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                  <Filter className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Bộ lọc sự cố:</span>
-                  {activeFilterCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-extrabold">
-                      {activeFilterCount} điều kiện đang lọc
-                    </span>
-                  )}
-                </div>
-
-                {activeFilterCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleResetFilters}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline transition-colors cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Đặt lại bộ lọc</span>
-                  </button>
-                )}
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc mô tả sự cố..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                {/* 1. Lọc theo Ao nuôi */}
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-600 pointer-events-none">
-                    <Waves className="w-4 h-4" />
-                  </div>
-                  <select
-                    value={selectedPondId}
-                    onChange={(e) => handlePondChange(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-7 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 appearance-none cursor-pointer"
-                  >
-                    <option value="">Tất cả ao nuôi</option>
-                    {ponds.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.farm?.name ? `(${p.farm.name})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-
-                {/* 2. Lọc theo Vụ nuôi */}
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-600 pointer-events-none">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <select
-                    value={selectedCropId}
-                    onChange={(e) => setSelectedCropId(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-7 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 appearance-none cursor-pointer"
-                  >
-                    <option value="">Tất cả vụ nuôi</option>
-                    {filteredCrops.map((c) => {
-                      const pondName = c.pond?.name || ponds.find((p) => p.id === c.pondId)?.name || 'Ao';
-                      const stageName = c.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm';
-                      const start = c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : '';
-                      return (
-                        <option key={c.id} value={c.id}>
-                          {pondName} · {stageName} ({start})
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
+              <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400">
+                <option value="">Tất cả trạng thái</option>
+                <option value="OPEN">Chờ xử lý</option>
+                <option value="TREATING">Đang điều trị</option>
+                <option value="RESOLVED">Đã xử lý</option>
+              </select>
+              {role === 'TECHNICIAN' && (
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">
+                  <input type="checkbox" checked={assignedToMe} onChange={(event) => setAssignedToMe(event.target.checked)} /> Chỉ sự cố giao cho tôi
+                </label>
+              )}
             </div>
           </div>
 
@@ -673,349 +470,104 @@ export default function IncidentDashboard({
           icon={<AlertTriangle className="w-10 h-10 text-rose-600 animate-pulse" />}
           color="rose"
         />
-      ) : subTab === 'incident' ? (
-        /* ══════════════ TAB 1: SỰ CỐ MỚI PHÁT SINH (CHỜ TIẾP NHẬN / CHƯA ĐIỀU TRỊ) ══════════════ */
-        (() => {
-          const ITEMS_PER_PAGE = 9;
-          const totalPages = Math.ceil(openIncidents.length / ITEMS_PER_PAGE);
-          const paginatedItems = openIncidents.slice(
-            (categoryPage - 1) * ITEMS_PER_PAGE,
-            categoryPage * ITEMS_PER_PAGE
-          );
-
-          return (
-            <div className="w-full space-y-6 animate-in fade-in duration-300">
-              {/* Header Box: 1. Sự cố */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-amber-200/80 bg-amber-500/10 p-5 shadow-xs backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-xs text-amber-600">
-                    <AlertTriangle className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2.5">
-                      <h3 className="font-extrabold text-slate-800 text-lg leading-tight">
-                        1. Danh sách sự cố mới phát sinh (Chờ xử lý / Chưa điều trị)
-                      </h3>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-0.5 text-xs font-black text-amber-700">
-                        {openIncidents.length} sự cố
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Giám sát các sự cố mới báo cáo từ ao nuôi cần tiếp nhận, chỉ định phác đồ hoặc bắt đầu can thiệp điều trị.
-                    </p>
-                  </div>
-                </div>
-
-                {totalPages > 1 && (
-                  <div className="text-xs text-slate-500 font-bold self-end sm:self-center">
-                    Trang {categoryPage} / {totalPages}
-                  </div>
-                )}
-              </div>
-
-              {/* Lưới danh sách sự cố mới */}
-              {openIncidents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-emerald-200 bg-emerald-50/40 p-12 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 mb-3 shadow-xs">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-base font-extrabold text-slate-800">
-                    Tất cả các ao nuôi đang an toàn!
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1 max-w-md">
-                    Hiện tại không có sự cố mới nào chờ tiếp nhận. Các sự cố đang áp dụng phác đồ nằm tại tab <strong>"2. Quá trình điều trị"</strong>.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {paginatedItems.map((incident) => (
-                    <div
-                      key={incident.id}
-                      className="group relative flex flex-col justify-between rounded-3xl border border-white/80 bg-white p-5 text-left shadow-sm shadow-slate-200/60 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-amber-300"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-base font-extrabold text-slate-800 group-hover:text-amber-600 transition-colors line-clamp-2">
-                            {incident.title}
-                          </h4>
-                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
-                            Sự cố mới
-                          </span>
-                        </div>
-
-                        <p className="mt-2.5 line-clamp-3 text-xs font-medium text-slate-500 leading-relaxed">
-                          {incident.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-500">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-bold">
-                            <Building2 className="w-3 h-3 text-emerald-600" />
-                            <span className="truncate max-w-[120px]">{incident.crop.pond.farm.name}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-100 text-[10px] font-bold">
-                            <Waves className="w-3 h-3 text-cyan-600" />
-                            <span>{incident.crop.pond.name}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100 text-[10px] font-bold">
-                            <Layers className="w-3 h-3 text-indigo-600" />
-                            <span>{incident.crop.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm'}</span>
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs pt-1">
-                          <p className="truncate text-slate-500">
-                            Phụ trách:{' '}
-                            <span className="font-semibold text-slate-700">
-                              {incident.assignedTo?.fullName || 'Chưa phân công'}
-                            </span>
-                          </p>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(incident.createdAt).toLocaleDateString('vi-VN')}
-                          </span>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openIncident(incident)}
-                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
-                            title="Xem chi tiết & phân công"
-                          >
-                            Chi tiết
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStartTreatmentDirectly(incident)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs transition-all shadow-md shadow-amber-600/20 cursor-pointer"
-                          >
-                            <Stethoscope className="w-3.5 h-3.5" />
-                            <span>Tiếp nhận & Vào điều trị</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Phân trang nếu > 9 */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
-                    disabled={categoryPage === 1}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <ChevronLeft className="w-4 h-4" /> Trước
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      type="button"
-                      onClick={() => setCategoryPage(page)}
-                      className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                        categoryPage === page
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setCategoryPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={categoryPage === totalPages}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Sau <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })()
       ) : (
-        /* ══════════════ TAB 2: QUÁ TRÌNH CAN THIỆP & THEO DÕI ĐIỀU TRỊ ══════════════ */
         (() => {
-          const ITEMS_PER_PAGE = 9;
-          const totalPages = Math.ceil(treatingIncidents.length / ITEMS_PER_PAGE);
-          const paginatedItems = treatingIncidents.slice(
-            (categoryPage - 1) * ITEMS_PER_PAGE,
-            categoryPage * ITEMS_PER_PAGE
-          );
+          const visibleStatuses: IncidentStatus[] = status
+            ? [(status as IncidentStatus)]
+            : ALL_STATUSES;
 
           return (
-            <div className="w-full space-y-6 animate-in fade-in duration-300">
-              {/* Header Box: 2. Quá trình điều trị */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-indigo-200/80 bg-indigo-500/10 p-5 shadow-xs backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-xs text-indigo-600">
-                    <Stethoscope className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2.5">
-                      <h3 className="font-extrabold text-slate-800 text-lg leading-tight">
-                        2. Quá trình can thiệp & Theo dõi điều trị
-                      </h3>
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-0.5 text-xs font-black text-indigo-700">
-                        {treatingIncidents.length} ao đang điều trị
+            <div className={`grid gap-6 ${visibleStatuses.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' : 'grid-cols-1 lg:grid-cols-3'}`}>
+              {visibleStatuses.map((statusKey) => {
+                const config = STATUS_CONFIG[statusKey];
+                const StatusIcon = config.icon;
+                const items = incidents.filter((item) => item.status === statusKey);
+
+                return (
+                  <div
+                    key={statusKey}
+                    className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/60 p-4 shadow-sm backdrop-blur-xl min-h-[450px]"
+                  >
+                    {/* Header Cột Trạng Thái */}
+                    <div className={`flex items-center justify-between rounded-2xl border ${config.headerBorder} ${config.headerBg} p-3.5 mb-4 shadow-xs`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-xs ${config.headerText}`}>
+                          <StatusIcon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-slate-800 text-base leading-tight">
+                            {config.label}
+                          </h3>
+                          <span className="text-xs font-medium text-slate-500">
+                            {items.length} sự cố
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLES[statusKey]}`}>
+                        {items.length}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Các sự cố đang trong phác đồ can thiệp. Bạn có thể cập nhật thuốc/vật tư và điều trị nhiều đợt liên tiếp cho đến khi tôm khỏi bệnh để hoàn tất hồ sơ.
-                    </p>
-                  </div>
-                </div>
 
-                {totalPages > 1 && (
-                  <div className="text-xs text-slate-500 font-bold self-end sm:self-center">
-                    Trang {categoryPage} / {totalPages}
-                  </div>
-                )}
-              </div>
-
-              {/* Lưới danh sách sự cố đang điều trị */}
-              {treatingIncidents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-indigo-200 bg-indigo-50/40 p-12 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 mb-3 shadow-xs">
-                    <Stethoscope className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-base font-extrabold text-slate-800">
-                    Hiện không có ao nào đang trong quá trình điều trị
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1 max-w-md">
-                    Sau khi tiếp nhận sự cố mới từ tab <strong>"1. Sự cố"</strong> và bắt đầu xử lý, sự cố sẽ chuyển vào đây để bạn có thể xuất thuốc và theo dõi nhiều đợt.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {paginatedItems.map((incident) => (
-                    <div
-                      key={incident.id}
-                      className="group relative flex flex-col justify-between rounded-3xl border border-white/80 bg-white p-5 text-left shadow-sm shadow-slate-200/60 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-indigo-300"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-2">
-                            {incident.title}
-                          </h4>
-                          <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
-                            Đang điều trị
-                          </span>
+                    {/* Danh Sách Thẻ Sự Cố Theo Trạng Thái */}
+                    <div className="flex-1 space-y-3.5">
+                      {items.length === 0 ? (
+                        <div className="flex h-44 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-center">
+                          <StatusIcon className="mb-2 h-7 w-7 text-slate-300" />
+                          <p className="text-sm font-bold text-slate-400">{config.emptyText}</p>
                         </div>
-
-                        <p className="mt-2.5 line-clamp-2 text-xs font-medium text-slate-500 leading-relaxed">
-                          {incident.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-500">
-                        {/* Tags Farm, Pond, Stage */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-bold">
-                            <Building2 className="w-3 h-3 text-emerald-600" />
-                            <span className="truncate max-w-[120px]">{incident.crop.pond.farm.name}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-100 text-[10px] font-bold">
-                            <Waves className="w-3 h-3 text-cyan-600" />
-                            <span>{incident.crop.pond.name}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100 text-[10px] font-bold">
-                            <Layers className="w-3 h-3 text-indigo-600" />
-                            <span>{incident.crop.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm'}</span>
-                          </span>
-                        </div>
-
-                        {/* Can thiệp gần nhất */}
-                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-2.5 text-xs">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-indigo-950">
-                            <span>Đã can thiệp:</span>
-                            <span className="text-indigo-700 font-extrabold">{incident._count?.updates ?? 0} đợt điều trị</span>
-                          </div>
-                          {incident.treatment && (
-                            <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-600">
-                              {incident.treatment}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between text-xs pt-1">
-                          <p className="truncate text-slate-500">
-                            Phụ trách:{' '}
-                            <span className="font-semibold text-slate-700">
-                              {incident.assignedTo?.fullName || 'Chưa phân công'}
-                            </span>
-                          </p>
-                          <span className="text-[10px] text-slate-400">
-                            Bắt đầu: {incident.startedAt ? new Date(incident.startedAt).toLocaleDateString('vi-VN') : 'Gần đây'}
-                          </span>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                      ) : (
+                        items.map((incident) => (
                           <button
-                            type="button"
+                            key={incident.id}
                             onClick={() => openIncident(incident)}
-                            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
-                            title="Xem chi tiết & lịch sử"
+                            className={`w-full group rounded-2xl border border-white/80 bg-white p-4 text-left shadow-sm shadow-slate-200/60 backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-md ${
+                              isFarmer ? 'hover:border-teal-300 hover:shadow-teal-500/10' : 'hover:border-indigo-300 hover:shadow-indigo-500/10'
+                            }`}
                           >
-                            Chi tiết
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openTreatmentWorkspace(incident)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
-                          >
-                            <Stethoscope className="w-3.5 h-3.5" />
-                            <span>Cập nhật điều trị / Nhập thuốc</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                                {incident.title}
+                              </h4>
+                              <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${STATUS_STYLES[incident.status]}`}>
+                                {STATUS_LABELS[incident.status]}
+                              </span>
+                            </div>
 
-              {/* Phân trang nếu > 9 */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
-                    disabled={categoryPage === 1}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <ChevronLeft className="w-4 h-4" /> Trước
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      type="button"
-                      onClick={() => setCategoryPage(page)}
-                      className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                        categoryPage === page
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setCategoryPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={categoryPage === totalPages}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Sau <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+                            <p className="mt-2 line-clamp-2 text-xs font-medium text-slate-500 leading-relaxed">
+                              {incident.description}
+                            </p>
+
+                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-2.5 text-[11px] font-medium text-slate-500">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-bold">
+                                  <Building2 className="w-3 h-3 text-emerald-600" />
+                                  <span className="truncate max-w-[120px]">{incident.crop.pond.farm.name}</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-100 text-[10px] font-bold">
+                                  <Waves className="w-3 h-3 text-cyan-600" />
+                                  <span>{incident.crop.pond.name}</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100 text-[10px] font-bold">
+                                  <Layers className="w-3 h-3 text-indigo-600" />
+                                  <span>{incident.crop.stage === 'NURSERY' ? 'Ương' : 'Thương phẩm'}</span>
+                                </span>
+                              </div>
+
+                              <p className="truncate text-slate-500">
+                                Phụ trách: <span className="font-semibold text-slate-700">{incident.assignedTo?.fullName || 'Chưa phân công'}</span>
+                              </p>
+                              <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                                <span>{incident._count?.updates ?? 0} cập nhật</span>
+                                <span>{new Date(incident.updatedAt).toLocaleDateString('vi-VN')}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           );
         })()
@@ -1177,13 +729,17 @@ export default function IncidentDashboard({
                       Sự cố này chưa được giao cho bạn nên bạn không thể cập nhật điều trị.
                     </div>
                   </div>
+                ) : selected.status === 'OPEN' ? (
+                  <button onClick={startTreatment} disabled={saving} className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 transition-all">
+                    <Stethoscope className="h-4 w-4" /> Bắt đầu điều trị (Mở trang AI & Vật tư kho)
+                  </button>
                 ) : (
                   <div className="space-y-3">
                     <button
                       onClick={() => openTreatmentWorkspace(selected)}
-                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all cursor-pointer"
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all"
                     >
-                      <Stethoscope className="h-4 w-4" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
+                      <Bot className="h-4 w-4 text-cyan-300" /> Mở trang điều trị & Phân tích AI (Kho vật tư)
                     </button>
                   </div>
                 )

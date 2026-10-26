@@ -10,14 +10,14 @@ import {
   Minimize2,
   Copy,
   Check,
+  FileCheck2,
   Compass,
   Search,
   MessageCircle,
   Calendar,
-  Layers,
-  AlertTriangle
+  Layers
 } from 'lucide-react';
-import { chatbotService, type ChatbotSource, type RealtimeWeather } from '../services/chatbot.service';
+import { chatbotService, type ChatbotSource } from '../services/chatbot.service';
 
 interface ChatMessage {
   id: string;
@@ -26,9 +26,6 @@ interface ChatMessage {
   time: string;
   sources?: ChatbotSource[];
   pondName?: string;
-  sourceType?: 'LOCAL_DOCUMENT' | 'OPENAI_KNOWLEDGE' | 'HYBRID';
-  hasLocalKnowledge?: boolean;
-  weather?: RealtimeWeather;
 }
 
 interface ChatSession {
@@ -60,13 +57,6 @@ const createNewSession = (title = 'Cuộc trò chuyện mới'): ChatSession => 
   };
 };
 
-const stripReferenceSources = (text: string): string => {
-  if (!text) return '';
-  return text
-    .replace(/(?:\r?\n)+\s*(?:📖\s*|📚\s*)?(?:Nguồn\s*(?:tham\s*khảo|trích\s*dẫn)?|Tài\s*liệu\s*tham\s*khảo|Cẩm\s*nang\s*tham\s*khảo)[\s\S]*$/i, '')
-    .trim();
-};
-
 export default function FloatingAIChatbox() {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -78,7 +68,6 @@ export default function FloatingAIChatbox() {
   const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Khởi tạo sessions từ localStorage
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -172,15 +161,11 @@ export default function FloatingAIChatbox() {
   };
 
   const handleClearAllHistory = () => {
-    setShowClearConfirm(true);
-  };
-
-  const confirmClearAll = () => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử trò chuyện?')) return;
     const fresh = createNewSession();
     setSessions([fresh]);
     setActiveSessionId(fresh.id);
     setActiveTab('chat');
-    setShowClearConfirm(false);
   };
 
   const handleCopyText = (id: string, text: string) => {
@@ -226,13 +211,10 @@ export default function FloatingAIChatbox() {
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
-        text: stripReferenceSources(result.answer),
+        text: result.answer,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        sources: [],
+        sources: result.sources,
         pondName: result.pondName,
-        sourceType: result.sourceType,
-        hasLocalKnowledge: result.hasLocalKnowledge,
-        weather: undefined,
       };
 
       setSessions(prev =>
@@ -272,8 +254,7 @@ export default function FloatingAIChatbox() {
 
   // Helper format markdown text kiểu ChatGPT
   const renderFormattedText = (rawText: string) => {
-    const cleanedText = stripReferenceSources(rawText);
-    const lines = cleanedText.split('\n');
+    const lines = rawText.split('\n');
     return lines.map((line, idx) => {
       if (!line.trim()) {
         return <div key={idx} className="h-2" />;
@@ -509,20 +490,39 @@ export default function FloatingAIChatbox() {
                         />
 
                         <div className="flex-1 min-w-0 space-y-2">
-                          {/* Header Badges: Pond Context & Knowledge Source */}
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {msg.pondName && (
-                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[11px] font-semibold text-slate-700">
-                                <Compass className="w-3 h-3 text-emerald-600" />
-                                <span>Ngữ cảnh: {msg.pondName}</span>
-                              </div>
-                            )}
-                          </div>
+                          {/* Pond Context Badge */}
+                          {msg.pondName && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[11px] font-semibold text-slate-700">
+                              <Compass className="w-3 h-3 text-emerald-600" />
+                              <span>Ngữ cảnh: {msg.pondName}</span>
+                            </div>
+                          )}
 
                           {/* Formatted Content */}
                           <div className="space-y-1">
                             {renderFormattedText(msg.text)}
                           </div>
+
+                          {/* Citations (Cẩm nang tham khảo) */}
+                          {msg.sources && msg.sources.length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-100">
+                              <div className="flex flex-wrap gap-1.5">
+                                {msg.sources.map((src, sIdx) => (
+                                  <div
+                                    key={sIdx}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] text-slate-600"
+                                    title={src.snippet}
+                                  >
+                                    <FileCheck2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                    <span className="font-medium truncate max-w-[200px]">{src.title}</span>
+                                    <span className="text-[10px] text-emerald-700 font-bold">
+                                      {Math.round(src.relevanceScore * 100)}%
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {/* AI Action Toolbar (Copy) */}
                           {msg.id !== 'welcome-chatgpt' && (
@@ -604,43 +604,6 @@ export default function FloatingAIChatbox() {
                 <p className="text-[10px] text-center text-slate-400 mt-2">
                   Smart Shrimp AI kết hợp cẩm nang kỹ thuật & cảm biến ao. Hãy đối chiếu khi ra quyết định lớn.
                 </p>
-              </div>
-            </div>
-          )}
-
-          {/* Modal xác nhận xóa toàn bộ lịch sử trò chuyện */}
-          {showClearConfirm && (
-            <div 
-              className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
-              onClick={() => setShowClearConfirm(false)}
-            >
-              <div 
-                onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl w-full max-w-xs shadow-2xl p-5 text-center border border-slate-100 animate-in zoom-in-95 duration-200"
-              >
-                <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 mb-3 shadow-inner">
-                  <AlertTriangle className="w-6 h-6 animate-pulse" />
-                </div>
-                <h4 className="text-base font-black text-slate-800">Xóa tất cả lịch sử?</h4>
-                <p className="text-xs text-slate-500 mt-1 mb-4 leading-relaxed">
-                  Toàn bộ các phiên trò chuyện trước đây với Trợ lý Tôm AI sẽ bị xóa và không thể khôi phục.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowClearConfirm(false)}
-                    className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmClearAll}
-                    className="flex-1 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition-all cursor-pointer"
-                  >
-                    Xác nhận xóa
-                  </button>
-                </div>
               </div>
             </div>
           )}

@@ -115,37 +115,37 @@ export default function HomePage() {
           }`}
       >
         <div className={`mx-auto transition-all duration-500 ease-out ${scrolled
-          ? 'max-w-[1020px] bg-white/85 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.08)] rounded-full px-6 py-3'
+          ? 'max-w-[850px] bg-white/75 backdrop-blur-xl border border-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.08)] rounded-full px-4 py-2.5'
           : 'max-w-7xl bg-transparent px-4 sm:px-6 lg:px-8 py-6 border border-transparent'
           }`}>
           <div className="flex justify-between items-center">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 group">
-              <img src="/logonen.jpg" alt="SSFM Logo" className={`rounded-full object-cover bg-white shadow-md border border-white/60 group-hover:scale-105 transition-all duration-500 ${scrolled ? 'h-10 w-10' : 'h-12 w-12'}`} />
-              <span className={`font-black tracking-tight transition-all duration-500 ${scrolled ? 'text-2xl text-slate-900' : 'text-[28px] text-white drop-shadow-md'}`}>SSFM</span>
+            <Link to="/" className="flex items-center gap-2.5 group">
+              <img src="/logonen.jpg" alt="SSFM Logo" className={`rounded-full object-cover bg-white shadow-md border border-white/60 group-hover:scale-105 transition-all duration-500 ${scrolled ? 'h-9 w-9' : 'h-12 w-12'}`} />
+              <span className={`font-black tracking-tight transition-all duration-500 ${scrolled ? 'text-xl text-slate-900' : 'text-2xl text-white drop-shadow-md'}`}>SSFM</span>
             </Link>
 
             {/* Links */}
-            <div className="hidden md:flex space-x-7 lg:space-x-9 items-center">
+            <div className="hidden md:flex space-x-8 items-center">
               {['Quy trình 5T', 'Bản đồ', 'Tính năng', 'Trợ lý AI'].map((item, idx) => {
                 const sectionId = item.toLowerCase().replace(/ /g, '-');
                 const isActive = activeSection === sectionId;
 
                 return (
-                  <a key={idx} href={`#${sectionId}`} className={`font-bold text-[17.5px] lg:text-[18.5px] tracking-wide transition-all duration-300 relative group ${isActive ? 'text-blue-600' : (scrolled ? 'text-slate-800 hover:text-blue-600' : 'text-white hover:text-cyan-200 drop-shadow-sm')}`}>
+                  <a key={idx} href={`#${sectionId}`} className={`font-bold text-sm tracking-wide transition-all duration-300 relative group ${isActive ? 'text-blue-600' : (scrolled ? 'text-slate-600 hover:text-blue-600' : 'text-white/90 hover:text-white drop-shadow-sm')}`}>
                     {item}
-                    <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-[2.5px] transition-all duration-300 rounded-full ${isActive ? 'w-[75%] bg-blue-600' : `w-0 group-hover:w-[75%] ${scrolled ? 'bg-blue-600' : 'bg-white'}`}`}></span>
+                    <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-[2px] transition-all duration-300 rounded-full ${isActive ? 'w-[70%] bg-blue-600' : `w-0 group-hover:w-[70%] ${scrolled ? 'bg-blue-600' : 'bg-white'}`}`}></span>
                   </a>
                 );
               })}
             </div>
 
             {/* Actions */}
-            <div className="hidden md:flex items-center space-x-3">
-              <Link to="/login" className={`font-bold text-[17.5px] lg:text-[18.5px] tracking-wide transition-all duration-300 px-4 py-2 rounded-full ${scrolled ? 'text-slate-800 hover:bg-slate-100 hover:text-blue-600' : 'text-white hover:bg-white/10'}`}>Đăng nhập</Link>
-              <Link to="/register" className="relative group px-6 py-2.5 rounded-full overflow-hidden shadow-lg shadow-blue-600/25 bg-blue-600 text-white hover:scale-105 hover:bg-blue-700 transition-all duration-300 active:scale-95">
-                <span className="relative font-bold text-[16.5px] lg:text-[17.5px] tracking-wide flex items-center gap-2">
-                  Đăng ký <ArrowRight className="w-4.5 h-4.5 group-hover:translate-x-1 transition-transform" />
+            <div className="hidden md:flex items-center space-x-2">
+              <Link to="/login" className={`font-bold text-sm tracking-wide transition-all duration-300 px-4 py-2 rounded-full ${scrolled ? 'text-slate-700 hover:bg-slate-100 hover:text-blue-600' : 'text-white hover:bg-white/10'}`}>Đăng nhập</Link>
+              <Link to="/register" className="relative group px-5 py-2.5 rounded-full overflow-hidden shadow-lg shadow-blue-600/20 bg-blue-600 text-white hover:scale-105 hover:bg-blue-700 transition-all duration-300 active:scale-95">
+                <span className="relative font-bold text-sm tracking-wide flex items-center gap-2">
+                  Đăng ký <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </span>
               </Link>
             </div>
@@ -180,7 +180,13 @@ export default function HomePage() {
             animate="visible"
             className="max-w-4xl mx-auto flex flex-col items-center"
           >
-
+            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 backdrop-blur-md border border-blue-400/20 text-blue-300 text-sm font-semibold mb-8 shadow-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+              Nền tảng số hóa Quy trình 5T
+            </motion.div>
 
             <motion.h1 variants={fadeInUp} className="text-5xl md:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-[1.15] tracking-tight">
               Quản Lý Trang Trại Tôm <br className="hidden md:block" />
@@ -191,10 +197,13 @@ export default function HomePage() {
               Số hóa toàn diện dữ liệu hàng ngày. Tự động tính toán tốc độ tăng trưởng, kiểm soát hệ số FCR và hỗ trợ quyết định chăm sóc chính xác nhất.
             </motion.p>
 
-            <motion.div variants={fadeInUp} className="flex items-center justify-center w-full sm:w-auto">
-              <Link to="/register" className="w-full sm:w-auto group relative px-9 py-4 bg-blue-600 text-white rounded-full font-bold text-base md:text-lg transition-all shadow-[0_8px_30px_rgba(37,99,235,0.3)] hover:shadow-[0_12px_40px_rgba(37,99,235,0.4)] hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-2.5">
+            <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-center">
+              <Link to="/register" className="w-full sm:w-auto group relative px-8 py-4 bg-blue-600 text-white rounded-full font-bold transition-all shadow-[0_8px_30px_rgba(37,99,235,0.3)] hover:shadow-[0_12px_40px_rgba(37,99,235,0.4)] hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-2">
                 Đăng ký tài khoản <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
+              <a href="#quy-trình-5t" className="w-full sm:w-auto group px-8 py-4 bg-white/10 text-white border border-white/20 rounded-full font-bold hover:bg-white/20 transition-all backdrop-blur-sm active:scale-95 flex items-center justify-center gap-2">
+                Khám phá quy trình 5T
+              </a>
             </motion.div>
           </motion.div>
         </div>
@@ -563,9 +572,12 @@ export default function HomePage() {
             <p className="text-blue-50 text-base md:text-lg mb-10 max-w-2xl mx-auto drop-shadow-md">Tham gia cùng các hộ nông dân tiên phong áp dụng <strong className="text-white">Quy trình 5T</strong> để tối ưu chi phí, kiểm soát rủi ro dịch bệnh và bứt phá năng suất bền vững.</p>
 
             {/* Buttons */}
-            <div className="flex items-center justify-center mb-8 w-full sm:w-auto">
-              <Link to="/register" className="inline-flex items-center justify-center gap-2 px-9 py-4 bg-white text-blue-600 rounded-full font-bold text-base md:text-lg hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 shadow-xl w-full sm:w-auto">
-                Tạo tài khoản miễn phí <ArrowRight className="w-5 h-5" />
+            <div className="flex flex-col sm:flex-row items-center gap-4 justify-center mb-8 w-full sm:w-auto">
+              <Link to="/register" className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-white text-blue-600 rounded-full font-bold text-sm md:text-base hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 shadow-xl w-full sm:w-auto">
+                Tạo tài khoản miễn phí <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link to="/contact" className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-transparent border border-white/30 text-white rounded-full font-bold text-sm md:text-base hover:bg-white/10 transition-all w-full sm:w-auto shadow-xl">
+                <CalendarDays className="w-4 h-4" /> Đặt lịch tư vấn
               </Link>
             </div>
 

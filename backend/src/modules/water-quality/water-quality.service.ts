@@ -250,8 +250,7 @@ export class WaterQualityService {
         new Set(allSeasonCrops.map((c) => c.pondId)),
       );
 
-      const isSinglePond = Boolean(pondId && pondId !== 'ALL' && pondId !== 'all');
-      if (isSinglePond) {
+      if (pondId) {
         where.pondId = pondId;
       } else {
         where.pondId = { in: allPondIds };
@@ -268,7 +267,7 @@ export class WaterQualityService {
           cropEndDate.setHours(23, 59, 59, 999);
         }
       }
-    } else if (pondId && pondId !== 'ALL' && pondId !== 'all') {
+    } else if (pondId) {
       const pond = await this.prisma.pond.findUnique({
         where: { id: pondId },
         include: { farm: true },
@@ -404,70 +403,30 @@ export class WaterQualityService {
   }
 
   async findTrends(
-    pondId?: string,
+    pondId: string,
     fromDate?: string,
     toDate?: string,
     user?: AuthUser,
     cropId?: string,
     year?: number,
-    farmId?: string,
   ) {
-    const isSinglePond = Boolean(pondId && pondId !== 'ALL');
-    const where: any = {};
-
-    if (isSinglePond) {
-      const pond = await this.prisma.pond.findUnique({
-        where: { id: pondId },
-        include: { farm: true },
-      });
-      if (!pond) {
-        throw new NotFoundException('Không tìm thấy ao nuôi');
-      }
-      if (user) {
-        await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
-      }
-      where.pondId = pondId;
-    } else {
-      if (cropId && cropId !== 'ALL') {
-        const crop = await this.prisma.crop.findUnique({
-          where: { id: cropId },
-          include: {
-            pond: true,
-            childCrops: { include: { pond: true } },
-            parentCrop: {
-              include: { pond: true, childCrops: { include: { pond: true } } },
-            },
-          },
-        });
-        if (crop) {
-          if (user) {
-            await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
-          }
-          const root = crop.parentCrop || crop;
-          const allSeasonCrops = [root, ...(root.childCrops || [])];
-          const allPondIds = Array.from(
-            new Set(allSeasonCrops.map((c) => c.pondId)),
-          );
-          where.pondId = { in: allPondIds };
-        }
-      } else if (farmId) {
-        if (user) {
-          await this.farmAccess.assertCanAccessFarm(user, farmId);
-        }
-        where.pond = { farmId };
-      } else if (user) {
-        const accessibleFarmIds =
-          await this.farmAccess.getAccessibleFarmIds(user);
-        if (accessibleFarmIds) {
-          where.pond = { farmId: { in: accessibleFarmIds } };
-        }
-      }
+    const pond = await this.prisma.pond.findUnique({
+      where: { id: pondId },
+      include: { farm: true },
+    });
+    if (!pond) {
+      throw new NotFoundException('Khong tim thay ao nuoi');
     }
+    if (user) {
+      await this.farmAccess.assertCanAccessFarm(user, pond.farmId);
+    }
+
+    const where: any = { pondId };
 
     let filterStartDate: Date | null = null;
     let filterEndDate: Date | null = null;
 
-    if (cropId && cropId !== 'ALL') {
+    if (cropId) {
       const crop = await this.prisma.crop.findUnique({
         where: { id: cropId },
         include: {
@@ -526,123 +485,46 @@ export class WaterQualityService {
 
     const records = await this.prisma.waterQualityRecord.findMany({
       where,
-      include: {
-        pond: {
-          select: { id: true, name: true },
-        },
-      },
       orderBy: { recordTime: 'asc' },
     });
 
-    if (isSinglePond) {
-      return records.map((record) => {
-        const h2sVal =
-          record.h2s !== undefined && record.h2s !== null
-            ? Number(record.h2s)
-            : record.no2 !== undefined && record.no2 !== null
-              ? Number(record.no2)
-              : 0;
-
-        const overallStatus = this.calculateOverallStatus({
-          temperature: record.temperature,
-          ph: record.ph,
-          dissolvedOxygen: record.dissolvedOxygen,
-          salinity: record.salinity,
-          alkalinity: record.alkalinity,
-          nh3: record.nh3,
-          h2s: h2sVal,
-          transparency: record.transparency,
-          waterColor: record.waterColor,
-        });
-
-        return {
-          id: record.id,
-          recordTime: record.recordTime.toISOString(),
-          pondId: record.pondId,
-          pondName: record.pond?.name || '',
-          temperature: Number(record.temperature),
-          ph: Number(record.ph),
-          dissolvedOxygen: Number(record.dissolvedOxygen),
-          salinity: Number(record.salinity),
-          alkalinity: Number(record.alkalinity),
-          nh3: Number(record.nh3),
-          h2s: h2sVal,
-          no2:
-            record.no2 !== undefined && record.no2 !== null
-              ? Number(record.no2)
-              : 0,
-          transparency: Number(record.transparency),
-          waterColor: record.waterColor ?? undefined,
-          overallStatus,
-        };
-      });
-    }
-
-    // Multiple ponds aggregation:
-    // Group records by 2-hour window or exact measurement slot
-    const bucketsMap = new Map<string, any[]>();
-    for (const record of records) {
-      const timeMs = record.recordTime.getTime();
-      const intervalMs = 2 * 60 * 60 * 1000;
-      const bucketTime = new Date(
-        Math.floor(timeMs / intervalMs) * intervalMs,
-      ).toISOString();
-      if (!bucketsMap.has(bucketTime)) {
-        bucketsMap.set(bucketTime, []);
-      }
-      bucketsMap.get(bucketTime)!.push(record);
-    }
-
-    return Array.from(bucketsMap.entries()).map(([timeStr, recs]) => {
-      const count = recs.length;
-      const avg = (field: string) =>
-        recs.reduce((sum, r) => sum + (Number(r[field]) || 0), 0) / count;
-
-      const avgTemp = Number(avg('temperature').toFixed(2));
-      const avgPh = Number(avg('ph').toFixed(2));
-      const avgDo = Number(avg('dissolvedOxygen').toFixed(2));
-      const avgSalinity = Number(avg('salinity').toFixed(2));
-      const avgAlkalinity = Number(avg('alkalinity').toFixed(2));
-      const avgNh3 = Number(avg('nh3').toFixed(2));
-      const avgH2s = Number(
-        (
-          recs.reduce((sum, r) => sum + (Number(r.h2s ?? r.no2) || 0), 0) / count
-        ).toFixed(3),
-      );
-      const avgTransparency = Number(avg('transparency').toFixed(1));
+    return records.map((record) => {
+      const h2sVal =
+        record.h2s !== undefined && record.h2s !== null
+          ? Number(record.h2s)
+          : record.no2 !== undefined && record.no2 !== null
+            ? Number(record.no2)
+            : 0;
 
       const overallStatus = this.calculateOverallStatus({
-        temperature: avgTemp,
-        ph: avgPh,
-        dissolvedOxygen: avgDo,
-        salinity: avgSalinity,
-        alkalinity: avgAlkalinity,
-        nh3: avgNh3,
-        h2s: avgH2s,
-        transparency: avgTransparency,
+        temperature: record.temperature,
+        ph: record.ph,
+        dissolvedOxygen: record.dissolvedOxygen,
+        salinity: record.salinity,
+        alkalinity: record.alkalinity,
+        nh3: record.nh3,
+        h2s: h2sVal,
+        transparency: record.transparency,
+        waterColor: record.waterColor,
       });
 
-      const uniquePonds = Array.from(
-        new Set(recs.map((r) => r.pond?.name || r.pondId)),
-      );
-
       return {
-        id: `agg-${timeStr}`,
-        recordTime: timeStr,
-        pondId: 'ALL',
-        pondName: `Tổng hợp (${uniquePonds.length} ao: ${uniquePonds.join(', ')})`,
-        temperature: avgTemp,
-        ph: avgPh,
-        dissolvedOxygen: avgDo,
-        salinity: avgSalinity,
-        alkalinity: avgAlkalinity,
-        nh3: avgNh3,
-        h2s: avgH2s,
-        no2: 0,
-        transparency: avgTransparency,
-        waterColor: undefined,
+        id: record.id,
+        recordTime: record.recordTime.toISOString(),
+        temperature: Number(record.temperature),
+        ph: Number(record.ph),
+        dissolvedOxygen: Number(record.dissolvedOxygen),
+        salinity: Number(record.salinity),
+        alkalinity: Number(record.alkalinity),
+        nh3: Number(record.nh3),
+        h2s: h2sVal,
+        no2:
+          record.no2 !== undefined && record.no2 !== null
+            ? Number(record.no2)
+            : 0,
+        transparency: Number(record.transparency),
+        waterColor: record.waterColor ?? undefined,
         overallStatus,
-        pondCount: uniquePonds.length,
       };
     });
   }

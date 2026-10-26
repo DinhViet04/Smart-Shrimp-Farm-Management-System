@@ -464,14 +464,6 @@ export class CropsService {
       stage = 'COMMERCIAL'; // Force to COMMERCIAL for traditional
     }
 
-    if (pond.farm.farmingModel === 'HIGH_TECH') {
-      if (stage !== 'NURSERY') {
-        throw new BadRequestException(
-          'Đối với trang trại mô hình Công nghệ cao, vụ nuôi mới bắt buộc phải bắt đầu là ao Ương dưỡng (NURSERY).',
-        );
-      }
-    }
-
     // Validate expectedTransferDate (nếu là ao ương dưỡng)
     let expectedTransferDate: Date | undefined = undefined;
 
@@ -1224,8 +1216,8 @@ export class CropsService {
     // ── 6. Incidents Overview ──
     const incidentsSummary = {
       total: incidentsRaw.length,
-      open: incidentsRaw.filter((i: any) => i.status === 'OPEN' || i.status === 'TREATING').length,
-      treating: 0,
+      open: incidentsRaw.filter((i: any) => i.status === 'OPEN').length,
+      treating: incidentsRaw.filter((i: any) => i.status === 'TREATING').length,
       resolved: incidentsRaw.filter((i: any) => i.status === 'RESOLVED').length,
       list: incidentsRaw,
     };

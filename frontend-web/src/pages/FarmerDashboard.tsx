@@ -44,14 +44,7 @@ export default function FarmerDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
-  const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(() => {
-    const savedPondId = localStorage.getItem('growth_active_pond_id');
-    const savedFarmId = localStorage.getItem('growth_active_farm_id');
-    if (savedPondId || savedFarmId) {
-      return { pondId: savedPondId || undefined, farmId: savedFarmId || undefined };
-    }
-    return null;
-  });
+  const [growthConfig, setGrowthConfig] = useState<{ farmId?: string; pondId?: string; cropId?: string } | null>(null);
   const [envConfig, setEnvConfig] = useState<{ farmId?: string; pondId?: string } | null>(null);
   const [healthConfig, setHealthConfig] = useState<{ farmId?: string; pondId?: string; subTab?: 'record' | 'history' | 'incident' } | null>(null);
   const [currentUser] = useState<CurrentUser | null>(() => {
@@ -257,14 +250,8 @@ export default function FarmerDashboard() {
                    onNavigateTab={(tab) => setGrowthSubTab(tab)}
                    initialFarmId={growthConfig?.farmId}
                    initialPondId={growthConfig?.pondId}
-                   onSelectFarm={(farmId) => {
-                      if (farmId) localStorage.setItem('growth_active_farm_id', farmId);
-                      setGrowthConfig(prev => ({ ...prev, farmId }));
-                    }}
-                    onSelectPond={(pondId) => {
-                      if (pondId) localStorage.setItem('growth_active_pond_id', pondId);
-                      setGrowthConfig(prev => ({ ...prev, pondId }));
-                    }}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                  />
                ) : growthSubTab === 'Sinh khối ao' ? (
                  <BiomassDashboard 
@@ -272,14 +259,8 @@ export default function FarmerDashboard() {
                    onNavigateTab={(tab) => setGrowthSubTab(tab)}
                    initialFarmId={growthConfig?.farmId}
                    initialPondId={growthConfig?.pondId}
-                   onSelectFarm={(farmId) => {
-                      if (farmId) localStorage.setItem('growth_active_farm_id', farmId);
-                      setGrowthConfig(prev => ({ ...prev, farmId }));
-                    }}
-                    onSelectPond={(pondId) => {
-                      if (pondId) localStorage.setItem('growth_active_pond_id', pondId);
-                      setGrowthConfig(prev => ({ ...prev, pondId }));
-                    }}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                  />
                ) : growthSubTab === 'Theo dõi tỷ lệ sống' ? (
                  <SurvivalRateDashboard 
@@ -288,14 +269,8 @@ export default function FarmerDashboard() {
                    initialFarmId={growthConfig?.farmId}
                    initialPondId={growthConfig?.pondId}
                    initialCropId={growthConfig?.cropId}
-                   onSelectFarm={(farmId) => {
-                      if (farmId) localStorage.setItem('growth_active_farm_id', farmId);
-                      setGrowthConfig(prev => ({ ...prev, farmId }));
-                    }}
-                    onSelectPond={(pondId) => {
-                      if (pondId) localStorage.setItem('growth_active_pond_id', pondId);
-                      setGrowthConfig(prev => ({ ...prev, pondId }));
-                    }}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                    onSelectCrop={(cropId) => setGrowthConfig(prev => ({ ...prev, cropId }))}
                  />
                ) : (
@@ -303,14 +278,8 @@ export default function FarmerDashboard() {
                    onNavigateTab={(tab) => setGrowthSubTab(tab)}
                    initialFarmId={growthConfig?.farmId}
                    initialPondId={growthConfig?.pondId}
-                   onSelectFarm={(farmId) => {
-                      if (farmId) localStorage.setItem('growth_active_farm_id', farmId);
-                      setGrowthConfig(prev => ({ ...prev, farmId }));
-                    }}
-                    onSelectPond={(pondId) => {
-                      if (pondId) localStorage.setItem('growth_active_pond_id', pondId);
-                      setGrowthConfig(prev => ({ ...prev, pondId }));
-                    }}
+                   onSelectFarm={(farmId) => setGrowthConfig(prev => ({ ...prev, farmId }))}
+                   onSelectPond={(pondId) => setGrowthConfig(prev => ({ ...prev, pondId }))}
                  />
                )}
              </div>

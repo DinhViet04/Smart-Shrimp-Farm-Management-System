@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   IsDateString,
   Min,
   MaxLength,
@@ -23,11 +24,10 @@ export class SingleSessionFeedingLogDto {
   @IsNotEmpty()
   feedingTime: string;
 
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   feedProductId: string;
 
-  @Type(() => Number)
   @IsNumber()
   @Min(0, { message: 'Feed amount must be greater than or equal to zero' })
   feedAmount: number;
@@ -47,15 +47,15 @@ export class SingleSessionFeedingLogDto {
 }
 
 export class CreateDailyFeedingLogDto {
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   farmId: string;
 
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   pondId: string;
 
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   cropId: string;
 

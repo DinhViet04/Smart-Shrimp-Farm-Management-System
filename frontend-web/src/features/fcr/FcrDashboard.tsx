@@ -81,8 +81,9 @@ export default function FcrDashboard({
   useEffect(() => {
     if (initialPondId && ponds.length > 0) {
       const match = ponds.find((p) => p.id === initialPondId);
-      if (match && (!selectedPond || selectedPond.id !== match.id)) {
+      if (match) {
         setSelectedPond(match);
+        onSelectPond?.(match.id);
       }
     }
   }, [initialPondId, ponds]);
@@ -98,16 +99,9 @@ export default function FcrDashboard({
         />
         <FcrAnalysisDetail 
           pond={selectedPond} 
-          availablePonds={ponds}
-          onSelectPond={(pondId) => {
-            const match = ponds.find(p => p.id === pondId);
-            if (match) {
-              setSelectedPond(match);
-              onSelectPond?.(match.id);
-            }
-          }}
           onBack={() => {
             setSelectedPond(null);
+            onSelectPond?.('');
           }} 
           onNavigateTab={onNavigateTab}
         />

@@ -35,8 +35,6 @@ import {
   Table as TableIcon,
   RotateCcw,
   Eye,
-  AlertTriangle,
-  Loader2,
 } from 'lucide-react';
 import LoadingMotion from './LoadingMotion';
 import { pondService } from '../services/pond.service';
@@ -164,8 +162,6 @@ export default function CropManagement({
   const [saving, setSaving] = useState(false);
   const [harvestCrop, setHarvestCrop] = useState<Crop | null>(null);
   const [splitCropTarget, setSplitCropTarget] = useState<Crop | null>(null);
-  const [cropToDelete, setCropToDelete] = useState<Crop | null>(null);
-  const [isDeletingCrop, setIsDeletingCrop] = useState(false);
 
   const canSplitCrop = useCallback(
     (crop: Crop) => {
@@ -554,16 +550,13 @@ export default function CropManagement({
     const matchingPonds = chosenFarmId ? ponds.filter((p) => p.farmId === chosenFarmId) : ponds;
     const chosenPondId = defaultPondId || (matchingPonds.length > 0 ? matchingPonds[0].id : (ponds.length > 0 ? ponds[0].id : ''));
 
-    const selectedFarm = farms.find((f) => f.id === chosenFarmId);
-    const isHighTech = selectedFarm?.farmingModel === 'HIGH_TECH';
-
     setFormData({
       farmId: chosenFarmId,
       pondId: chosenPondId,
       startDate: today,
       initialShrimpCount: '100000',
       status: 'ACTIVE',
-      stage: isHighTech ? 'NURSERY' : 'COMMERCIAL',
+      stage: 'COMMERCIAL',
       expectedTransferDate: defaultTransfer,
       targetHarvestSize: '30',
       targetSurvivalRate: '85',
@@ -637,23 +630,15 @@ export default function CropManagement({
     }));
   };
 
-  const handleDelete = (e: React.MouseEvent, crop: Crop) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setCropToDelete(crop);
-  };
-
-  const confirmDeleteCrop = async () => {
-    if (!cropToDelete) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa vụ nuôi này? ⚠️ CẢNH BÁO: Hành động này sẽ xóa toàn bộ dữ liệu liên quan (nhật ký, thông số...) và không thể khôi phục!')) return;
     try {
-      setIsDeletingCrop(true);
-      await cropService.remove(cropToDelete.id);
+      await cropService.remove(id);
       showToast('Xóa vụ nuôi thành công!', 'success');
-      setCropToDelete(null);
       fetchData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Không thể xóa vụ nuôi', 'error');
-    } finally {
-      setIsDeletingCrop(false);
     }
   };
 
@@ -699,12 +684,7 @@ export default function CropManagement({
       }
     }
 
-    const selectedFarm = farms.find((f) => f.id === formData.farmId);
-    const isHighTech = selectedFarm?.farmingModel === 'HIGH_TECH';
 
-    if (!editingCropId && isHighTech && formData.stage !== 'NURSERY') {
-      errs.stage = 'Đối với mô hình nuôi Công nghệ cao, vụ nuôi mới bắt buộc phải bắt đầu là ao Ương dưỡng (NURSERY).';
-    }
 
     if (formData.stage === 'NURSERY') {
       if (!formData.expectedTransferDate) {
@@ -1359,7 +1339,7 @@ export default function CropManagement({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={(e) => handleDelete(e, crop)}
+                                onClick={(e) => handleDelete(e, crop.id)}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                                 title="Xóa"
                               >
@@ -1891,7 +1871,7 @@ export default function CropManagement({
                                     <Edit2 className="w-4 h-4" />
                                   </button>
                                   <button
-                                    onClick={(e) => handleDelete(e, crop)}
+                                    onClick={(e) => handleDelete(e, crop.id)}
                                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                                     title="Xóa vụ nuôi"
                                   >
@@ -2005,15 +1985,11 @@ export default function CropManagement({
                               const newFarmId = e.target.value;
                               const relatedPonds = ponds.filter(p => p.farmId === newFarmId);
                               const selectedFarm = farms.find(f => f.id === newFarmId);
-                              const isHighTech = selectedFarm?.farmingModel === 'HIGH_TECH';
                               setFormData({
                                 ...formData,
                                 farmId: newFarmId,
                                 pondId: relatedPonds.length > 0 ? relatedPonds[0].id : '',
-                                stage: isHighTech ? 'NURSERY' : (selectedFarm?.farmingModel === 'TRADITIONAL' ? 'COMMERCIAL' : formData.stage),
-                                expectedTransferDate: isHighTech && !formData.expectedTransferDate
-                                  ? (formData.startDate ? addDaysToDateString(formData.startDate, 25) : '')
-                                  : formData.expectedTransferDate,
+                                stage: selectedFarm?.farmingModel === 'TRADITIONAL' ? 'COMMERCIAL' : formData.stage
                               });
                             }}
                             className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:bg-white focus:border-blue-500 appearance-none transition-all cursor-pointer pr-8 disabled:opacity-60"
@@ -2064,73 +2040,49 @@ export default function CropManagement({
                       </div>
                     </div>
 
-                    {/* Hàng 2: Giai đoạn nuôi */}
-                    {(() => {
-                      const currentFarm = farms.find(f => f.id === formData.farmId);
-                      const isHighTech = currentFarm?.farmingModel === 'HIGH_TECH';
-                      const isTraditional = currentFarm?.farmingModel === 'TRADITIONAL';
-
-                      if (isTraditional) return null;
-
-                      return (
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                            Giai đoạn nuôi <span className="text-red-500">*</span>
-                          </label>
-
-                          <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-slate-100/80 rounded-xl border border-slate-200/80">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  stage: 'NURSERY',
-                                  expectedTransferDate: prev.expectedTransferDate || (prev.startDate ? addDaysToDateString(prev.startDate, 25) : ''),
-                                }));
-                              }}
-                              className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                formData.stage === 'NURSERY'
-                                  ? 'bg-purple-600 text-white shadow-sm'
-                                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                    {/* Hàng 2: Giai đoạn nuôi (Ẩn nếu là mô hình truyền thống) */}
+                    {farms.find(f => f.id === formData.farmId)?.farmingModel !== 'TRADITIONAL' && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Giai đoạn nuôi <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-slate-100/80 rounded-xl border border-slate-200/80">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                stage: 'NURSERY',
+                                expectedTransferDate: prev.expectedTransferDate || (prev.startDate ? addDaysToDateString(prev.startDate, 25) : ''),
+                              }));
+                            }}
+                            className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.stage === 'NURSERY'
+                                ? 'bg-purple-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                               }`}
-                            >
-                              <span>🌱</span> Ương Dưỡng
-                            </button>
+                          >
+                            <span>🌱</span> Ương Dưỡng
+                          </button>
 
-                            <button
-                              type="button"
-                              disabled={isHighTech && !editingCropId}
-                              onClick={() => {
-                                if (isHighTech && !editingCropId) return;
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  stage: 'COMMERCIAL',
-                                  expectedHarvestDate: prev.expectedHarvestDate || (prev.startDate ? addDaysToDateString(prev.startDate, 95) : ''),
-                                }));
-                              }}
-                              title={
-                                isHighTech && !editingCropId
-                                  ? 'Mô hình công nghệ cao bắt buộc phải bắt đầu từ ao ương dưỡng'
-                                  : ''
-                              }
-                              className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                isHighTech && !editingCropId
-                                  ? 'opacity-40 cursor-not-allowed bg-slate-200/50 text-slate-400'
-                                  : formData.stage === 'COMMERCIAL'
-                                  ? 'bg-blue-600 text-white shadow-sm cursor-pointer'
-                                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 cursor-pointer'
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                stage: 'COMMERCIAL',
+                                expectedHarvestDate: prev.expectedHarvestDate || (prev.startDate ? addDaysToDateString(prev.startDate, 95) : ''),
+                              }));
+                            }}
+                            className={`py-2.5 px-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.stage === 'COMMERCIAL'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                               }`}
-                            >
-                              <span>🦐</span> Thương Phẩm
-                            </button>
-                          </div>
-
-                          {formErrors.stage && (
-                            <p className="text-xs text-red-600 font-medium mt-1">{formErrors.stage}</p>
-                          )}
+                          >
+                            <span>🦐</span> Thương Phẩm
+                          </button>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
 
                     {/* Hàng 3: Ngày thả giống & Trạng thái */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -2491,118 +2443,6 @@ export default function CropManagement({
             fetchData();
           }}
         />
-      )}
-
-      {/* Modal Xác nhận Xóa Vụ Nuôi (thay thế hộp thoại localhost của trình duyệt) */}
-      {cropToDelete && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => !isDeletingCrop && setCropToDelete(null)}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
-          >
-            {/* Top Danger Bar */}
-            <div className="h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500"></div>
-
-            <div className="p-6">
-              {/* Header with Danger Icon */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-inner">
-                  <AlertTriangle className="w-6 h-6 animate-pulse" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => !isDeletingCrop && setCropToDelete(null)}
-                  disabled={isDeletingCrop}
-                  className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
-                  title="Đóng"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Title & Info */}
-              <h3 className="text-xl font-black text-slate-800 tracking-tight">
-                Xác nhận xóa vụ nuôi?
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Vụ nuôi sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu hệ thống.
-              </p>
-
-              {/* Crop badge details */}
-              <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-400">Ao nuôi:</span>
-                  <span className="font-black text-slate-800">{cropToDelete.pond?.name || 'Không xác định'}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-400">Ngày bắt đầu:</span>
-                  <span className="font-bold text-slate-700">
-                    {cropToDelete.startDate ? new Date(cropToDelete.startDate).toLocaleDateString('vi-VN') : '--'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-400">Số lượng giống thả:</span>
-                  <span className="font-bold text-blue-600">
-                    {cropToDelete.initialShrimpCount ? `${cropToDelete.initialShrimpCount.toLocaleString()} con` : '--'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Detailed Warning Box */}
-              <div className="mt-4 p-4 rounded-2xl bg-rose-50/80 border border-rose-200/70 text-left space-y-2">
-                <div className="flex items-center gap-2 text-rose-800 font-bold text-xs uppercase tracking-wider">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  Cảnh báo dữ liệu quan trọng
-                </div>
-                <p className="text-xs text-rose-900 leading-relaxed font-medium">
-                  Hành động này sẽ làm <strong className="font-black text-rose-700 underline">MẤT TOÀN BỘ dữ liệu liên quan</strong> và không thể khôi phục:
-                </p>
-                <ul className="text-xs text-rose-800/90 list-disc list-inside space-y-1 font-medium pl-1">
-                  <li>Toàn bộ nhật ký chăm sóc hàng ngày & chi phí thức ăn</li>
-                  <li>Dữ liệu đo đạc chỉ số môi trường (pH, Oxy, kiềm, khí độc...)</li>
-                  <li>Lịch sử tăng trưởng và theo dõi kích thước tôm</li>
-                  <li>Dữ liệu thu hoạch và phân tích lợi nhuận vụ (nếu có)</li>
-                </ul>
-                <p className="text-[11px] font-bold text-rose-600 pt-1 border-t border-rose-200/60">
-                  ⚠️ Thao tác này không thể hoàn tác sau khi xác nhận!
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-6 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setCropToDelete(null)}
-                  disabled={isDeletingCrop}
-                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeleteCrop}
-                  disabled={isDeletingCrop}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-rose-500/25 hover:shadow-rose-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {isDeletingCrop ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Đang xóa...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      <span>Xác nhận xóa</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

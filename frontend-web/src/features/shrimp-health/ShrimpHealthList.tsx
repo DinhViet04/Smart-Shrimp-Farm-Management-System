@@ -267,10 +267,10 @@ export default function ShrimpHealthList({
           </div>
           <div>
             <h2 className={`text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r ${themeTextGradientHeader} tracking-tight`}>
-              Nhật Ký Kiểm Tra Định Kỳ
+              Lịch Sử Sức Khỏe Tôm
             </h2>
             <p className="text-sm text-slate-500 font-medium">
-              Theo dõi và tra cứu toàn bộ nhật ký kiểm tra sức khỏe tôm định kỳ của từng ao nuôi
+              Theo dõi và tra cứu tình trạng sức khỏe tôm của từng ao nuôi
             </p>
           </div>
         </div>

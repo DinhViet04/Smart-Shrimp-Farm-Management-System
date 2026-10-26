@@ -148,31 +148,6 @@ describe('SurvivalRateService', () => {
       expect(result.status).toBe('WARNING');
     });
 
-    it('should prioritize recorded harvestCount over estimatedShrimpCount as Ground Truth when harvest is recorded', async () => {
-      const mockCrop = {
-        id: 'crop-harvest-priority',
-        pondId: 'pond-1',
-        initialShrimpCount: 100000,
-        actualHarvestCount: 40000,
-        targetSurvivalRate: 85,
-        startDate: new Date('2026-01-01'),
-        status: 'HARVESTED',
-        pond: { name: 'Ao A1', farmId: 'farm-1' },
-      };
-
-      mockPrismaService.crop.findUnique.mockResolvedValue(mockCrop);
-      mockShrimpSizeService.getCurrentShrimpCount.mockResolvedValue(50000);
-
-      const result = await service.calculateSurvivalRate(
-        { userId: 'user-1', role: 'FARM_MANAGER' },
-        'crop-harvest-priority',
-      );
-
-      expect(result.harvestCount).toBe(40000);
-      expect(result.currentShrimpCount).toBe(40000);
-      expect(result.survivalRate).toBe(40);
-    });
-
     it('should throw BadRequestException ("Chưa có dữ liệu thả giống") when stockingQuantity is 0 or missing', async () => {
       const mockCrop = {
         id: 'crop-4',

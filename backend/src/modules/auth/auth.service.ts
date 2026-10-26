@@ -306,9 +306,6 @@ export class AuthService {
       }
       payload = await response.json();
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
       throw new UnauthorizedException(
         'Không thể xác thực token Google. Vui lòng thử lại.',
       );

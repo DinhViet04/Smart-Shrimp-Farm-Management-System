@@ -4,7 +4,7 @@ import CreateShrimpHealth from './CreateShrimpHealth';
 import ShrimpHealthList from './ShrimpHealthList';
 import IncidentDashboard from '../incidents/IncidentDashboard';
 
-export type ShrimpHealthSubTab = 'record' | 'incident' | 'history';
+export type ShrimpHealthSubTab = 'record' | 'history' | 'incident';
 
 interface ShrimpHealthDashboardProps {
   viewOnly?: boolean;
@@ -20,7 +20,7 @@ export default function ShrimpHealthDashboard({
   initialFarmId,
   initialPondId,
   initialSubTab,
-  initialIncidentSubTab = 'board',
+  initialIncidentSubTab,
   role,
 }: ShrimpHealthDashboardProps) {
   const [currentUser, setCurrentUser] = useState<any>(() => {
@@ -38,13 +38,10 @@ export default function ShrimpHealthDashboard({
   const [subTab, setSubTab] = useState<ShrimpHealthSubTab>(() => {
     if (initialSubTab) return initialSubTab;
     if (viewOnly || initialPondId || !canRecord) {
-      return 'incident';
+      return 'history';
     }
     return 'record';
   });
-
-  const [incidentSubTab, setIncidentSubTab] = useState<'incident' | 'treatment' | 'history' | 'board'>(initialIncidentSubTab);
-  const [targetIncidentId, setTargetIncidentId] = useState<string | undefined>();
 
   useEffect(() => {
     if (initialSubTab) {
@@ -54,7 +51,7 @@ export default function ShrimpHealthDashboard({
 
   useEffect(() => {
     if (initialPondId && !initialSubTab) {
-      setSubTab('incident');
+      setSubTab('history');
     }
   }, [initialPondId, initialSubTab]);
 
@@ -69,16 +66,6 @@ export default function ShrimpHealthDashboard({
       }
     }
   }, []);
-
-  const handleNavigateToIncident = (incidentId?: string, targetTab: 'incident' | 'treatment' = 'treatment') => {
-    setIncidentSubTab(targetTab);
-    setTargetIncidentId(incidentId);
-    setSubTab('incident');
-  };
-
-  const handleNavigateToHistory = () => {
-    setSubTab('history');
-  };
 
   const isFarmer = userRole === 'FARMER';
   const activeTabClass = isFarmer
@@ -101,9 +88,21 @@ export default function ShrimpHealthDashboard({
             }`}
           >
             <ClipboardList className="w-4 h-4" />
-            Kiểm tra sức khỏe
+            Ghi nhận sức khỏe
           </button>
         )}
+
+        <button
+          onClick={() => setSubTab('history')}
+          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
+            subTab === 'history'
+              ? activeTabClass
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Lịch sử sức khỏe
+        </button>
 
         <button
           onClick={() => setSubTab('incident')}
@@ -116,35 +115,14 @@ export default function ShrimpHealthDashboard({
           <AlertTriangle className="w-4 h-4" />
           Sự cố & Điều trị
         </button>
-
-        <button
-          onClick={() => setSubTab('history')}
-          className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
-            subTab === 'history'
-              ? activeTabClass
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          Nhật ký kiểm tra định kỳ
-        </button>
       </div>
 
       {/* ── Active Component View ─────────────────────────────────────────── */}
       <div className="animate-in fade-in duration-300">
         {subTab === 'record' && canRecord ? (
-          <CreateShrimpHealth
-            onNavigateToIncident={handleNavigateToIncident}
-            onNavigateToHistory={handleNavigateToHistory}
-            isFarmer={isFarmer}
-          />
+          <CreateShrimpHealth />
         ) : subTab === 'incident' ? (
-          <IncidentDashboard
-            role={userRole}
-            initialSubTab={incidentSubTab}
-            initialIncidentId={targetIncidentId}
-            onClearInitialIncidentId={() => setTargetIncidentId(undefined)}
-          />
+          <IncidentDashboard role={userRole} initialSubTab={initialIncidentSubTab} />
         ) : (
           <ShrimpHealthList
             initialFarmId={initialFarmId}

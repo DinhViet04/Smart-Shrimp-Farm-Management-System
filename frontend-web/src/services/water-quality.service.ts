@@ -194,14 +194,17 @@ export const waterQualityService = {
    * Returns unpaginated history for a pond ordered by recordTime asc for charts.
    */
   getTrends: async (
-    pondId: string,
+    pondId?: string,
     fromDate?: string,
     toDate?: string,
     cropId?: string,
     year?: number,
+    farmId?: string,
   ): Promise<{
     id: string;
     recordTime: string;
+    pondId?: string;
+    pondName?: string;
     temperature: number;
     ph: number;
     dissolvedOxygen: number;
@@ -213,12 +216,14 @@ export const waterQualityService = {
     transparency: number;
     waterColor?: string;
     overallStatus: 'Optimal' | 'Warning' | 'Danger';
+    pondCount?: number;
   }[]> => {
     const params = new URLSearchParams();
-    params.append('pondId', pondId);
+    if (pondId) params.append('pondId', pondId);
+    if (farmId) params.append('farmId', farmId);
     if (fromDate) params.append('fromDate', fromDate);
     if (toDate) params.append('toDate', toDate);
-    if (cropId) params.append('cropId', cropId);
+    if (cropId && cropId !== 'ALL') params.append('cropId', cropId);
     if (year !== undefined) params.append('year', year.toString());
 
     const response = await apiFetch(`${apiUrl}/api/water-quality/trends?${params.toString()}`);

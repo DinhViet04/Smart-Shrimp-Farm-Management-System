@@ -281,7 +281,7 @@ export default function AccountSettings() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 relative z-10">
+    <div className="w-full max-w-7xl mx-auto space-y-6 relative z-10">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/60">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

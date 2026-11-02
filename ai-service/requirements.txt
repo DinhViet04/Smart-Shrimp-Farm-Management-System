@@ -9,3 +9,6 @@ httpx>=0.26.0
 numpy>=1.26.0
 tiktoken>=0.6.0
 pypdf>=4.0.0
+google-api-python-client>=2.115.0
+google-auth>=2.27.0
+google-auth-httplib2>=0.2.0

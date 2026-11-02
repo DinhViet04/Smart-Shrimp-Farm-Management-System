@@ -56,7 +56,7 @@ export default function PondCropDashboard({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-7xl mx-auto space-y-6">
       {/* ── Sub Navigation Tabs ────────────────────────────────────────────── */}
       <div className="flex border-b border-slate-200 gap-6">
         <button

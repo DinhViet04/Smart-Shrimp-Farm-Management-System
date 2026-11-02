@@ -8,3 +8,13 @@ __pycache__/
 
 .venv/
 venv/
+
+# RAG Vector Store & Large Knowledge Caches (Do not commit to Git)
+data/*.json
+data/*.db
+!data/.gitkeep
+
+# Google Drive credentials
+*credentials*.json
+*service_account*.json
+*service-account*.json

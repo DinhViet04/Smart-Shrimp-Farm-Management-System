@@ -447,33 +447,30 @@ export default function HarvestCropModal({
         <div className="flex border-b border-slate-200/80 px-6 gap-2 bg-white shrink-0">
           <button
             onClick={() => setActiveTab('inputs')}
-            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'inputs'
+            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${activeTab === 'inputs'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <Scale className="w-4 h-4" />
             1. Sản lượng, Size & Tài chính
           </button>
           <button
             onClick={() => setActiveTab('inventory')}
-            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'inventory'
+            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${activeTab === 'inventory'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <Package className="w-4 h-4" />
             2. Vật tư kho đã sử dụng ({feedItems.length + medicineItems.length + chemicalItems.length})
           </button>
           <button
             onClick={() => setActiveTab('comparison')}
-            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'comparison'
+            className={`py-3 px-3.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${activeTab === 'comparison'
                 ? 'border-emerald-600 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <Target className="w-4 h-4" />
             3. So sánh với Chỉ tiêu ban đầu
@@ -561,37 +558,34 @@ export default function HarvestCropModal({
 
                 {/* Net Profit Status */}
                 <div
-                  className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
-                    numKg <= 0 || numPrice <= 0
+                  className={`p-3.5 rounded-2xl border flex flex-col justify-between ${numKg <= 0 || numPrice <= 0
                       ? 'bg-slate-50 border-slate-200'
                       : netProfit >= 0
-                      ? 'bg-gradient-to-br from-emerald-50 to-teal-50/80 border-emerald-200'
-                      : 'bg-gradient-to-br from-rose-50 to-red-50/80 border-rose-200'
-                  }`}
+                        ? 'bg-gradient-to-br from-emerald-50 to-teal-50/80 border-emerald-200'
+                        : 'bg-gradient-to-br from-rose-50 to-red-50/80 border-rose-200'
+                    }`}
                 >
                   <span
-                    className={`text-[11px] font-bold flex items-center gap-1.5 ${
-                      numKg <= 0 || numPrice <= 0
+                    className={`text-[11px] font-bold flex items-center gap-1.5 ${numKg <= 0 || numPrice <= 0
                         ? 'text-slate-600'
                         : netProfit >= 0
-                        ? 'text-emerald-800'
-                        : 'text-rose-800'
-                    }`}
+                          ? 'text-emerald-800'
+                          : 'text-rose-800'
+                      }`}
                   >
                     <DollarSign className="w-3.5 h-3.5" />
                     {numKg <= 0 || numPrice <= 0
                       ? 'Hiệu quả tài chính'
                       : netProfit >= 0
-                      ? 'Vụ này Lời (+)'
-                      : 'Vụ này Lỗ (-)'}
+                        ? 'Vụ này Lời (+)'
+                        : 'Vụ này Lỗ (-)'}
                   </span>
                   <div className="mt-2">
                     {numKg > 0 && numPrice > 0 ? (
                       <>
                         <span
-                          className={`text-lg font-black ${
-                            netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                          }`}
+                          className={`text-lg font-black ${netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                            }`}
                         >
                           {netProfit >= 0 ? `+${formatVND(netProfit)}` : formatVND(netProfit)}
                         </span>{' '}
@@ -722,52 +716,52 @@ export default function HarvestCropModal({
                     Thời điểm kết thúc vụ nuôi chính thức
                   </p>
                 </div>
-                </div>
+              </div>
 
-                <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-3">
-                    <h4 className="text-sm font-black text-slate-800">Chi phí vận hành bổ sung</h4>
-                    <p className="mt-0.5 text-[10.5px] text-slate-500">Nhập các khoản chưa được tổng hợp từ nhật ký kho để tính đúng lợi nhuận ròng.</p>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {[
-                      { label: 'Con giống', value: seedCost, setter: setSeedCost },
-                      { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost },
-                      { label: 'Nhân công', value: laborCost, setter: setLaborCost },
-                      { label: 'Chi phí khác', value: otherCost, setter: setOtherCost },
-                    ].map((item) => {
-                      const numVal = parseFloat(item.value) || 0;
-                      return (
-                        <div key={item.label} className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-bold text-slate-700">{item.label}</label>
-                            <span className={`text-[11px] font-black px-2 py-0.5 rounded-md border transition-all ${
-                              numVal > 0
-                                ? 'text-blue-700 bg-blue-100/80 border-blue-200 shadow-2xs'
-                                : 'text-slate-400 bg-slate-100/70 border-slate-200'
-                            }`}>
-                              {numVal > 0 ? `${formatVND(numVal)} đ` : '0 đ'}
-                            </span>
-                          </div>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1000"
-                              value={item.value}
-                              onChange={(event) => item.setter(event.target.value)}
-                              placeholder="0"
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-14 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
-                            />
-                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
-                              VNĐ
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+              <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3">
+                  <h4 className="text-sm font-black text-slate-800">Chi phí vận hành</h4>
+                  <p className="mt-0.5 text-[10.5px] text-slate-500">Nhập các khoản chưa được tổng hợp từ nhật ký kho để tính đúng lợi nhuận ròng.</p>
                 </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[
+                    { label: 'Con giống', value: seedCost, setter: setSeedCost },
+                    { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost },
+                    { label: 'Nhân công', value: laborCost, setter: setLaborCost },
+                    { label: 'Chi phí khác', value: otherCost, setter: setOtherCost },
+                  ].map((item) => {
+                    const numVal = parseFloat(item.value) || 0;
+                    return (
+                      <div key={item.label} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700">{item.label}</label>
+                          <span className={`text-[11px] font-black px-2 py-0.5 rounded-md border transition-all ${
+                            numVal > 0
+                              ? 'text-blue-700 bg-blue-100/80 border-blue-200 shadow-2xs'
+                              : 'text-slate-400 bg-slate-100/70 border-slate-200'
+                          }`}>
+                            {numVal > 0 ? `${formatVND(numVal)} đ` : '0 đ'}
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={item.value}
+                            onChange={(event) => item.setter(event.target.value)}
+                            placeholder="0"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-14 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
+                          />
+                          <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                            VNĐ
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Financial Breakdown Card */}
               <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl space-y-4">
@@ -819,25 +813,23 @@ export default function HarvestCropModal({
 
                   {/* Net Profit */}
                   <div
-                    className={`p-3.5 rounded-2xl border ${
-                      numKg > 0 && numPrice > 0
+                    className={`p-3.5 rounded-2xl border ${numKg > 0 && numPrice > 0
                         ? netProfit >= 0
                           ? 'bg-emerald-500/10 border-emerald-500/30'
                           : 'bg-rose-500/10 border-rose-500/30'
                         : 'bg-white/5 border-white/10'
-                    }`}
+                      }`}
                   >
                     <span className="text-xs text-slate-300 font-medium block">
                       3. Lợi Nhuận Ròng (Lời / Lỗ)
                     </span>
                     <span
-                      className={`text-xl font-black mt-1 block ${
-                        numKg > 0 && numPrice > 0
+                      className={`text-xl font-black mt-1 block ${numKg > 0 && numPrice > 0
                           ? netProfit >= 0
                             ? 'text-emerald-400'
                             : 'text-rose-400'
                           : 'text-slate-400'
-                      }`}
+                        }`}
                     >
                       {numKg > 0 && numPrice > 0
                         ? `${netProfit >= 0 ? `+${formatVND(netProfit)}` : formatVND(netProfit)} đ`
@@ -1245,11 +1237,11 @@ export default function HarvestCropModal({
                         {crop.targetSurvivalRate && actualSurvivalRate > 0 ? (
                           actualSurvivalRate >= crop.targetSurvivalRate ? (
                             <span className="text-emerald-600">
-                              +{ (actualSurvivalRate - crop.targetSurvivalRate).toFixed(1) }% (Vượt chỉ tiêu)
+                              +{(actualSurvivalRate - crop.targetSurvivalRate).toFixed(1)}% (Vượt chỉ tiêu)
                             </span>
                           ) : (
                             <span className="text-rose-600">
-                              -{ (crop.targetSurvivalRate - actualSurvivalRate).toFixed(1) }% (Thấp hơn)
+                              -{(crop.targetSurvivalRate - actualSurvivalRate).toFixed(1)}% (Thấp hơn)
                             </span>
                           )
                         ) : (
@@ -1477,8 +1469,8 @@ export default function HarvestCropModal({
                 numKg <= 0 || numSize <= 0 || numPrice <= 0
                   ? 'Vui lòng nhập đầy đủ Số lượng tôm, Size tôm và Giá bán 1kg để xác nhận'
                   : crop.status === 'HARVESTED' || !!crop.actualHarvestKg
-                  ? 'Lưu lại các thay đổi của thông tin thu hoạch'
-                  : 'Xác nhận thu hoạch và lưu lịch sử'
+                    ? 'Lưu lại các thay đổi của thông tin thu hoạch'
+                    : 'Xác nhận thu hoạch và lưu lịch sử'
               }
               className="flex-1 sm:flex-initial px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all hover:-translate-y-0.5 cursor-pointer"
             >

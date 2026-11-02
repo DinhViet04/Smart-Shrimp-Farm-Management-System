@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     DATA_DIR: Path = BASE_DIR / "data"
     VECTOR_STORE_PATH: Path = BASE_DIR / "data" / "vector_store.json"
     
+    # Google Drive Ingestion
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE: str = "service_account.json"
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: str = ""
+    GOOGLE_DRIVE_API_KEY: str = ""
+    AUTO_SYNC_DRIVE_ON_STARTUP: bool = False
+    
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",

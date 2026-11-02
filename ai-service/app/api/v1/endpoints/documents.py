@@ -56,6 +56,9 @@ async def upload_document_file(
         if file_name.lower().endswith(".pdf"):
             content = chunking_service.extract_text_from_pdf(file_bytes)
             file_type = "pdf"
+        elif file_name.lower().endswith(".docx"):
+            content = chunking_service.extract_text_from_docx(file_bytes)
+            file_type = "docx"
         else:
             content = file_bytes.decode("utf-8", errors="ignore")
             file_type = "text"
@@ -91,3 +94,37 @@ def delete_document(doc_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu cần xóa.")
     return {"message": "Đã xóa tài liệu và dữ liệu vector chunks liên quan."}
+
+# ── GOOGLE DRIVE SYNC ENDPOINTS ──────────────────────────────────────────────
+from app.services.drive_sync_service import drive_sync_service
+from app.schemas.document_schema import DriveSyncRequest, DriveStatusResponse
+
+@router.get("/drive/status", response_model=DriveStatusResponse)
+def get_drive_status():
+    """Kiểm tra trạng thái cấu hình và kết nối Google Drive."""
+    return drive_sync_service.get_auth_status()
+
+@router.post("/drive/sync")
+def sync_documents_from_drive(payload: Optional[DriveSyncRequest] = None):
+    """
+    Kích hoạt đồng bộ tài liệu từ Google Drive vào RAG Vector Store.
+    - Tự động lọc các file mới hoặc có nội dung thay đổi (modifiedTime).
+    - Hỗ trợ file: PDF, DOCX, TXT, Markdown, Google Docs.
+    """
+    try:
+        folder_id = payload.folderId if payload else None
+        force = payload.force if payload else False
+        prune_deleted = payload.pruneDeleted if payload else False
+
+        result = drive_sync_service.sync_folder(
+            folder_id=folder_id,
+            force=force,
+            prune_deleted=prune_deleted
+        )
+        return result
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as e:
+        logger.error(f"Error during Google Drive sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi đồng bộ Google Drive: {str(e)}")
+

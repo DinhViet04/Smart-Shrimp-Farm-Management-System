@@ -1,8 +1,10 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
 import { apiFetch, logoutSession } from '../utils/api';
 import LoadingMotion from '../components/LoadingMotion';
+import toast from 'react-hot-toast';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -131,7 +133,20 @@ const roleBadge: Record<string, string> = {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    return localStorage.getItem('sidebar_open_admin') !== 'false';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sidebar_open_admin', String(sidebarOpen));
+  }, [sidebarOpen]);
+
+  const [hoveredTooltip, setHoveredTooltip] = useState<{
+    text: string;
+    top: number;
+    isDanger?: boolean;
+  } | null>(null);
+
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('adminActiveTab') || 'Tổng quan');
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -216,12 +231,13 @@ export default function AdminDashboard() {
       });
       if (response.ok) {
         setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+        toast.success('Cập nhật quyền thành công!');
       } else {
-        alert('Cập nhật quyền thất bại!');
+        toast.error('Cập nhật quyền thất bại!');
       }
     } catch (error) {
       console.error('Error updating role:', error);
-      alert('Lỗi kết nối!');
+      toast.error('Lỗi kết nối máy chủ!');
     }
   };
 
@@ -233,12 +249,13 @@ export default function AdminDashboard() {
       });
       if (response.ok) {
         setUsers(users.map(u => u.id === userId ? { ...u, isActive: newStatus } : u));
+        toast.success(`Đã ${newStatus ? 'kích hoạt' : 'khóa'} tài khoản thành công!`);
       } else {
-        alert('Cập nhật trạng thái thất bại!');
+        toast.error('Cập nhật trạng thái thất bại!');
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      alert('Lỗi kết nối!');
+      toast.error('Lỗi kết nối máy chủ!');
     }
   };
 
@@ -250,15 +267,48 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden selection:bg-blue-200">
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
+        onMouseLeave={() => setHoveredTooltip(null)}
         className={`${sidebarOpen ? 'w-64' : 'w-20'} flex-shrink-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 shadow-sm z-20 h-screen max-h-screen`}
       >
-        {/* Logo */}
-        <div className="flex items-center h-20 px-6 border-b border-slate-100 gap-4 flex-shrink-0">
-          <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm flex-shrink-0 border border-slate-200" />
-          {sidebarOpen && <span className="font-bold text-slate-800 text-xl tracking-tight whitespace-nowrap">SSFM Admin</span>}
-        </div>
+        {/* Logo & Toggle */}
+        {sidebarOpen ? (
+          <div className="flex items-center justify-between h-20 px-6 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm flex-shrink-0 border border-slate-200 transition-transform duration-300 hover:scale-105" />
+              <span className="font-bold text-slate-800 text-xl tracking-tight whitespace-nowrap">SSFM Admin</span>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              title="Thu gọn thanh điều hướng"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+            >
+              <PanelLeftClose className="w-5 h-5" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center py-3.5 px-2 gap-2 border-b border-slate-100 flex-shrink-0">
+            <img src="/logonen.jpg" alt="SSFM Logo" className="w-10 h-10 rounded-full object-cover bg-white shadow-sm flex-shrink-0 border border-slate-200 transition-transform duration-300 hover:scale-105" />
+            <button
+              onClick={() => {
+                setSidebarOpen(true);
+                setHoveredTooltip(null);
+              }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setHoveredTooltip({
+                  text: 'Mở rộng thanh điều hướng',
+                  top: rect.top + rect.height / 2,
+                });
+              }}
+              onMouseLeave={() => setHoveredTooltip(null)}
+              title="Mở rộng thanh điều hướng"
+              className="group relative flex items-center justify-center w-8 h-8 rounded-xl bg-blue-50/80 hover:bg-blue-100 text-blue-600 hover:scale-105 active:scale-95 transition-all duration-200 border border-blue-100/80 shadow-2xs cursor-pointer"
+            >
+              <PanelLeftOpen className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </div>
+        )}
 
         {/* Nav */}
         <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto min-h-0 custom-scrollbar">
@@ -267,7 +317,17 @@ export default function AdminDashboard() {
               key={item.label}
               href="#"
               onClick={(e) => { e.preventDefault(); setActiveTab(item.label); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-semibold ${activeTab === item.label
+              onMouseEnter={(e) => {
+                if (!sidebarOpen) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoveredTooltip({
+                    text: item.label,
+                    top: rect.top + rect.height / 2,
+                  });
+                }
+              }}
+              onMouseLeave={() => setHoveredTooltip(null)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-semibold cursor-pointer ${activeTab === item.label
                   ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100'
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`}
@@ -285,7 +345,17 @@ export default function AdminDashboard() {
               key={item.label}
               href="#"
               onClick={(e) => { e.preventDefault(); setActiveTab(item.label); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-semibold ${activeTab === item.label ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+              onMouseEnter={(e) => {
+                if (!sidebarOpen) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoveredTooltip({
+                    text: item.label,
+                    top: rect.top + rect.height / 2,
+                  });
+                }
+              }}
+              onMouseLeave={() => setHoveredTooltip(null)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-sm font-semibold cursor-pointer ${activeTab === item.label ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
             >
               <svg className="w-5 h-5 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
@@ -299,7 +369,18 @@ export default function AdminDashboard() {
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex-shrink-0">
           <button
             onClick={handleLogout}
-            className={`flex items-center justify-center gap-3 w-full px-4 py-3 rounded-xl text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-100 border border-transparent transition-all text-sm font-semibold`}
+            onMouseEnter={(e) => {
+              if (!sidebarOpen) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setHoveredTooltip({
+                  text: 'Đăng xuất',
+                  top: rect.top + rect.height / 2,
+                  isDanger: true,
+                });
+              }
+            }}
+            onMouseLeave={() => setHoveredTooltip(null)}
+            className={`flex items-center justify-center gap-3 w-full px-4 py-3 rounded-xl text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-100 border border-transparent transition-all text-sm font-semibold cursor-pointer`}
           >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -307,6 +388,22 @@ export default function AdminDashboard() {
             {sidebarOpen && <span>Đăng xuất</span>}
           </button>
         </div>
+
+        {/* Floating Tooltip Anchor for Collapsed Mode */}
+        {!sidebarOpen && hoveredTooltip && (
+          <div
+            style={{ top: `${hoveredTooltip.top}px` }}
+            className={`fixed left-[90px] -translate-y-1/2 px-3.5 py-2 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.25)] text-white z-[9999] pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95 flex items-center whitespace-nowrap ${
+              hoveredTooltip.isDanger
+                ? 'bg-rose-600 border border-rose-500/50'
+                : 'bg-slate-900/95 backdrop-blur-md border border-slate-700/60'
+            }`}
+          >
+            <span className="font-semibold text-[13px] tracking-wide text-white leading-tight">
+              {hoveredTooltip.text}
+            </span>
+          </div>
+        )}
       </aside>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
@@ -316,10 +413,12 @@ export default function AdminDashboard() {
 
         {/* Top bar */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center px-8 gap-6 z-30">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-slate-100 hover:bg-blue-50 rounded-lg">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-slate-100 hover:bg-blue-50 rounded-xl cursor-pointer"
+            title={sidebarOpen ? "Thu gọn thanh điều hướng" : "Mở rộng thanh điều hướng"}
+          >
+            {sidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
           </button>
 
           {/* Search */}
@@ -356,7 +455,7 @@ export default function AdminDashboard() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-8 relative z-10">
+        <main className="flex-1 overflow-y-auto p-8 relative">
           <div className="max-w-7xl mx-auto">
             <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

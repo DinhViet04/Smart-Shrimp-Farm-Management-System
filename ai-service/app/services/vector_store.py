@@ -53,7 +53,9 @@ class VectorStoreService:
         category: str = "GENERAL",
         file_name: Optional[str] = None,
         file_type: str = "text",
-        uploaded_by: Optional[str] = None
+        uploaded_by: Optional[str] = None,
+        drive_file_id: Optional[str] = None,
+        drive_modified_time: Optional[str] = None
     ) -> Dict[str, Any]:
         """Chia nhỏ tài liệu, tạo vector embedding cho từng đoạn và lưu trữ vào Vector Store."""
         doc_id = str(uuid.uuid4())
@@ -75,6 +77,7 @@ class VectorStoreService:
                     "documentTitle": title,
                     "category": category,
                     "fileName": file_name,
+                    "driveFileId": drive_file_id,
                 }
             }
             new_chunks.append(chunk_obj)
@@ -88,6 +91,8 @@ class VectorStoreService:
             "fileSize": len(content),
             "chunksCount": len(new_chunks),
             "uploadedBy": uploaded_by,
+            "driveFileId": drive_file_id,
+            "driveModifiedTime": drive_modified_time,
             "createdAt": created_at
         }
 
@@ -110,6 +115,23 @@ class VectorStoreService:
         self.chunks = [c for c in self.chunks if c.get("documentId") != doc_id]
         self._save_to_disk()
         return True
+
+    def get_document_by_drive_file_id(self, drive_file_id: str) -> Optional[Dict[str, Any]]:
+        """Tìm tài liệu theo ID Google Drive."""
+        if not drive_file_id:
+            return None
+        for doc in self.documents.values():
+            if doc.get("driveFileId") == drive_file_id:
+                return doc
+        return None
+
+    def delete_document_by_drive_file_id(self, drive_file_id: str) -> bool:
+        """Xóa tài liệu theo ID Google Drive (dùng khi tài liệu trên Drive bị xóa hoặc cập nhật)."""
+        doc = self.get_document_by_drive_file_id(drive_file_id)
+        if doc:
+            return self.delete_document(doc["id"])
+        return False
+
 
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """Lấy danh sách tất cả cẩm nang."""

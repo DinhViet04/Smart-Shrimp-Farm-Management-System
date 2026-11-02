@@ -3,15 +3,29 @@ let refreshRequest: Promise<string | null> | null = null;
 
 const refreshAccessToken = () => {
   if (!refreshRequest) {
+    const storedRefreshToken = localStorage.getItem('refreshToken');
+    const headers: Record<string, string> = {
+      'X-SSFM-CSRF': '1',
+    };
+    if (storedRefreshToken) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     refreshRequest = fetch(`${apiUrl}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'X-SSFM-CSRF': '1' },
+      headers,
+      body: storedRefreshToken ? JSON.stringify({ refreshToken: storedRefreshToken }) : undefined,
     })
       .then(async (response) => {
         if (!response.ok) return null;
         const data = await response.json();
-        localStorage.setItem('accessToken', data.accessToken);
+        if (data.accessToken) {
+          localStorage.setItem('accessToken', data.accessToken);
+        }
+        if (data.refreshToken) {
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
         return data.accessToken as string;
       })
       .catch(() => null)

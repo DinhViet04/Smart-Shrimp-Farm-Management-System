@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsArray,
   ValidateNested,
+  IsString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,7 +24,7 @@ export class GrowthMilestoneDto {
 }
 
 export class CreateCropDto {
-  @IsUUID('4', { message: 'pondId phải là UUID hợp lệ' })
+  @IsString({ message: 'pondId phải là chuỗi hợp lệ' })
   pondId: string;
 
   @IsDateString(

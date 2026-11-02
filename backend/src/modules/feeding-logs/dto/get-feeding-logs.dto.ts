@@ -1,16 +1,16 @@
-import { IsOptional, IsString, IsUUID, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GetFeedingLogsQueryDto {
-  @IsUUID()
+  @IsString()
   @IsOptional()
   farmId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   pondId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   cropId?: string;
 

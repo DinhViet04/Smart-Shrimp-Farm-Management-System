@@ -3,6 +3,7 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -171,7 +172,7 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     // Find user by email (need password for comparison)
-    const user = await this.usersService.findByEmail(dto.email);
+    let user = await this.usersService.findByEmail(dto.email);
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
@@ -219,10 +220,11 @@ export class AuthService {
           );
         }
 
-        if (invitePayload.role !== user.role) {
-          throw new BadRequestException(
-            'Vai trò tài khoản không phù hợp với lời mời',
-          );
+        if (user.role !== invitePayload.role && user.role !== Role.ADMIN) {
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: { role: invitePayload.role as Role },
+          });
         }
 
         {
@@ -242,10 +244,10 @@ export class AuthService {
               create: {
                 farmId: farm.id,
                 userId: user.id,
-                role: user.role,
+                role: invitePayload.role as Role,
                 isActive: true,
               },
-              update: { isActive: true, role: user.role },
+              update: { isActive: true, role: invitePayload.role as Role },
             });
 
             if (isNewlyJoined) {
@@ -293,7 +295,7 @@ export class AuthService {
     };
   }
 
-  async loginWithGoogle(credential: string) {
+  async loginWithGoogle(credential: string, inviteToken?: string) {
     let payload;
     try {
       const response = await fetch(
@@ -306,6 +308,9 @@ export class AuthService {
       }
       payload = await response.json();
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException(
         'Không thể xác thực token Google. Vui lòng thử lại.',
       );
@@ -349,6 +354,84 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản của bạn đã bị khóa');
     }
 
+    // ── XỬ LÝ INVITE TOKEN (nếu có khi đăng nhập Google) ──
+    let joinedFarm: { id: string; name: string } | null = null;
+    if (inviteToken) {
+      try {
+        const invitePayload = await this.jwtService.verifyAsync<{
+          email: string;
+          farmId: string;
+          role: string;
+          type: string;
+        }>(inviteToken, {
+          secret: this.configService.get<string>('JWT_SECRET'),
+        });
+
+        if (
+          invitePayload?.type === 'farm_invite' &&
+          invitePayload.farmId &&
+          (invitePayload.role === Role.FARMER ||
+            invitePayload.role === Role.TECHNICIAN) &&
+          invitePayload.email.toLowerCase() === user.email.toLowerCase()
+        ) {
+          if (user.role !== invitePayload.role && user.role !== Role.ADMIN) {
+            user = await this.prisma.user.update({
+              where: { id: user.id },
+              data: { role: invitePayload.role as Role },
+            });
+          }
+
+          const farm = await this.prisma.farm.findUnique({
+            where: { id: invitePayload.farmId },
+            select: { id: true, name: true, ownerId: true },
+          });
+
+          if (farm) {
+            const existingStaff = await this.prisma.farmStaff.findUnique({
+              where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+            });
+            const isNewlyJoined = !existingStaff || !existingStaff.isActive;
+
+            await this.prisma.farmStaff.upsert({
+              where: { farmId_userId: { farmId: farm.id, userId: user.id } },
+              create: {
+                farmId: farm.id,
+                userId: user.id,
+                role: invitePayload.role as Role,
+                isActive: true,
+              },
+              update: { isActive: true, role: invitePayload.role as Role },
+            });
+
+            if (isNewlyJoined) {
+              await this.notificationsService.createFarmJoinNotification(
+                user.id,
+                farm.id,
+                farm.name,
+                user.role,
+              );
+              if (farm.ownerId && farm.ownerId !== user.id) {
+                await this.notificationsService.createStaffJoinedNotification(
+                  farm.ownerId,
+                  farm.id,
+                  user.fullName || user.email,
+                  user.email,
+                  user.role,
+                  farm.name,
+                );
+              }
+            }
+
+            joinedFarm = { id: farm.id, name: farm.name };
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Failed to process invite token during Google login: ${err}`,
+        );
+      }
+    }
+
     // Generate tokens
     const tokens = await this.generateTokens({
       sub: user.id,
@@ -361,6 +444,7 @@ export class AuthService {
 
     return {
       user: userWithoutPassword,
+      joinedFarm,
       ...tokens,
     };
   }
@@ -624,6 +708,113 @@ export class AuthService {
     } catch {
       return { valid: false, reason: 'Token không hợp lệ hoặc đã hết hạn' };
     }
+  }
+
+  /**
+   * Chấp nhận lời mời tham gia trang trại bằng inviteToken.
+   * Cập nhật vai trò người dùng (nếu khác và không phải ADMIN) và thêm vào FarmStaff.
+   */
+  async acceptInviteToken(token: string) {
+    let payload: {
+      email: string;
+      farmId: string;
+      role: string;
+      type: string;
+    };
+
+    try {
+      payload = await this.jwtService.verifyAsync(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+    } catch {
+      throw new BadRequestException('Token mời không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (
+      payload?.type !== 'farm_invite' ||
+      !payload.farmId ||
+      (payload.role !== Role.FARMER && payload.role !== Role.TECHNICIAN)
+    ) {
+      throw new BadRequestException('Thông tin lời mời không hợp lệ');
+    }
+
+    const farm = await this.prisma.farm.findUnique({
+      where: { id: payload.farmId },
+      select: { id: true, name: true, ownerId: true },
+    });
+    if (!farm) {
+      throw new NotFoundException(
+        'Không tìm thấy trang trại tương ứng với lời mời',
+      );
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: payload.email, mode: 'insensitive' },
+        isActive: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        `Không tìm thấy tài khoản với email ${payload.email}. Vui lòng đăng ký tài khoản trước.`,
+      );
+    }
+
+    let activeUser = user;
+    if (user.role !== payload.role && user.role !== Role.ADMIN) {
+      activeUser = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { role: payload.role as Role },
+      });
+    }
+
+    const existingStaff = await this.prisma.farmStaff.findUnique({
+      where: { farmId_userId: { farmId: farm.id, userId: activeUser.id } },
+    });
+    const isNewlyJoined = !existingStaff || !existingStaff.isActive;
+
+    await this.prisma.farmStaff.upsert({
+      where: { farmId_userId: { farmId: farm.id, userId: activeUser.id } },
+      create: {
+        farmId: farm.id,
+        userId: activeUser.id,
+        role: payload.role as Role,
+        isActive: true,
+      },
+      update: {
+        role: payload.role as Role,
+        isActive: true,
+      },
+    });
+
+    if (isNewlyJoined) {
+      await this.notificationsService.createFarmJoinNotification(
+        activeUser.id,
+        farm.id,
+        farm.name,
+        payload.role,
+      );
+      if (farm.ownerId && farm.ownerId !== activeUser.id) {
+        await this.notificationsService.createStaffJoinedNotification(
+          farm.ownerId,
+          farm.id,
+          activeUser.fullName || activeUser.email,
+          activeUser.email,
+          payload.role,
+          farm.name,
+        );
+      }
+    }
+
+    const { password: _, ...userWithoutPassword } = activeUser;
+    return {
+      success: true,
+      farm: { id: farm.id, name: farm.name },
+      role: payload.role,
+      user: userWithoutPassword,
+      message: `Đã gia nhập trang trại "${farm.name}" thành công với vai trò ${payload.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}.`,
+    };
   }
 
   private async generateTokens(

@@ -186,10 +186,6 @@ export default function WaterQualityHistory({
   const [recordWeather, setRecordWeather] = useState<WeatherInfo | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
 
-  const filteredPonds = selectedFarmId
-    ? ponds.filter((p) => p.farmId === selectedFarmId)
-    : ponds;
-
   // Danh sách các năm nuôi
   const availableYears = useMemo(() => {
     const yearsSet = new Set<string>();
@@ -211,12 +207,29 @@ export default function WaterQualityHistory({
     return groupCropsIntoSeasons(crops, { sortOrder: 'asc' });
   }, [crops]);
 
+  // Vụ nuôi hiện tại đang chọn
+  const currentSeason = useMemo(() => {
+    if (!selectedCropId || selectedCropId === 'ALL') return null;
+    return findSeasonByCropId(allSeasons, selectedCropId);
+  }, [allSeasons, selectedCropId]);
+
+  // Danh sách ao khả dụng theo vụ nuôi hoặc trang trại
+  const filteredPonds = useMemo(() => {
+    if (currentSeason) {
+      const pIds = new Set(currentSeason.pondIds);
+      return ponds.filter((p) => pIds.has(p.id));
+    }
+    return selectedFarmId
+      ? ponds.filter((p) => p.farmId === selectedFarmId)
+      : ponds;
+  }, [currentSeason, selectedFarmId, ponds]);
+
   // Danh sách vụ nuôi theo trang trại, ao và năm được chọn
   const availableSeasons = useMemo(() => {
     return groupCropsIntoSeasons(crops, {
       sortOrder: 'asc',
       farmId: selectedFarmId || undefined,
-      pondId: selectedPondId || undefined,
+      pondId: selectedPondId && selectedPondId !== 'ALL' ? selectedPondId : undefined,
       year: selectedYear !== 'ALL' ? selectedYear : undefined,
     });
   }, [crops, selectedFarmId, selectedPondId, selectedYear]);
@@ -304,8 +317,8 @@ export default function WaterQualityHistory({
     try {
       const data = await waterQualityService.getHistory({
         farmId: selectedFarmId || undefined,
-        pondId: selectedPondId || undefined,
-        cropId: selectedCropId || undefined,
+        pondId: selectedPondId && selectedPondId !== 'ALL' ? selectedPondId : undefined,
+        cropId: selectedCropId && selectedCropId !== 'ALL' ? selectedCropId : undefined,
         year: selectedYear !== 'ALL' ? parseInt(selectedYear, 10) : undefined,
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
@@ -483,7 +496,9 @@ export default function WaterQualityHistory({
                 }}
                 className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
               >
-                <option value="">Tất cả ao</option>
+                <option value="">
+                  {currentSeason ? `Tất cả ao trong vụ (${filteredPonds.length} ao)` : 'Tất cả ao'}
+                </option>
                 {filteredPonds.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}

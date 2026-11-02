@@ -85,22 +85,26 @@ export default function ShrimpSizeDashboard({
   useEffect(() => {
     if (initialPondId && ponds.length > 0) {
       const match = ponds.find((p) => p.id === initialPondId);
-      if (match) {
+      if (match && selectedPond?.id !== match.id) {
         setSelectedPond(match);
-        onSelectPond?.(match.id);
       }
     }
-  }, [initialPondId, ponds]);
+  }, [initialPondId, ponds, selectedPond]);
 
   // If a pond is selected, render the detail view
   if (selectedPond) {
     return (
       <PondSizeDetail
         pond={selectedPond}
+        availablePonds={ponds}
+        onSelectPond={(pId) => {
+          const match = ponds.find((p) => p.id === pId);
+          if (match) setSelectedPond(match);
+          onSelectPond?.(pId);
+        }}
         viewOnly={viewOnly}
         onBack={() => {
           setSelectedPond(null);
-          onSelectPond?.('');
         }}
         onNavigateTab={onNavigateTab}
       />
@@ -109,7 +113,7 @@ export default function ShrimpSizeDashboard({
 
   if (isLoading && farms.length === 0) {
     return (
-      <div className="space-y-6 max-w-7xl pb-10">
+      <div className="w-full max-w-7xl mx-auto space-y-6 pb-10">
         <GrowthHeaderTabs
           activeTab="Theo dõi kích cỡ"
           onTabChange={onNavigateTab}
@@ -128,7 +132,7 @@ export default function ShrimpSizeDashboard({
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
+    <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300 pb-10">
       {/* Shared Header Navigation */}
       <GrowthHeaderTabs
         activeTab="Theo dõi kích cỡ"

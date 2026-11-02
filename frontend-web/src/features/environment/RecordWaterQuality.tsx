@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CheckCircle2,
   AlertCircle,
@@ -31,11 +32,17 @@ import {
   Sparkles,
   RotateCw,
   Lightbulb,
+  ArrowRight,
+  X,
+  ShieldAlert,
+  Wrench,
+  History,
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import { weatherService, type WeatherInfo } from '../../services/weather.service';
 import type { CreateWaterQualityPayload } from '../../services/water-quality.service';
+import type { WaterWarningRecord } from './WaterTreatment';
 import LoadingMotion from '../../components/LoadingMotion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -291,15 +298,17 @@ function WaterColorField({ value, onChange, status }: WaterColorFieldProps) {
 interface ToastProps {
   message: string;
   type: 'success' | 'error';
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-function Toast({ message, type }: ToastProps) {
+function Toast({ message, type, actionLabel, onAction }: ToastProps) {
   return (
     <div
-      className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-semibold animate-in slide-in-from-right-8 fade-in duration-300 ${
+      className={`fixed top-6 right-6 z-[250] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border text-sm font-semibold animate-in slide-in-from-right-8 fade-in duration-300 max-w-md ${
         type === 'success'
-          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-          : 'bg-red-50 border-red-200 text-red-800'
+          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-500/10'
+          : 'bg-red-50 border-red-300 text-red-900 shadow-red-500/10'
       }`}
     >
       {type === 'success' ? (
@@ -307,12 +316,29 @@ function Toast({ message, type }: ToastProps) {
       ) : (
         <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
       )}
-      <span>{message}</span>
+      <div className="flex-1 leading-snug">{message}</div>
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="ml-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex-shrink-0 flex items-center gap-1"
+        >
+          <span>{actionLabel}</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+
+export interface RecordWaterQualityProps {
+  onNavigateToTreatment?: (farmId: string, pondId: string, warningRecord?: WaterWarningRecord) => void;
+  onNavigateToHistory?: () => void;
+  initialFarmId?: string;
+  initialPondId?: string;
+}
 
 const INITIAL_FORM = {
   temperature: '',
@@ -329,12 +355,26 @@ const INITIAL_FORM = {
 
 type FormKey = keyof typeof INITIAL_FORM;
 
-export default function RecordWaterQuality() {
+export default function RecordWaterQuality({
+  onNavigateToTreatment,
+  onNavigateToHistory,
+  initialFarmId,
+  initialPondId,
+}: RecordWaterQualityProps = {}) {
   // ── Data state ──────────────────────────────────────────────────────────────
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState('');
-  const [selectedPondId, setSelectedPondId] = useState('');
+  const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
+  const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
+  const [showAbnormalAlertModal, setShowAbnormalAlertModal] = useState(false);
+  const [currentAbnormalIssues, setCurrentAbnormalIssues] = useState<{
+    paramKey: string;
+    name: string;
+    value: string;
+    unit: string;
+    status: 'warning' | 'danger';
+    recommendation: string;
+  }[]>([]);
   const [recordTime, setRecordTime] = useState<string>(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -389,7 +429,24 @@ export default function RecordWaterQuality() {
         setFarms(farmsData || []);
         setPonds(pondsData || []);
 
-        // Auto select first farm if available
+        // Auto select first farm or prop initial
+        if (initialPondId) {
+          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
+          if (found) {
+            setSelectedFarmId(found.farmId);
+            setSelectedPondId(initialPondId);
+            return;
+          }
+        }
+        if (initialFarmId) {
+          setSelectedFarmId(initialFarmId);
+          const firstFarmPonds = (pondsData || []).filter((p: Pond) => p.farmId === initialFarmId);
+          if (firstFarmPonds.length > 0) {
+            setSelectedPondId(firstFarmPonds[0].id);
+          }
+          return;
+        }
+
         if (farmsData && farmsData.length > 0) {
           setSelectedFarmId(farmsData[0].id);
           const firstFarmPonds = (pondsData || []).filter((p: Pond) => p.farmId === farmsData[0].id);
@@ -403,7 +460,18 @@ export default function RecordWaterQuality() {
         setLoadingData(false);
       }
     })();
-  }, []);
+  }, [initialFarmId, initialPondId]);
+
+  // Synchronize when initialFarmId or initialPondId prop changes
+  useEffect(() => {
+    if (initialPondId) {
+      setSelectedPondId(initialPondId);
+      const found = ponds.find((p) => p.id === initialPondId);
+      if (found) setSelectedFarmId(found.farmId);
+    } else if (initialFarmId) {
+      setSelectedFarmId(initialFarmId);
+    }
+  }, [initialFarmId, initialPondId, ponds]);
 
   // ── Fetch Weather for Selected Farm / Location ─────────────────────────────
   const fetchWeather = useCallback(async (farmId?: string) => {
@@ -441,9 +509,14 @@ export default function RecordWaterQuality() {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }, []);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
+  const showToast = (
+    message: string,
+    type: 'success' | 'error',
+    actionLabel?: string,
+    onAction?: () => void,
+  ) => {
+    setToast({ message, type, actionLabel, onAction });
+    setTimeout(() => setToast(null), actionLabel ? 7000 : 3500);
   };
 
   const handleRefreshAi = () => {
@@ -456,28 +529,159 @@ export default function RecordWaterQuality() {
     }, 400);
   };
 
-  const validate = (): boolean => {
-    const newErrors: Partial<Record<FormKey, string>> = {};
-    const numericKeys: FormKey[] = [
-      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'h2s', 'transparency',
-    ];
-    numericKeys.forEach((k) => {
-      const err = validateField(k, numVal(k));
-      if (err) newErrors[k] = err;
-    });
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  // ── Gather Abnormal Issues for Immediate Clinical Warning ─────────────────
+  const getAbnormalIssues = useCallback(() => {
+    const issues: {
+      paramKey: string;
+      name: string;
+      value: string;
+      unit: string;
+      status: 'warning' | 'danger';
+      recommendation: string;
+    }[] = [];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!selectedPondId) {
-      showToast('Vui lòng chọn ao nuôi trước khi lưu', 'error');
-      return;
+    const temp = numVal('temperature');
+    const tempSt = getTemperatureStatus(temp);
+    if (tempSt === 'danger' || tempSt === 'warning') {
+      issues.push({
+        paramKey: 'temperature',
+        name: 'Nhiệt độ nước',
+        value: `${temp} °C`,
+        unit: '°C',
+        status: tempSt,
+        recommendation:
+          temp !== null && temp > 30
+            ? 'Bật quạt nước, xả bớt tầng nước mặt, cấp thêm nước mát tầng đáy'
+            : 'Theo dõi tôm giảm ăn khi lạnh, duy trì mực nước sâu và che chắn gió',
+      });
     }
-    if (!validate()) return;
 
+    const ph = numVal('ph');
+    const phSt = getPhStatus(ph);
+    if (phSt === 'danger' || phSt === 'warning') {
+      issues.push({
+        paramKey: 'ph',
+        name: 'Độ pH',
+        value: `${ph}`,
+        unit: '',
+        status: phSt,
+        recommendation:
+          ph !== null && ph < 7.5
+            ? 'Tạt vôi nông nghiệp CaCO3 hoặc Dolomite để nâng và ổn định hệ đệm pH'
+            : 'Đánh mật rỉ đường + men vi sinh vào buổi sáng nắng để khống chế tảo và hạ pH',
+      });
+    }
+
+    const doVal = numVal('dissolvedOxygen');
+    const doSt = getDoStatus(doVal);
+    if (doSt === 'danger' || doSt === 'warning') {
+      issues.push({
+        paramKey: 'dissolvedOxygen',
+        name: 'Oxy hòa tan (DO)',
+        value: `${doVal} mg/L`,
+        unit: 'mg/L',
+        status: doSt,
+        recommendation:
+          doSt === 'danger'
+            ? 'BẬT TẤT CẢ DÀN QUẠT & SỤC KHÍ ĐÁY, rải ngay oxy viên cấp cứu vùng tập trung tôm'
+            : 'Tăng cường số giờ chạy quạt nước, giảm 30% lượng thức ăn cữ tới để tránh tiêu hao oxy',
+      });
+    }
+
+    const sal = numVal('salinity');
+    const salSt = getSalinityStatus(sal);
+    if (salSt === 'danger' || salSt === 'warning') {
+      issues.push({
+        paramKey: 'salinity',
+        name: 'Độ mặn',
+        value: `${sal} ‰`,
+        unit: '‰',
+        status: salSt,
+        recommendation:
+          'Kiểm tra nguồn nước cấp và điều chỉnh độ mặn thích ứng với giai đoạn sinh trưởng của tôm',
+      });
+    }
+
+    const alk = numVal('alkalinity');
+    const alkSt = getAlkalinityStatus(alk);
+    if (alkSt === 'danger' || alkSt === 'warning') {
+      issues.push({
+        paramKey: 'alkalinity',
+        name: 'Độ kiềm',
+        value: `${alk} mg/L`,
+        unit: 'mg/L',
+        status: alkSt,
+        recommendation:
+          alk !== null && alk < 100
+            ? 'Tạt vôi canxi, khoáng Bicarbonate để tôm cứng vỏ nhanh sau lột xác'
+            : 'Thay nước chậm hoặc xử lý bớt hàm lượng khoáng dư thừa trong ao',
+      });
+    }
+
+    const nh3 = numVal('nh3');
+    const nh3St = getNh3Status(nh3);
+    if (nh3St === 'danger' || nh3St === 'warning') {
+      issues.push({
+        paramKey: 'nh3',
+        name: 'Khí độc NH3',
+        value: `${nh3} mg/L`,
+        unit: 'mg/L',
+        status: nh3St,
+        recommendation:
+          nh3St === 'danger'
+            ? 'Cắt ngay 50% thức ăn, tạt Yucca hoặc vi sinh xử lý đáy ao khẩn cấp để hấp thụ khí độc'
+            : 'Tăng cường quạt nước, kiểm tra xi-phông đáy ao sạch sẽ bùn bã hữu cơ',
+      });
+    }
+
+    const h2s = numVal('h2s');
+    const h2sSt = getH2sStatus(h2s);
+    if (h2sSt === 'danger' || h2sSt === 'warning') {
+      issues.push({
+        paramKey: 'h2s',
+        name: 'Khí độc H2S',
+        value: `${h2s} mg/L`,
+        unit: 'mg/L',
+        status: h2sSt,
+        recommendation:
+          'Giữ pH > 7.8, rải vôi/oxy viên vùng đáy ao tích tụ mùn bã, tạt vi sinh đối kháng vi khuẩn đáy',
+      });
+    }
+
+    const transparency = numVal('transparency');
+    const transSt = getTransparencyStatus(transparency);
+    if (transSt === 'danger' || transSt === 'warning') {
+      issues.push({
+        paramKey: 'transparency',
+        name: 'Độ trong',
+        value: `${transparency} cm`,
+        unit: 'cm',
+        status: transSt,
+        recommendation:
+          transparency !== null && transparency < 20
+            ? 'Tảo nở hoa quá dày, nguy cơ sụp tảo, cần dùng vi sinh cắt tảo hoặc xả bớt nước mặt'
+            : 'Nước quá trong nghèo dinh dưỡng, cần gây màu nước bằng khoáng chất và men vi sinh',
+      });
+    }
+
+    const colorSt = getWaterColorStatus(form.waterColor);
+    if (colorSt === 'danger' || colorSt === 'warning') {
+      issues.push({
+        paramKey: 'waterColor',
+        name: 'Màu nước',
+        value: form.waterColor,
+        unit: '',
+        status: colorSt,
+        recommendation:
+          'Màu nước bất thường cảnh báo tảo tàn hoặc ô nhiễm hữu cơ nặng, cần kiểm tra mẫu nước và xử lý',
+      });
+    }
+
+    return issues;
+  }, [form]);
+
+  // ── Save Functionality ───────────────────────────────────────────────────────
+  const executeSave = async (shouldNavigateToTreatment: boolean) => {
     setSaving(true);
     try {
       const payload: CreateWaterQualityPayload = {
@@ -509,12 +713,121 @@ export default function RecordWaterQuality() {
       };
 
       await waterQualityService.create(payload);
-      showToast('Ghi nhận thông số môi trường nước thành công!', 'success');
       handleRefreshAi();
+      setShowAbnormalAlertModal(false);
+
+      if (shouldNavigateToTreatment && onNavigateToTreatment) {
+        showToast('Đã lưu thông số! Đang chuyển sang không gian xử lý môi trường...', 'success');
+        const selectedFarm = farms.find((f) => f.id === selectedFarmId);
+        const selectedPond = ponds.find((p) => p.id === selectedPondId);
+        const warningRecord: WaterWarningRecord = {
+          id: `WQ-${Date.now()}`,
+          date: new Date(recordTime).toLocaleDateString('vi-VN'),
+          time: new Date(recordTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          farmName: selectedFarm?.name || 'Trang trại',
+          pondId: selectedPondId,
+          pondName: selectedPond?.name || 'Ao nuôi',
+          hazardLevel: currentAbnormalIssues.some((i) => i.status === 'danger') ? 'DANGER' : 'WARNING',
+          summaryText:
+            currentAbnormalIssues.map((i) => `${i.name}: ${i.value} ${i.unit}`).join(' • ') ||
+            'Chỉ số bất thường cần xử lý',
+          status: 'UNTREATED',
+          parameters: {
+            temperature: parseFloat(form.temperature) || 0,
+            ph: parseFloat(form.ph) || 0,
+            dissolvedOxygen: parseFloat(form.dissolvedOxygen) || 0,
+            salinity: parseFloat(form.salinity) || 0,
+            alkalinity: parseFloat(form.alkalinity) || 0,
+            nh3: parseFloat(form.nh3) || 0,
+            h2s: parseFloat(form.h2s) || 0,
+            transparency: parseFloat(form.transparency) || 0,
+          },
+          triggeredParams: currentAbnormalIssues.map((i) => i.paramKey),
+        };
+
+        setTimeout(() => {
+          onNavigateToTreatment(selectedFarmId, selectedPondId, warningRecord);
+        }, 500);
+      } else {
+        if (currentAbnormalIssues.length > 0 && onNavigateToTreatment) {
+          showToast(
+            'Đã lưu thông số đo lường. Ao có chỉ số cảnh báo!',
+            'success',
+            'Xử lý ngay',
+            () => {
+              const selectedFarm = farms.find((f) => f.id === selectedFarmId);
+              const selectedPond = ponds.find((p) => p.id === selectedPondId);
+              const warningRecord: WaterWarningRecord = {
+                id: `WQ-${Date.now()}`,
+                date: new Date(recordTime).toLocaleDateString('vi-VN'),
+                time: new Date(recordTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                farmName: selectedFarm?.name || 'Trang trại',
+                pondId: selectedPondId,
+                pondName: selectedPond?.name || 'Ao nuôi',
+                hazardLevel: currentAbnormalIssues.some((i) => i.status === 'danger') ? 'DANGER' : 'WARNING',
+                summaryText:
+                  currentAbnormalIssues.map((i) => `${i.name}: ${i.value} ${i.unit}`).join(' • ') ||
+                  'Chỉ số bất thường cần xử lý',
+                status: 'UNTREATED',
+                parameters: {
+                  temperature: parseFloat(form.temperature) || 0,
+                  ph: parseFloat(form.ph) || 0,
+                  dissolvedOxygen: parseFloat(form.dissolvedOxygen) || 0,
+                  salinity: parseFloat(form.salinity) || 0,
+                  alkalinity: parseFloat(form.alkalinity) || 0,
+                  nh3: parseFloat(form.nh3) || 0,
+                  h2s: parseFloat(form.h2s) || 0,
+                  transparency: parseFloat(form.transparency) || 0,
+                },
+                triggeredParams: currentAbnormalIssues.map((i) => i.paramKey),
+              };
+              onNavigateToTreatment(selectedFarmId, selectedPondId, warningRecord);
+            },
+          );
+        } else {
+          showToast(
+            'Môi trường nước đạt chuẩn! Ghi nhận thành công.',
+            'success',
+            onNavigateToHistory ? 'Xem lịch sử' : undefined,
+            onNavigateToHistory,
+          );
+        }
+      }
     } catch (err: any) {
       showToast(err.message || 'Không thể lưu thông số. Vui lòng thử lại.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const validate = (): boolean => {
+    const newErrors: Partial<Record<FormKey, string>> = {};
+    const numericKeys: FormKey[] = [
+      'temperature', 'ph', 'dissolvedOxygen', 'salinity', 'alkalinity', 'nh3', 'h2s', 'transparency',
+    ];
+    numericKeys.forEach((k) => {
+      const err = validateField(k, numVal(k));
+      if (err) newErrors[k] = err;
+    });
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedPondId) {
+      showToast('Vui lòng chọn ao nuôi trước khi lưu', 'error');
+      return;
+    }
+    if (!validate()) return;
+
+    const abnormalIssues = getAbnormalIssues();
+    if (abnormalIssues.length > 0) {
+      setCurrentAbnormalIssues(abnormalIssues);
+      setShowAbnormalAlertModal(true);
+    } else {
+      await executeSave(false);
     }
   };
 
@@ -625,7 +938,14 @@ export default function RecordWaterQuality() {
   return (
     <div className="w-full max-w-7xl mx-auto relative pb-10">
       {/* Toast notification */}
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          actionLabel={toast.actionLabel}
+          onAction={toast.onAction}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
@@ -636,18 +956,30 @@ export default function RecordWaterQuality() {
           <form onSubmit={handleSubmit} noValidate>
 
             {/* ── Page Header Banner ────────────────────────────────────────── */}
-            <div className="flex items-center gap-4 bg-white/90 backdrop-blur-xl px-6 py-5 rounded-3xl shadow-sm border border-indigo-100/80 mb-5">
-              <div className="w-13 h-13 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-500/25 flex-shrink-0 p-3">
-                <Droplets className="w-7 h-7 text-white" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/90 backdrop-blur-xl px-6 py-5 rounded-3xl shadow-sm border border-indigo-100/80 mb-5">
+              <div className="flex items-center gap-4">
+                <div className="w-13 h-13 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-500/25 flex-shrink-0 p-3">
+                  <Droplets className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-indigo-950 tracking-tight">
+                    Ghi nhận Thông số Môi trường Nước
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
+                    Nhập các thông số đo lường từ ao nuôi để theo dõi và phân tích chất lượng nước
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-indigo-950 tracking-tight">
-                  Ghi nhận Thông số Môi trường Nước
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-                  Nhập các thông số đo lường từ ao nuôi để theo dõi và phân tích chất lượng nước
-                </p>
-              </div>
+              {onNavigateToHistory && (
+                <button
+                  type="button"
+                  onClick={onNavigateToHistory}
+                  className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-600 bg-white hover:bg-indigo-50/50 text-xs font-bold transition-all shadow-xs cursor-pointer flex-shrink-0"
+                >
+                  <History className="w-4 h-4" />
+                  <span>Xem lịch sử đo</span>
+                </button>
+              )}
             </div>
 
             {/* ── Section 1: Location + Time ────────────────────────────────── */}
@@ -1042,6 +1374,128 @@ export default function RecordWaterQuality() {
         </div>
 
       </div>
+
+      {/* ─── Modal Cảnh Báo Khẩn & Chuyển Xử Lý Môi Trường ───────────────── */}
+      {showAbnormalAlertModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-rose-100 overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-rose-500 via-rose-600 to-amber-600 p-6 text-white relative">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shadow-inner">
+                      <ShieldAlert className="w-6 h-6 text-white animate-pulse" />
+                    </div>
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-xs font-black tracking-wider uppercase backdrop-blur-md mb-1">
+                        Cảnh Báo Lâm Sàng Môi Trường
+                      </span>
+                      <h3 className="text-lg font-black leading-tight">
+                        Phát Hiện Chỉ Số Ao Vượt Ngưỡng!
+                      </h3>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAbnormalAlertModal(false)}
+                    className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-white/20 flex items-center gap-2 text-xs font-semibold text-rose-100">
+                  <span>{selectedFarm?.name || 'Trang trại'}</span>
+                  <span>•</span>
+                  <span className="text-white font-bold bg-white/20 px-2 py-0.5 rounded-md">
+                    {filteredPonds.find((p) => p.id === selectedPondId)?.name || 'Ao nuôi'}
+                  </span>
+                  <span>•</span>
+                  <span>Có {currentAbnormalIssues.length} chỉ số bất thường</span>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs leading-relaxed font-medium">
+                  Các chỉ số môi trường bên dưới đang đe dọa trực tiếp tới sức khỏe đàn tôm. Hệ thống khuyến nghị kỹ thuật viên lập phương án xử lý ngay để tránh gây sốc hoặc ngộ độc tôm.
+                </div>
+
+                <div className="space-y-2.5">
+                  {currentAbnormalIssues.map((issue, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3.5 rounded-2xl border flex flex-col gap-2 transition-all ${
+                        issue.status === 'danger'
+                          ? 'bg-rose-50/50 border-rose-200'
+                          : 'bg-amber-50/50 border-amber-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-sm text-slate-800">
+                          {issue.name}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {issue.value}
+                          </span>
+                          <span
+                            className={`text-[11px] font-black px-2 py-0.5 rounded-full border ${
+                              issue.status === 'danger'
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                            }`}
+                          >
+                            {issue.status === 'danger' ? 'Nguy hiểm' : 'Cảnh báo'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 text-xs text-slate-600 bg-white/80 p-2.5 rounded-xl border border-slate-100">
+                        <Wrench className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                        <span className="leading-snug font-medium">
+                          <strong className="text-indigo-900">Khuyến nghị xử lý:</strong> {issue.recommendation}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => executeSave(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  Chỉ lưu nhật ký (Xử lý sau)
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => executeSave(true)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang lưu...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="w-4 h-4" />
+                      <span>Lưu & Chuyển sang Xử lý ngay</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

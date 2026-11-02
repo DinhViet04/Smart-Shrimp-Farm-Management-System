@@ -34,3 +34,18 @@ class DocumentUploadResponse(BaseModel):
     documentId: str
     title: str
     chunksCount: int
+
+class DriveSyncRequest(BaseModel):
+    folderId: Optional[str] = None
+    force: bool = False
+    pruneDeleted: bool = False
+
+class DriveStatusResponse(BaseModel):
+    isConfigured: bool
+    folderId: Optional[str] = None
+    authMethod: str
+    hasFolderId: bool
+    credentialsFileFound: bool
+    credentialsFilePath: Optional[str] = None
+    lastSync: Optional[Dict[str, Any]] = None
+

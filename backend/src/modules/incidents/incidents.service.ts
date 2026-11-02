@@ -25,7 +25,7 @@ export class IncidentsService {
 
   async findAll(user: AuthUser, query: GetIncidentsDto) {
     const page = query.page ?? 0;
-    const size = query.size ?? 20;
+    const size = query.size ?? 100;
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
     const where: any = {};
 
@@ -77,6 +77,22 @@ export class IncidentsService {
         { title: { contains: query.search.trim(), mode: 'insensitive' } },
         { description: { contains: query.search.trim(), mode: 'insensitive' } },
       ];
+    }
+
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {};
+      if (query.fromDate) {
+        where.createdAt.gte = new Date(query.fromDate);
+      }
+      if (query.toDate) {
+        const to = new Date(query.toDate);
+        to.setHours(23, 59, 59, 999);
+        where.createdAt.lte = to;
+      }
+    } else if (query.year) {
+      const startYear = new Date(query.year, 0, 1);
+      const endYear = new Date(query.year, 11, 31, 23, 59, 59, 999);
+      where.createdAt = { gte: startYear, lte: endYear };
     }
 
     const include = {
@@ -219,16 +235,17 @@ export class IncidentsService {
   async startTreatment(user: AuthUser, id: string) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status !== 'OPEN') {
-      throw new BadRequestException(
-        'Chỉ có thể bắt đầu điều trị sự cố đang mở',
-      );
+    if (incident.status === 'RESOLVED') {
+      throw new BadRequestException('Sự cố này đã xử lý xong');
     }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.incident.update({
         where: { id },
-        data: { status: 'TREATING', startedAt: new Date() },
+        data: {
+          status: 'TREATING',
+          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
+        },
         include: {
           crop: {
             include: { pond: { include: { farm: true } } },
@@ -241,7 +258,7 @@ export class IncidentsService {
         data: {
           incidentId: id,
           authorId: user.userId,
-          treatment: 'Bắt đầu điều trị sự cố',
+          treatment: 'Bắt đầu xử lý sự cố',
           status: 'TREATING',
           eventType: 'STARTED',
         },
@@ -258,12 +275,7 @@ export class IncidentsService {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
     if (incident.status === 'RESOLVED') {
-      throw new BadRequestException('Không thể cập nhật sự cố đã đóng');
-    }
-    if (incident.status === 'OPEN') {
-      throw new BadRequestException(
-        'Vui lòng bắt đầu điều trị trước khi cập nhật tiến trình',
-      );
+      throw new BadRequestException('Không thể cập nhật sự cố đã xử lý xong');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -287,7 +299,7 @@ export class IncidentsService {
         data: {
           treatment: dto.treatment.trim(),
           status: 'TREATING',
-          ...(incident.status === 'OPEN' ? { startedAt: new Date() } : {}),
+          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -321,7 +333,7 @@ export class IncidentsService {
           treatment: dto.treatment.trim(),
           status: 'RESOLVED',
           resolvedAt: new Date(),
-          ...(incident.status === 'OPEN' ? { startedAt: new Date() } : {}),
+          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -341,7 +353,7 @@ export class IncidentsService {
           incidentId: id,
           authorId: user.userId,
           treatment: `Mở lại sự cố: ${dto.reason.trim()}`,
-          status: 'TREATING',
+          status: 'OPEN',
           eventType: 'REOPENED',
         },
         include: {
@@ -350,7 +362,7 @@ export class IncidentsService {
       });
       await tx.incident.update({
         where: { id },
-        data: { status: 'TREATING', resolvedAt: null },
+        data: { status: 'OPEN', resolvedAt: null },
       });
       return update;
     });

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import logger
 from app.api.v1.router import api_router
-from app.services.default_knowledge import seed_default_knowledge
+from app.services.default_knowledge import seed_default_knowledge, seed_weather_knowledge
 from app.services.rag_service import rag_service
 from app.services.embedding_service import embedding_service
 
@@ -14,9 +14,21 @@ async def lifespan(app: FastAPI):
     # Startup: Seed initial 5T knowledge documents & check OpenAI
     logger.info("Starting up Smart Shrimp Farm AI Service (FastAPI RAG)...")
     seed_default_knowledge()
+    seed_weather_knowledge()
     embedding_service.refresh_client()
     rag_service.refresh_client()
+
+    # Tự động đồng bộ tài liệu từ Google Drive nếu được cấu hình
+    if settings.AUTO_SYNC_DRIVE_ON_STARTUP and settings.GOOGLE_DRIVE_FOLDER_ID:
+        try:
+            from app.services.drive_sync_service import drive_sync_service
+            logger.info("Auto-syncing knowledge documents from Google Drive on startup...")
+            drive_sync_service.sync_folder()
+        except Exception as e:
+            logger.warning(f"Startup Google Drive sync skipped or encountered an error: {e}")
+
     yield
+
     # Shutdown
     logger.info("Shutting down AI Service...")
 

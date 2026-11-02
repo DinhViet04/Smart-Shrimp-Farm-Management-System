@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar,
   Search,
@@ -258,7 +259,7 @@ export default function ShrimpHealthList({
   };
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6">
+    <div className="w-full relative space-y-6">
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-xl ${isFarmer ? 'shadow-teal-900/5' : 'shadow-indigo-900/5'} border border-white/60`}>
         <div className="flex items-center gap-4">
@@ -267,10 +268,10 @@ export default function ShrimpHealthList({
           </div>
           <div>
             <h2 className={`text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r ${themeTextGradientHeader} tracking-tight`}>
-              Lịch Sử Sức Khỏe Tôm
+              Nhật Ký Kiểm Tra Định Kỳ
             </h2>
             <p className="text-sm text-slate-500 font-medium">
-              Theo dõi và tra cứu tình trạng sức khỏe tôm của từng ao nuôi
+              Theo dõi và tra cứu toàn bộ nhật ký kiểm tra sức khỏe tôm định kỳ của từng ao nuôi
             </p>
           </div>
         </div>
@@ -541,8 +542,8 @@ export default function ShrimpHealthList({
       )}
 
       {/* ─── Detail Modal ─────────────────────────────────────────────────── */}
-      {showDetailDialog && selectedRecord && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+      {showDetailDialog && selectedRecord && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 relative overflow-hidden">
             {/* Close button */}
             <button
@@ -637,7 +638,8 @@ export default function ShrimpHealthList({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Activity, 
   TrendingUp, AlertCircle, PieChart, Scale,
-  Calendar, Layers, Info
+  Calendar, Layers, Info, ChevronDown
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
@@ -36,6 +36,8 @@ interface ShrimpSizeSample {
 
 interface PondBiomassDetailProps {
   pond: Pond;
+  availablePonds?: Pond[];
+  onSelectPond?: (pondId: string) => void;
   onBack: () => void;
   onNavigateTab?: (tab: GrowthTabType) => void;
 }
@@ -53,6 +55,8 @@ const safeFormatDate = (dateVal: string | number | Date | null | undefined, form
 
 export default function PondBiomassDetail({ 
   pond, 
+  availablePonds,
+  onSelectPond,
   onBack,
   onNavigateTab
 }: PondBiomassDetailProps) {
@@ -166,9 +170,26 @@ export default function PondBiomassDetail({
           <span className="text-slate-300">|</span>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Ao Nuôi:</span>
-            <span className="text-sm font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg">
-              {pond.name}
-            </span>
+            {availablePonds && availablePonds.length > 1 ? (
+              <div className="relative">
+                <select
+                  value={pond?.id}
+                  onChange={(e) => onSelectPond?.(e.target.value)}
+                  className="pl-3 pr-8 py-1.5 bg-emerald-50/80 border border-emerald-200 text-emerald-900 font-extrabold rounded-xl text-sm outline-none cursor-pointer focus:ring-2 focus:ring-emerald-500/20 appearance-none hover:bg-emerald-100/60 transition-colors"
+                >
+                  {availablePonds.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-emerald-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            ) : (
+              <span className="text-sm font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg">
+                {pond.name}
+              </span>
+            )}
           </div>
         </div>
 

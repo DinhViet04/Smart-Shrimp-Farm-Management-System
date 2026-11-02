@@ -9,10 +9,30 @@ export interface ChatbotSource {
   relevanceScore: number;
 }
 
+export interface RealtimeWeather {
+  cityName: string;
+  temperature: number;
+  feelsLike: number;
+  humidity: number;
+  description: string;
+  windSpeed: number;
+  rain1h: number;
+  cloudiness?: number;
+  isRaining: boolean;
+  isHot: boolean;
+  isCold: boolean;
+  isWindy: boolean;
+  provider: string;
+  recordedAt: string;
+}
+
 export interface ChatbotResponse {
   answer: string;
   sources?: ChatbotSource[];
   pondName?: string;
+  sourceType?: 'LOCAL_DOCUMENT' | 'OPENAI_KNOWLEDGE' | 'HYBRID';
+  hasLocalKnowledge?: boolean;
+  weather?: RealtimeWeather;
 }
 
 export interface KnowledgeDoc {
@@ -34,7 +54,20 @@ export const chatbotService = {
       method: 'POST',
       body: JSON.stringify({ question, pondId }),
     });
-    if (!res.ok) throw new Error('Không thể kết nối đến Trợ lý AI');
+    if (!res.ok) {
+      let errMsg = 'Không thể kết nối đến Trợ lý AI';
+      try {
+        const errJson = await res.json();
+        if (errJson?.message) {
+          errMsg = Array.isArray(errJson.message) ? errJson.message.join(', ') : errJson.message;
+        }
+      } catch {
+        if (res.status === 403) errMsg = 'Bạn không có quyền truy cập dữ liệu trang trại/ao nuôi này';
+        else if (res.status === 429) errMsg = 'Đã vượt quá số lượt hỏi AI cho phép trong 1 phút. Vui lòng chờ giây lát';
+        else if (res.status === 504) errMsg = 'Dịch vụ AI phản hồi quá lâu (Timeout). Vui lòng thử lại';
+      }
+      throw new Error(errMsg);
+    }
     return res.json();
   },
 

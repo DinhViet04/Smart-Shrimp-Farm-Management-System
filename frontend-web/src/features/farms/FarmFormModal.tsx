@@ -168,6 +168,11 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       setFarmerSearchError('Vui lòng nhập địa chỉ email của Nông dân.');
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setFarmerSearchError('Email không đúng định dạng. Vui lòng nhập email hợp lệ (VD: user@example.com).');
+      return;
+    }
     const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())
       || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase() && p.role === 'FARMER');
     if (alreadyInList) {
@@ -208,6 +213,11 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     const email = techEmailInput.trim();
     if (!email) {
       setTechSearchError('Vui lòng nhập địa chỉ email của Kỹ thuật viên.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setTechSearchError('Email không đúng định dạng. Vui lòng nhập email hợp lệ (VD: user@example.com).');
       return;
     }
     const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())

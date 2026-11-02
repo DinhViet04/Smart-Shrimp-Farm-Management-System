@@ -116,6 +116,10 @@ export const farmService = {
     if (!response.ok) throw new Error(resData.message || 'Không thể gửi lời mời');
     return resData;
   },
+
+  acceptInvite: async (token: string) => {
+    return acceptInviteToken(token);
+  },
 };
 
 /**
@@ -135,5 +139,32 @@ export const verifyInviteToken = async (token: string) => {
     role?: string;
   };
 };
+
+/**
+ * Chấp nhận lời mời tham gia trang trại bằng inviteToken.
+ */
+export const acceptInviteToken = async (token: string) => {
+  const tokenHeader = localStorage.getItem('accessToken');
+  const response = await fetch(`${apiUrl}/api/auth/accept-invite`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(tokenHeader ? { Authorization: `Bearer ${tokenHeader}` } : {}),
+    },
+    body: JSON.stringify({ token }),
+  });
+  const resData = await response.json();
+  if (!response.ok) {
+    throw new Error(resData.message || 'Không thể chấp nhận lời mời');
+  }
+  return resData as {
+    success: boolean;
+    farm: { id: string; name: string };
+    role: string;
+    user: any;
+    message: string;
+  };
+};
+
 
 

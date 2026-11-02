@@ -65,7 +65,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     return this.attachRefreshCookie(
-      await this.authService.loginWithGoogle(dto.credential),
+      await this.authService.loginWithGoogle(dto.credential, dto.inviteToken),
       response,
     );
   }
@@ -132,6 +132,19 @@ export class AuthController {
       return { valid: false, reason: 'Thiếu token' };
     }
     return this.authService.verifyInviteToken(token);
+  }
+
+  /**
+   * POST /api/auth/accept-invite
+   * Chấp nhận lời mời tham gia trang trại (dành cho người dùng đã có tài khoản / đang đăng nhập).
+   */
+  @Post('accept-invite')
+  @HttpCode(HttpStatus.OK)
+  async acceptInvite(@Body('token') token: string) {
+    if (!token) {
+      return { valid: false, reason: 'Thiếu token' };
+    }
+    return this.authService.acceptInviteToken(token);
   }
 
   private attachRefreshCookie<T extends { refreshToken: string }>(

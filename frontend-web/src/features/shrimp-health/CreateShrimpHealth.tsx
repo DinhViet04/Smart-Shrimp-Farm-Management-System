@@ -416,7 +416,7 @@ export default function CreateShrimpHealth({
     : 'focus:border-indigo-500 focus:ring-indigo-500/20';
 
   return (
-    <div className="max-w-[950px] mx-auto relative space-y-6">
+    <div className="w-full relative space-y-6">
       {toast && (
         <Toast
           message={toast.message}

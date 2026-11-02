@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -223,6 +224,43 @@ export class ChatbotService implements OnModuleInit {
       where: { id },
     });
     return { message: 'Đã xóa tài liệu và dữ liệu vector chunks liên quan.' };
+  }
+
+  // ── GOOGLE DRIVE SYNC PROXY ──────────────────────────────────────────────
+  async getDriveStatus() {
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    try {
+      const response = await fetch(`${aiServiceUrl}/api/v1/documents/drive/status`);
+      if (!response.ok) {
+        throw new Error(`AI Service returned status ${response.status}`);
+      }
+      return await response.json();
+    } catch (err: any) {
+      return {
+        isConfigured: false,
+        error: `Không thể kết nối tới AI Microservice: ${err.message}`,
+      };
+    }
+  }
+
+  async syncDriveDocuments(body?: { folderId?: string; force?: boolean; pruneDeleted?: boolean }) {
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    try {
+      const response = await fetch(`${aiServiceUrl}/api/v1/documents/drive/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+        signal: AbortSignal.timeout(120_000), // Timeout sau 2 phút cho batch sync
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new BadRequestException(data.detail || 'Lỗi khi đồng bộ tài liệu từ Google Drive');
+      }
+      return data;
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(`Không thể thực hiện đồng bộ Google Drive: ${err.message}`);
+    }
   }
 
   // ── 3.5. SIMILARITY SEARCH ───────────────────────────────────────────────
@@ -508,7 +546,7 @@ export class ChatbotService implements OnModuleInit {
             pondId: pondContextPayload?.pondId,
             pondContext: pondContextPayload,
           }),
-          signal: AbortSignal.timeout(12000), // Timeout sau 12 giây
+          signal: AbortSignal.timeout(45000), // Timeout sau 45 giây cho phân tích lâm sàng RAG & đối chiếu kho
         });
 
         if (response.ok) {

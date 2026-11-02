@@ -154,7 +154,10 @@ export default function RegisterPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
+        body: JSON.stringify({
+          credential: response.credential,
+          ...(inviteTokenFromUrl ? { inviteToken: inviteTokenFromUrl } : {}),
+        }),
       });
 
       const data = await res.json();
@@ -167,7 +170,9 @@ export default function RegisterPage() {
         }
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('user', JSON.stringify(data.user));
-        navigate(getDashboardPath(data.user.role));
+        navigate(getDashboardPath(data.user.role), {
+          state: data.joinedFarm ? { welcomeFarm: data.joinedFarm.name } : undefined,
+        });
       }
     } catch (error) {
       setServerError('Không thể kết nối máy chủ.');

@@ -63,9 +63,17 @@ export class FarmStaffsService {
     }
 
     if (staffUser.role !== data.role) {
-      throw new BadRequestException(
-        'Vai trò phân công phải trùng với vai trò tài khoản',
-      );
+      if (staffUser.role !== Role.ADMIN) {
+        await this.prisma.user.update({
+          where: { id: staffUser.id },
+          data: { role: data.role },
+        });
+        staffUser.role = data.role;
+      } else {
+        throw new BadRequestException(
+          'Không thể phân công tài khoản Admin làm nhân sự trang trại',
+        );
+      }
     }
 
     const farm = await this.prisma.farm.findUnique({

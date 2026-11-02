@@ -292,7 +292,7 @@ export default function SurvivalRateDashboard({
   }, [stats]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-12">
+    <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300 pb-12">
       {/* Toast Notification */}
       {toast && (
         <div

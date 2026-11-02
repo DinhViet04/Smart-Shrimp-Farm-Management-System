@@ -71,4 +71,25 @@ export class ChatbotController {
   async deleteDocument(@Param('id') id: string) {
     return this.chatbotService.deleteDocument(id);
   }
+
+  /**
+   * Kiểm tra cấu hình và kết nối Google Drive Knowledge Store
+   * Endpoint: GET /api/chatbot/documents/drive/status
+   */
+  @Get('documents/drive/status')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async getDriveStatus() {
+    return this.chatbotService.getDriveStatus();
+  }
+
+  /**
+   * Kích hoạt đồng bộ tài liệu từ Google Drive vào RAG Vector Store
+   * Endpoint: POST /api/chatbot/documents/drive/sync
+   */
+  @Post('documents/drive/sync')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async syncDriveDocuments(@Body() body: any) {
+    return this.chatbotService.syncDriveDocuments(body);
+  }
 }
+

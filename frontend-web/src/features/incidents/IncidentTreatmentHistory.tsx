@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar,
   RotateCcw,
@@ -852,8 +853,8 @@ export default function IncidentTreatmentHistory({
       )}
 
       {/* ── Dialog Xem Chi Tiết Sự Cố & Lịch Sử Điều Trị Đầy Đủ ─────────────── */}
-      {selectedIncident && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200">
+      {selectedIncident && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200">
           <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex shrink-0 items-start justify-between border-b border-slate-100 bg-slate-50/90 px-6 py-4">
@@ -1022,7 +1023,8 @@ export default function IncidentTreatmentHistory({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

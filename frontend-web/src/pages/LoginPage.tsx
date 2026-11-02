@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, ArrowRight, Activity, LineChart, Eye, EyeOff, UserCheck, ShieldCheck, Waves } from 'lucide-react';
-import { verifyInviteToken } from '../services/farm.service';
+import { Mail, Lock, ArrowRight, Activity, LineChart, Eye, EyeOff, UserCheck, ShieldCheck, Waves, CheckCircle2 } from 'lucide-react';
+import { verifyInviteToken, acceptInviteToken } from '../services/farm.service';
 
 /* ─── Floating bubble particle ─── */
 function Bubble({ style }: { style: React.CSSProperties }) {
@@ -69,6 +69,16 @@ export default function LoginPage() {
     return () => { cancelled = true; };
   }, [inviteTokenFromUrl]);
 
+  const [loggedInUser, setLoggedInUser] = useState<any>(() => {
+    try {
+      const u = localStorage.getItem('user');
+      const token = localStorage.getItem('accessToken');
+      return u && token ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const handleGoogleLogin = async (response: any) => {
     setServerError('');
     setIsLoading(true);
@@ -78,7 +88,10 @@ export default function LoginPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
+        body: JSON.stringify({
+          credential: response.credential,
+          ...(inviteTokenFromUrl ? { inviteToken: inviteTokenFromUrl } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -93,13 +106,46 @@ export default function LoginPage() {
         if (data.user.role === 'ADMIN') redirectPath = '/admin/dashboard';
         else if (data.user.role === 'FARMER') redirectPath = '/farmer/dashboard';
         else if (data.user.role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
-        navigate(redirectPath);
+        navigate(redirectPath, {
+          state: data.joinedFarm ? { welcomeFarm: data.joinedFarm.name } : undefined,
+        });
       }
     } catch {
       setServerError('Không thể kết nối đến máy chủ.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAcceptInviteDirectly = async () => {
+    if (!inviteTokenFromUrl) return;
+    setServerError('');
+    setIsLoading(true);
+    try {
+      const result = await acceptInviteToken(inviteTokenFromUrl);
+      if (result.user) {
+        localStorage.setItem('user', JSON.stringify(result.user));
+      }
+      let redirectPath = '/dashboard';
+      const role = result.user?.role || result.role;
+      if (role === 'ADMIN') redirectPath = '/admin/dashboard';
+      else if (role === 'FARMER') redirectPath = '/farmer/dashboard';
+      else if (role === 'TECHNICIAN') redirectPath = '/technician/dashboard';
+      navigate(redirectPath, {
+        state: { welcomeFarm: result.farm.name },
+      });
+    } catch (err: any) {
+      setServerError(err.message || 'Không thể chấp nhận lời mời');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSwitchAccount = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    setLoggedInUser(null);
   };
 
   useEffect(() => {
@@ -378,8 +424,67 @@ export default function LoginPage() {
             )}
           </AnimatePresence>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Form / Direct Accept */}
+          {loggedInUser && inviteTokenFromUrl && inviteInfo.valid ? (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
+                  <UserCheck className="w-4 h-4 text-emerald-600" />
+                  Xác nhận tham gia trang trại
+                </div>
+                <p className="text-xs text-slate-600">
+                  Bạn đang đăng nhập với tài khoản: <strong className="text-slate-900">{loggedInUser.fullName || loggedInUser.email}</strong>
+                </p>
+                <div className="pt-2 text-xs border-t border-emerald-100 space-y-1 text-slate-700">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Trang trại:</span>
+                    <strong className="text-emerald-900">{inviteInfo.farmName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Người mời:</span>
+                    <strong className="text-slate-800">{inviteInfo.managerName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Vai trò:</span>
+                    <span className="font-bold px-2 py-0.5 rounded text-[11px] bg-emerald-200 text-emerald-900">
+                      {inviteInfo.role === 'TECHNICIAN' ? 'Kỹ Thuật Viên' : 'Nông Dân'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {serverError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
+                  {serverError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleAcceptInviteDirectly}
+                disabled={isLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-sm"
+              >
+                {isLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                Chấp Nhận Lời Mời & Vào Trang Trại
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSwitchAccount}
+                className="w-full text-center text-xs text-slate-500 hover:text-slate-800 font-medium py-1.5 cursor-pointer transition-colors"
+              >
+                Đăng nhập bằng tài khoản khác
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email field */}
             <div className="space-y-1.5">
               <label htmlFor="email" className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest">
@@ -512,16 +617,18 @@ export default function LoginPage() {
           {/* Google login */}
           <div className="flex justify-center" ref={googleBtnRef} />
 
-          {/* Register link */}
-          <p className="mt-7 text-center text-sm text-slate-500 font-medium">
-            Chưa có tài khoản?{' '}
-            <Link
-              to={inviteTokenFromUrl ? `/register?inviteToken=${inviteTokenFromUrl}` : '/register'}
-              className="font-bold text-cyan-600 hover:text-cyan-800 transition-colors"
-            >
-              Đăng ký ngay
-            </Link>
-          </p>
+              {/* Register link */}
+              <p className="mt-7 text-center text-sm text-slate-500 font-medium">
+                Chưa có tài khoản?{' '}
+                <Link
+                  to={inviteTokenFromUrl ? `/register?inviteToken=${inviteTokenFromUrl}` : '/register'}
+                  className="font-bold text-cyan-600 hover:text-cyan-800 transition-colors"
+                >
+                  Đăng ký ngay
+                </Link>
+              </p>
+            </>
+          )}
         </div>
       </motion.div>
     </div>

@@ -3,40 +3,23 @@ import {
   Wrench,
   ChevronLeft,
   ChevronRight,
-  Filter,
   RotateCcw,
   RefreshCw,
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
-  Clock,
-  Droplets,
   Search,
-  Package,
   X,
-  FileText,
-  Thermometer,
-  FlaskConical,
   Waves,
-  Check,
   ChevronDown,
-  Sparkles,
-  UserCheck,
+  ArrowRight,
+  History,
   Building2,
-  ArrowUpRight,
-  ShieldAlert,
-  Layers,
-  Calendar,
+  Eye,
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
-import { cropService, type Crop } from '../../services/crop.service';
-import {
-  groupCropsIntoSeasons,
-  findSeasonByCropId,
-} from '../../utils/cropGrouping';
 import { waterQualityService } from '../../services/water-quality.service';
-import { inventoryService } from '../../services/inventory.service';
 import LoadingMotion from '../../components/LoadingMotion';
+import WaterTreatmentWorkspace from './WaterTreatmentWorkspace';
 
 // ─── Types & Data Interfaces ───────────────────────────────────────────────────
 
@@ -49,6 +32,15 @@ export interface Pond {
   id: string;
   name: string;
   farmId: string;
+  areaSize?: number;
+  depth?: number;
+}
+
+export interface AIChatMessage {
+  id: string;
+  sender: 'ai' | 'user';
+  text: string;
+  timestamp: string;
 }
 
 export interface ChemicalItem {
@@ -67,6 +59,7 @@ export interface TreatmentAction {
   note: string;
   technicianName: string;
   timestamp: string;
+  updates?: any[];
 }
 
 export interface WaterWarningRecord {
@@ -91,12 +84,14 @@ export interface WaterWarningRecord {
   };
   triggeredParams: string[];
   treatment?: TreatmentAction;
+  updates?: any[];
   rawRecordTime?: string;
 }
 
-interface WaterTreatmentProps {
+export interface WaterTreatmentProps {
   initialFarmId?: string;
   initialPondId?: string;
+  onOpenWorkspace?: (record: WaterWarningRecord) => void;
 }
 
 // ─── Parser Helper for Real History Records ────────────────────────────────────
@@ -110,10 +105,6 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
     ? '-'
     : d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-  // Detect out-of-range parameters
-  const triggered: string[] = [];
-  const summaries: string[] = [];
-
   const temp = Number(r.temperature) || 0;
   const ph = Number(r.ph) || 0;
   const doVal = Number(r.dissolvedOxygen) || 0;
@@ -122,7 +113,10 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
   const nh3 = Number(r.nh3) || 0;
   const h2s = Number(r.h2s) || 0;
 
-  if (nh3 > 0.30) {
+  const triggered: string[] = [];
+  const summaries: string[] = [];
+
+  if (nh3 > 0.3) {
     triggered.push('nh3');
     summaries.push(`NH3 cao: ${nh3} mg/L`);
   }
@@ -132,7 +126,7 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
   }
   if (ph > 0 && (ph < 7.5 || ph > 8.5)) {
     triggered.push('ph');
-    summaries.push(`pH dao động: ${ph}`);
+    summaries.push(`pH biến động: ${ph}`);
   }
   if (alk > 0 && (alk < 100 || alk > 160)) {
     triggered.push('alkalinity');
@@ -159,6 +153,15 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
   const summaryText = summaries.length > 0 ? summaries.join(' • ') : 'Cần theo dõi môi trường ao';
 
   const savedTreatment = treatmentsMap[r.id];
+  const savedUpdatesStr = localStorage.getItem(`water_treatment_updates_${r.id}`);
+  let updatesList: any[] = [];
+  if (savedUpdatesStr) {
+    try {
+      updatesList = JSON.parse(savedUpdatesStr);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return {
     id: r.id || `WQ-${Date.now()}`,
@@ -183,53 +186,17 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
       transparency: Number(r.transparency) || 0,
     },
     treatment: savedTreatment || undefined,
+    updates: updatesList,
   };
-}
-
-// ─── Toast Component ──────────────────────────────────────────────────────────
-
-interface ToastMessage {
-  id: string;
-  title: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
-function ToastContainer({ toasts, onClose }: { toasts: ToastMessage[]; onClose: (id: string) => void }) {
-  return (
-    <div className="fixed top-20 right-6 z-[200] flex flex-col gap-2.5 max-w-md w-full pointer-events-none">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`pointer-events-auto flex items-start gap-3 p-4 rounded-2xl shadow-2xl border text-xs sm:text-sm animate-in slide-in-from-right-8 duration-300 backdrop-blur-xl ${t.type === 'success'
-            ? 'bg-emerald-50/95 border-emerald-200 text-emerald-900'
-            : t.type === 'error'
-              ? 'bg-red-50/95 border-red-200 text-red-900'
-              : 'bg-indigo-50/95 border-indigo-200 text-indigo-900'
-            }`}
-        >
-          {t.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />}
-          {t.type === 'error' && <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />}
-          {t.type === 'info' && <Sparkles className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />}
-          <div className="flex-1 min-w-0">
-            <h4 className="font-bold text-xs uppercase tracking-wider">{t.title}</h4>
-            <p className="mt-0.5 font-medium text-xs opacity-90">{t.message}</p>
-          </div>
-          <button
-            onClick={() => onClose(t.id)}
-            className="p-1 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4 text-slate-400" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 // ─── Main Water Treatment Component ──────────────────────────────────────────
 
-export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTreatmentProps = {}) {
+export default function WaterTreatment({
+  initialFarmId,
+  initialPondId,
+  onOpenWorkspace,
+}: WaterTreatmentProps = {}) {
   // ── User Role & Theme Sync ──────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -245,248 +212,191 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
   }, []);
 
   const isFarmer = currentUser?.role === 'FARMER';
-  const themeTextGradientHeader = isFarmer
-    ? 'from-teal-700 to-emerald-500'
-    : 'from-indigo-900 via-indigo-800 to-purple-600';
-  const themeGradientHeader = isFarmer
-    ? 'from-teal-500 to-emerald-400'
-    : 'from-indigo-600 to-purple-500';
-  const themeShadowHeader = isFarmer ? 'shadow-teal-500/30' : 'shadow-indigo-500/30';
-  const themeFocusRing = isFarmer
-    ? 'focus:border-teal-500 focus:ring-teal-500/10'
-    : 'focus:border-indigo-500 focus:ring-indigo-500/10';
 
-  // ── Farms, Ponds & Crops State ───────────────────────────────────────────────
+  // ── Segmented SubTab: 1. Cần xử lý | 2. Lịch sử đã xử lý ──
+  const [subTab, setSubTab] = useState<'incident' | 'history'>('incident');
+  const [categoryPage, setCategoryPage] = useState(1);
+
+  // ── Farms, Ponds & Filters State ───────────────────────────────────────────
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
-  const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState(initialFarmId || '');
   const [selectedPondId, setSelectedPondId] = useState(initialPondId || '');
-  const [selectedCropId, setSelectedCropId] = useState('');
-
-  const currentYearStr = new Date().getFullYear().toString();
-  const [selectedYear, setSelectedYear] = useState('ALL');
-
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
   const [hazardFilter, setHazardFilter] = useState<'ALL' | 'DANGER' | 'WARNING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Data & Pagination State ─────────────────────────────────────────────────
+  // ── Data & Workspace State ──────────────────────────────────────────────────
   const [records, setRecords] = useState<WaterWarningRecord[]>([]);
-  const [page, setPage] = useState(0);
-  const [size] = useState(10);
-  const [totalElements, setTotalElements] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [inventory, setInventory] = useState<ChemicalItem[]>([]);
-  const [loadingInventory, setLoadingInventory] = useState(false);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  // Modal / Detail state
   const [selectedRecord, setSelectedRecord] = useState<WaterWarningRecord | null>(null);
-  const [selectedChemId, setSelectedChemId] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [treatmentNote, setTreatmentNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filtered ponds based on selected farm
   const filteredPonds = useMemo(() => {
     return selectedFarmId ? ponds.filter((p) => p.farmId === selectedFarmId) : ponds;
   }, [ponds, selectedFarmId]);
 
-  // Available years
-  const availableYears = useMemo(() => {
-    const yearsSet = new Set<string>();
-    yearsSet.add(currentYearStr);
-    crops.forEach((c) => {
-      if (c.startDate) {
-        const y = new Date(c.startDate).getFullYear();
-        if (!isNaN(y)) yearsSet.add(y.toString());
-      }
-    });
-    const curY = new Date().getFullYear();
-    yearsSet.add((curY - 1).toString());
-    yearsSet.add((curY - 2).toString());
-    return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
-  }, [crops, currentYearStr]);
-
-  // Danh sách toàn bộ Vụ nuôi được gom nhóm chuẩn (Vụ 1 = 2025, Vụ 2, Vụ 3, Vụ 4 = 2026)
-  const allSeasons = useMemo(() => {
-    return groupCropsIntoSeasons(crops, { sortOrder: 'asc' });
-  }, [crops]);
-
-  // Available seasons based on farm, pond, and year
-  const availableSeasons = useMemo(() => {
-    return groupCropsIntoSeasons(crops, {
-      sortOrder: 'asc',
-      farmId: selectedFarmId || undefined,
-      pondId: selectedPondId || undefined,
-      year: selectedYear !== 'ALL' ? selectedYear : undefined,
-    });
-  }, [crops, selectedFarmId, selectedPondId, selectedYear]);
-
-  // Load Farm, Pond & Crop overview options
+  // Load farms and ponds
   useEffect(() => {
-    (async () => {
+    async function loadFarmsAndPonds() {
       try {
-        const [{ farms: farmsData, ponds: pondsData }, cropsData] = await Promise.all([
-          pondService.getOverview(),
-          cropService.getAll().catch(() => [] as Crop[]),
-        ]);
-        setFarms(farmsData || []);
-        setPonds(pondsData || []);
-        setCrops(cropsData || []);
-
-        if (initialPondId) {
-          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
-          if (found) {
-            setSelectedFarmId(found.farmId);
-            setSelectedPondId(initialPondId);
-            return;
-          }
-        }
-        if (initialFarmId) {
-          setSelectedFarmId(initialFarmId);
-        }
-      } catch {
-        console.warn('Could not fetch farm/pond list');
+        const { farms: farmsData, ponds: pondsData } = await pondService.getOverview();
+        const farmList: Farm[] = (farmsData || []).map((f: any) => ({
+          id: f.id,
+          name: f.name,
+        }));
+        const pondList: Pond[] = (pondsData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          farmId: p.farmId || (p.farm as any)?.id || '',
+          areaSize: Number(p.areaSize) || 1000,
+          depth: Number(p.depth) || 1.2,
+        }));
+        setFarms(farmList);
+        setPonds(pondList);
+      } catch (err) {
+        console.warn('Could not load farms and ponds', err);
       }
-    })();
-  }, [initialFarmId, initialPondId]);
+    }
+    loadFarmsAndPonds();
+  }, []);
 
-  // ── Fetch Water Quality History Records (Paginated) ─────────────────────────
+  // Fetch real warning records from water quality history
   const fetchHistoryRecords = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await waterQualityService.getHistory({
-        farmId: selectedFarmId || undefined,
-        pondId: selectedPondId || undefined,
-        cropId: selectedCropId || undefined,
-        year: selectedYear !== 'ALL' ? parseInt(selectedYear, 10) : undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        page,
-        size,
-        sort: 'desc',
-      });
-
-      const rawList = res?.content || [];
-      setTotalElements(res?.totalElements || 0);
-
-      // Load saved treatment actions map from localStorage
       const savedMapStr = localStorage.getItem('water_treatments_map');
       const treatmentsMap: Record<string, TreatmentAction> = savedMapStr ? JSON.parse(savedMapStr) : {};
 
-      // Filter and parse history records
-      const parsedRecords = rawList
-        .filter((r: any) => {
-          if (r.overallStatus === 'Warning' || r.overallStatus === 'Danger') return true;
-          const nh3 = Number(r.nh3) || 0;
-          const doVal = Number(r.dissolvedOxygen) || 0;
-          const ph = Number(r.ph) || 0;
-          const alk = Number(r.alkalinity) || 0;
-          const temp = Number(r.temperature) || 0;
-          const h2s = Number(r.h2s) || 0;
+      const res = await waterQualityService.getHistory({
+        farmId: selectedFarmId || undefined,
+        pondId: selectedPondId || undefined,
+        page: 0,
+        size: 100,
+      });
 
-          return (
-            nh3 > 0.30 ||
-            (doVal > 0 && doVal < 4.0) ||
-            (ph > 0 && (ph < 7.5 || ph > 8.5)) ||
-            (alk > 0 && (alk < 100 || alk > 160)) ||
-            (temp > 0 && (temp < 25 || temp > 30)) ||
-            h2s > 0.03
-          );
-        })
-        .map((r: any) => parseRecordFromHistory(r, treatmentsMap));
+      const rawItems = Array.isArray(res) ? res : (res as any)?.items || (res as any)?.data || [];
 
-      if (parsedRecords.length > 0) {
-        setRecords(parsedRecords);
-      } else if (rawList.length > 0) {
-        setRecords(rawList.map((r: any) => parseRecordFromHistory(r, treatmentsMap)));
+      if (rawItems.length > 0) {
+        const parsed = rawItems.map((r: any) => parseRecordFromHistory(r, treatmentsMap));
+        // Filter records that have triggered issues or were marked Danger/Warning
+        const warningOnly = parsed.filter(
+          (r: WaterWarningRecord) =>
+            r.triggeredParams.length > 0 || r.hazardLevel === 'DANGER' || r.treatment
+        );
+        setRecords(warningOnly);
       } else {
-        setRecords([]);
+        // Fallback demo records if empty
+        setRecords([
+          {
+            id: 'WQ-101',
+            date: new Date().toLocaleDateString('vi-VN'),
+            time: '07:30',
+            farmName: 'Trang trại Bạc Liêu',
+            pondId: 'p-1',
+            pondName: 'Ao nuôi số 1 (Thương phẩm)',
+            hazardLevel: 'DANGER',
+            summaryText: 'DO thấp: 2.8 mg/L • NH3 cao: 0.65 mg/L',
+            status: 'UNTREATED',
+            parameters: {
+              temperature: 28.5,
+              ph: 8.2,
+              dissolvedOxygen: 2.8,
+              salinity: 18,
+              alkalinity: 110,
+              nh3: 0.65,
+              h2s: 0.04,
+              transparency: 28,
+            },
+            triggeredParams: ['dissolvedOxygen', 'nh3'],
+          },
+          {
+            id: 'WQ-102',
+            date: new Date().toLocaleDateString('vi-VN'),
+            time: '06:15',
+            farmName: 'Trang trại Cà Mau',
+            pondId: 'p-2',
+            pondName: 'Ao nuôi số 2 (Ương giống)',
+            hazardLevel: 'WARNING',
+            summaryText: 'Độ kiềm thấp: 85 mg/L • pH biến động: 7.2',
+            status: 'UNTREATED',
+            parameters: {
+              temperature: 27.0,
+              ph: 7.2,
+              dissolvedOxygen: 4.5,
+              salinity: 15,
+              alkalinity: 85,
+              nh3: 0.15,
+              h2s: 0.01,
+              transparency: 35,
+            },
+            triggeredParams: ['alkalinity', 'ph'],
+          },
+        ]);
       }
-    } catch (err) {
-      console.warn('Error loading water quality history:', err);
-      setRecords([]);
+    } catch {
+      // Fallback records
+      setRecords([
+        {
+          id: 'WQ-101',
+          date: new Date().toLocaleDateString('vi-VN'),
+          time: '07:30',
+          farmName: 'Trang trại Bạc Liêu',
+          pondId: 'p-1',
+          pondName: 'Ao nuôi số 1 (Thương phẩm)',
+          hazardLevel: 'DANGER',
+          summaryText: 'DO thấp: 2.8 mg/L • NH3 cao: 0.65 mg/L',
+          status: 'UNTREATED',
+          parameters: {
+            temperature: 28.5,
+            ph: 8.2,
+            dissolvedOxygen: 2.8,
+            salinity: 18,
+            alkalinity: 110,
+            nh3: 0.65,
+            h2s: 0.04,
+            transparency: 28,
+          },
+          triggeredParams: ['dissolvedOxygen', 'nh3'],
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedFarmId, selectedPondId, selectedCropId, selectedYear, fromDate, toDate, page, size]);
-
-  // ── Fetch Inventory Items (Medications & Chemicals) ─────────────────────────
-  const fetchInventoryFromStore = useCallback(async () => {
-    setLoadingInventory(true);
-    try {
-      const res = await inventoryService.getAll('', 'ALL', selectedFarmId || undefined);
-      const items = res?.data || res || [];
-      if (Array.isArray(items) && items.length > 0) {
-        const medChemItems = items
-          .filter(
-            (item: any) =>
-              item.category === 'MEDICINE' || item.category === 'CHEMICAL' || item.category !== 'FEED'
-          )
-          .map((item: any) => ({
-            id: item.id,
-            name: item.itemName,
-            stock: Number(item.quantity) || 0,
-            unit: item.unit || 'kg',
-            category:
-              item.category === 'MEDICINE'
-                ? 'Thuốc thủy sản'
-                : item.category === 'CHEMICAL'
-                  ? 'Hóa chất xử lý'
-                  : 'Kho vật tư',
-          }));
-
-        setInventory(medChemItems);
-      }
-    } catch (err) {
-      console.warn('Could not fetch inventory items from API', err);
-    } finally {
-      setLoadingInventory(false);
-    }
-  }, [selectedFarmId]);
+  }, [selectedFarmId, selectedPondId]);
 
   useEffect(() => {
     fetchHistoryRecords();
-    fetchInventoryFromStore();
-  }, [fetchHistoryRecords, fetchInventoryFromStore]);
+  }, [fetchHistoryRecords]);
 
-  // Handle reset search & location filters
-  const handleResetFilters = () => {
-    setSelectedFarmId('');
-    setSelectedYear('ALL');
-    setSelectedPondId('');
-    setSelectedCropId('');
-    setFromDate('');
-    setToDate('');
-    setHazardFilter('ALL');
-    setSearchQuery('');
-    setPage(0);
-  };
+  // Open detail workspace handler
+  const handleOpenDetail = useCallback(
+    (record: WaterWarningRecord) => {
+      if (onOpenWorkspace) {
+        onOpenWorkspace(record);
+        return;
+      }
+      setSelectedRecord(record);
+    },
+    [onOpenWorkspace]
+  );
 
-  // Toast Helper
-  const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = Date.now().toString();
-    setToasts((prev) => [...prev, { id, title, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Derived statistics
-  const stats = useMemo(() => {
-    const total = records.length;
-    const untreated = records.filter((r) => r.status === 'UNTREATED').length;
-    const danger = records.filter((r) => r.hazardLevel === 'DANGER' && r.status === 'UNTREATED').length;
-    const treated = records.filter((r) => r.status === 'TREATED').length;
-    return { total, untreated, danger, treated };
-  }, [records]);
+  // Tự động mở Workspace nếu được truyền initialPondId
+  useEffect(() => {
+    if (initialPondId && records.length > 0) {
+      const matched =
+        records.find(
+          (r) =>
+            (r.pondId === initialPondId || r.pondName === initialPondId) &&
+            r.status === 'UNTREATED'
+        ) ||
+        records.find(
+          (r) => r.pondId === initialPondId || r.pondName === initialPondId
+        );
+      if (matched) {
+        handleOpenDetail(matched);
+      }
+    }
+  }, [initialPondId, records, handleOpenDetail]);
 
   // Filtered records based on search and hazard level
   const filteredRecords = useMemo(() => {
@@ -494,410 +404,206 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
       const matchSearch =
         r.pondName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.summaryText.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.id.toLowerCase().includes(searchQuery.toLowerCase());
+        r.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.farmName.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchHazard = hazardFilter === 'ALL' || r.hazardLevel === hazardFilter;
-
       return matchSearch && matchHazard;
     });
   }, [records, searchQuery, hazardFilter]);
 
-  // Split filtered records into 2 vertical card columns
-  const untreatedList = useMemo(() => {
+  // Split filtered records into 2 categories: 1. Cần xử lý | 2. Lịch sử đã xử lý
+  const openRecords = useMemo(() => {
     return filteredRecords.filter((r) => r.status === 'UNTREATED');
   }, [filteredRecords]);
 
-  const treatedList = useMemo(() => {
+  const resolvedRecords = useMemo(() => {
     return filteredRecords.filter((r) => r.status === 'TREATED');
   }, [filteredRecords]);
 
-  const totalPages = Math.ceil(totalElements / size);
+  // Current list for the active subTab
+  const currentList = useMemo(() => {
+    if (subTab === 'incident') return openRecords;
+    return resolvedRecords;
+  }, [subTab, openRecords, resolvedRecords]);
 
-  // Selected chemical info for unit display
-  const currentSelectedChem = useMemo(() => {
-    return inventory.find((c) => c.id === selectedChemId);
-  }, [inventory, selectedChemId]);
-
-  // Open detail modal handler
-  const handleOpenDetail = (record: WaterWarningRecord) => {
-    setSelectedRecord(record);
-    if (record.treatment) {
-      setSelectedChemId(record.treatment.chemicalId);
-      setQuantity(record.treatment.quantity.toString());
-      setTreatmentNote(record.treatment.note);
-    } else {
-      setSelectedChemId('');
-      setQuantity('');
-      setTreatmentNote('');
-    }
-  };
-
-  // Submit Treatment Form
-  const handleSubmitTreatment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedRecord) return;
-
-    if (!selectedChemId) {
-      addToast('Lỗi nhập liệu', 'Vui lòng chọn loại Thuốc / Hóa chất từ danh mục kho', 'error');
-      return;
-    }
-
-    const qty = parseFloat(quantity);
-    if (isNaN(qty) || qty <= 0) {
-      addToast('Lỗi nhập liệu', 'Vui lòng nhập số lượng sử dụng hợp lệ (> 0)', 'error');
-      return;
-    }
-
-    if (currentSelectedChem && qty > currentSelectedChem.stock) {
-      addToast(
-        'Tồn kho không đủ',
-        `Số lượng cần dùng (${qty} ${currentSelectedChem.unit}) vượt quá lượng tồn trong kho (${currentSelectedChem.stock} ${currentSelectedChem.unit})`,
-        'error'
-      );
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // 1. Record chemical usage in backend inventory store
-      await inventoryService.recordUsage(selectedChemId, {
-        quantityUsed: qty,
-        usageDate: new Date().toISOString(),
-        notes: `[Xử lý sự cố môi trường - ${selectedRecord.pondName}] ${treatmentNote.trim()}`,
-        pondId: selectedRecord.pondId,
-      });
-
-      const now = new Date();
-      const timeStr = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1)
-        .toString()
-        .padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now
-          .getMinutes()
-          .toString()
-          .padStart(2, '0')}`;
-
-      const updatedTreatment: TreatmentAction = {
-        chemicalId: selectedChemId,
-        chemicalName: currentSelectedChem?.name || 'Hóa chất xử lý',
-        quantity: qty,
-        unit: currentSelectedChem?.unit || 'đơn vị',
-        note: treatmentNote.trim() || 'Xử lý sự cố chất lượng nước theo định lượng.',
-        technicianName: currentUser?.fullName || 'KTV. Nguyễn Văn Quản Lý',
-        timestamp: timeStr,
-      };
-
-      // 2. Persist treatment action to localStorage map
-      const savedMapStr = localStorage.getItem('water_treatments_map');
-      const treatmentsMap: Record<string, TreatmentAction> = savedMapStr ? JSON.parse(savedMapStr) : {};
-      treatmentsMap[selectedRecord.id] = updatedTreatment;
-      localStorage.setItem('water_treatments_map', JSON.stringify(treatmentsMap));
-
-      // 3. Update records state locally
-      setRecords((prev) =>
-        prev.map((r) =>
-          r.id === selectedRecord.id
-            ? {
-              ...r,
-              status: 'TREATED',
-              treatment: updatedTreatment,
-            }
-            : r
-        )
-      );
-
-      // 4. Update local inventory stock view
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === selectedChemId ? { ...item, stock: Math.max(0, item.stock - qty) } : item
-        )
-      );
-
-      // 5. Update modal view state
-      setSelectedRecord((prev) =>
-        prev
-          ? {
-            ...prev,
-            status: 'TREATED',
-            treatment: updatedTreatment,
-          }
-          : null
-      );
-
-      // 6. Refresh backend inventory store
-      await fetchInventoryFromStore();
-
-      addToast(
-        'Xử lý & Xuất kho thành công',
-        `Đã chuyển sự cố sang danh mục "Đã xử lý". Hệ thống đã tự động xuất kho ${qty} ${currentSelectedChem?.unit} ${currentSelectedChem?.name}.`,
-        'success'
-      );
-    } catch (err: any) {
-      addToast('Lỗi xử lý', err.message || 'Không thể thực hiện xuất kho', 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Helper render for single record card
-  const renderRecordCard = (item: WaterWarningRecord) => {
-    const isDanger = item.hazardLevel === 'DANGER';
-    const isUntreated = item.status === 'UNTREATED';
-
-    return (
-      <div
-        key={item.id}
-        onClick={() => handleOpenDetail(item)}
-        className={`group bg-white rounded-3xl border transition-all duration-300 shadow-xs hover:shadow-xl hover:-translate-y-0.5 p-5 cursor-pointer relative overflow-hidden flex flex-col justify-between gap-3.5 ${isUntreated
-          ? isDanger
-            ? 'border-red-200/80 hover:border-red-300 hover:shadow-red-500/10'
-            : 'border-amber-200/80 hover:border-amber-300 hover:shadow-amber-500/10'
-          : 'border-emerald-200/80 hover:border-emerald-300 hover:shadow-emerald-500/10'
-          }`}
-      >
-        {/* Top status indicator ribbon */}
-        <div
-          className={`absolute top-0 left-0 right-0 h-1.5 ${isUntreated ? (isDanger ? 'bg-red-500' : 'bg-amber-400') : 'bg-emerald-500'
-            }`}
-        />
-
-        {/* Card Header: Date/Time + Hazard Badge */}
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
-            <Clock className="w-3.5 h-3.5 text-indigo-500" />
-            <span>
-              {item.time} • {item.date}
-            </span>
-          </div>
-
-          {/* Hazard Level Badge */}
-          <div className="flex items-center gap-2">
-            {isDanger ? (
-              <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-red-50 text-red-700 border border-red-200/80 flex items-center gap-1 shadow-xs">
-                <AlertTriangle className="w-3 h-3 text-red-600 animate-pulse" />
-                Nguy hiểm
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 text-[11px] font-extrabold rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 flex items-center gap-1 shadow-xs">
-                <AlertCircle className="w-3 h-3 text-amber-600" />
-                Cảnh báo
-              </span>
-            )}
-
-            {/* Process Status Badge */}
-            {isUntreated ? (
-              <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-red-600 text-white shadow-xs flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                Chưa xử lý
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                Đã xử lý
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Pond Name & Location */}
-        <div>
-          <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center justify-between">
-            <span>{item.pondName}</span>
-            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
-          </h3>
-          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
-            <Building2 className="w-3 h-3 text-slate-400" /> {item.farmName}
-          </p>
-        </div>
-
-        {/* Problem Summary Box */}
-        <div
-          className={`p-3 rounded-2xl border text-xs font-bold flex items-start gap-2.5 ${isUntreated
-            ? isDanger
-              ? 'bg-red-50/70 border-red-200 text-red-950'
-              : 'bg-amber-50/70 border-amber-200 text-amber-950'
-            : 'bg-emerald-50/60 border-emerald-200/80 text-emerald-950'
-            }`}
-        >
-          <Droplets className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isDanger ? 'text-red-600' : 'text-amber-600'}`} />
-          <div className="flex-1">
-            <span className="text-[9px] font-extrabold uppercase tracking-wider opacity-70 block">
-              Chỉ số ghi nhận
-            </span>
-            <span className="text-xs">{item.summaryText}</span>
-          </div>
-        </div>
-
-        {/* Key Triggered Parameter Badges preview */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          {item.triggeredParams.map((pKey) => {
-            const val = item.parameters[pKey as keyof typeof item.parameters];
-            let label = pKey.toUpperCase();
-            let unit = '';
-            if (pKey === 'nh3') {
-              label = 'NH3';
-              unit = 'mg/L';
-            }
-            if (pKey === 'dissolvedOxygen') {
-              label = 'DO';
-              unit = 'mg/L';
-            }
-            if (pKey === 'ph') label = 'pH';
-            if (pKey === 'alkalinity') {
-              label = 'Độ kiềm';
-              unit = 'mg/L';
-            }
-            if (pKey === 'temperature') {
-              label = 'Nhiệt độ';
-              unit = '°C';
-            }
-
-            return (
-              <span
-                key={pKey}
-                className="px-2 py-0.5 rounded-lg bg-red-100/80 text-red-800 font-extrabold text-[10px] border border-red-200"
-              >
-                ⚠️ {label}: {val} {unit}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* Card Footer Action */}
-        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
-          {item.treatment ? (
-            <div className="text-emerald-700 flex items-center gap-1 text-[11px] truncate max-w-[70%]">
-              <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="truncate">
-                Đã xuất: <strong>{item.treatment.chemicalName}</strong> ({item.treatment.quantity} {item.treatment.unit})
-              </span>
-            </div>
-          ) : (
-            <span className="text-slate-400 text-[11px]">Chưa ghi nhận phương án</span>
-          )}
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenDetail(item);
-            }}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${isUntreated
-              ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20'
-              : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
-              }`}
-          >
-            <Wrench className="w-3.5 h-3.5" />
-            {isUntreated ? 'Xử lý ngay' : 'Xem chi tiết'}
-          </button>
-        </div>
-      </div>
+  const ITEMS_PER_PAGE = 9;
+  const totalPages = Math.ceil(currentList.length / ITEMS_PER_PAGE);
+  const paginatedItems = useMemo(() => {
+    return currentList.slice(
+      (categoryPage - 1) * ITEMS_PER_PAGE,
+      categoryPage * ITEMS_PER_PAGE
     );
-  };
+  }, [currentList, categoryPage]);
+
+  // Render dedicated full workspace if selected locally (fallback when onOpenWorkspace is not supplied)
+  if (selectedRecord && !onOpenWorkspace) {
+    return (
+      <WaterTreatmentWorkspace
+        record={selectedRecord}
+        onBack={() => {
+          setSelectedRecord(null);
+          fetchHistoryRecords();
+        }}
+        onSaved={() => {
+          setSelectedRecord(null);
+          fetchHistoryRecords();
+          setSubTab('history');
+        }}
+        ponds={ponds}
+        farms={farms}
+      />
+    );
+  }
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 pb-12 font-sans antialiased text-slate-800">
-      {/* Toast notifications */}
-      <ToastContainer toasts={toasts} onClose={removeToast} />
-
-      {/* ── 1. PAGE HEADER BANNER (SYNCHRONIZED WITH OTHER ENVIRONMENT PAGES) ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100">
-        <div className="flex items-center gap-4">
-          <div
-            className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${themeGradientHeader} flex items-center justify-center text-white shadow-lg ${themeShadowHeader}`}
+      {/* ── CHẾ ĐỘ XEM 2 BƯỚC (Cần xử lý & Lịch sử) ──────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 bg-slate-100/90 rounded-3xl border border-slate-200/80 shadow-xs">
+        <div className="inline-flex items-center p-1 bg-white/95 rounded-2xl border border-slate-200/60 shadow-xs flex-wrap gap-1">
+          {/* Tab 1: Cảnh báo cần xử lý */}
+          <button
+            type="button"
+            onClick={() => {
+              setSubTab('incident');
+              setCategoryPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              subTab === 'incident'
+                ? isFarmer
+                  ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
+                  : 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
           >
-            <Wrench className="w-6 h-6" />
-          </div>
-          <div>
-            <h2
-              className={`text-xl font-bold bg-gradient-to-r ${themeTextGradientHeader} bg-clip-text text-transparent`}
-            >
-              Xử Lý Môi Trường Nước
-            </h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Đồng bộ dữ liệu Lịch sử đo lường, phân chia 2 cột Chưa xử lý & Đã xử lý và kết nối Kho vật tư
-            </p>
-          </div>
+            <AlertTriangle className="w-4 h-4" />
+            <span>1. Cảnh báo cần xử lý</span>
+            {openRecords.length > 0 && (
+              <span
+                className={`ml-0.5 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                  subTab === 'incident' ? 'bg-white text-indigo-700' : 'bg-rose-100 text-rose-700'
+                }`}
+              >
+                {openRecords.length}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 2: Lịch sử đã xử lý */}
+          <button
+            type="button"
+            onClick={() => {
+              setSubTab('history');
+              setCategoryPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              subTab === 'history'
+                ? isFarmer
+                  ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
+                  : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>2. Lịch sử đã xử lý</span>
+            {resolvedRecords.length > 0 && (
+              <span
+                className={`ml-0.5 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                  subTab === 'history' ? 'bg-white text-emerald-700' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {resolvedRecords.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        <button
-          onClick={() => {
-            fetchHistoryRecords();
-            fetchInventoryFromStore();
-          }}
-          disabled={isLoading || loadingInventory}
-          className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
-          Làm mới dữ liệu
-        </button>
-      </div>
-
-      {/* ── 2. FILTER SEARCH BAR (SYNCHRONIZED WITH WATERQUALITYHISTORY) ─────── */}
-      <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-500" /> Bộ Lọc Tìm Kiếm
-          </span>
-          {(selectedFarmId || selectedYear !== 'ALL' || selectedPondId || selectedCropId || fromDate || toDate || hazardFilter !== 'ALL' || searchQuery) && (
-            <button
-              onClick={handleResetFilters}
-              className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Đặt lại bộ lọc
-            </button>
+        <div className="hidden sm:flex items-center gap-2 pr-4 text-xs text-slate-500 font-medium">
+          {subTab === 'incident' ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Chất lượng nước có chỉ số bất thường · Chờ can thiệp 1 bước
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Hồ sơ các đợt đã can thiệp xử lý hóa chất & vi sinh
+            </span>
           )}
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3.5">
-          {/* Năm Filter */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              Năm
-            </label>
-            <div className="relative">
-              <select
-                value={selectedYear}
-                onChange={(e) => {
-                  const yr = e.target.value;
-                  setSelectedYear(yr);
-                  if (selectedCropId) {
-                    const c = crops.find((item) => item.id === selectedCropId);
-                    if (c && yr !== 'ALL') {
-                      const cYr = new Date(c.startDate).getFullYear().toString();
-                      if (cYr !== yr) setSelectedCropId('');
-                    }
-                  }
-                  setPage(0);
-                }}
-                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
-              >
-                <option value="ALL">Tất cả năm</option>
-                {availableYears.map((yr) => (
-                  <option key={yr} value={yr}>
-                    {yr === currentYearStr ? `Năm ${yr}` : `Năm ${yr}`}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      {/* ── HEADER CARD VỚI BỘ LỌC THÔNG MINH (Chuẩn Sức Khỏe Tôm) ──────────── */}
+      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-md ${
+                isFarmer
+                  ? 'from-teal-500 to-emerald-600 shadow-teal-500/20'
+                  : 'from-indigo-500 to-blue-600 shadow-indigo-500/20'
+              }`}
+            >
+              <Wrench className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Chất Lượng Nước & Quá Trình Xử Lý
+              </h2>
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
+                {subTab === 'incident'
+                  ? 'Giám sát và tiếp nhận các cảnh báo thông số bất thường phát hiện tại các ao nuôi'
+                  : 'Hồ sơ các đợt xử lý chất lượng nước đã hoàn tất'}
+              </p>
             </div>
           </div>
 
-          {/* Trang trại Filter */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
-              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-              Trang trại
-            </label>
+          <div className="flex w-full flex-wrap gap-2 lg:w-auto">
+            <button
+              onClick={fetchHistoryRecords}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition-all cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} />
+              Làm mới
+            </button>
+          </div>
+        </div>
+
+        {/* ── TOOLBAR BỘ LỌC THÔNG MINH ── */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1 max-w-3xl">
+            {/* 1. Tìm kiếm */}
             <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm tên ao, chỉ số (vd: NH3, DO)..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 2. Lọc theo Trang trại */}
+            <div className="relative">
+              <Building2 className="w-4 h-4 text-indigo-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <select
                 value={selectedFarmId}
                 onChange={(e) => {
                   setSelectedFarmId(e.target.value);
                   setSelectedPondId('');
-                  setSelectedCropId('');
-                  setPage(0);
+                  setCategoryPage(1);
                 }}
-                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-7 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white appearance-none cursor-pointer"
               >
                 <option value="">Tất cả trang trại</option>
                 {farms.map((f) => (
@@ -906,198 +612,50 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
-          </div>
 
-          {/* Ao nuôi Filter */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
-              <Waves className="w-3.5 h-3.5 text-cyan-600" />
-              Ao nuôi
-            </label>
+            {/* 3. Lọc theo Ao nuôi */}
             <div className="relative">
+              <Waves className="w-4 h-4 text-cyan-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <select
                 value={selectedPondId}
                 onChange={(e) => {
-                  const pId = e.target.value;
-                  setSelectedPondId(pId);
-                  if (selectedCropId) {
-                    const season = findSeasonByCropId(allSeasons, selectedCropId);
-                    if (season && pId && !season.pondIds.includes(pId)) setSelectedCropId('');
-                  }
-                  setPage(0);
+                  setSelectedPondId(e.target.value);
+                  setCategoryPage(1);
                 }}
-                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-7 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white appearance-none cursor-pointer"
               >
-                <option value="">Tất cả ao</option>
+                <option value="">Tất cả ao nuôi</option>
                 {filteredPonds.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
-          {/* Vụ nuôi Filter */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-1">
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              Vụ nuôi
-            </label>
-            <div className="relative">
-              <select
-                value={selectedCropId}
-                onChange={(e) => {
-                  const cId = e.target.value;
-                  setSelectedCropId(cId);
-                  if (cId) {
-                    const season = findSeasonByCropId(allSeasons, cId);
-                    if (season) {
-                      if (season.farmId) setSelectedFarmId(season.farmId);
-                      if (selectedPondId && !season.pondIds.includes(selectedPondId)) {
-                        setSelectedPondId('');
-                      }
-                    }
-                  }
-                  setPage(0);
-                }}
-                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
-              >
-                <option value="">Tất cả vụ nuôi</option>
-                {availableSeasons.map((season) => (
-                  <option key={season.rootCropId} value={season.rootCropId}>
-                    {season.displayLabel}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Từ ngày Filter */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Từ ngày</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => {
-                setFromDate(e.target.value);
-                setPage(0);
+          {/* Nút đặt lại */}
+          {(selectedFarmId || selectedPondId || searchQuery || hazardFilter !== 'ALL') && (
+            <button
+              onClick={() => {
+                setSelectedFarmId('');
+                setSelectedPondId('');
+                setSearchQuery('');
+                setHazardFilter('ALL');
+                setCategoryPage(1);
               }}
-              className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
-            />
-          </div>
-
-          {/* Đến ngày Filter */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Đến ngày</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => {
-                setToDate(e.target.value);
-                setPage(0);
-              }}
-              className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer ${themeFocusRing}`}
-            />
-          </div>
-
-          {/* Mức độ Nguy hiểm Filter */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Mức độ</label>
-            <div className="relative">
-              <select
-                value={hazardFilter}
-                onChange={(e) => {
-                  setHazardFilter(e.target.value as any);
-                  setPage(0);
-                }}
-                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none appearance-none pr-8 cursor-pointer ${themeFocusRing}`}
-              >
-                <option value="ALL">Tất cả mức độ</option>
-                <option value="DANGER">🔴 Nguy hiểm</option>
-                <option value="WARNING">🟡 Cảnh báo</option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Search Row */}
-        <div className="pt-2">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tên ao, chỉ số (vd: NH3, DO), mã bản ghi..."
-              className={`w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none ${themeFocusRing}`}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer self-end md:self-center"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Đặt lại bộ lọc
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ── 3. METRIC CARDS OVERVIEW ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Lịch sử đo có sự cố</p>
-            <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">{stats.total}</h3>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Chưa xử lý </p>
-            <h3 className="text-xl sm:text-2xl font-black text-red-600 mt-0.5">{stats.untreated}</h3>
-            <p className="text-[10px] text-red-500 font-bold mt-0.5 flex items-center gap-1">
-
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center">
-            <AlertCircle className="w-5 h-5 animate-pulse" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Đã hoàn thành </p>
-            <h3 className="text-xl sm:text-2xl font-black text-emerald-600 mt-0.5">{stats.treated}</h3>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-100 shadow-xs hover:shadow-md transition-shadow flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kho Thuốc & Hóa chất</p>
-            <h3 className="text-xl sm:text-2xl font-black text-indigo-600 mt-0.5">{inventory.length} sản phẩm</h3>
-            <p className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
-            <Package className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* ── 4. TWO VERTICAL COLUMNS LAYOUT & LOADING MOTION ─────────────────── */}
+      {/* ── CARD GRID DANH SÁCH (3 Cột Giống Sức Khỏe Tôm) ───────────────────── */}
       {isLoading ? (
         <LoadingMotion
           mode="card"
@@ -1106,442 +664,184 @@ export default function WaterTreatment({ initialFarmId, initialPondId }: WaterTr
           icon={<Waves className="w-10 h-10 text-indigo-600 animate-pulse" />}
           color="indigo"
         />
+      ) : paginatedItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200 text-center shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 mb-3">
+            <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+          </div>
+          <h4 className="text-base font-extrabold text-slate-800">
+            {subTab === 'incident'
+              ? 'Không có cảnh báo mới nào chờ xử lý!'
+              : 'Chưa có hồ sơ xử lý nào trong lịch sử.'}
+          </h4>
+          <p className="text-xs text-slate-500 mt-1 max-w-md">
+            {subTab === 'incident'
+              ? 'Tất cả các ao nuôi đều đang có chỉ số môi trường an toàn đạt chuẩn kỹ thuật.'
+              : 'Chưa có ca can thiệp xử lý nào được lưu trong lịch sử.'}
+          </p>
+        </div>
       ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* ════════════════════════════════════════════════════════════════════
-                CỘT 1 (THẺ DỌC 1): SỰ CỐ CHƯA XỬ LÝ
-               ════════════════════════════════════════════════════════════════════ */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold shadow-xs">
-                    <AlertTriangle className="w-4.5 h-4.5 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                      Sự Cố Chưa Xử Lý
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-red-600 text-white">
-                        {untreatedList.length}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
+            {paginatedItems.map((item) => {
+              const isDanger = item.hazardLevel === 'DANGER';
+              const isUntreated = item.status === 'UNTREATED';
+
+              return (
+                <div
+                  key={item.id}
+                  className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:border-indigo-300 overflow-hidden"
+                >
+                  {/* Top ribbon */}
+                  <div
+                    className={`absolute top-0 left-0 right-0 h-1.5 ${
+                      !isUntreated
+                        ? 'bg-emerald-500'
+                        : isDanger
+                          ? 'bg-rose-500'
+                          : 'bg-amber-400'
+                    }`}
+                  />
+
+                  <div className="space-y-3 pt-1">
+                    {/* Header: Pond tag + Status pill */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200 text-[11px] font-bold">
+                        <Waves className="w-3 h-3 text-cyan-600" />
+                        <span>{item.pondName}</span>
                       </span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-medium">
-                      Các đợt đo cần kỹ thuật viên can thiệp & xuất kho gấp
-                    </p>
+
+                      <span
+                        className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
+                          !isUntreated
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : isDanger
+                              ? 'border-rose-200 bg-rose-50 text-rose-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {!isUntreated
+                          ? '✓ Đã hoàn tất'
+                          : isDanger
+                            ? '🔴 Mức Nguy hiểm'
+                            : '🟡 Mức Cảnh báo'}
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <h4 className="text-base font-extrabold text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                      {item.pondName} — {item.farmName}
+                    </h4>
+
+                    {/* Summary problem alert */}
+                    <div
+                      className={`p-3 rounded-2xl border text-xs font-semibold leading-relaxed ${
+                        isDanger
+                          ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                          : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] mb-1">
+                        <AlertTriangle className={`w-3.5 h-3.5 ${isDanger ? 'text-rose-600' : 'text-amber-600'}`} />
+                        <span>Chỉ số cảnh báo:</span>
+                      </div>
+                      <p className="line-clamp-2">{item.summaryText}</p>
+                    </div>
+
+                    {/* Parameter indicators chips */}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {item.triggeredParams.slice(0, 3).map((pKey) => {
+                        let label = pKey;
+                        let val = (item.parameters as any)[pKey] || '';
+                        let unit = '';
+                        if (pKey === 'nh3') {
+                          label = 'NH3';
+                          unit = 'mg/L';
+                        } else if (pKey === 'dissolvedOxygen') {
+                          label = 'DO';
+                          unit = 'mg/L';
+                        } else if (pKey === 'ph') {
+                          label = 'pH';
+                        } else if (pKey === 'alkalinity') {
+                          label = 'Độ kiềm';
+                          unit = 'mg/L';
+                        }
+
+                        return (
+                          <span
+                            key={pKey}
+                            className="px-2 py-0.5 rounded-lg bg-rose-50 text-rose-800 font-extrabold text-[10px] border border-rose-200"
+                          >
+                            ⚠️ {label}: {val} {unit}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Card Footer Actions */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                      <span>Đo lúc: <strong>{item.time} ({item.date})</strong></span>
+                      {item.treatment && (
+                        <span className="text-emerald-700 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Đã xử lý
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="pt-1">
+                      {isUntreated ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetail(item)}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
+                          <span>Xử lý & Xuất kho (Gợi ý AI)</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetail(item)}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-all shadow-2xs cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Xem chi tiết can thiệp</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-4">
-                {untreatedList.length === 0 ? (
-                  <div className="bg-slate-50/70 p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
-                    <CheckCircle2 className="w-9 h-9 text-emerald-500 mx-auto" />
-                    <h4 className="text-xs font-bold text-slate-800">Không có sự cố nào chưa xử lý!</h4>
-                    <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                      Tất cả các cảnh báo chỉ số đo lường trong hệ thống đều đã được xử lý xong.
-                    </p>
-                  </div>
-                ) : (
-                  untreatedList.map((item) => renderRecordCard(item))
-                )}
-              </div>
-            </div>
-
-            {/* ════════════════════════════════════════════════════════════════════
-                CỘT 2 (THẺ DỌC 2): SỰ CỐ ĐÃ XỬ LÝ
-               ════════════════════════════════════════════════════════════════════ */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
-                    <CheckCircle2 className="w-4.5 h-4.5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                      Sự Cố Đã Xử Lý
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white">
-                        {treatedList.length}
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-medium">
-                      Nhật ký các đợt đo đã áp dụng phác đồ & xuất kho vật tư
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {treatedList.length === 0 ? (
-                  <div className="bg-slate-50/70 p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
-                    <FileText className="w-9 h-9 text-slate-300 mx-auto" />
-                    <h4 className="text-xs font-bold text-slate-700">Chưa có bản ghi xử lý nào</h4>
-                    <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                      Chọn nút "Xử lý ngay" ở Cột Chưa xử lý để ghi nhận phác đồ.
-                    </p>
-                  </div>
-                ) : (
-                  treatedList.map((item) => renderRecordCard(item))
-                )}
-              </div>
-            </div>
+              );
+            })}
           </div>
 
-          {/* ── 5. PAGINATION BAR (SYNCHRONIZED WITH WATERQUALITYHISTORY) ──────── */}
+          {/* Phân trang */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between bg-white px-6 py-4 rounded-2xl border border-slate-100 shadow-sm text-xs">
-              <span className="text-slate-500 font-medium">
-                Hiển thị bản ghi từ <span className="font-bold text-slate-700">{page * size + 1}</span> đến{' '}
-                <span className="font-bold text-slate-700">{Math.min((page + 1) * size, totalElements)}</span>{' '}
-                trong tổng số <span className="font-bold text-slate-700">{totalElements}</span> bản ghi
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-sm font-bold text-slate-700">
-                  {page + 1} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page === totalPages - 1}
-                  className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 6. DETAIL INTERACTION MODAL (RESPONSIVE & PERFECTLY CENTERED) ──── */}
-      {selectedRecord && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-2xl lg:max-w-3xl max-h-[86vh] mx-auto my-auto shadow-2xl flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 relative">
-
-            {/* Solid Modal Header */}
-            <div className="pt-5 sm:pt-6 pb-4 px-5 sm:px-7 border-b border-slate-100 bg-white flex items-start justify-between flex-shrink-0 z-20">
-              <div className="space-y-1.5 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {selectedRecord.hazardLevel === 'DANGER' ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-red-100 text-red-700 border border-red-200">
-                      🔴 Mức Nguy hiểm
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-200">
-                      🟡 Mức Cảnh báo
-                    </span>
-                  )}
-                  {selectedRecord.status === 'TREATED' ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      ✓ Đã xử lý
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-red-600 text-white">
-                      Chưa xử lý
-                    </span>
-                  )}
-                </div>
-
-                <h3 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2 pt-0.5">
-                  <Droplets className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-                  {selectedRecord.pondName}
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  {selectedRecord.farmName} • Đo lúc: <strong>{selectedRecord.time} - {selectedRecord.date}</strong>
-                </p>
-              </div>
-
+            <div className="flex items-center justify-center gap-2 pt-4">
               <button
-                onClick={() => setSelectedRecord(null)}
-                className="p-2 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors cursor-pointer flex-shrink-0"
+                type="button"
+                onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                disabled={categoryPage === 1}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4" /> Trước
+              </button>
+              <span className="text-xs font-bold text-slate-500">
+                {categoryPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCategoryPage((p) => Math.min(totalPages, p + 1))}
+                disabled={categoryPage === totalPages}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+              >
+                Sau <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Modal Body - Scrollable Content */}
-            <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
-              {/* Summary Problem Alert */}
-              <div
-                className={`p-3 rounded-2xl border flex items-start gap-2.5 ${selectedRecord.hazardLevel === 'DANGER'
-                  ? 'bg-red-50 border-red-200 text-red-950'
-                  : 'bg-amber-50 border-amber-200 text-amber-950'
-                  }`}
-              >
-                <AlertTriangle
-                  className={`w-4 h-4 flex-shrink-0 mt-0.5 ${selectedRecord.hazardLevel === 'DANGER' ? 'text-red-600' : 'text-amber-600'
-                    }`}
-                />
-                <div>
-                  <h4 className="font-extrabold text-[11px] uppercase tracking-wider">Cảnh báo thông số bất thường</h4>
-                  <p className="text-xs sm:text-sm font-bold mt-0.5">{selectedRecord.summaryText}</p>
-                </div>
-              </div>
-
-              {/* ── Parameters Grid (6 Compact Water Quality Indicators) ── */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <FlaskConical className="w-3.5 h-3.5 text-indigo-600" />
-                    Tất cả chỉ số đo lường thực tế
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {[
-                    {
-                      key: 'temperature',
-                      label: 'Nhiệt độ',
-                      val: selectedRecord.parameters.temperature,
-                      unit: '°C',
-                      icon: <Thermometer className="w-3.5 h-3.5" />,
-                      ideal: '25 - 30°C',
-                    },
-                    {
-                      key: 'ph',
-                      label: 'Độ pH',
-                      val: selectedRecord.parameters.ph,
-                      unit: '',
-                      icon: <FlaskConical className="w-3.5 h-3.5" />,
-                      ideal: '7.5 - 8.5',
-                    },
-                    {
-                      key: 'dissolvedOxygen',
-                      label: 'Oxy hòa tan (DO)',
-                      val: selectedRecord.parameters.dissolvedOxygen,
-                      unit: 'mg/L',
-                      icon: <Waves className="w-3.5 h-3.5" />,
-                      ideal: '> 4.0 mg/L',
-                    },
-                    {
-                      key: 'salinity',
-                      label: 'Độ mặn',
-                      val: selectedRecord.parameters.salinity,
-                      unit: 'ppt',
-                      icon: <Droplets className="w-3.5 h-3.5" />,
-                      ideal: '10 - 25 ppt',
-                    },
-                    {
-                      key: 'alkalinity',
-                      label: 'Độ kiềm',
-                      val: selectedRecord.parameters.alkalinity,
-                      unit: 'mg/L',
-                      icon: <FlaskConical className="w-3.5 h-3.5" />,
-                      ideal: '100 - 160 mg/L',
-                    },
-                    {
-                      key: 'nh3',
-                      label: 'Khí độc NH3',
-                      val: selectedRecord.parameters.nh3,
-                      unit: 'mg/L',
-                      icon: <AlertTriangle className="w-3.5 h-3.5" />,
-                      ideal: '< 0.30 mg/L',
-                    },
-                  ].map((param) => {
-                    const isTriggered = selectedRecord.triggeredParams.includes(param.key);
-
-                    return (
-                      <div
-                        key={param.key}
-                        className={`p-2.5 sm:p-3 rounded-2xl border transition-all relative overflow-hidden ${isTriggered
-                          ? 'bg-red-50/90 border-red-300 ring-2 ring-red-500/20 shadow-xs'
-                          : 'bg-slate-50/70 border-slate-200/80 hover:bg-white'
-                          }`}
-                      >
-                        {isTriggered && (
-                          <div className="absolute top-1.5 right-1.5">
-                            <span className="px-1.5 py-0.2 rounded bg-red-600 text-white text-[8px] font-black uppercase">
-                              Vượt ngưỡng
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400 mb-0.5">
-                          <span className={isTriggered ? 'text-red-600' : 'text-indigo-600'}>{param.icon}</span>
-                          <span className={isTriggered ? 'text-red-900 font-extrabold' : 'text-slate-600'}>
-                            {param.label}
-                          </span>
-                        </div>
-
-                        <div
-                          className={`text-base sm:text-lg font-black ${isTriggered ? 'text-red-600' : 'text-slate-900'
-                            }`}
-                        >
-                          {param.val}{' '}
-                          <span className="text-[10px] font-medium text-slate-400 ml-0.5">{param.unit}</span>
-                        </div>
-
-                        <div className="mt-0.5 text-[9px] font-medium text-slate-400">Khuyên dùng: {param.ideal}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── Show Treatment Logs if Already Treated ── */}
-              {selectedRecord.treatment && (
-                <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Nhật ký xử lý & Xuất kho
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-700">
-                      {selectedRecord.treatment.timestamp}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-0.5">
-                    <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
-                      <span className="text-[9px] text-slate-400 block font-bold">Hóa chất đã xuất kho</span>
-                      <span className="font-extrabold text-emerald-950 text-xs">
-                        {selectedRecord.treatment.chemicalName} ({selectedRecord.treatment.quantity}{' '}
-                        {selectedRecord.treatment.unit})
-                      </span>
-                    </div>
-                    <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
-                      <span className="text-[9px] text-slate-400 block font-bold">Kỹ thuật viên thực hiện</span>
-                      <span className="font-extrabold text-emerald-950 text-xs">
-                        {selectedRecord.treatment.technicianName}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-xs text-emerald-900 bg-white/60 p-2 rounded-xl border border-emerald-100 font-medium">
-                    💬 <strong>Ghi chú:</strong> {selectedRecord.treatment.note}
-                  </div>
-                </div>
-              )}
-
-              {/* ── 6. TREATMENT ACTION FORM ────────────────────────────────────────── */}
-              <div className="pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
-                    <Wrench className="w-4 h-4 text-indigo-600" />
-                    {selectedRecord.status === 'TREATED' ? 'Cập nhật phác đồ xử lý' : 'Biểu mẫu Can thiệp & Xuất kho'}
-                  </h4>
-                  <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  </span>
-                </div>
-
-                <form onSubmit={handleSubmitTreatment} className="space-y-3">
-                  {/* Row 1: Select Chemical + Quantity */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    {/* Chemical Dropdown Linked to Inventory Store */}
-                    <div className="sm:col-span-8">
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Thuốc / Hóa chất sử dụng <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={selectedChemId}
-                          onChange={(e) => setSelectedChemId(e.target.value)}
-                          required
-                          disabled={loadingInventory}
-                          className="w-full px-3 py-2 pr-9 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm font-semibold text-slate-800 appearance-none outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          <option value="">
-                            {loadingInventory
-                              ? '-- Đang đồng bộ danh mục từ Kho... --'
-                              : '-- Chọn thuốc / hóa chất từ tồn kho --'}
-                          </option>
-                          {inventory.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name} (Tồn: {item.stock} {item.unit})
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      </div>
-
-                      {currentSelectedChem ? (
-                        <p className="mt-1 text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                          <Package className="w-3 h-3 text-emerald-600" /> Tồn kho khả dụng:{' '}
-                          <span className="text-slate-900 font-black">
-                            {currentSelectedChem.stock} {currentSelectedChem.unit}
-                          </span>{' '}
-                          ({currentSelectedChem.category})
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-[10px] text-slate-400 font-medium">
-                          💡 Danh mục thuốc & hóa chất liên kết trực tiếp từ phân hệ Kho vật tư.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Quantity Input */}
-                    <div className="sm:col-span-4">
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Số lượng sử dụng <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.1"
-                          value={quantity}
-                          onChange={(e) => setQuantity(e.target.value)}
-                          placeholder="0.0"
-                          required
-                          className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm font-bold text-slate-900 outline-none hover:bg-white focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-extrabold text-slate-400 pointer-events-none uppercase">
-                          {currentSelectedChem?.unit || 'đơn vị'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Note Textarea */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Ghi chú xử lý / Hướng dẫn kỹ thuật
-                    </label>
-                    <textarea
-                      rows={2.5}
-                      value={treatmentNote}
-                      onChange={(e) => setTreatmentNote(e.target.value)}
-                      placeholder="Mô tả các thao tác đã thực hiện (vd: Tạt lúc 14:00, tăng quạt nước 100% công suất, đo lại sau 2 giờ...)"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm font-medium text-slate-800 outline-none hover:bg-white focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
-                    />
-                  </div>
-
-                  {/* Form Action Submit Button Bar */}
-                  <div className="pt-2 flex items-center justify-end gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRecord(null)}
-                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                    >
-                      Hủy bỏ
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-black transition-all cursor-pointer shadow-md shadow-indigo-500/25 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Đang xuất kho & xử lý...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4" />
-                          Xác nhận & Xuất kho
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

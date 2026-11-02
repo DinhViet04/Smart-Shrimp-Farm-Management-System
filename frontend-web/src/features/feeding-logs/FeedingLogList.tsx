@@ -193,7 +193,7 @@ export default function FeedingLogList() {
   const totalPages = Math.ceil(total / size);
 
   return (
-    <div className="space-y-6">
+    <div className="w-full relative space-y-6">
       {/* ── Search & Filters ────────────────────────────────────────────── */}
       <div className="bg-white/90 backdrop-blur-md rounded-3xl p-5 border border-white/60 shadow-lg shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto flex-1">

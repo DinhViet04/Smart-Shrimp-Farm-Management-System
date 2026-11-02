@@ -14,3 +14,11 @@ Thumbs.db
 run_notebook_query.js
 test_mcp.js
 AGENTS.md
+
+# AI Microservice Knowledge & Vector Store Data
+ai-service/data/*.json
+ai-service/data/*.db
+!ai-service/data/.gitkeep
+*credentials*.json
+*service_account*.json
+*service-account*.json

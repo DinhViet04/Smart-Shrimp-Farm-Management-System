@@ -400,17 +400,39 @@ export class FarmsService {
 
     // ── NHÁNH A: User đã tồn tại ──
     if (existingUser) {
-      // Kiểm tra role phù hợp
-      if (existingUser.role !== role) {
-        throw new BadRequestException(
-          `Tài khoản này có vai trò ${existingUser.role}, không phải ${role}. Vui lòng kiểm tra lại.`,
-        );
+      // Cập nhật role phù hợp nếu chưa khớp và không phải ADMIN
+      if (existingUser.role !== role && existingUser.role !== Role.ADMIN) {
+        await this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role: role as Role },
+        });
+        existingUser.role = role as Role;
       }
 
-      // Tạo link đăng nhập chứa token
+      // Thêm trực tiếp vào FarmStaff
+      await this.prisma.farmStaff.upsert({
+        where: {
+          farmId_userId: {
+            farmId: farm.id,
+            userId: existingUser.id,
+          },
+        },
+        create: {
+          farmId: farm.id,
+          userId: existingUser.id,
+          role,
+          isActive: true,
+        },
+        update: {
+          role,
+          isActive: true,
+        },
+      });
+
+      // Tạo link đăng nhập chứa token (để nếu user muốn mở từ email)
       const inviteLink = `${frontendUrl}/login?inviteToken=${inviteToken}`;
 
-      // Gửi email thông báo với nút xác nhận đăng nhập (fire & forget)
+      // Gửi email thông báo (fire & forget)
       this.emailService.sendFarmInvitationExistingUser({
         toEmail: existingUser.email,
         toName: existingUser.fullName,
@@ -421,18 +443,29 @@ export class FarmsService {
       });
 
       // Gửi thông báo chuông cho nhân sự trên hệ thống
-      await this.notificationsService.createFarmInviteNotification(
+      await this.notificationsService.createFarmJoinNotification(
         existingUser.id,
         farm.id,
         farm.name,
-        managerName,
         role,
       );
 
+      // Gửi thông báo chuông cho Manager
+      if (farm.ownerId && farm.ownerId !== existingUser.id) {
+        await this.notificationsService.createStaffJoinedNotification(
+          farm.ownerId,
+          farm.id,
+          existingUser.fullName || existingUser.email,
+          existingUser.email,
+          role,
+          farm.name,
+        );
+      }
+
       return {
-        status: 'invited',
+        status: 'assigned',
         email: existingUser.email,
-        message: `Đã gửi email yêu cầu xác nhận tới ${existingUser.fullName}. Người dùng cần đăng nhập để tham gia.`,
+        message: `Đã thêm ${existingUser.fullName} vào trang trại với vai trò ${role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}.`,
       };
     }
 

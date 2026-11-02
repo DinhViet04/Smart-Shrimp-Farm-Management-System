@@ -17,7 +17,18 @@ async def lifespan(app: FastAPI):
     seed_weather_knowledge()
     embedding_service.refresh_client()
     rag_service.refresh_client()
+
+    # Tự động đồng bộ tài liệu từ Google Drive nếu được cấu hình
+    if settings.AUTO_SYNC_DRIVE_ON_STARTUP and settings.GOOGLE_DRIVE_FOLDER_ID:
+        try:
+            from app.services.drive_sync_service import drive_sync_service
+            logger.info("Auto-syncing knowledge documents from Google Drive on startup...")
+            drive_sync_service.sync_folder()
+        except Exception as e:
+            logger.warning(f"Startup Google Drive sync skipped or encountered an error: {e}")
+
     yield
+
     # Shutdown
     logger.info("Shutting down AI Service...")
 

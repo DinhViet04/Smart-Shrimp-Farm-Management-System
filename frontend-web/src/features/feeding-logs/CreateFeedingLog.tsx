@@ -537,7 +537,7 @@ export default function CreateFeedingLog() {
   }
 
   return (
-    <div className="max-w-[1050px] mx-auto relative pb-8">
+    <div className="w-full relative pb-8">
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       <form onSubmit={handleSubmit} noValidate>

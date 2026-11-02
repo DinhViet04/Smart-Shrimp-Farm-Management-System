@@ -50,14 +50,16 @@ const PARAM_CONFIG = {
 
 type ParamKey = keyof typeof PARAM_CONFIG;
 
-interface EnvironmentTrendDashboardProps {
+export interface EnvironmentTrendDashboardProps {
   initialFarmId?: string;
   initialPondId?: string;
+  onFilterChange?: (farmId: string, pondId: string) => void;
 }
 
 export default function EnvironmentTrendDashboard({
   initialFarmId,
   initialPondId,
+  onFilterChange,
 }: EnvironmentTrendDashboardProps = {}) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<Pond[]>([]);
@@ -311,6 +313,7 @@ export default function EnvironmentTrendDashboard({
                 setSelectedFarm(fId);
                 setSelectedPond('ALL');
                 setSelectedCropId('ALL');
+                onFilterChange?.(fId, 'ALL');
               }}
               className="pl-3 pr-8 py-2 rounded-xl border border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[140px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
             >
@@ -375,7 +378,11 @@ export default function EnvironmentTrendDashboard({
           <div className="relative">
             <select
               value={selectedPond || 'ALL'}
-              onChange={(e) => setSelectedPond(e.target.value)}
+              onChange={(e) => {
+                const pId = e.target.value;
+                setSelectedPond(pId);
+                onFilterChange?.(selectedFarm, pId);
+              }}
               className="pl-3 pr-8 py-2 rounded-xl border border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none min-w-[150px] cursor-pointer hover:bg-indigo-100/50 transition-colors"
             >
               <option value="ALL">

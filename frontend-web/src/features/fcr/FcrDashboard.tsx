@@ -117,7 +117,7 @@ export default function FcrDashboard({
 
   if (isLoading && farms.length === 0) {
     return (
-      <div className="space-y-6 max-w-7xl pb-10">
+      <div className="w-full max-w-7xl mx-auto space-y-6 pb-10">
         <GrowthHeaderTabs
           activeTab="Phân tích FCR"
           onTabChange={onNavigateTab}
@@ -136,7 +136,7 @@ export default function FcrDashboard({
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl pb-10">
+    <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300 pb-10">
       {/* Shared Header Navigation */}
       <GrowthHeaderTabs
         activeTab="Phân tích FCR"

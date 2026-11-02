@@ -35,7 +35,7 @@ export interface Incident {
     stage?: 'NURSERY' | 'COMMERCIAL' | string;
     status?: 'ACTIVE' | 'HARVESTED' | 'FAILED' | string;
     actualHarvestDate?: string | null;
-    pond: { id: string; name: string; farm: { id: string; name: string } };
+    pond: { id: string; name: string; farm: { id: string; name: string }; areaSize?: number; depth?: number };
   };
   updates?: IncidentUpdate[];
   _count?: { updates: number };

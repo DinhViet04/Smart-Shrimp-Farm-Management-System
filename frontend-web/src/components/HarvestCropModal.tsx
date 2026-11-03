@@ -19,12 +19,18 @@ import {
   Trash2,
   Activity,
   Award,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import {
   cropService,
   type Crop,
   type HarvestCropPayload,
   type MaterialUsageItem,
+  type CommercialShrimpSize,
+  type ShrimpPriceCalculation,
+  DEFAULT_COMMERCIAL_SIZES,
+  interpolateShrimpPrice,
 } from '../services/crop.service';
 
 interface HarvestCropModalProps {
@@ -54,6 +60,10 @@ export default function HarvestCropModal({
   const [harvestKg, setHarvestKg] = useState<string>('');
   const [harvestSize, setHarvestSize] = useState<string>('');
   const [pricePerKg, setPricePerKg] = useState<string>('');
+  const [isPriceCustomized, setIsPriceCustomized] = useState(false);
+  const [marketSizes, setMarketSizes] = useState<CommercialShrimpSize[]>(DEFAULT_COMMERCIAL_SIZES);
+  const [marketPriceInfo, setMarketPriceInfo] = useState<ShrimpPriceCalculation | null>(null);
+  const [loadingMarketSizes, setLoadingMarketSizes] = useState(false);
   const [harvestDate, setHarvestDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [harvestNote, setHarvestNote] = useState<string>('');
   const [seedCost, setSeedCost] = useState<string>('');
@@ -81,11 +91,20 @@ export default function HarvestCropModal({
     setErrorMsg('');
 
     // Form inputs: pre-populate if crop already has recorded harvest values, otherwise strictly blank
+    const existingPrice = crop.actualHarvestPricePerKg ? crop.actualHarvestPricePerKg.toString() : '';
     setHarvestKg(crop.actualHarvestKg ? crop.actualHarvestKg.toString() : '');
     setHarvestSize(crop.actualHarvestSize ? crop.actualHarvestSize.toString() : '');
-    setPricePerKg(crop.actualHarvestPricePerKg ? crop.actualHarvestPricePerKg.toString() : '');
+    setPricePerKg(existingPrice);
+    setIsPriceCustomized(!!crop.actualHarvestPricePerKg);
+    if (crop.actualHarvestSize) {
+      setMarketPriceInfo(interpolateShrimpPrice(crop.actualHarvestSize, marketSizes));
+    } else {
+      setMarketPriceInfo(null);
+    }
     setHarvestNote(crop.harvestNote || '');
-    setSeedCost(crop.harvestSeedCost ? crop.harvestSeedCost.toString() : '');
+    const calculatedSeedCost = crop.seedCost ?? (crop.initialShrimpCount ? crop.initialShrimpCount * (crop.seedUnitPrice || 70) : 0);
+    const initialSeed = crop.harvestSeedCost ?? (calculatedSeedCost || '');
+    setSeedCost(initialSeed ? initialSeed.toString() : '');
     setElectricityCost(crop.harvestElectricityCost ? crop.harvestElectricityCost.toString() : '');
     setLaborCost(crop.harvestLaborCost ? crop.harvestLaborCost.toString() : '');
     setOtherCost(crop.harvestOtherCost ? crop.harvestOtherCost.toString() : '');
@@ -205,6 +224,40 @@ export default function HarvestCropModal({
       isMounted = false;
     };
   }, [isOpen, crop]);
+
+  // Tự động đồng bộ các mốc giá tôm thương phẩm từ Tép Bạc
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    setLoadingMarketSizes(true);
+
+    cropService
+      .getCommercialShrimpSizes()
+      .then((sizes) => {
+        if (!isMounted) return;
+        if (sizes && sizes.length > 0) {
+          setMarketSizes(sizes);
+          const s = parseFloat(harvestSize);
+          if (s > 0) {
+            const calc = interpolateShrimpPrice(s, sizes);
+            setMarketPriceInfo(calc);
+            if (!isPriceCustomized && !crop?.actualHarvestPricePerKg) {
+              setPricePerKg(calc.price.toString());
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Lỗi khi tải giá tôm thương phẩm từ Tép Bạc:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingMarketSizes(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
 
   // Derived Calculations
   const numKg = parseFloat(harvestKg) || 0;
@@ -647,10 +700,23 @@ export default function HarvestCropModal({
                   <div className="relative">
                     <input
                       type="number"
-                      step="0.5"
+                      step="1"
                       min="1"
                       value={harvestSize}
-                      onChange={(e) => setHarvestSize(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setHarvestSize(val);
+                        const s = parseFloat(val);
+                        if (s > 0) {
+                          const calc = interpolateShrimpPrice(s, marketSizes);
+                          setMarketPriceInfo(calc);
+                          if (!isPriceCustomized) {
+                            setPricePerKg(calc.price.toString());
+                          }
+                        } else {
+                          setMarketPriceInfo(null);
+                        }
+                      }}
                       placeholder="Nhập kích cỡ tôm (con/kg)..."
                       className="w-full pl-3.5 pr-18 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-800 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
                     />
@@ -658,9 +724,26 @@ export default function HarvestCropModal({
                       con/kg
                     </span>
                   </div>
-                  <p className="text-[10.5px] text-slate-500">
-                    Kích cỡ mẫu cân trung bình của mẻ thu hoạch
-                  </p>
+                  {marketPriceInfo && numSize > 0 ? (
+                    <div className="flex items-center gap-1.5 text-[10.5px] text-emerald-700 bg-emerald-50/90 px-2.5 py-1 rounded-lg border border-emerald-200">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>
+                        {marketPriceInfo.isInterpolated ? (
+                          <>
+                            Size {marketPriceInfo.targetSize}: Nội suy <strong>{formatVND(marketPriceInfo.price)} đ/kg</strong> (từ size {marketPriceInfo.lowerBound?.size} & {marketPriceInfo.upperBound?.size})
+                          </>
+                        ) : (
+                          <>
+                            Size {marketPriceInfo.targetSize}: Giá thị trường <strong>{formatVND(marketPriceInfo.price)} đ/kg</strong>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[10.5px] text-slate-500">
+                      Kích cỡ mẫu cân trung bình của mẻ thu hoạch (tự động tra giá thị trường)
+                    </p>
+                  )}
                 </div>
 
                 {/* 3. Giá bán 1kg tôm (VNĐ/kg) */}
@@ -670,9 +753,22 @@ export default function HarvestCropModal({
                       <DollarSign className="w-3.5 h-3.5 text-amber-600" />
                       Giá tiền 1kg tôm bán được <span className="text-slate-400 font-normal">(VNĐ/kg)</span>
                     </label>
-                    <span className="text-[11px] font-black text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md border border-amber-200">
-                      {numPrice > 0 ? `${formatVND(numPrice)} đ / kg` : '-- đ / kg'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href="https://tepbac.com/gia-thuy-san/gia/tom#subcat-27"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition-colors cursor-pointer"
+                        title="Bấm để xem bảng giá tôm thẻ thị trường trực tiếp trên Tép Bạc"
+                      >
+                        {loadingMarketSizes && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
+                        <span>{loadingMarketSizes ? 'Đang tải...' : 'Tép Bạc'}</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      <span className="text-[11px] font-black text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md border border-amber-200">
+                        {numPrice > 0 ? `${formatVND(numPrice)} đ / kg` : '-- đ / kg'}
+                      </span>
+                    </div>
                   </div>
                   <div className="relative">
                     <input
@@ -680,17 +776,42 @@ export default function HarvestCropModal({
                       step="1000"
                       min="0"
                       value={pricePerKg}
-                      onChange={(e) => setPricePerKg(e.target.value)}
-                      placeholder="Nhập đơn giá bán 1kg (VNĐ)..."
+                      onChange={(e) => {
+                        setPricePerKg(e.target.value);
+                        setIsPriceCustomized(true);
+                      }}
+                      placeholder="Tự động tính theo size tôm hoặc nhập tay..."
                       className="w-full pl-3.5 pr-14 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-800 outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all shadow-inner"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
                       VNĐ
                     </span>
                   </div>
-                  <p className="text-[10.5px] text-slate-500">
-                    Giá thương lái hoặc nhà máy thu mua theo size thực tế
-                  </p>
+                  <div className="flex items-center justify-between text-[10.5px]">
+                    {marketPriceInfo && isPriceCustomized && numPrice !== marketPriceInfo.price ? (
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-amber-700 font-medium">Giá đã chỉnh tay</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPricePerKg(marketPriceInfo.price.toString());
+                            setIsPriceCustomized(false);
+                          }}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 underline cursor-pointer"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5" /> Lấy giá TT: {formatVND(marketPriceInfo.price)} đ
+                        </button>
+                      </div>
+                    ) : marketPriceInfo && numPrice === marketPriceInfo.price ? (
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        ✓ Tự động khớp giá Tôm thẻ theo Tép Bạc
+                      </span>
+                    ) : (
+                      <span className="text-[10.5px] text-slate-500">
+                        Nhập size tôm ở trên để tự động đồng bộ giá thị trường
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* 4. Ngày thu hoạch */}
@@ -725,16 +846,23 @@ export default function HarvestCropModal({
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
-                    { label: 'Con giống', value: seedCost, setter: setSeedCost },
-                    { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost },
-                    { label: 'Nhân công', value: laborCost, setter: setLaborCost },
-                    { label: 'Chi phí khác', value: otherCost, setter: setOtherCost },
+                    { label: 'Con giống', value: seedCost, setter: setSeedCost, readOnly: true },
+                    { label: 'Điện và nước', value: electricityCost, setter: setElectricityCost, readOnly: false },
+                    { label: 'Nhân công', value: laborCost, setter: setLaborCost, readOnly: false },
+                    { label: 'Chi phí khác', value: otherCost, setter: setOtherCost, readOnly: false },
                   ].map((item) => {
                     const numVal = parseFloat(item.value) || 0;
                     return (
                       <div key={item.label} className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-slate-700">{item.label}</label>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <label className="text-[11px] font-bold text-slate-700">{item.label}</label>
+                            {item.label === 'Con giống' && (crop.seedCost || crop.seedUnitPrice || crop.initialShrimpCount) && (
+                              <span className="text-[9.5px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="Chi phí con giống cố định theo số giống thả ban đầu">
+                                Cố định từ tạo vụ ({crop.initialShrimpCount?.toLocaleString()} con × {crop.seedUnitPrice || 70} đ)
+                              </span>
+                            )}
+                          </div>
                           <span className={`text-[11px] font-black px-2 py-0.5 rounded-md border transition-all ${
                             numVal > 0
                               ? 'text-blue-700 bg-blue-100/80 border-blue-200 shadow-2xs'
@@ -744,15 +872,26 @@ export default function HarvestCropModal({
                           </span>
                         </div>
                         <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1000"
-                            value={item.value}
-                            onChange={(event) => item.setter(event.target.value)}
-                            placeholder="0"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-14 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
-                          />
+                          {item.readOnly ? (
+                            <input
+                              type="text"
+                              readOnly
+                              disabled
+                              value={numVal > 0 ? numVal.toLocaleString('vi-VN') : '0'}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-100/90 px-3.5 py-2.5 pr-14 text-sm font-black text-slate-700 cursor-not-allowed select-none shadow-inner"
+                              title="Chi phí con giống cố định từ khi tạo vụ nuôi, không thể chỉnh sửa"
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={item.value}
+                              onChange={(event) => item.setter(event.target.value)}
+                              placeholder="0"
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-14 text-sm font-black text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-inner"
+                            />
+                          )}
                           <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
                             VNĐ
                           </span>

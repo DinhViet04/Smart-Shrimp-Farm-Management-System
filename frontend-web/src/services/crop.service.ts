@@ -10,6 +10,151 @@ import { invalidatePondOverviewCache } from './pond.service';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+export interface SeedMarketPrice {
+  code: string;
+  name: string;
+  species: string;
+  sizeStage: string;
+  price: number;
+  unit: string;
+  source: string;
+  sourceUrl: string;
+  updatedAt: string;
+  isLive: boolean;
+  note?: string;
+}
+
+export interface CommercialShrimpSize {
+  code: string;
+  size: number;
+  name: string;
+  price: number;
+  unit: string;
+  source: string;
+  sourceUrl: string;
+  updatedAt: string;
+}
+
+export interface ShrimpPriceCalculation {
+  targetSize: number;
+  price: number;
+  unit: string;
+  isInterpolated: boolean;
+  lowerBound?: { size: number; price: number };
+  upperBound?: { size: number; price: number };
+  source: string;
+  sourceUrl: string;
+  updatedAt: string;
+}
+
+export const DEFAULT_COMMERCIAL_SIZES: CommercialShrimpSize[] = [
+  { code: 'THE20', size: 20, price: 200000, name: 'Tôm thẻ 20 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE30', size: 30, price: 155000, name: 'Tôm thẻ 30 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE40', size: 40, price: 132000, name: 'Tôm thẻ 40 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE50', size: 50, price: 122000, name: 'Tôm thẻ 50 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE60', size: 60, price: 113000, name: 'Tôm thẻ 60 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE70', size: 70, price: 110000, name: 'Tôm thẻ 70 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE80', size: 80, price: 107000, name: 'Tôm thẻ 80 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE90', size: 90, price: 104000, name: 'Tôm thẻ 90 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE100', size: 100, price: 100000, name: 'Tôm thẻ 100 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+  { code: 'THE150', size: 150, price: 64000, name: 'Tôm thẻ 150 con/kg', unit: 'đ/KG', source: 'tepbac.com', sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27', updatedAt: '' },
+];
+
+/**
+ * Thuật toán tính giá tôm theo size (hỗ trợ cả size chẵn và size lẻ như 32, 48,... qua nội suy tuyến tính)
+ */
+export function interpolateShrimpPrice(
+  targetSize: number,
+  sizesList?: CommercialShrimpSize[]
+): ShrimpPriceCalculation {
+  const size = Math.max(1, targetSize);
+  const list = sizesList && sizesList.length > 0 ? sizesList : DEFAULT_COMMERCIAL_SIZES;
+  const sorted = [...list].filter((s) => s.size > 0 && s.price > 0).sort((a, b) => a.size - b.size);
+
+  const exact = sorted.find((s) => s.size === size);
+  if (exact) {
+    return {
+      targetSize: size,
+      price: exact.price,
+      unit: 'đ/KG',
+      isInterpolated: false,
+      source: 'tepbac.com',
+      sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27',
+      updatedAt: exact.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  // Size < 20
+  if (size < sorted[0].size) {
+    const s1 = sorted[0];
+    const s2 = sorted[1] || s1;
+    const slope = s2.size !== s1.size ? (s2.price - s1.price) / (s2.size - s1.size) : 0;
+    const price = Math.max(s1.price, Math.round((s1.price + (size - s1.size) * slope) / 100) * 100);
+    return {
+      targetSize: size,
+      price,
+      unit: 'đ/KG',
+      isInterpolated: true,
+      lowerBound: s1,
+      upperBound: s2,
+      source: 'tepbac.com',
+      sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // Size > 150
+  if (size > sorted[sorted.length - 1].size) {
+    const last = sorted[sorted.length - 1];
+    const prev = sorted[sorted.length - 2] || last;
+    const slope = last.size !== prev.size ? (last.price - prev.price) / (last.size - prev.size) : 0;
+    const price = Math.max(40000, Math.round((last.price + (size - last.size) * slope) / 100) * 100);
+    return {
+      targetSize: size,
+      price,
+      unit: 'đ/KG',
+      isInterpolated: true,
+      lowerBound: prev,
+      upperBound: last,
+      source: 'tepbac.com',
+      sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // Size lẻ nằm giữa 2 mốc
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const s1 = sorted[i];
+    const s2 = sorted[i + 1];
+    if (size >= s1.size && size <= s2.size) {
+      const t = (size - s1.size) / (s2.size - s1.size);
+      const raw = s1.price + t * (s2.price - s1.price);
+      const price = Math.round(raw / 100) * 100;
+      return {
+        targetSize: size,
+        price,
+        unit: 'đ/KG',
+        isInterpolated: true,
+        lowerBound: s1,
+        upperBound: s2,
+        source: 'tepbac.com',
+        sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27',
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  return {
+    targetSize: size,
+    price: sorted[0].price,
+    unit: 'đ/KG',
+    isInterpolated: false,
+    source: 'tepbac.com',
+    sourceUrl: 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export interface GrowthMilestone {
   day: number;
   weight: number;
@@ -48,6 +193,10 @@ export interface Crop {
   harvestFeedCost?: number | null;
   harvestMedicineCost?: number | null;
   harvestChemicalCost?: number | null;
+  seedUnitPrice?: number | null;
+  seedCost?: number | null;
+  seedType?: string | null;
+  seedSource?: string | null;
   harvestSeedCost?: number | null;
   harvestElectricityCost?: number | null;
   harvestLaborCost?: number | null;
@@ -125,6 +274,10 @@ export interface CreateCropPayload {
   expectedDurationDays?: number;
   stage?: 'NURSERY' | 'COMMERCIAL';
   expectedTransferDate?: string;
+  seedUnitPrice?: number;
+  seedCost?: number;
+  seedType?: string;
+  seedSource?: string;
 }
 
 export interface UpdateCropPayload {
@@ -139,6 +292,10 @@ export interface UpdateCropPayload {
   expectedDurationDays?: number;
   stage?: 'NURSERY' | 'COMMERCIAL';
   expectedTransferDate?: string;
+  seedUnitPrice?: number;
+  seedCost?: number;
+  seedType?: string;
+  seedSource?: string;
 }
 
 export interface HarvestCropPayload {
@@ -628,6 +785,64 @@ export const cropService = {
   /**
    * DELETE /api/crops/:id
    */
+  /**
+   * GET /api/market-prices/shrimp-seed
+   * Lấy giá tôm giống thị trường hiện tại (Tôm thẻ chân trắng Post 10 từ Tép Bạc)
+   */
+  getMarketSeedPrice: async (): Promise<SeedMarketPrice> => {
+    try {
+      const response = await apiFetch(`${apiUrl}/api/market-prices/shrimp-seed`);
+      if (response.ok) {
+        const data = await response.json();
+        return data as SeedMarketPrice;
+      }
+    } catch (e) {
+      console.warn('Failed fetching market seed price:', e);
+    }
+    return {
+      code: 'THEP10',
+      name: 'Giống tôm thẻ chân trắng Post 10',
+      species: 'Tôm thẻ chân trắng',
+      sizeStage: 'Post 10 (P10)',
+      price: 70,
+      unit: 'đ/CON',
+      source: 'tepbac.com',
+      sourceUrl: 'https://tepbac.com/gia-thuy-san/giong-tom-the-chan-trang-p10',
+      updatedAt: new Date().toISOString(),
+      isLive: false,
+    };
+  },
+  /**
+   * GET /api/market-prices/commercial-sizes
+   * Lấy danh sách giá tôm thương phẩm theo mốc size từ Tép Bạc
+   */
+  getCommercialShrimpSizes: async (): Promise<CommercialShrimpSize[]> => {
+    try {
+      const response = await apiFetch(`${apiUrl}/api/market-prices/commercial-sizes`);
+      if (response.ok) {
+        return (await response.json()) as CommercialShrimpSize[];
+      }
+    } catch (e) {
+      console.warn('Failed fetching commercial shrimp sizes:', e);
+    }
+    return DEFAULT_COMMERCIAL_SIZES;
+  },
+
+  /**
+   * GET /api/market-prices/calculate-harvest-price?size=...
+   * Tính giá tôm 1kg theo size thu hoạch từ backend
+   */
+  calculateHarvestPrice: async (size: number): Promise<ShrimpPriceCalculation> => {
+    try {
+      const response = await apiFetch(`${apiUrl}/api/market-prices/calculate-harvest-price?size=${size}`);
+      if (response.ok) {
+        return (await response.json()) as ShrimpPriceCalculation;
+      }
+    } catch (e) {
+      console.warn('Failed calculating harvest price from backend:', e);
+    }
+    return interpolateShrimpPrice(size);
+  },
   remove: async (id: string): Promise<{ message: string }> => {
     const response = await apiFetch(`${apiUrl}/api/crops/${id}`, {
       method: 'DELETE',

@@ -25,6 +25,7 @@ import { ShrimpSizeModule } from './modules/shrimp-size/shrimp-size.module.js';
 import { SurvivalRateModule } from './modules/survival-rate/survival-rate.module.js';
 import { EmailModule } from './modules/email/email.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { MarketPricesModule } from './modules/market-prices/market-prices.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -71,6 +72,7 @@ import { APP_GUARD } from '@nestjs/core';
     ShrimpSizeModule,
     SurvivalRateModule,
     NotificationsModule,
+    MarketPricesModule,
   ],
   controllers: [AppController],
   providers: [

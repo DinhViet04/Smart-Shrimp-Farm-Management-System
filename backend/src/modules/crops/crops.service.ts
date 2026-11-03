@@ -502,6 +502,19 @@ export class CropsService {
         stage,
         expectedTransferDate:
           stage === 'NURSERY' ? expectedTransferDate : undefined,
+        seedUnitPrice: dto.seedUnitPrice ?? null,
+        seedCost:
+          dto.seedCost ??
+          (dto.seedUnitPrice && dto.initialShrimpCount
+            ? dto.seedUnitPrice * dto.initialShrimpCount
+            : null),
+        seedType: dto.seedType || 'Tôm thẻ chân trắng Post 10',
+        seedSource: dto.seedSource || 'tepbac.com',
+        harvestSeedCost:
+          dto.seedCost ??
+          (dto.seedUnitPrice && dto.initialShrimpCount
+            ? dto.seedUnitPrice * dto.initialShrimpCount
+            : undefined),
       },
       include: {
         pond: {
@@ -656,6 +669,15 @@ export class CropsService {
     } else if (dto.expectedDurationDays !== undefined) {
       data.expectedDurationDays = dto.expectedDurationDays;
     }
+
+    if (dto.seedUnitPrice !== undefined)
+      data.seedUnitPrice = dto.seedUnitPrice;
+    if (dto.seedCost !== undefined)
+      data.seedCost = dto.seedCost;
+    if (dto.seedType !== undefined)
+      data.seedType = dto.seedType;
+    if (dto.seedSource !== undefined)
+      data.seedSource = dto.seedSource;
 
     if (dto.growthMilestones !== undefined) {
       if (Array.isArray(dto.growthMilestones)) {
@@ -1274,7 +1296,7 @@ export class CropsService {
     const finalFeedCost = crop.harvestFeedCost || totalFeedCost;
     const finalMedicineCost = crop.harvestMedicineCost || totalMedicineCost;
     const finalChemicalCost = crop.harvestChemicalCost || totalChemicalCost;
-    const seedCost = crop.harvestSeedCost || 0;
+    const seedCost = crop.harvestSeedCost ?? crop.seedCost ?? 0;
     const electricityCost = crop.harvestElectricityCost || 0;
     const laborCost = crop.harvestLaborCost || 0;
     const otherCost = crop.harvestOtherCost || 0;
@@ -1432,7 +1454,7 @@ export class CropsService {
     const feedCost = dto.harvestFeedCost || 0;
     const medicineCost = dto.harvestMedicineCost || 0;
     const chemicalCost = dto.harvestChemicalCost || 0;
-    const seedCost = dto.harvestSeedCost || 0;
+    const seedCost = dto.harvestSeedCost !== undefined && dto.harvestSeedCost !== null ? dto.harvestSeedCost : (crop.seedCost || 0);
     const electricityCost = dto.harvestElectricityCost || 0;
     const laborCost = dto.harvestLaborCost || 0;
     const otherCost = dto.harvestOtherCost || 0;

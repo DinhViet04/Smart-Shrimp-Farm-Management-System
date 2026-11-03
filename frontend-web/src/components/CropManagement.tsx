@@ -37,10 +37,12 @@ import {
   Eye,
   AlertTriangle,
   Loader2,
+  Tag,
+  ExternalLink,
 } from 'lucide-react';
 import LoadingMotion from './LoadingMotion';
 import { pondService } from '../services/pond.service';
-import { cropService, type Crop } from '../services/crop.service';
+import { cropService, type Crop, type SeedMarketPrice } from '../services/crop.service';
 import SplitCropModal from './SplitCropModal';
 import HarvestCropModal from './HarvestCropModal';
 import CropDetailReportModal from './CropDetailReportModal';
@@ -146,17 +148,21 @@ export default function CropManagement({
   // ── Modal State ─────────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
+  const [marketSeedPrice, setMarketSeedPrice] = useState<SeedMarketPrice | null>(null);
   const [formData, setFormData] = useState({
     farmId: '',
     pondId: '',
     startDate: new Date().toISOString().slice(0, 10),
     initialShrimpCount: '100000',
+    seedUnitPrice: '70',
+    seedType: 'Tôm thẻ chân trắng Post 10',
+    seedSource: 'tepbac.com',
     status: 'ACTIVE',
     stage: 'COMMERCIAL' as 'NURSERY' | 'COMMERCIAL',
     expectedTransferDate: '',
     targetHarvestSize: '30',
     targetSurvivalRate: '85',
-    targetTotalFeedKg: '3400',
+    targetTotalFeedKg: '3117',
     expectedHarvestDate: '',
     expectedDurationDays: '95',
   });
@@ -390,6 +396,26 @@ export default function CropManagement({
     };
   }, [activeView, filterStatus]);
 
+  // Tự động tải giá tôm giống thị trường từ Tép Bạc (tepbac.com)
+  useEffect(() => {
+    let isMounted = true;
+    cropService
+      .getMarketSeedPrice()
+      .then((data) => {
+        if (!isMounted || !data) return;
+        setMarketSeedPrice(data);
+        setFormData((prev) => ({
+          ...prev,
+          seedUnitPrice: prev.seedUnitPrice || (data.price ? data.price.toString() : '70'),
+        }));
+      })
+      .catch((err) => console.warn('Lỗi lấy giá tôm giống thị trường:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // ── Available Filter Options ──────────────────────────────────────────────
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -562,12 +588,15 @@ export default function CropManagement({
       pondId: chosenPondId,
       startDate: today,
       initialShrimpCount: '100000',
+      seedUnitPrice: marketSeedPrice?.price ? marketSeedPrice.price.toString() : '70',
+      seedType: 'Tôm thẻ chân trắng Post 10',
+      seedSource: 'tepbac.com',
       status: 'ACTIVE',
       stage: isHighTech ? 'NURSERY' : 'COMMERCIAL',
       expectedTransferDate: defaultTransfer,
       targetHarvestSize: '30',
       targetSurvivalRate: '85',
-      targetTotalFeedKg: '3400',
+      targetTotalFeedKg: '3117',
       expectedHarvestDate: defaultHarvest,
       expectedDurationDays: '95',
     });
@@ -591,6 +620,9 @@ export default function CropManagement({
       pondId: crop.pondId,
       startDate: dateStr,
       initialShrimpCount: crop.initialShrimpCount.toString(),
+      seedUnitPrice: crop.seedUnitPrice ? crop.seedUnitPrice.toString() : (marketSeedPrice?.price ? marketSeedPrice.price.toString() : '70'),
+      seedType: crop.seedType || 'Tôm thẻ chân trắng Post 10',
+      seedSource: crop.seedSource || 'tepbac.com',
       status: crop.status,
       stage: (crop.stage as 'NURSERY' | 'COMMERCIAL') || 'COMMERCIAL',
       expectedTransferDate: transferDateStr || (dateStr ? addDaysToDateString(dateStr, 25) : ''),
@@ -634,6 +666,53 @@ export default function CropManagement({
     setFormData((prev) => ({
       ...prev,
       expectedHarvestDate: newHarvestDate,
+    }));
+  };
+
+  // Tính toán các chỉ tiêu kỹ thuật hoàn hảo theo số giống thả & FCR mặc định = 1.1
+  const calculatePerfectTargets = (
+    shrimpCountStr: string,
+    sizeStr?: string,
+    survivalStr?: string,
+    targetFcr: number = 1.1
+  ) => {
+    const count = parseFloat(shrimpCountStr) || 0;
+    const size = parseFloat(sizeStr !== undefined ? sizeStr : formData.targetHarvestSize) || 30;
+    const rate = parseFloat(survivalStr !== undefined ? survivalStr : formData.targetSurvivalRate) || 85;
+
+    if (count <= 0 || size <= 0) {
+      return { harvestCount: 0, biomassKg: 0, feedKg: 0 };
+    }
+    const harvestCount = Math.round((count * rate) / 100);
+    const biomassKg = harvestCount / size;
+    const feedKg = Math.round(biomassKg * targetFcr);
+    return { harvestCount, biomassKg, feedKg };
+  };
+
+  const handleInitialShrimpCountChange = (value: string) => {
+    const targets = calculatePerfectTargets(value);
+    setFormData((prev) => ({
+      ...prev,
+      initialShrimpCount: value,
+      targetTotalFeedKg: targets.feedKg > 0 ? targets.feedKg.toString() : prev.targetTotalFeedKg,
+    }));
+  };
+
+  const handleTargetSizeChange = (value: string) => {
+    const targets = calculatePerfectTargets(formData.initialShrimpCount, value);
+    setFormData((prev) => ({
+      ...prev,
+      targetHarvestSize: value,
+      targetTotalFeedKg: targets.feedKg > 0 ? targets.feedKg.toString() : prev.targetTotalFeedKg,
+    }));
+  };
+
+  const handleTargetSurvivalRateChange = (value: string) => {
+    const targets = calculatePerfectTargets(formData.initialShrimpCount, undefined, value);
+    setFormData((prev) => ({
+      ...prev,
+      targetSurvivalRate: value,
+      targetTotalFeedKg: targets.feedKg > 0 ? targets.feedKg.toString() : prev.targetTotalFeedKg,
     }));
   };
 
@@ -765,6 +844,10 @@ export default function CropManagement({
         expectedDurationDays: isNursery
           ? (calculatedTransferDays > 0 ? calculatedTransferDays : undefined)
           : (calculatedDurationDays > 0 ? calculatedDurationDays : undefined),
+        seedUnitPrice: parseFloat(formData.seedUnitPrice) || 70,
+        seedCost: (parseFloat(formData.seedUnitPrice) || 70) * parseInt(formData.initialShrimpCount, 10),
+        seedType: formData.seedType || 'Tôm thẻ chân trắng Post 10',
+        seedSource: formData.seedSource || 'tepbac.com',
       };
 
       if (editingCropId) {
@@ -1925,24 +2008,29 @@ export default function CropManagement({
               return (
                 <>
                   <div className={`h-1.5 bg-gradient-to-r ${gradientClass}`} />
-                  <div className="px-7 py-4 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20 text-white flex items-center justify-center shadow-md flex-shrink-0">
-                        {isTraditional ? <Sparkles className="w-5 h-5" /> : <Waves className="w-5 h-5" />}
+                  <div className="px-6 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20 text-white flex items-center justify-center shadow-md flex-shrink-0">
+                        {isTraditional ? <Sparkles className="w-5 h-5" /> : <Target className="w-5 h-5" />}
                       </div>
                       <div>
-                        <h3 className="text-lg font-black text-slate-800 tracking-tight">
+                        <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight leading-snug">
                           {editingCropId ? 'Cập Nhật Vụ Nuôi' : 'Tạo Vụ Nuôi Mới'}
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                          Cấu hình vị trí ao, số lượng giống và chỉ tiêu kỹ thuật vụ nuôi
-                        </p>
+                        {model && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
+                              {isTraditional ? <Sparkles className="w-3.5 h-3.5 text-blue-600" /> : <Target className="w-3.5 h-3.5 text-blue-600" />}
+                              {isTraditional ? 'Mô Hình Truyền Thống' : 'Mô Hình Công Nghệ Cao'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowModal(false)}
-                      className="p-2.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer border border-transparent hover:border-slate-200"
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer border border-transparent hover:border-slate-200"
                       title="Đóng"
                     >
                       <X className="w-5 h-5" />
@@ -1953,37 +2041,13 @@ export default function CropManagement({
             })()}
 
             {/* ── Form Body (Spacious Perfectly Symmetrical 2-Column Grid) ──────── */}
-            <form id="cropForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 sm:p-7 bg-slate-50/40">
+            <form id="cropForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50/40">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 
                 {/* ── CỘT TRÁI: Vị trí ao & Thả giống ────── */}
-                <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4 flex flex-col justify-between">
-                  <div className="space-y-4">
-                    {(() => {
-                      const model = farms.find(f => f.id === formData.farmId)?.farmingModel;
-                      if (!model) return null;
-                      
-                      const isTraditional = model === 'TRADITIONAL';
-                      const label = isTraditional ? 'Mô Hình Truyền Thống' : 'Mô Hình Công Nghệ Cao';
-                      const subtitle = isTraditional
-                        ? 'Nuôi thương phẩm trực tiếp · Không qua giai đoạn ương'
-                        : 'Hỗ trợ ương dưỡng & thương phẩm · Tách ao linh hoạt';
-
-                      return (
-                        <div className={`p-3 rounded-2xl border bg-gradient-to-r from-blue-50 to-indigo-50/80 border-blue-200/70 flex items-center gap-3`}>
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/25 shadow-md flex items-center justify-center flex-shrink-0">
-                            {isTraditional
-                              ? <Sparkles className="w-4.5 h-4.5 text-white" />
-                              : <Target className="w-4.5 h-4.5 text-white" />}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-black tracking-tight text-blue-800">{label}</p>
-                            <p className="text-[11px] font-medium text-blue-600/80">{subtitle}</p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
+                <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                       <FileText className="w-4.5 h-4.5 text-blue-600" />
                       <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
                         Vị Trí Ao & Thả Giống
@@ -2184,7 +2248,7 @@ export default function CropManagement({
                             step="1"
                             placeholder="100000"
                             value={formData.initialShrimpCount}
-                            onChange={(e) => setFormData({ ...formData, initialShrimpCount: e.target.value })}
+                            onChange={(e) => handleInitialShrimpCountChange(e.target.value)}
                             className={`w-full bg-slate-50/70 hover:bg-white border rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none pr-12 ${formErrors.initialShrimpCount
                                 ? 'border-red-400 focus:border-red-500'
                                 : 'border-slate-200 focus:bg-white focus:border-blue-500'
@@ -2226,12 +2290,94 @@ export default function CropManagement({
                         </div>
                       </div>
                     </div>
+
+                    {/* Hàng 5: Giá tiền tôm giống kết nối thị trường Tép Bạc */}
+                    <div className="pt-0.5">
+                      <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/80 to-indigo-50/40 p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                            <Tag className="w-3.5 h-3.5 text-blue-600" />
+                            Giá giống thị trường:
+                          </span>
+                          <a
+                            href={marketSeedPrice?.sourceUrl || 'https://tepbac.com/gia-thuy-san/giong-tom-the-chan-trang-p10'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-blue-200 shadow-2xs"
+                            title="Bấm để xem trực tiếp tại tepbac.com"
+                          >
+                            <span>Tép Bạc: {marketSeedPrice?.price || 70} đ/con</span>
+                            <ExternalLink className="w-3 h-3 text-blue-500" />
+                          </a>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Đơn giá con giống (đ/con)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={formData.seedUnitPrice}
+                                onChange={(e) => setFormData({ ...formData, seedUnitPrice: e.target.value })}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 pr-12 h-[34px]"
+                              />
+                              <span className="text-[11px] font-bold text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                đ/con
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Tổng tiền tôm giống
+                            </label>
+                            <div className="w-full bg-white border border-blue-200/90 rounded-lg px-3 text-xs font-black text-blue-700 flex items-center justify-between h-[34px] shadow-2xs">
+                              <span className="truncate">
+                                {formatVND(
+                                  (parseFloat(formData.seedUnitPrice) || 70) *
+                                    (parseInt(formData.initialShrimpCount, 10) || 0),
+                                )}
+                              </span>
+                              <span className="text-[11px] font-bold text-blue-500 ml-1">
+                                VNĐ
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10.5px] text-slate-500 pt-0.5">
+                          <span>
+                            {(parseInt(formData.initialShrimpCount, 10) || 0).toLocaleString()} con ×{' '}
+                            {(parseFloat(formData.seedUnitPrice) || 70).toLocaleString()} đ
+                          </span>
+                          {marketSeedPrice &&
+                            parseFloat(formData.seedUnitPrice) !== marketSeedPrice.price && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData({
+                                    ...formData,
+                                    seedUnitPrice: marketSeedPrice.price.toString(),
+                                  })
+                                }
+                                className="text-[10.5px] text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer"
+                              >
+                                Đặt lại giá Tép Bạc ({marketSeedPrice.price} đ)
+                              </button>
+                            )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* ── CỘT PHẢI: Chỉ tiêu kỹ thuật & Dự báo ────── */}
-                <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4 flex flex-col justify-between">
-                  <div className="space-y-4">
+                <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                       <div className="flex items-center gap-2">
                         <TrendingUp className={`w-4.5 h-4.5 ${formData.stage === 'NURSERY' ? 'text-purple-600' : 'text-emerald-600'}`} />
@@ -2239,6 +2385,9 @@ export default function CropManagement({
                           Chỉ Tiêu & Dự Báo Kỹ Thuật
                         </h4>
                       </div>
+                      <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200" title="Chỉ tiêu tính tự động cho vụ nuôi hoàn hảo với FCR = 1.1">
+                        Chuẩn vụ hoàn hảo (FCR 1.1)
+                      </span>
                     </div>
 
                     {/* Hàng 1: Kích cỡ mục tiêu & Tỷ lệ sống */}
@@ -2262,7 +2411,7 @@ export default function CropManagement({
                             min="0.1"
                             placeholder="30"
                             value={formData.targetHarvestSize}
-                            onChange={(e) => setFormData({ ...formData, targetHarvestSize: e.target.value })}
+                            onChange={(e) => handleTargetSizeChange(e.target.value)}
                             className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-blue-500 pr-14"
                           />
                           <span className="text-xs font-bold text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -2289,7 +2438,7 @@ export default function CropManagement({
                             step="0.5"
                             placeholder="85"
                             value={formData.targetSurvivalRate}
-                            onChange={(e) => setFormData({ ...formData, targetSurvivalRate: e.target.value })}
+                            onChange={(e) => handleTargetSurvivalRateChange(e.target.value)}
                             className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-blue-500 pr-9"
                           />
                           <span className="text-xs font-bold text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -2316,9 +2465,9 @@ export default function CropManagement({
                         <div className="relative">
                           <input
                             type="number"
-                            step="10"
+                            step="1"
                             min="0"
-                            placeholder="3400"
+                            placeholder="3117"
                             value={formData.targetTotalFeedKg}
                             onChange={(e) => setFormData({ ...formData, targetTotalFeedKg: e.target.value })}
                             className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-blue-500 pr-10"
@@ -2327,6 +2476,25 @@ export default function CropManagement({
                             kg
                           </span>
                         </div>
+                        {parseFloat(formData.initialShrimpCount) > 0 && (
+                          <div className="flex items-center justify-between text-[10.5px] text-slate-500 mt-1">
+                            <span className="text-emerald-700 font-semibold">Tự động tính: FCR = 1.1</span>
+                            {estimatedFCR && estimatedFCR !== '1.10' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const targets = calculatePerfectTargets(formData.initialShrimpCount);
+                                  if (targets.feedKg > 0) {
+                                    setFormData((prev) => ({ ...prev, targetTotalFeedKg: targets.feedKg.toString() }));
+                                  }
+                                }}
+                                className="text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer"
+                              >
+                                Đặt lại FCR 1.1 ({calculatePerfectTargets(formData.initialShrimpCount).feedKg.toLocaleString('vi-VN')} kg)
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div>

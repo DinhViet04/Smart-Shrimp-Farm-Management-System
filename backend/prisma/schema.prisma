@@ -219,6 +219,11 @@ model Crop {
   actualHarvestProfit  Float?               @map("actual_harvest_profit") // Tiền lời hoặc lỗ (VNĐ)
   actualHarvestFcr     Float?               @map("actual_harvest_fcr") // Hệ số FCR thực tế
   actualHarvestSurvivalRate Float?          @map("actual_harvest_survival_rate") // Tỉ lệ sống thực tế (%)
+  // Thông tin con giống & Chi phí giống ban đầu (kết nối thị trường Tép Bạc)
+  seedUnitPrice        Float?               @map("seed_unit_price") // Đơn giá con giống khi thả (VNĐ/con)
+  seedCost             Float?               @map("seed_cost") // Tổng chi phí con giống khi thả = initialShrimpCount * seedUnitPrice (VNĐ)
+  seedType             String?              @default("Tôm thẻ chân trắng Post 10") @map("seed_type") // Giống tôm mặc định
+  seedSource           String?              @default("tepbac.com") @map("seed_source") // Nguồn tham chiếu giá
   harvestFeedCost      Float?               @map("harvest_feed_cost") // Chi phí thức ăn riêng biệt
   harvestMedicineCost  Float?               @map("harvest_medicine_cost") // Chi phí thuốc riêng biệt
   harvestChemicalCost  Float?               @map("harvest_chemical_cost") // Chi phí hóa chất riêng biệt
@@ -582,4 +587,22 @@ model KnowledgeChunk {
 
   @@index([documentId])
   @@map("knowledge_chunks")
+}
+
+/// Bảng lưu trữ và cache giá cả thị trường thủy sản (kết nối Tép Bạc - tepbac.com)
+model MarketPrice {
+  id          String   @id @default(uuid())
+  code        String   @unique // Mã sản phẩm/loài, ví dụ: "THEP10"
+  name        String   // Tên loài/mặt hàng: "Giống tôm thẻ chân trắng Post 10"
+  category    String   @default("SHRIMP_SEED") // SHRIMP_SEED, SHRIMP_COMMERCIAL
+  unit        String   @default("đ/CON") // Đơn vị tính
+  price       Float    // Đơn giá hiện tại (VNĐ/con)
+  source      String   @default("tepbac.com")
+  sourceUrl   String?  @map("source_url")
+  priceChange String?  @map("price_change") // Biến động giá: "+0%", "-1.5%", ...
+  lastFetched DateTime @default(now()) @map("last_fetched")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("market_prices")
 }

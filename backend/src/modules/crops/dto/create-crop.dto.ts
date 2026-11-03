@@ -1,5 +1,4 @@
 import {
-  IsUUID,
   IsDateString,
   IsInt,
   IsOptional,
@@ -92,4 +91,23 @@ export class CreateCropDto {
     },
   )
   expectedTransferDate?: string;
+
+  // Thông tin con giống & Chi phí giống ban đầu (kết nối thị trường Tép Bạc)
+  @IsOptional()
+  @IsNumber({}, { message: 'Đơn giá tôm giống phải là số' })
+  @Min(0, { message: 'Đơn giá tôm giống không được nhỏ hơn 0' })
+  seedUnitPrice?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'Tổng chi phí con giống phải là số' })
+  @Min(0, { message: 'Tổng chi phí con giống không được nhỏ hơn 0' })
+  seedCost?: number;
+
+  @IsOptional()
+  @IsString({ message: 'Tên loại giống tôm phải là chuỗi' })
+  seedType?: string;
+
+  @IsOptional()
+  @IsString({ message: 'Nguồn tham chiếu giá phải là chuỗi' })
+  seedSource?: string;
 }

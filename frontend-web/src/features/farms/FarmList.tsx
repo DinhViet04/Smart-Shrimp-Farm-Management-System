@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, CheckCircle2, Eye, Waves, User, ArrowRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, CheckCircle2, Eye, Waves, User, ArrowRight, UserCog, X } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import FarmFormModal from './FarmFormModal';
 import FarmDetailPanel from './FarmDetailPanel';
@@ -9,10 +9,18 @@ interface FarmListProps {
   onNavigateToPonds?: (farmId?: string) => void;
 }
 
+interface TransferableFarm {
+  id: string;
+  name: string;
+  ownerId: string;
+  workspaceId: string;
+}
+
 export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   const [farms, setFarms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,6 +34,10 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   // View Modal State
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [viewingFarm, setViewingFarm] = useState<any>(null);
+  const [transferFarm, setTransferFarm] = useState<TransferableFarm | null>(null);
+  const [managers, setManagers] = useState<Array<{ id: string; fullName: string; email: string }>>([]);
+  const [newOwnerId, setNewOwnerId] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; farmId?: string } | null>(null);
@@ -36,7 +48,10 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   const fetchFarms = async () => {
     setIsLoading(true);
     try {
-      const data = await farmService.getAll(search);
+      const workspaceId = user.role === 'ADMIN'
+        ? undefined
+        : localStorage.getItem('active_workspace_id') || undefined;
+      const data = await farmService.getAll(search, undefined, workspaceId);
       setFarms(data);
     } catch (error) {
       showToast('Không thể tải danh sách trang trại', 'error');
@@ -54,7 +69,13 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
       fetchFarms();
     }, 150);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, workspaceRevision]);
+
+  useEffect(() => {
+    const handleWorkspaceChange = () => setWorkspaceRevision((value) => value + 1);
+    window.addEventListener('workspace-changed', handleWorkspaceChange);
+    return () => window.removeEventListener('workspace-changed', handleWorkspaceChange);
+  }, []);
 
   const showToast = (message: string, type: 'success' | 'error', farmId?: string) => {
     setToast({ message, type, farmId });
@@ -85,6 +106,23 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   const handleViewFarm = (farm: any) => {
     setViewingFarm(farm);
     setIsViewOpen(true);
+  };
+
+  const openTransfer = async (farm: TransferableFarm) => {
+    setTransferFarm(farm); setNewOwnerId('');
+    try {
+      const values = await farmService.getWorkspaceManagers(farm.workspaceId);
+      setManagers(values.filter((manager) => manager.id !== farm.ownerId));
+    }
+    catch (error: unknown) { showToast(error instanceof Error ? error.message : 'Không thể tải danh sách quản lý', 'error'); setTransferFarm(null); }
+  };
+
+  const transferOwnership = async () => {
+    if (!transferFarm || !newOwnerId) return;
+    setIsTransferring(true);
+    try { await farmService.transferOwnership(transferFarm.id, newOwnerId); showToast('Đã chuyển quyền quản lý trang trại', 'success'); setTransferFarm(null); await fetchFarms(); }
+    catch (error: unknown) { showToast(error instanceof Error ? error.message : 'Không thể chuyển quyền quản lý', 'error'); }
+    finally { setIsTransferring(false); }
   };
 
   if (isLoading && farms.length === 0) {
@@ -266,6 +304,7 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
                         {farm.owner.fullName || 'Không rõ'}
                       </span>
                     )}
+                    {user.role === 'ADMIN' && <button onClick={(event) => { event.stopPropagation(); void openTransfer(farm); }} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700"><UserCog className="h-3.5 w-3.5" />Chuyển quản lý</button>}
                   </div>
                   
                   <div className="space-y-4 mb-2 flex-1">
@@ -305,10 +344,10 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
                           }
                         }}
                         className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 hover:-translate-y-0.5 transition-all cursor-pointer"
-                        title="Đến Quản lý Ao nuôi của trang trại này"
+                        title={user.role === 'ADMIN' ? 'Xem chi tiết trang trại' : 'Đến Quản lý Ao nuôi của trang trại này'}
                       >
-                        <Waves className="w-3.5 h-3.5" />
-                        <span>Quản lý Ao nuôi</span>
+                        {user.role === 'ADMIN' ? <Eye className="w-3.5 h-3.5" /> : <Waves className="w-3.5 h-3.5" />}
+                        <span>{user.role === 'ADMIN' ? 'Xem chi tiết' : 'Quản lý Ao nuôi'}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -337,6 +376,8 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
         farm={viewingFarm}
         onClose={() => setIsViewOpen(false)}
       />
+
+      {transferFarm && <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/50 p-4"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-between"><div><h3 className="text-xl font-black">Chuyển quyền quản lý</h3><p className="text-sm text-slate-500">{transferFarm.name}</p></div><button disabled={isTransferring} onClick={() => setTransferFarm(null)}><X /></button></div><label className="mt-6 block text-sm font-bold">Quản lý mới<select value={newOwnerId} onChange={(event) => setNewOwnerId(event.target.value)} className="mt-2 w-full rounded-xl border p-3"><option value="">Chọn Farm Manager đang hoạt động</option>{managers.map((manager) => <option key={manager.id} value={manager.id}>{manager.fullName} · {manager.email}</option>)}</select></label><p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-700">Dữ liệu ao và vụ nuôi không thay đổi. Quản lý cũ sẽ mất quyền sở hữu trang trại này.</p><div className="mt-6 flex justify-end gap-3"><button onClick={() => setTransferFarm(null)} className="rounded-xl border px-5 py-2.5 font-bold">Hủy</button><button disabled={!newOwnerId || isTransferring} onClick={() => void transferOwnership()} className="rounded-xl bg-blue-600 px-5 py-2.5 font-black text-white disabled:opacity-50">{isTransferring ? 'Đang chuyển...' : 'Xác nhận'}</button></div></div></div>}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (

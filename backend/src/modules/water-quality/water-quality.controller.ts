@@ -24,7 +24,7 @@ export class WaterQualityController {
   constructor(private readonly waterQualityService: WaterQualityService) {}
 
   @Post()
-  @Roles('TECHNICIAN', 'ADMIN')
+  @Roles('TECHNICIAN')
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateWaterQualityDto) {
     return this.waterQualityService.create(req.user, dto);

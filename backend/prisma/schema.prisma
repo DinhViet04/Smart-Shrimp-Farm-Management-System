@@ -19,6 +19,36 @@ enum Role {
   FARM_MANAGER
 }
 
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketScope {
+  SYSTEM
+  WORKSPACE
+}
+
 enum HealthStatus {
   GOOD
   WARNING
@@ -67,37 +97,42 @@ enum IncidentEventType {
 }
 
 model User {
-  id                  String                    @id @default(uuid())
-  email               String                    @unique
-  password            String?
-  fullName            String
-  phone               String?
-  address             String?
-  avatarUrl           String?
-  role                Role                      @default(FARMER)
-  isActive            Boolean                   @default(true)
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  farms               Farm[]
-  farmStaff           FarmStaff[]
-  googleId            String?                   @unique
-  waterQualityRecords WaterQualityRecord[]
-  inventoryUsageLogs  InventoryUsageLog[]
-  shrimpHealthRecords ShrimpHealthRecord[]
-  feedingLogs         FeedingLog[]
-  assignedIncidents   Incident[]                @relation("IncidentAssignee")
-  reportedIncidents   Incident[]                @relation("IncidentReporter")
-  incidentUpdates     IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
-  mortalityLogs       MortalityLog[]
-  notifications       Notification[]
-  refreshSessions     RefreshSession[]
+  id                   String                    @id @default(uuid())
+  email                String                    @unique
+  password             String?
+  fullName             String
+  phone                String?
+  address              String?
+  avatarUrl            String?
+  role                 Role                      @default(FARMER)
+  isActive             Boolean                   @default(true)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  farms                Farm[]
+  farmStaff            FarmStaff[]
+  googleId             String?                   @unique
+  waterQualityRecords  WaterQualityRecord[]
+  inventoryUsageLogs   InventoryUsageLog[]
+  shrimpHealthRecords  ShrimpHealthRecord[]
+  feedingLogs          FeedingLog[]
+  assignedIncidents    Incident[]                @relation("IncidentAssignee")
+  reportedIncidents    Incident[]                @relation("IncidentReporter")
+  incidentUpdates      IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
+  mortalityLogs        MortalityLog[]
+  notifications        Notification[]
+  refreshSessions      RefreshSession[]
+  adminAuditLogs       AdminAuditLog[]           @relation("AdminAuditActor")
+  workspaceMemberships WorkspaceMember[]
+  createdWorkspaces    Workspace[]               @relation("WorkspaceCreator")
+  requestedTickets     SupportTicket[]           @relation("SupportRequester")
+  assignedTickets      SupportTicket[]           @relation("SupportAssignee")
 
   @@map("users")
 }
 
 model Farm {
   id                  String               @id @default(uuid())
-  name                String               @unique
+  name                String
   location            String?
   address             String
   area                Float
@@ -105,6 +140,8 @@ model Farm {
   status              String               @default("ACTIVE")
   ownerId             String
   owner               User                 @relation(fields: [ownerId], references: [id])
+  workspaceId         String               @map("workspace_id")
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id])
   farmingModel        String?              @default("HIGH_TECH") @map("farming_model") // Mô hình nuôi: "TRADITIONAL" (Truyền thống), "HIGH_TECH" (Công nghệ cao)
   ponds               Pond[]
   inventories         Inventory[]
@@ -118,7 +155,66 @@ model Farm {
   updatedAt           DateTime             @updatedAt
 
   @@index([ownerId, deletedAt])
+  @@index([workspaceId, name])
+  @@index([workspaceId, deletedAt])
   @@map("farms")
+}
+
+model Workspace {
+  id          String            @id @default(uuid())
+  name        String
+  slug        String            @unique
+  status      WorkspaceStatus   @default(ACTIVE)
+  createdById String            @map("created_by_id")
+  createdBy   User              @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  members     WorkspaceMember[]
+  farms       Farm[]
+  tickets     SupportTicket[]
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String        @map("workspace_id")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole @default(MEMBER)
+  isActive    Boolean       @default(true) @map("is_active")
+  joinedAt    DateTime      @default(now()) @map("joined_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, userId])
+  @@index([userId, isActive])
+  @@map("workspace_members")
+}
+
+model SupportTicket {
+  id           String                @id @default(uuid())
+  scope        SupportTicketScope    @default(WORKSPACE)
+  workspaceId  String?               @map("workspace_id")
+  workspace    Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  requesterId  String                @map("requester_id")
+  requester    User                  @relation("SupportRequester", fields: [requesterId], references: [id])
+  assignedToId String?               @map("assigned_to_id")
+  assignedTo   User?                 @relation("SupportAssignee", fields: [assignedToId], references: [id])
+  subject      String
+  description  String                @db.Text
+  priority     SupportTicketPriority @default(MEDIUM)
+  status       SupportTicketStatus   @default(OPEN)
+  resolution   String?               @db.Text
+  resolvedAt   DateTime?             @map("resolved_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  @@index([workspaceId, status, createdAt])
+  @@index([scope, status, createdAt])
+  @@index([assignedToId, status])
+  @@map("support_tickets")
 }
 
 model FarmStaff {
@@ -186,63 +282,63 @@ model ShrimpSizeSample {
 }
 
 model Crop {
-  id                   String               @id @default(uuid())
-  pondId               String
-  pond                 Pond                 @relation(fields: [pondId], references: [id], onDelete: Cascade)
-  startDate            DateTime
-  initialShrimpCount   Int // T_o: Số tôm thả ban đầu
-  status               CropStatus           @default(ACTIVE)
+  id                        String               @id @default(uuid())
+  pondId                    String
+  pond                      Pond                 @relation(fields: [pondId], references: [id], onDelete: Cascade)
+  startDate                 DateTime
+  initialShrimpCount        Int // T_o: Số tôm thả ban đầu
+  status                    CropStatus           @default(ACTIVE)
   // Mục tiêu & Kế hoạch nuôi do Quản lý (Manager) thiết lập (Dùng cho AI dự báo & đánh giá)
-  targetHarvestSize    Float?               @map("target_harvest_size") // Kích thước thu hoạch dự kiến (con/kg)
-  growthMilestones     Json?                @map("growth_milestones") // Mảng JSON mốc tăng trưởng: [{ day: 30, weight: 10 }, ...]
-  targetSurvivalRate   Float?               @map("target_survival_rate") // Tỷ lệ sống dự kiến (%)
-  targetTotalFeedKg    Float?               @map("target_total_feed_kg") // Tổng lượng thức ăn dự kiến (kg)
-  expectedHarvestDate  DateTime?            @map("expected_harvest_date") // Ngày thu hoạch dự kiến
-  expectedDurationDays Int?                 @map("expected_duration_days") // Số ngày nuôi dự kiến
-  stage                String?              @default("COMMERCIAL") @map("stage") // Giai đoạn vụ nuôi: "NURSERY" (Ương dưỡng / Giai đoạn 1), "COMMERCIAL" (Nuôi thương phẩm / Giai đoạn 2)
-  expectedTransferDate DateTime?            @map("expected_transfer_date") // Ngày dự tính tách ao / chuyển qua giai đoạn thương phẩm (nếu là ao ương dưỡng)
-  parentCropId         String?              @map("parent_crop_id")
-  parentCrop           Crop?                @relation("CropSplitHistory", fields: [parentCropId], references: [id])
-  childCrops           Crop[]               @relation("CropSplitHistory")
-  transferDate         DateTime?            @map("transfer_date")
-  actualNurseryHarvest Int?                 @map("actual_nursery_harvest")
-  nurserySurvivalRate  Float?               @map("nursery_survival_rate")
-  transferSize         Float?               @map("transfer_size")
-  splitNote            String?              @map("split_note")
-  actualHarvestCount   Int?                 @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
-  actualHarvestKg      Float?               @map("actual_harvest_kg") // Sản lượng thu hoạch thực tế (kg)
-  actualHarvestSize    Float?               @map("actual_harvest_size") // Kích cỡ tôm thu hoạch thực tế (con/kg)
-  actualHarvestDate    DateTime?            @map("actual_harvest_date") // Ngày thu hoạch
-  actualHarvestPricePerKg Float?            @map("actual_harvest_price_per_kg") // Giá bán 1kg tôm (VNĐ/kg)
-  actualHarvestRevenue Float?               @map("actual_harvest_revenue") // Doanh thu thu hoạch (VNĐ)
-  actualHarvestCost    Float?               @map("actual_harvest_cost") // Tổng chi phí thức ăn, thuốc, hóa chất (VNĐ)
-  actualHarvestProfit  Float?               @map("actual_harvest_profit") // Tiền lời hoặc lỗ (VNĐ)
-  actualHarvestFcr     Float?               @map("actual_harvest_fcr") // Hệ số FCR thực tế
-  actualHarvestSurvivalRate Float?          @map("actual_harvest_survival_rate") // Tỉ lệ sống thực tế (%)
+  targetHarvestSize         Float?               @map("target_harvest_size") // Kích thước thu hoạch dự kiến (con/kg)
+  growthMilestones          Json?                @map("growth_milestones") // Mảng JSON mốc tăng trưởng: [{ day: 30, weight: 10 }, ...]
+  targetSurvivalRate        Float?               @map("target_survival_rate") // Tỷ lệ sống dự kiến (%)
+  targetTotalFeedKg         Float?               @map("target_total_feed_kg") // Tổng lượng thức ăn dự kiến (kg)
+  expectedHarvestDate       DateTime?            @map("expected_harvest_date") // Ngày thu hoạch dự kiến
+  expectedDurationDays      Int?                 @map("expected_duration_days") // Số ngày nuôi dự kiến
+  stage                     String?              @default("COMMERCIAL") @map("stage") // Giai đoạn vụ nuôi: "NURSERY" (Ương dưỡng / Giai đoạn 1), "COMMERCIAL" (Nuôi thương phẩm / Giai đoạn 2)
+  expectedTransferDate      DateTime?            @map("expected_transfer_date") // Ngày dự tính tách ao / chuyển qua giai đoạn thương phẩm (nếu là ao ương dưỡng)
+  parentCropId              String?              @map("parent_crop_id")
+  parentCrop                Crop?                @relation("CropSplitHistory", fields: [parentCropId], references: [id])
+  childCrops                Crop[]               @relation("CropSplitHistory")
+  transferDate              DateTime?            @map("transfer_date")
+  actualNurseryHarvest      Int?                 @map("actual_nursery_harvest")
+  nurserySurvivalRate       Float?               @map("nursery_survival_rate")
+  transferSize              Float?               @map("transfer_size")
+  splitNote                 String?              @map("split_note")
+  actualHarvestCount        Int?                 @map("actual_harvest_count") // Số tôm thu hoạch thực tế (con)
+  actualHarvestKg           Float?               @map("actual_harvest_kg") // Sản lượng thu hoạch thực tế (kg)
+  actualHarvestSize         Float?               @map("actual_harvest_size") // Kích cỡ tôm thu hoạch thực tế (con/kg)
+  actualHarvestDate         DateTime?            @map("actual_harvest_date") // Ngày thu hoạch
+  actualHarvestPricePerKg   Float?               @map("actual_harvest_price_per_kg") // Giá bán 1kg tôm (VNĐ/kg)
+  actualHarvestRevenue      Float?               @map("actual_harvest_revenue") // Doanh thu thu hoạch (VNĐ)
+  actualHarvestCost         Float?               @map("actual_harvest_cost") // Tổng chi phí thức ăn, thuốc, hóa chất (VNĐ)
+  actualHarvestProfit       Float?               @map("actual_harvest_profit") // Tiền lời hoặc lỗ (VNĐ)
+  actualHarvestFcr          Float?               @map("actual_harvest_fcr") // Hệ số FCR thực tế
+  actualHarvestSurvivalRate Float?               @map("actual_harvest_survival_rate") // Tỉ lệ sống thực tế (%)
   // Thông tin con giống & Chi phí giống ban đầu (kết nối thị trường Tép Bạc)
-  seedUnitPrice        Float?               @map("seed_unit_price") // Đơn giá con giống khi thả (VNĐ/con)
-  seedCost             Float?               @map("seed_cost") // Tổng chi phí con giống khi thả = initialShrimpCount * seedUnitPrice (VNĐ)
-  seedType             String?              @default("Tôm thẻ chân trắng Post 10") @map("seed_type") // Giống tôm mặc định
-  seedSource           String?              @default("tepbac.com") @map("seed_source") // Nguồn tham chiếu giá
-  harvestFeedCost      Float?               @map("harvest_feed_cost") // Chi phí thức ăn riêng biệt
-  harvestMedicineCost  Float?               @map("harvest_medicine_cost") // Chi phí thuốc riêng biệt
-  harvestChemicalCost  Float?               @map("harvest_chemical_cost") // Chi phí hóa chất riêng biệt
-  harvestSeedCost      Float?               @map("harvest_seed_cost") // Chi phí con giống
-  harvestElectricityCost Float?              @map("harvest_electricity_cost") // Chi phí điện và nước
-  harvestLaborCost     Float?               @map("harvest_labor_cost") // Chi phí nhân công
-  harvestOtherCost     Float?               @map("harvest_other_cost") // Chi phí khác
-  harvestFeedKg        Float?               @map("harvest_feed_kg") // Tổng lượng thức ăn thực tế đã dùng (kg)
-  harvestNote          String?              @map("harvest_note") // Ghi chú thu hoạch
-  harvestEvaluation    String?              @map("harvest_evaluation") @db.VarChar(2000) // Đánh giá nguyên nhân, vấn đề và biện pháp trong vụ
-  harvestLessonsLearned String?             @map("harvest_lessons_learned") @db.VarChar(2000) // Bài học rút ra sau vụ
-  harvestNextRecommendation String?         @map("harvest_next_recommendation") @db.VarChar(2000) // Khuyến nghị cho vụ tiếp theo
-  environmentRecords   EnvironmentRecord[]
-  incidents            Incident[]
-  shrimpHealthRecords  ShrimpHealthRecord[]
-  feedingLogs          FeedingLog[]
-  mortalityLogs        MortalityLog[]
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  seedUnitPrice             Float?               @map("seed_unit_price") // Đơn giá con giống khi thả (VNĐ/con)
+  seedCost                  Float?               @map("seed_cost") // Tổng chi phí con giống khi thả = initialShrimpCount * seedUnitPrice (VNĐ)
+  seedType                  String?              @default("Tôm thẻ chân trắng Post 10") @map("seed_type") // Giống tôm mặc định
+  seedSource                String?              @default("tepbac.com") @map("seed_source") // Nguồn tham chiếu giá
+  harvestFeedCost           Float?               @map("harvest_feed_cost") // Chi phí thức ăn riêng biệt
+  harvestMedicineCost       Float?               @map("harvest_medicine_cost") // Chi phí thuốc riêng biệt
+  harvestChemicalCost       Float?               @map("harvest_chemical_cost") // Chi phí hóa chất riêng biệt
+  harvestSeedCost           Float?               @map("harvest_seed_cost") // Chi phí con giống
+  harvestElectricityCost    Float?               @map("harvest_electricity_cost") // Chi phí điện và nước
+  harvestLaborCost          Float?               @map("harvest_labor_cost") // Chi phí nhân công
+  harvestOtherCost          Float?               @map("harvest_other_cost") // Chi phí khác
+  harvestFeedKg             Float?               @map("harvest_feed_kg") // Tổng lượng thức ăn thực tế đã dùng (kg)
+  harvestNote               String?              @map("harvest_note") // Ghi chú thu hoạch
+  harvestEvaluation         String?              @map("harvest_evaluation") @db.VarChar(2000) // Đánh giá nguyên nhân, vấn đề và biện pháp trong vụ
+  harvestLessonsLearned     String?              @map("harvest_lessons_learned") @db.VarChar(2000) // Bài học rút ra sau vụ
+  harvestNextRecommendation String?              @map("harvest_next_recommendation") @db.VarChar(2000) // Khuyến nghị cho vụ tiếp theo
+  environmentRecords        EnvironmentRecord[]
+  incidents                 Incident[]
+  shrimpHealthRecords       ShrimpHealthRecord[]
+  feedingLogs               FeedingLog[]
+  mortalityLogs             MortalityLog[]
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
   @@index([pondId, status, startDate])
   @@index([status, startDate])
@@ -261,6 +357,22 @@ model RefreshSession {
   @@index([userId, revokedAt])
   @@index([expiresAt])
   @@map("refresh_sessions")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  actorId    String   @map("actor_id")
+  actor      User     @relation("AdminAuditActor", fields: [actorId], references: [id])
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }
 
 model PasswordResetOtp {
@@ -362,7 +474,6 @@ model WaterQualityRecord {
   @@map("water_quality_records")
 }
 
-
 enum InventoryCategory {
   FEED
   MEDICINE
@@ -370,21 +481,21 @@ enum InventoryCategory {
 }
 
 model Inventory {
-  id           String            @id @default(uuid())
-  itemName     String            @map("item_name")
-  category     InventoryCategory
-  quantity     Float             @default(0)
-  unit         String
-  packageType  String?           @map("package_type")
-  packageQty   Float?            @map("package_qty")
-  weightPerPkg Float?            @map("weight_per_pkg")
-  minThreshold Float             @default(0) @map("min_threshold")
-  supplierName String?           @map("supplier")
-  description  String?
-  imageUrl     String?           @map("image_url")
-  shape        String?
-  sizeSpec     String?           @map("size_spec")
-  pricePerPackage Float?         @default(0) @map("price_per_package")
+  id              String            @id @default(uuid())
+  itemName        String            @map("item_name")
+  category        InventoryCategory
+  quantity        Float             @default(0)
+  unit            String
+  packageType     String?           @map("package_type")
+  packageQty      Float?            @map("package_qty")
+  weightPerPkg    Float?            @map("weight_per_pkg")
+  minThreshold    Float             @default(0) @map("min_threshold")
+  supplierName    String?           @map("supplier")
+  description     String?
+  imageUrl        String?           @map("image_url")
+  shape           String?
+  sizeSpec        String?           @map("size_spec")
+  pricePerPackage Float?            @default(0) @map("price_per_package")
 
   farmId     String    @map("farm_id")
   farm       Farm      @relation(fields: [farmId], references: [id], onDelete: Cascade)
@@ -593,10 +704,10 @@ model KnowledgeChunk {
 model MarketPrice {
   id          String   @id @default(uuid())
   code        String   @unique // Mã sản phẩm/loài, ví dụ: "THEP10"
-  name        String   // Tên loài/mặt hàng: "Giống tôm thẻ chân trắng Post 10"
+  name        String // Tên loài/mặt hàng: "Giống tôm thẻ chân trắng Post 10"
   category    String   @default("SHRIMP_SEED") // SHRIMP_SEED, SHRIMP_COMMERCIAL
   unit        String   @default("đ/CON") // Đơn vị tính
-  price       Float    // Đơn giá hiện tại (VNĐ/con)
+  price       Float // Đơn giá hiện tại (VNĐ/con)
   source      String   @default("tepbac.com")
   sourceUrl   String?  @map("source_url")
   priceChange String?  @map("price_change") // Biến động giá: "+0%", "-1.5%", ...

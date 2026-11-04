@@ -8,7 +8,7 @@ export interface LoadingMotionProps {
   headerTitle?: string;
   headerSubtitle?: string;
   headerIcon?: ReactNode;
-  color?: 'blue' | 'indigo' | 'cyan' | 'emerald' | 'rose' | 'amber' | 'teal';
+  color?: 'blue' | 'indigo' | 'purple' | 'cyan' | 'emerald' | 'rose' | 'amber' | 'teal';
   mode?: 'page' | 'card';
   badgeText?: string;
   className?: string;
@@ -18,6 +18,7 @@ export interface LoadingMotionProps {
 const ACCENTS = {
   blue: 'bg-blue-500',
   indigo: 'bg-indigo-500',
+  purple: 'bg-purple-500',
   cyan: 'bg-cyan-500',
   emerald: 'bg-emerald-500',
   rose: 'bg-rose-500',

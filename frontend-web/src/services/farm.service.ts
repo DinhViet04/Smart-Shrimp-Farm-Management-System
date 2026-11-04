@@ -4,18 +4,26 @@ import { invalidatePondOverviewCache } from './pond.service';
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export const farmService = {
-  getAll: async (search?: string, status?: string) => {
+  getAll: async (
+    search?: string,
+    status?: string,
+    workspaceId = localStorage.getItem('active_workspace_id') || '',
+  ) => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (status) params.append('status', status);
+    if (workspaceId) params.append('workspaceId', workspaceId);
     
     const response = await apiFetch(`${apiUrl}/api/farms?${params.toString()}`);
     if (!response.ok) throw new Error('Failed to fetch farms');
     return response.json();
   },
 
-  getMy: async () => {
-    const response = await apiFetch(`${apiUrl}/api/farms/my`);
+  getMy: async (workspaceId = localStorage.getItem('active_workspace_id') || '') => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.append('workspaceId', workspaceId);
+    const query = params.toString();
+    const response = await apiFetch(`${apiUrl}/api/farms/my${query ? `?${query}` : ''}`);
     if (!response.ok) throw new Error('Failed to fetch my farms');
     return response.json();
   },
@@ -81,6 +89,22 @@ export const farmService = {
     const resData = await response.json();
     if (!response.ok) throw new Error(resData.message || 'Failed to unassign staff');
     return resData;
+  },
+
+  getWorkspaceManagers: async (workspaceId: string) => {
+    const response = await apiFetch(`${apiUrl}/api/workspaces/${workspaceId}/members`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Không thể tải quản lý workspace');
+    return (data as Array<{ role: string; isActive: boolean; user: { id: string; fullName: string; email: string; role: string; isActive: boolean } }>)
+      .filter((member) => member.isActive && member.user.isActive && member.user.role === 'FARM_MANAGER')
+      .map((member) => member.user);
+  },
+
+  transferOwnership: async (farmId: string, newOwnerId: string) => {
+    const response = await apiFetch(`${apiUrl}/api/farms/${farmId}/owner`, { method: 'PATCH', body: JSON.stringify({ newOwnerId }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Không thể chuyển quyền quản lý');
+    return data;
   },
 
   getCandidates: async () => {

@@ -123,7 +123,7 @@ export class CropsController {
   }
 
   @Patch(':id/harvest')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   harvest(
     @Request() req: any,
     @Param('id') id: string,

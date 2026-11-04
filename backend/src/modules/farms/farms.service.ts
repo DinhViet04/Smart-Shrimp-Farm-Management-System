@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Role } from '@prisma/client';
+import { Role, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateFarmDto } from './dto/create-farm.dto.js';
 import { UpdateFarmDto } from './dto/update-farm.dto.js';
@@ -26,31 +26,54 @@ export class FarmsService {
   ) {}
 
   async create(data: CreateFarmDto) {
-    const exists = await this.prisma.farm.findFirst({
-      where: { name: data.name },
-    });
-    if (exists) throw new BadRequestException('Ten nong trai da ton tai');
-
     if (!data.ownerId) {
       throw new BadRequestException(
         'Vui lòng chỉ định chủ trang trại (ownerId)',
       );
     }
 
-    const { ponds_count, staffIds, ...farmData } = data;
+    const membership = await this.prisma.workspaceMember.findFirst({
+      where: {
+        workspaceId: data.workspaceId,
+        userId: data.ownerId,
+        isActive: true,
+        role: { in: [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] },
+        workspace: { status: 'ACTIVE' },
+      },
+      select: { workspaceId: true },
+    });
+    if (!membership)
+      throw new ForbiddenException(
+        'Bạn không có quyền tạo trang trại trong workspace đã chọn',
+      );
+    const exists = await this.prisma.farm.findFirst({
+      where: { workspaceId: membership.workspaceId, name: data.name },
+    });
+    if (exists)
+      throw new BadRequestException(
+        'Tên trang trại đã tồn tại trong workspace',
+      );
+
+    const { ponds_count, staffIds, workspaceId, ...farmData } = data;
     void ponds_count;
 
     const farm = await this.prisma.farm.create({
       data: {
         ...farmData,
         ownerId: data.ownerId,
+        workspaceId,
       },
     });
 
     if (staffIds?.length) {
+      const assignments = await this.buildStaffAssignments(farm.id, staffIds);
       await this.prisma.farmStaff.createMany({
-        data: await this.buildStaffAssignments(farm.id, staffIds),
+        data: assignments,
       });
+      await this.ensureWorkspaceMembers(
+        workspaceId,
+        assignments.map(({ userId }) => userId),
+      );
     }
 
     // Thông báo realtime cho Manager
@@ -76,6 +99,7 @@ export class FarmsService {
     status?: string,
     userId?: string,
     role?: string,
+    workspaceId?: string,
   ) {
     const accessWhere =
       role === 'ADMIN'
@@ -85,9 +109,23 @@ export class FarmsService {
           : userId
             ? { staff: { some: { userId, isActive: true } } }
             : { id: { in: [] } };
-    const where: any = { deletedAt: null, ...accessWhere };
+    const workspaceWhere =
+      role === 'ADMIN'
+        ? {}
+        : {
+            workspace: {
+              status: 'ACTIVE',
+              members: { some: { userId, isActive: true } },
+            },
+          };
+    const where: any = {
+      deletedAt: null,
+      ...accessWhere,
+      ...workspaceWhere,
+    };
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (status) where.status = status;
+    if (workspaceId) where.workspaceId = workspaceId;
 
     const [farms, ponds, owners] = await Promise.all([
       this.prisma.farm.findMany({
@@ -129,9 +167,17 @@ export class FarmsService {
     }));
   }
 
-  async findAllByManager(userId: string) {
+  async findAllByManager(userId: string, workspaceId?: string) {
     return this.prisma.farm.findMany({
-      where: { ownerId: userId, deletedAt: null },
+      where: {
+        ownerId: userId,
+        deletedAt: null,
+        ...(workspaceId ? { workspaceId } : {}),
+        workspace: {
+          status: 'ACTIVE',
+          members: { some: { userId, isActive: true } },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -168,7 +214,11 @@ export class FarmsService {
 
     if (data.name) {
       const exists = await this.prisma.farm.findFirst({
-        where: { name: data.name, id: { not: id } },
+        where: {
+          name: data.name,
+          workspaceId: farm.workspaceId,
+          id: { not: id },
+        },
       });
       if (exists) throw new BadRequestException('Ten nong trai da ton tai');
     }
@@ -198,9 +248,14 @@ export class FarmsService {
     if (staffIds) {
       await this.prisma.farmStaff.deleteMany({ where: { farmId: id } });
       if (staffIds.length > 0) {
+        const assignments = await this.buildStaffAssignments(id, staffIds);
         await this.prisma.farmStaff.createMany({
-          data: await this.buildStaffAssignments(id, staffIds),
+          data: assignments,
         });
+        await this.ensureWorkspaceMembers(
+          farm.workspaceId,
+          assignments.map(({ userId }) => userId),
+        );
       }
     }
 
@@ -217,6 +272,68 @@ export class FarmsService {
 
     return this.prisma.farm.delete({
       where: { id },
+    });
+  }
+
+  async transferOwnership(farmId: string, newOwnerId: string, adminId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const farm = await tx.farm.findFirst({
+        where: { id: farmId, deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          workspaceId: true,
+          owner: { select: { fullName: true } },
+        },
+      });
+      if (!farm) throw new NotFoundException('Không tìm thấy trang trại');
+      if (farm.ownerId === newOwnerId)
+        throw new BadRequestException(
+          'Người dùng đã là quản lý trang trại này',
+        );
+      const owner = await tx.user.findUnique({
+        where: { id: newOwnerId },
+        select: { id: true, fullName: true, role: true, isActive: true },
+      });
+      if (!owner || owner.role !== Role.FARM_MANAGER || !owner.isActive)
+        throw new BadRequestException(
+          'Quản lý mới phải là Farm Manager đang hoạt động',
+        );
+      const membership = await tx.workspaceMember.findFirst({
+        where: {
+          workspaceId: farm.workspaceId,
+          userId: newOwnerId,
+          isActive: true,
+        },
+      });
+      if (!membership)
+        throw new BadRequestException(
+          'Quản lý mới phải là thành viên đang hoạt động của cùng workspace',
+        );
+      const updated = await tx.farm.update({
+        where: { id: farmId },
+        data: { ownerId: newOwnerId },
+        include: {
+          owner: { select: { id: true, fullName: true, email: true } },
+        },
+      });
+      await tx.adminAuditLog.create({
+        data: {
+          actorId: adminId,
+          action: 'FARM_OWNERSHIP_TRANSFERRED',
+          targetType: 'FARM',
+          targetId: farmId,
+          details: {
+            farmName: farm.name,
+            fromOwnerId: farm.ownerId,
+            fromOwnerName: farm.owner.fullName,
+            toOwnerId: owner.id,
+            toOwnerName: owner.fullName,
+          },
+        },
+      });
+      return updated;
     });
   }
 
@@ -303,6 +420,20 @@ export class FarmsService {
     // Gửi thông báo cho nhân sự vừa được phân công
     const farm = await this.prisma.farm.findUnique({ where: { id: farmId } });
     if (farm) {
+      await this.prisma.workspaceMember.upsert({
+        where: {
+          workspaceId_userId: {
+            workspaceId: farm.workspaceId,
+            userId: userIdToAssign,
+          },
+        },
+        create: {
+          workspaceId: farm.workspaceId,
+          userId: userIdToAssign,
+          role: WorkspaceRole.MEMBER,
+        },
+        update: { isActive: true },
+      });
       await this.notificationsService.createFarmJoinNotification(
         userIdToAssign,
         farmId,
@@ -404,9 +535,9 @@ export class FarmsService {
       if (existingUser.role !== role && existingUser.role !== Role.ADMIN) {
         await this.prisma.user.update({
           where: { id: existingUser.id },
-          data: { role: role as Role },
+          data: { role },
         });
-        existingUser.role = role as Role;
+        existingUser.role = role;
       }
 
       // Thêm trực tiếp vào FarmStaff
@@ -428,12 +559,26 @@ export class FarmsService {
           isActive: true,
         },
       });
+      await this.prisma.workspaceMember.upsert({
+        where: {
+          workspaceId_userId: {
+            workspaceId: farm.workspaceId,
+            userId: existingUser.id,
+          },
+        },
+        create: {
+          workspaceId: farm.workspaceId,
+          userId: existingUser.id,
+          role: WorkspaceRole.MEMBER,
+        },
+        update: { isActive: true },
+      });
 
       // Tạo link đăng nhập chứa token (để nếu user muốn mở từ email)
       const inviteLink = `${frontendUrl}/login?inviteToken=${inviteToken}`;
 
       // Gửi email thông báo (fire & forget)
-      this.emailService.sendFarmInvitationExistingUser({
+      void this.emailService.sendFarmInvitationExistingUser({
         toEmail: existingUser.email,
         toName: existingUser.fullName,
         farmName: farm.name,
@@ -473,7 +618,7 @@ export class FarmsService {
     const inviteLink = `${frontendUrl}/register?inviteToken=${inviteToken}`;
 
     // Gửi email mời (fire & forget)
-    this.emailService.sendFarmInvitationNewUser({
+    void this.emailService.sendFarmInvitationNewUser({
       toEmail: email,
       farmName: farm.name,
       managerName,
@@ -514,5 +659,17 @@ export class FarmsService {
       role: user.role,
       isActive: true,
     }));
+  }
+
+  private async ensureWorkspaceMembers(workspaceId: string, userIds: string[]) {
+    if (!userIds.length) return;
+    await this.prisma.workspaceMember.createMany({
+      data: userIds.map((userId) => ({
+        workspaceId,
+        userId,
+        role: WorkspaceRole.MEMBER,
+      })),
+      skipDuplicates: true,
+    });
   }
 }

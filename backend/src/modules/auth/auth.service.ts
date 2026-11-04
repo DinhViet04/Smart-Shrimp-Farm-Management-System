@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as nodemailer from 'nodemailer';
 import { randomInt, randomUUID } from 'crypto';
-import { Role } from '@prisma/client';
+import { Role, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -104,7 +104,7 @@ export class AuthService {
       try {
         const farm = await this.prisma.farm.findUnique({
           where: { id: invitePayload.farmId },
-          select: { id: true, name: true, ownerId: true },
+          select: { id: true, name: true, ownerId: true, workspaceId: true },
         });
         if (farm) {
           const existingStaff = await this.prisma.farmStaff.findUnique({
@@ -122,6 +122,7 @@ export class AuthService {
             },
             update: { isActive: true, role: user.role },
           });
+          await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
 
           if (isNewlyJoined) {
             await this.notificationsService.createFarmJoinNotification(
@@ -230,7 +231,7 @@ export class AuthService {
         {
           const farm = await this.prisma.farm.findUnique({
             where: { id: invitePayload.farmId },
-            select: { id: true, name: true, ownerId: true },
+            select: { id: true, name: true, ownerId: true, workspaceId: true },
           });
 
           if (farm) {
@@ -249,6 +250,7 @@ export class AuthService {
               },
               update: { isActive: true, role: invitePayload.role as Role },
             });
+            await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
 
             if (isNewlyJoined) {
               await this.notificationsService.createFarmJoinNotification(
@@ -383,7 +385,7 @@ export class AuthService {
 
           const farm = await this.prisma.farm.findUnique({
             where: { id: invitePayload.farmId },
-            select: { id: true, name: true, ownerId: true },
+            select: { id: true, name: true, ownerId: true, workspaceId: true },
           });
 
           if (farm) {
@@ -402,6 +404,7 @@ export class AuthService {
               },
               update: { isActive: true, role: invitePayload.role as Role },
             });
+            await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
 
             if (isNewlyJoined) {
               await this.notificationsService.createFarmJoinNotification(
@@ -740,7 +743,7 @@ export class AuthService {
 
     const farm = await this.prisma.farm.findUnique({
       where: { id: payload.farmId },
-      select: { id: true, name: true, ownerId: true },
+      select: { id: true, name: true, ownerId: true, workspaceId: true },
     });
     if (!farm) {
       throw new NotFoundException(
@@ -787,6 +790,7 @@ export class AuthService {
         isActive: true,
       },
     });
+    await this.ensureWorkspaceMembership(farm.workspaceId, activeUser.id);
 
     if (isNewlyJoined) {
       await this.notificationsService.createFarmJoinNotification(
@@ -877,6 +881,14 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  private async ensureWorkspaceMembership(workspaceId: string, userId: string) {
+    await this.prisma.workspaceMember.upsert({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      create: { workspaceId, userId, role: WorkspaceRole.MEMBER },
+      update: { isActive: true },
+    });
   }
 
   private getRefreshExpirationMs() {

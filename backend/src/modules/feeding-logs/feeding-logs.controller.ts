@@ -24,7 +24,7 @@ export class FeedingLogsController {
   constructor(private readonly feedingLogsService: FeedingLogsService) {}
 
   @Post()
-  @Roles('FARMER', 'ADMIN', 'FARM_MANAGER')
+  @Roles('FARMER', 'FARM_MANAGER')
   async createOrUpdate(@Req() req: any, @Body() dto: CreateDailyFeedingLogDto) {
     const user = { userId: req.user.userId, role: req.user.role };
     this.logger.log(
@@ -71,7 +71,7 @@ export class FeedingLogsController {
   }
 
   @Delete('daily')
-  @Roles('FARMER', 'ADMIN', 'FARM_MANAGER')
+  @Roles('FARMER', 'FARM_MANAGER')
   async deleteDaily(
     @Req() req: any,
     @Query('farmId') farmId: string,

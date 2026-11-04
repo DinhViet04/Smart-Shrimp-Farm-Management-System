@@ -5,6 +5,7 @@ import {
   TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
+import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
 import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 import LoadingMotion from '../components/LoadingMotion';
@@ -394,6 +395,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{activeTab}</h1>
           
           <div className="flex items-center gap-6">
+            <WorkspaceSwitcher />
             <NotificationDropdown 
               themeColor="blue" 
               onNavigateTab={(tab, config) => {

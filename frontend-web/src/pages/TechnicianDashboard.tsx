@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import NotificationDropdown from '../components/NotificationDropdown';
+import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
 import TechnicianOverviewDashboard from '../features/growth/TechnicianOverviewDashboard';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 import LoadingMotion from '../components/LoadingMotion';
@@ -341,6 +342,7 @@ export default function TechnicianDashboard() {
                 className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200 outline-none transition-all w-64 text-slate-700 placeholder-slate-400 font-medium"
               />
             </div>
+            <WorkspaceSwitcher />
             <NotificationDropdown 
               themeColor="indigo" 
               onNavigateTab={(tab, config) => {

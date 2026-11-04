@@ -17,7 +17,16 @@ export class FarmAccessService {
       user.role === 'FARM_MANAGER'
         ? (
             await this.prisma.farm.findMany({
-              where: { ownerId: user.userId, deletedAt: null },
+              where: {
+                ownerId: user.userId,
+                deletedAt: null,
+                workspace: {
+                  status: 'ACTIVE',
+                  members: {
+                    some: { userId: user.userId, isActive: true },
+                  },
+                },
+              },
               select: { id: true },
             })
           ).map((farm) => farm.id)
@@ -30,7 +39,15 @@ export class FarmAccessService {
               where: {
                 userId: user.userId,
                 isActive: true,
-                farm: { deletedAt: null },
+                farm: {
+                  deletedAt: null,
+                  workspace: {
+                    status: 'ACTIVE',
+                    members: {
+                      some: { userId: user.userId, isActive: true },
+                    },
+                  },
+                },
               },
               select: { farmId: true },
             })
@@ -61,7 +78,15 @@ export class FarmAccessService {
     }
 
     const farm = await this.prisma.farm.findFirst({
-      where: { id: farmId, ownerId: user.userId, deletedAt: null },
+      where: {
+        id: farmId,
+        ownerId: user.userId,
+        deletedAt: null,
+        workspace: {
+          status: 'ACTIVE',
+          members: { some: { userId: user.userId, isActive: true } },
+        },
+      },
       select: { id: true },
     });
 
@@ -89,6 +114,12 @@ export class FarmAccessService {
         farmId,
         userId: user.userId,
         isActive: true,
+        farm: {
+          workspace: {
+            status: 'ACTIVE',
+            members: { some: { userId: user.userId, isActive: true } },
+          },
+        },
       },
       select: { id: true },
     });

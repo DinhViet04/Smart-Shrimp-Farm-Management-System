@@ -3,12 +3,16 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcryptjs';
 import * as nodemailer from 'nodemailer';
 import { Prisma, Role } from '@prisma/client';
+import { GetUsersQueryDto } from './dto/get-users-query.dto.js';
+import { CreateUserByAdminDto } from './dto/create-user-by-admin.dto.js';
 
 @Injectable()
 export class UsersService {
@@ -17,27 +21,97 @@ export class UsersService {
     private readonly configService: ConfigService,
   ) {}
 
-  async findAll() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
+  async findAll(query: GetUsersQueryDto = new GetUsersQueryDto()) {
+    const page = query.page || 1;
+    const pageSize = query.pageSize || 20;
+    const search = query.search?.trim();
+    const where: Prisma.UserWhereInput = {
+      ...(query.role ? { role: query.role } : {}),
+      ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+      ...(search
+        ? {
+            OR: [
+              { fullName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          phone: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
       },
-      orderBy: { createdAt: 'desc' },
+    };
+  }
+
+  async createByAdmin(dto: CreateUserByAdminDto, actorId: string) {
+    const email = dto.email.trim().toLowerCase();
+    if (await this.prisma.user.findUnique({ where: { email } }))
+      throw new ConflictException('Email đã được sử dụng');
+    const password = await bcrypt.hash(dto.password, 10);
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email,
+          fullName: dto.fullName.trim(),
+          password,
+          role: dto.role,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          phone: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'USER_CREATED',
+          targetType: 'USER',
+          targetId: user.id,
+          details: { email: user.email, role: user.role },
+        },
+      });
+      return user;
     });
   }
 
-  async findCandidates() {
+  async findCandidates(includeManagers = false) {
     return this.prisma.user.findMany({
       where: {
         role: {
-          in: [Role.FARMER, Role.TECHNICIAN],
+          in: includeManagers
+            ? [Role.FARMER, Role.TECHNICIAN, Role.FARM_MANAGER]
+            : [Role.FARMER, Role.TECHNICIAN],
         },
         isActive: true,
       },
@@ -151,8 +225,42 @@ export class UsersService {
     });
   }
 
-  async updateRole(id: string, role: Role) {
+  async updateRole(id: string, role: Role, actorId: string) {
+    if (id === actorId)
+      throw new ForbiddenException(
+        'Không thể tự thay đổi vai trò của chính mình',
+      );
     return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id },
+        select: {
+          role: true,
+          isActive: true,
+          _count: { select: { farms: true } },
+        },
+      });
+      if (!target) throw new NotFoundException('Người dùng không tồn tại');
+      if (
+        target.role === Role.FARM_MANAGER &&
+        role !== Role.FARM_MANAGER &&
+        target._count.farms > 0
+      )
+        throw new BadRequestException(
+          'Hãy chuyển quyền sở hữu trang trại trước khi đổi vai trò quản lý',
+        );
+      if (
+        target.role === Role.ADMIN &&
+        role !== Role.ADMIN &&
+        target.isActive
+      ) {
+        const count = await tx.user.count({
+          where: { role: Role.ADMIN, isActive: true },
+        });
+        if (count <= 1)
+          throw new BadRequestException(
+            'Hệ thống phải còn ít nhất một Admin hoạt động',
+          );
+      }
       const user = await tx.user.update({
         where: { id },
         data: { role },
@@ -177,21 +285,67 @@ export class UsersService {
         });
       }
 
+      await tx.adminAuditLog.create({
+        data: {
+          actorId,
+          action: 'USER_ROLE_CHANGED',
+          targetType: 'USER',
+          targetId: id,
+          details: { from: target.role, to: role },
+        },
+      });
+
       return user;
     });
   }
 
-  async updateStatus(id: string, isActive: boolean) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { isActive },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        isActive: true,
-      },
+  async updateStatus(id: string, isActive: boolean, actorId: string) {
+    if (id === actorId)
+      throw new ForbiddenException(
+        'Không thể tự khóa tài khoản của chính mình',
+      );
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id },
+        select: { role: true, isActive: true },
+      });
+      if (!target) throw new NotFoundException('Người dùng không tồn tại');
+      if (target.role === Role.ADMIN && target.isActive && !isActive) {
+        const count = await tx.user.count({
+          where: { role: Role.ADMIN, isActive: true },
+        });
+        if (count <= 1)
+          throw new BadRequestException(
+            'Hệ thống phải còn ít nhất một Admin hoạt động',
+          );
+      }
+      const user = await tx.user.update({
+        where: { id },
+        data: { isActive },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          isActive: true,
+        },
+      });
+      if (!isActive)
+        await tx.refreshSession.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      if (target.isActive !== isActive)
+        await tx.adminAuditLog.create({
+          data: {
+            actorId,
+            action: isActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+            targetType: 'USER',
+            targetId: id,
+            details: { from: target.isActive, to: isActive },
+          },
+        });
+      return user;
     });
   }
 

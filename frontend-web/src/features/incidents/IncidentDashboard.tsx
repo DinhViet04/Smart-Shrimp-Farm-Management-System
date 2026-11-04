@@ -58,6 +58,7 @@ export default function IncidentDashboard({
   initialIncidentId?: string;
   onClearInitialIncidentId?: () => void;
 }) {
+  const adminView = role === 'ADMIN';
   const canCreate = role !== 'ADMIN';
   const canAssign = role === 'FARM_MANAGER';
   const isFarmer = role === 'FARMER';
@@ -384,6 +385,7 @@ export default function IncidentDashboard({
   };
 
   const openTreatmentWorkspace = (inc: Incident) => {
+    if (adminView) return;
     setSelected(null);
     setActiveWorkspaceIncident(inc);
   };
@@ -778,7 +780,7 @@ export default function IncidentDashboard({
                               >
                                 Chi tiết
                               </button>
-                              <button
+                              {!adminView && <button
                                 type="button"
                                 onClick={() => handleStartTreatmentDirectly(item)}
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs transition-all shadow-sm shadow-amber-600/20 cursor-pointer"
@@ -786,7 +788,7 @@ export default function IncidentDashboard({
                                 <Stethoscope className="w-3.5 h-3.5" />
                                 <span>Tiếp nhận & Vào điều trị</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
-                              </button>
+                              </button>}
                             </div>
                           </div>
                         </div>
@@ -919,7 +921,7 @@ export default function IncidentDashboard({
                               >
                                 Chi tiết
                               </button>
-                              <button
+                              {!adminView && <button
                                 type="button"
                                 onClick={() => openTreatmentWorkspace(item)}
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
@@ -927,7 +929,7 @@ export default function IncidentDashboard({
                                 <Stethoscope className="w-3.5 h-3.5" />
                                 <span>Vào bàn điều trị / Kê đơn</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
-                              </button>
+                              </button>}
                             </div>
                           </div>
                         </div>
@@ -1209,7 +1211,7 @@ export default function IncidentDashboard({
               )}
 
               {/* Nút vào Workspace */}
-              <div className="pt-2">
+              {!adminView ? <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => openTreatmentWorkspace(selected)}
@@ -1219,7 +1221,7 @@ export default function IncidentDashboard({
                   <span>Vào trang điều trị & Kê đơn thuốc (Bác sĩ AI)</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
-              </div>
+              </div> : <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-center text-xs font-semibold text-blue-700">Chế độ giám sát chỉ đọc. Việc điều trị do Quản lý trang trại và Kỹ thuật viên thực hiện.</div>}
             </div>
           </div>
         </div>,

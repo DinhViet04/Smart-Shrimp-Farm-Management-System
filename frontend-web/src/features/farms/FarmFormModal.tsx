@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Users, FlaskConical, UserCheck, Trash2, Mail, CheckCircle, Clock } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
+import { apiFetch } from '../../utils/api';
 
 const PROVINCES = [
   "An Giang", "Bà Rịa - Vũng Tàu", "Bắc Giang", "Bắc Kạn", "Bạc Liêu", "Bắc Ninh", "Bến Tre", "Bình Định", "Bình Dương", "Bình Phước", "Bình Thuận", "Cà Mau", "Cần Thơ", "Cao Bằng", "Đà Nẵng", "Đắk Lắk", "Đắk Nông", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Giang", "Hà Nam", "Hà Nội", "Hà Tĩnh", "Hải Dương", "Hải Phòng", "Hậu Giang", "Hòa Bình", "Hưng Yên", "Khánh Hòa", "Kiên Giang", "Kon Tum", "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Long An", "Nam Định", "Nghệ An", "Ninh Bình", "Ninh Thuận", "Phú Thọ", "Phú Yên", "Quảng Bình", "Quảng Nam", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sóc Trăng", "Sơn La", "Tây Ninh", "Thái Bình", "Thái Nguyên", "Thanh Hóa", "Thừa Thiên Huế", "Tiền Giang", "TP Hồ Chí Minh", "Trà Vinh", "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"
@@ -24,6 +25,7 @@ interface FarmFormModalProps {
 
 export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData }: FarmFormModalProps) {
   const [formData, setFormData] = useState<{
+    workspaceId: string;
     name: string;
     address: string;
     area: number | string;
@@ -31,6 +33,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     status: string;
     farmingModel: string;
   }>({
+    workspaceId: localStorage.getItem('active_workspace_id') || '',
     name: '',
     address: '',
     area: '',
@@ -40,6 +43,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
 
   // Assigned staff state
   const [assignedStaff, setAssignedStaff] = useState<AssignedStaffMember[]>([]);
@@ -121,6 +125,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
 
     if (initialData?.id) {
       setFormData({
+        workspaceId: initialData.workspaceId || '',
         name: initialData.name || '',
         address: initialData.address || '',
         area: initialData.area !== undefined && initialData.area !== null ? initialData.area : '',
@@ -131,6 +136,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       loadCurrentStaff(initialData.id);
     } else {
       setFormData({
+        workspaceId: localStorage.getItem('active_workspace_id') || '',
         name: '',
         address: '',
         area: '',
@@ -149,6 +155,23 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     setTechSearchError(null);
     setTechSearchSuccess(null);
   }, [initialData, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void apiFetch('/api/workspaces')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Không thể tải workspace');
+        return response.json() as Promise<Array<{ id: string; name: string; status: string }>>;
+      })
+      .then((items) => {
+        if (!cancelled) setWorkspaces(items.filter((item) => item.status === 'ACTIVE'));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspaces([]);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -301,7 +324,9 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       };
 
       if (initialData) {
-        await farmService.update(initialData.id, submitData);
+        const { workspaceId: _workspaceId, ...updateData } = submitData;
+        void _workspaceId;
+        await farmService.update(initialData.id, updateData);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
         // Tạo farm trước
@@ -362,6 +387,14 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
           )}
 
           <form id="farm-form" onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Tổ chức sở hữu <span className="text-red-500">*</span></label>
+              <select name="workspaceId" value={formData.workspaceId} onChange={handleChange} required disabled={Boolean(initialData)} className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70">
+                <option value="">-- Chọn tổ chức --</option>
+                {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+              </select>
+              <p className="text-[11px] text-slate-400">Trang trại và toàn bộ dữ liệu ao, vụ nuôi sẽ thuộc tổ chức này. Không thể đổi tại màn chỉnh sửa.</p>
+            </div>
             {/* Grid 1: Name & Province */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div className="space-y-1">

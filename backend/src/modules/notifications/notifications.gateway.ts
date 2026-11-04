@@ -56,7 +56,8 @@ export class NotificationsGateway
       client.data.user = payload; // store user info in socket
 
       // Join a room specific to this user to easily emit to all their devices
-      client.join(`user_${userId}`);
+      await client.join(`user_${userId}`);
+      if (payload.role === 'ADMIN') await client.join('role_ADMIN');
 
       // Also track in memory if needed
       if (!this.userSockets.has(userId)) {
@@ -84,5 +85,16 @@ export class NotificationsGateway
    */
   sendNotificationToUser(userId: string, notification: any) {
     this.server.to(`user_${userId}`).emit('newNotification', notification);
+  }
+
+  sendSupportTicketCreated(ticket: unknown) {
+    this.server.to('role_ADMIN').emit('supportTicketCreated', ticket);
+  }
+
+  sendSupportTicketUpdated(requesterId: string, ticket: unknown) {
+    this.server
+      .to('role_ADMIN')
+      .to(`user_${requesterId}`)
+      .emit('supportTicketUpdated', ticket);
   }
 }

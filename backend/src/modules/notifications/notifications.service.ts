@@ -25,6 +25,27 @@ export class NotificationsService {
     return notification;
   }
 
+  async createSupportNotification(
+    userId: string,
+    title: string,
+    message: string,
+    level: NotificationLevel = NotificationLevel.INFO,
+  ) {
+    const notification = await this.prisma.notification.create({
+      data: { userId, title, message, level },
+    });
+    this.gateway.sendNotificationToUser(userId, notification);
+    return notification;
+  }
+
+  emitSupportTicketCreated(ticket: unknown) {
+    this.gateway.sendSupportTicketCreated(ticket);
+  }
+
+  emitSupportTicketUpdated(requesterId: string, ticket: unknown) {
+    this.gateway.sendSupportTicketUpdated(requesterId, ticket);
+  }
+
   /**
    * Gửi thông báo cho Farmer hoặc Technician khi họ xác nhận tham gia trang trại thành công
    */

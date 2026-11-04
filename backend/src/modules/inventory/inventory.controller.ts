@@ -121,7 +121,7 @@ export class InventoryController {
   }
 
   @Post(':id/usage')
-  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN')
   recordUsage(
     @Param('id') id: string,
     @Body() createUsageDto: CreateInventoryUsageDto,
@@ -131,7 +131,7 @@ export class InventoryController {
   }
 
   @Post(':id/import')
-  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN')
+  @Roles('FARM_MANAGER', 'FARMER', 'TECHNICIAN')
   recordImport(
     @Param('id') id: string,
     @Body() createImportDto: CreateInventoryImportDto,

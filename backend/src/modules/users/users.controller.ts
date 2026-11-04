@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
   Body,
@@ -16,6 +17,8 @@ import { UpdateRoleDto } from './dto/update-role.dto.js';
 import { UpdateStatusDto } from './dto/update-status.dto.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { GetUsersQueryDto } from './dto/get-users-query.dto.js';
+import { CreateUserByAdminDto } from './dto/create-user-by-admin.dto.js';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -59,31 +62,46 @@ export class UsersController {
 
   @Get('candidates')
   @Roles('FARM_MANAGER', 'ADMIN')
-  async getCandidates() {
-    return this.usersService.findCandidates();
+  async getCandidates(@Query('includeManagers') includeManagers?: string) {
+    return this.usersService.findCandidates(includeManagers === 'true');
   }
 
   @Get()
   @Roles('ADMIN')
-  async getAllUsers() {
-    return this.usersService.findAll();
+  async getAllUsers(@Query() query: GetUsersQueryDto) {
+    return this.usersService.findAll(query);
+  }
+
+  @Post()
+  @Roles('ADMIN')
+  async createUser(
+    @CurrentUser('userId') currentUserId: string,
+    @Body() dto: CreateUserByAdminDto,
+  ) {
+    return this.usersService.createByAdmin(dto, currentUserId);
   }
 
   @Patch(':id/role')
   @Roles('ADMIN')
   async updateUserRole(
+    @CurrentUser('userId') currentUserId: string,
     @Param('id') id: string,
     @Body() updateRoleDto: UpdateRoleDto,
   ) {
-    return this.usersService.updateRole(id, updateRoleDto.role);
+    return this.usersService.updateRole(id, updateRoleDto.role, currentUserId);
   }
 
   @Patch(':id/status')
   @Roles('ADMIN')
   async updateUserStatus(
+    @CurrentUser('userId') currentUserId: string,
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateStatusDto,
   ) {
-    return this.usersService.updateStatus(id, updateStatusDto.isActive);
+    return this.usersService.updateStatus(
+      id,
+      updateStatusDto.isActive,
+      currentUserId,
+    );
   }
 }

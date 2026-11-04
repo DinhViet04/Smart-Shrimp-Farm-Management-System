@@ -28,6 +28,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { MarketPricesModule } from './modules/market-prices/market-prices.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { WorkspacesModule } from './modules/workspaces/workspaces.module.js';
+import { SupportModule } from './modules/support/support.module.js';
 
 @Module({
   imports: [
@@ -73,6 +75,8 @@ import { APP_GUARD } from '@nestjs/core';
     SurvivalRateModule,
     NotificationsModule,
     MarketPricesModule,
+    WorkspacesModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [

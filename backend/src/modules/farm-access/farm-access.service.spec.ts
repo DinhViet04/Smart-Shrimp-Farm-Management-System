@@ -21,7 +21,15 @@ describe('FarmAccessService', () => {
       where: {
         userId: 'technician-id',
         isActive: true,
-        farm: { deletedAt: null },
+        farm: {
+          deletedAt: null,
+          workspace: {
+            status: 'ACTIVE',
+            members: {
+              some: { userId: 'technician-id', isActive: true },
+            },
+          },
+        },
       },
       select: { farmId: true },
     });

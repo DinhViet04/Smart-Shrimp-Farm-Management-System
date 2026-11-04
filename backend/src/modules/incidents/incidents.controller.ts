@@ -57,13 +57,13 @@ export class IncidentsController {
   }
 
   @Patch(':id/start-treatment')
-  @Roles('TECHNICIAN', 'FARM_MANAGER', 'ADMIN')
+  @Roles('TECHNICIAN', 'FARM_MANAGER')
   startTreatment(@Request() req: any, @Param('id') id: string) {
     return this.incidentsService.startTreatment(req.user, id);
   }
 
   @Post(':id/treatment-updates')
-  @Roles('TECHNICIAN', 'FARM_MANAGER', 'ADMIN')
+  @Roles('TECHNICIAN', 'FARM_MANAGER')
   @HttpCode(HttpStatus.CREATED)
   addTreatmentUpdate(
     @Request() req: any,
@@ -74,7 +74,7 @@ export class IncidentsController {
   }
 
   @Patch(':id/resolve')
-  @Roles('TECHNICIAN', 'FARM_MANAGER', 'ADMIN')
+  @Roles('TECHNICIAN', 'FARM_MANAGER')
   resolve(
     @Request() req: any,
     @Param('id') id: string,

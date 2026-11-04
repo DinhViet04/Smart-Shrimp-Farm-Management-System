@@ -7,6 +7,12 @@ describe('UsersService account settings', () => {
   it('synchronizes farm assignments when an account becomes a technician', async () => {
     const transactionClient = {
       user: {
+        findUnique: jest.fn().mockResolvedValue({
+          role: Role.FARMER,
+          isActive: true,
+          _count: { farms: 0 },
+        }),
+        count: jest.fn().mockResolvedValue(2),
         update: jest
           .fn()
           .mockResolvedValue({ id: 'user-1', role: Role.TECHNICIAN }),
@@ -14,6 +20,7 @@ describe('UsersService account settings', () => {
       farmStaff: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      adminAuditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
     };
     const prisma = {
       $transaction: jest.fn((callback) => callback(transactionClient)),
@@ -23,7 +30,7 @@ describe('UsersService account settings', () => {
     };
     const service = new UsersService(prisma as any, mockConfigService as any);
 
-    await service.updateRole('user-1', Role.TECHNICIAN);
+    await service.updateRole('user-1', Role.TECHNICIAN, 'admin-id');
 
     expect(transactionClient.farmStaff.updateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1' },
@@ -34,11 +41,18 @@ describe('UsersService account settings', () => {
   it('deactivates farm assignments when an account changes to a non-staff role', async () => {
     const transactionClient = {
       user: {
+        findUnique: jest.fn().mockResolvedValue({
+          role: Role.FARMER,
+          isActive: true,
+          _count: { farms: 0 },
+        }),
+        count: jest.fn().mockResolvedValue(2),
         update: jest.fn().mockResolvedValue({ id: 'user-1', role: Role.ADMIN }),
       },
       farmStaff: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      adminAuditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
     };
     const prisma = {
       $transaction: jest.fn((callback) => callback(transactionClient)),
@@ -48,7 +62,7 @@ describe('UsersService account settings', () => {
     };
     const service = new UsersService(prisma as any, mockConfigService as any);
 
-    await service.updateRole('user-1', Role.ADMIN);
+    await service.updateRole('user-1', Role.ADMIN, 'admin-id');
 
     expect(transactionClient.farmStaff.updateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1' },

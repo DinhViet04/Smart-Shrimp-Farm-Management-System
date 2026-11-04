@@ -22,7 +22,7 @@ export class PondsController {
   constructor(private readonly pondsService: PondsService) {}
 
   @Post()
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   create(@Request() req: any, @Body() createPondDto: CreatePondDto) {
     return this.pondsService.create(req.user, createPondDto);
   }
@@ -46,7 +46,7 @@ export class PondsController {
   }
 
   @Put(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   update(
     @Request() req: any,
     @Param('id') id: string,
@@ -56,7 +56,7 @@ export class PondsController {
   }
 
   @Delete(':id')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   remove(@Request() req: any, @Param('id') id: string) {
     return this.pondsService.remove(id, req.user);
   }

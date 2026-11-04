@@ -35,7 +35,7 @@ export class SurvivalRateController {
    * PATCH /api/survival-rate/crop/:cropId/harvest
    */
   @Patch('survival-rate/crop/:cropId/harvest')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   updateHarvestCount(
     @Request() req: any,
     @Param('cropId') cropId: string,
@@ -57,7 +57,7 @@ export class SurvivalRateController {
    * POST /api/mortality-logs
    */
   @Post('mortality-logs')
-  @Roles('FARM_MANAGER', 'TECHNICIAN', 'ADMIN', 'FARMER')
+  @Roles('FARM_MANAGER', 'TECHNICIAN', 'FARMER')
   @HttpCode(HttpStatus.CREATED)
   createMortalityLog(@Request() req: any, @Body() dto: CreateMortalityLogDto) {
     return this.survivalRateService.createMortalityLog(req.user, dto);

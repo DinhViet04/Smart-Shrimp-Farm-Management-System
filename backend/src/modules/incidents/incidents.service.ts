@@ -274,8 +274,10 @@ export class IncidentsService {
   ) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status === 'RESOLVED') {
-      throw new BadRequestException('Không thể cập nhật sự cố đã xử lý xong');
+    if (incident.status !== 'TREATING') {
+      throw new BadRequestException(
+        'Chỉ có thể cập nhật sau khi đã bắt đầu điều trị sự cố',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -299,7 +301,6 @@ export class IncidentsService {
         data: {
           treatment: dto.treatment.trim(),
           status: 'TREATING',
-          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -309,8 +310,10 @@ export class IncidentsService {
   async resolve(user: AuthUser, id: string, dto: ResolveIncidentDto) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status === 'RESOLVED') {
-      throw new BadRequestException('Sự cố này đã xử lý xong');
+    if (incident.status !== 'TREATING') {
+      throw new BadRequestException(
+        'Chỉ có thể hoàn tất sự cố đang được điều trị',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -333,7 +336,6 @@ export class IncidentsService {
           treatment: dto.treatment.trim(),
           status: 'RESOLVED',
           resolvedAt: new Date(),
-          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -390,6 +392,11 @@ export class IncidentsService {
     user: AuthUser,
     incident: Awaited<ReturnType<IncidentsService['getIncident']>>,
   ) {
+    if (user.role === 'ADMIN') {
+      throw new ForbiddenException(
+        'Admin chỉ được giám sát, không được can thiệp xử lý sự cố',
+      );
+    }
     await this.farmAccess.assertCanAccessFarm(user, incident.crop.pond.farmId);
     if (user.role === 'FARM_MANAGER') {
       return;

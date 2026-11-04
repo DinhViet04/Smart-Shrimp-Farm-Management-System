@@ -6,9 +6,13 @@ import {
   Min,
   IsEnum,
   IsArray,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateFarmDto {
+  @IsUUID('4', { message: 'Workspace không hợp lệ' })
+  workspaceId: string;
+
   @IsString()
   @IsNotEmpty()
   name: string;

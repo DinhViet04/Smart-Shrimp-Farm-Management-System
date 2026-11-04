@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Put,
+  Patch,
   Param,
   Delete,
   Query,
@@ -18,6 +19,7 @@ import { UpdateFarmDto } from './dto/update-farm.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { TransferFarmOwnershipDto } from './dto/transfer-farm-ownership.dto.js';
 
 @Controller('farms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,6 +35,7 @@ export class FarmsController {
   findAll(
     @Query('search') search: string,
     @Query('status') status: string,
+    @Query('workspaceId') workspaceId: string,
     @Request() req: any,
   ) {
     return this.farmsService.findAll(
@@ -40,13 +43,14 @@ export class FarmsController {
       status,
       this.getUserId(req),
       req.user.role,
+      workspaceId,
     );
   }
 
   @Get('my')
   @Roles('FARM_MANAGER')
-  findMyFarms(@Request() req: any) {
-    return this.farmsService.findAllByManager(this.getUserId(req));
+  findMyFarms(@Query('workspaceId') workspaceId: string, @Request() req: any) {
+    return this.farmsService.findAllByManager(this.getUserId(req), workspaceId);
   }
 
   @Get(':id')
@@ -58,11 +62,11 @@ export class FarmsController {
   @Post()
   @Roles('FARM_MANAGER')
   create(@Body() createFarmDto: CreateFarmDto, @Request() req: any) {
-    // Nếu createFarmDto chưa có ownerId thì tự gán bằng user đang đăng nhập
-    if (!createFarmDto.ownerId) {
-      createFarmDto.ownerId = this.getUserId(req);
-    }
-    return this.farmsService.create(createFarmDto);
+    // Không tin ownerId từ client: trang trại luôn thuộc manager đang tạo.
+    return this.farmsService.create({
+      ...createFarmDto,
+      ownerId: this.getUserId(req),
+    });
   }
 
   @Put(':id')
@@ -80,6 +84,20 @@ export class FarmsController {
     );
   }
 
+  @Patch(':id/owner')
+  @Roles('ADMIN')
+  transferOwnership(
+    @Param('id') id: string,
+    @Body() dto: TransferFarmOwnershipDto,
+    @Request() req: any,
+  ) {
+    return this.farmsService.transferOwnership(
+      id,
+      dto.newOwnerId,
+      this.getUserId(req),
+    );
+  }
+
   @Delete(':id')
   @Roles('FARM_MANAGER')
   remove(@Param('id') id: string, @Request() req: any) {
@@ -93,7 +111,7 @@ export class FarmsController {
   }
 
   @Post(':id/staff')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   assignStaff(
     @Param('id') id: string,
     @Body('userId') userIdToAssign: string,
@@ -108,7 +126,7 @@ export class FarmsController {
   }
 
   @Delete(':id/staff/:userId')
-  @Roles('FARM_MANAGER', 'ADMIN')
+  @Roles('FARM_MANAGER')
   unassignStaff(
     @Param('id') id: string,
     @Param('userId') userIdToUnassign: string,

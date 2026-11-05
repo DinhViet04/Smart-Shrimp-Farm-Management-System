@@ -123,15 +123,13 @@ export const farmService = {
   },
 
   /**
-   * Mời nhân sự bằng email (2 luồng):
-   * - Đã có tài khoản → add trực tiếp + gửi email thông báo
-   * - Chưa có tài khoản → gửi email mời đăng ký (có link chứa inviteToken)
+   * Mời nhân sự bằng email. Người nhận phải đăng nhập/đăng ký rồi chấp nhận lời mời.
    */
   inviteByEmail: async (
     farmId: string,
     email: string,
     role: 'FARMER' | 'TECHNICIAN',
-  ): Promise<{ status: 'assigned' | 'invited'; message: string; email: string }> => {
+  ): Promise<{ status: 'invited'; message: string; email: string }> => {
     const response = await apiFetch(`${apiUrl}/api/farms/${farmId}/invite-by-email`, {
       method: 'POST',
       body: JSON.stringify({ email, role }),

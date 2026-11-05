@@ -13,7 +13,7 @@ interface AssignedStaffMember {
   email: string;
   role: 'FARMER' | 'TECHNICIAN';
   phone?: string;
-  status: 'assigned' | 'invited'; // 'assigned' = đã có TK & đã join, 'invited' = chờ đăng ký
+  status: 'assigned' | 'invited'; // 'invited' = chờ người nhận chấp nhận qua email
 }
 
 interface FarmFormModalProps {
@@ -208,11 +208,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         // Đang edit farm → gọi API invite ngay
         const result = await farmService.inviteByEmail(initialData.id, email, 'FARMER');
         await loadCurrentStaff();
-        if (result.status === 'assigned') {
-          setFarmerSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
-        } else {
-          setFarmerSearchSuccess(`📧 Đã gửi email mời đăng ký tới ${result.email}`);
-        }
+        setFarmerSearchSuccess(`📧 Đã gửi email mời tới ${result.email}`);
       } else {
         // Đang tạo farm mới → queue lại, sẽ gửi sau khi farm được tạo
         setPendingInvites(prev => [...prev, { email, role: 'FARMER' }]);
@@ -255,11 +251,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         // Đang edit farm → gọi API invite ngay
         const result = await farmService.inviteByEmail(initialData.id, email, 'TECHNICIAN');
         await loadCurrentStaff();
-        if (result.status === 'assigned') {
-          setTechSearchSuccess(`✅ Đã thêm và gửi email thông báo tới ${result.email}`);
-        } else {
-          setTechSearchSuccess(`📧 Đã gửi email mời đăng ký tới ${result.email}`);
-        }
+        setTechSearchSuccess(`📧 Đã gửi email mời tới ${result.email}`);
       } else {
         // Đang tạo farm mới → queue lại
         setPendingInvites(prev => [...prev, { email, role: 'TECHNICIAN' }]);

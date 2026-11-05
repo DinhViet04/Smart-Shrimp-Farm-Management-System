@@ -674,14 +674,20 @@ export default function RegisterPage() {
             {/* Role Selection */}
             <div className="space-y-1 pt-0.5">
               <label className="block text-[10.5px] font-bold text-slate-600 uppercase tracking-wider">
-                Chọn Vai Trò (Role) <span className="text-cyan-600">*</span>
+                Vai Trò <span className="text-cyan-600">*</span>
               </label>
+              <p className="text-[9.5px] text-slate-500 leading-tight">
+                {inviteInfo.valid
+                  ? 'Vai trò được xác định theo lời mời của quản lý.'
+                  : 'Nhân viên cần đăng ký bằng liên kết mời được gửi qua email.'}
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {/* Farm Manager */}
                 <button
                   type="button"
+                  disabled={inviteInfo.valid}
                   onClick={() => handleRoleSelect('FARM_MANAGER')}
-                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'FARM_MANAGER'
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between ${inviteInfo.valid ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'} ${formData.role === 'FARM_MANAGER'
                       ? 'bg-sky-500/10 border-sky-500 ring-2 ring-sky-400/40 shadow-sm text-sky-950'
                       : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
                     }`}
@@ -701,8 +707,9 @@ export default function RegisterPage() {
                 {/* Technician */}
                 <button
                   type="button"
+                  disabled={inviteInfo.role !== 'TECHNICIAN'}
                   onClick={() => handleRoleSelect('TECHNICIAN')}
-                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'TECHNICIAN'
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between ${inviteInfo.role !== 'TECHNICIAN' ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'} ${formData.role === 'TECHNICIAN'
                       ? 'bg-cyan-500/10 border-cyan-500 ring-2 ring-cyan-400/40 shadow-sm text-cyan-950'
                       : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
                     }`}
@@ -722,8 +729,9 @@ export default function RegisterPage() {
                 {/* Farmer */}
                 <button
                   type="button"
+                  disabled={inviteInfo.role !== 'FARMER'}
                   onClick={() => handleRoleSelect('FARMER')}
-                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between cursor-pointer ${formData.role === 'FARMER'
+                  className={`p-2 rounded-lg border text-left transition-all relative flex flex-col justify-between ${inviteInfo.role !== 'FARMER' ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'} ${formData.role === 'FARMER'
                       ? 'bg-teal-500/10 border-teal-500 ring-2 ring-teal-400/40 shadow-sm text-teal-950'
                       : 'bg-white/60 hover:bg-white/90 border-slate-200 text-slate-700'
                     }`}

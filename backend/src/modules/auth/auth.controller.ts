@@ -139,12 +139,16 @@ export class AuthController {
    * Chấp nhận lời mời tham gia trang trại (dành cho người dùng đã có tài khoản / đang đăng nhập).
    */
   @Post('accept-invite')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async acceptInvite(@Body('token') token: string) {
+  async acceptInvite(
+    @Body('token') token: string,
+    @CurrentUser('userId') userId: string,
+  ) {
     if (!token) {
       return { valid: false, reason: 'Thiếu token' };
     }
-    return this.authService.acceptInviteToken(token);
+    return this.authService.acceptInviteToken(token, userId);
   }
 
   private attachRefreshCookie<T extends { refreshToken: string }>(

@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as nodemailer from 'nodemailer';
 import { randomInt, randomUUID } from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { Role, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -23,6 +24,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly googleClient = new OAuth2Client();
 
   constructor(
     private readonly usersService: UsersService,
@@ -79,14 +81,22 @@ export class AuthService {
       throw new ConflictException('Email đã được sử dụng');
     }
 
+    // Tài khoản nhân viên chỉ được tạo qua lời mời gửi đến đúng email.
+    if (
+      !invitePayload &&
+      (dto.role === Role.FARMER || dto.role === Role.TECHNICIAN)
+    ) {
+      throw new BadRequestException(
+        'Tài khoản nhân viên cần đăng ký qua lời mời của quản lý trang trại',
+      );
+    }
+
     // Determine role: invite token overrides request role
     let role: string;
     if (invitePayload) {
       role = invitePayload.role; // Force role từ invitation
     } else {
-      const allowedRoles = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'];
-      role =
-        dto.role && allowedRoles.includes(dto.role) ? dto.role : 'FARM_MANAGER';
+      role = Role.FARM_MANAGER;
     }
 
     // Create new user (password is hashed inside UsersService.create)
@@ -298,35 +308,36 @@ export class AuthService {
   }
 
   async loginWithGoogle(credential: string, inviteToken?: string) {
+    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    if (!googleClientId || googleClientId.includes('your-google-client-id')) {
+      throw new UnauthorizedException('Đăng nhập Google chưa được cấu hình');
+    }
+
     let payload;
     try {
-      const response = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`,
-      );
-      if (!response.ok) {
-        throw new UnauthorizedException(
-          'Token Google không hợp lệ hoặc đã hết hạn',
-        );
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: credential,
+        audience: googleClientId,
+      });
+      payload = ticket.getPayload();
+      if (!payload) {
+        throw new Error('Google token payload is empty');
       }
-      payload = await response.json();
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
+    } catch {
       throw new UnauthorizedException(
-        'Không thể xác thực token Google. Vui lòng thử lại.',
+        'Token Google không hợp lệ, đã hết hạn hoặc không thuộc ứng dụng này',
       );
     }
 
     const { sub: googleId, email, name, email_verified } = payload;
 
-    if (!email) {
+    if (!googleId || !email) {
       throw new UnauthorizedException(
         'Không thể lấy thông tin email từ Google.',
       );
     }
 
-    if (email_verified !== 'true' && email_verified !== true) {
+    if (email_verified !== true) {
       throw new UnauthorizedException('Email Google chưa được xác minh');
     }
 
@@ -717,7 +728,7 @@ export class AuthService {
    * Chấp nhận lời mời tham gia trang trại bằng inviteToken.
    * Cập nhật vai trò người dùng (nếu khác và không phải ADMIN) và thêm vào FarmStaff.
    */
-  async acceptInviteToken(token: string) {
+  async acceptInviteToken(token: string, authenticatedUserId: string) {
     let payload: {
       email: string;
       farmId: string;
@@ -741,6 +752,16 @@ export class AuthService {
       throw new BadRequestException('Thông tin lời mời không hợp lệ');
     }
 
+    const user = await this.usersService.findById(authenticatedUserId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Tài khoản không hợp lệ hoặc đã bị khóa');
+    }
+    if (user.email.toLowerCase() !== payload.email.toLowerCase()) {
+      throw new BadRequestException(
+        `Lời mời này chỉ dành cho tài khoản ${payload.email}`,
+      );
+    }
+
     const farm = await this.prisma.farm.findUnique({
       where: { id: payload.farmId },
       select: { id: true, name: true, ownerId: true, workspaceId: true },
@@ -751,25 +772,13 @@ export class AuthService {
       );
     }
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: { equals: payload.email, mode: 'insensitive' },
-        isActive: true,
-      },
-    });
-
-    if (!user) {
-      throw new NotFoundException(
-        `Không tìm thấy tài khoản với email ${payload.email}. Vui lòng đăng ký tài khoản trước.`,
-      );
-    }
-
     let activeUser = user;
     if (user.role !== payload.role && user.role !== Role.ADMIN) {
-      activeUser = await this.prisma.user.update({
+      await this.prisma.user.update({
         where: { id: user.id },
         data: { role: payload.role as Role },
       });
+      activeUser = { ...user, role: payload.role as Role };
     }
 
     const existingStaff = await this.prisma.farmStaff.findUnique({
@@ -811,12 +820,11 @@ export class AuthService {
       }
     }
 
-    const { password: _, ...userWithoutPassword } = activeUser;
     return {
       success: true,
       farm: { id: farm.id, name: farm.name },
       role: payload.role,
-      user: userWithoutPassword,
+      user: activeUser,
       message: `Đã gia nhập trang trại "${farm.name}" thành công với vai trò ${payload.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}.`,
     };
   }

@@ -89,11 +89,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
       if (role === 'FARMER') setFarmerEmailToAssign('');
       else setTechEmailToAssign('');
 
-      if (res.status === 'assigned') {
-        setSuccessMessage(`✅ Đã thêm ${role === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'} (${res.email}) vào trang trại`);
-      } else {
-        setSuccessMessage(`📧 Đã gửi email mời tới ${res.email}`);
-      }
+      setSuccessMessage(`📧 Đã gửi email mời tới ${res.email}`);
       fetchStaff();
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi phân công nhân sự');

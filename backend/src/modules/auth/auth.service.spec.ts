@@ -1,6 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { OAuth2Client } from 'google-auth-library';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
 import { JwtService } from '@nestjs/jwt';
@@ -16,6 +17,8 @@ describe('AuthService password reset', () => {
   let usersService: {
     findByEmail: jest.Mock;
     findById: jest.Mock;
+    create: jest.Mock;
+    updateGoogleId: jest.Mock;
     updatePasswordByEmail: jest.Mock;
   };
   let jwtService: { signAsync: jest.Mock; verifyAsync: jest.Mock };
@@ -27,6 +30,8 @@ describe('AuthService password reset', () => {
     usersService = {
       findByEmail: jest.fn(),
       findById: jest.fn(),
+      create: jest.fn(),
+      updateGoogleId: jest.fn(),
       updatePasswordByEmail: jest.fn(),
     };
     jwtService = {
@@ -46,6 +51,7 @@ describe('AuthService password reset', () => {
           SMTP_USER: 'test@example.com',
           SMTP_PASS: 'secret',
           SMTP_FROM: 'test@example.com',
+          GOOGLE_CLIENT_ID: 'google-client-id.apps.googleusercontent.com',
         };
         return values[key];
       }),
@@ -56,7 +62,8 @@ describe('AuthService password reset', () => {
 
     prisma = {
       farm: { findUnique: jest.fn() },
-      farmStaff: { upsert: jest.fn() },
+      farmStaff: { findUnique: jest.fn(), upsert: jest.fn() },
+      workspaceMember: { upsert: jest.fn() },
       passwordResetOtp: {
         findUnique: jest.fn(),
         upsert: jest.fn(),
@@ -68,7 +75,7 @@ describe('AuthService password reset', () => {
         updateMany: jest.fn(),
       },
       $transaction: jest.fn(async (callback) => callback(prisma)),
-      user: { update: jest.fn() },
+      user: { findFirst: jest.fn(), update: jest.fn() },
     };
 
     service = new AuthService(
@@ -82,6 +89,10 @@ describe('AuthService password reset', () => {
         createStaffJoinedNotification: jest.fn(),
       } as any,
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('should send OTP for an existing email', async () => {
@@ -137,6 +148,144 @@ describe('AuthService password reset', () => {
         inviteToken: 'invite-token',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it.each([Role.FARMER, Role.TECHNICIAN])(
+    'rejects public registration for %s without a farm invitation',
+    async (role) => {
+      usersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.register({
+          email: 'employee@example.com',
+          password: 'Password123!',
+          fullName: 'Employee',
+          role,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(usersService.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('verifies a Google ID token against the configured client ID', async () => {
+    const verifyIdToken = jest
+      .spyOn(OAuth2Client.prototype, 'verifyIdToken')
+      .mockRejectedValue(
+        new Error('Wrong recipient, payload audience != requiredAudience'),
+      );
+
+    await expect(
+      service.loginWithGoogle('wrong-audience-token'),
+    ).rejects.toThrow(UnauthorizedException);
+
+    expect(verifyIdToken).toHaveBeenCalledWith({
+      idToken: 'wrong-audience-token',
+      audience: 'google-client-id.apps.googleusercontent.com',
+    });
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('accepts a verified Google ID token for the configured client', async () => {
+    jest.spyOn(OAuth2Client.prototype, 'verifyIdToken').mockResolvedValue({
+      getPayload: () => ({
+        sub: 'google-user-id',
+        email: 'google@example.com',
+        name: 'Google User',
+        email_verified: true,
+      }),
+    } as any);
+    usersService.findByEmail.mockResolvedValue(null);
+    usersService.create.mockResolvedValue({
+      id: 'user-google',
+      email: 'google@example.com',
+      fullName: 'Google User',
+      role: Role.FARM_MANAGER,
+      isActive: true,
+      password: null,
+      googleId: 'google-user-id',
+    });
+    jwtService.signAsync
+      .mockResolvedValueOnce('access-token')
+      .mockResolvedValueOnce('refresh-token');
+    prisma.refreshSession.create.mockResolvedValue({ id: 'refresh-session' });
+
+    await expect(service.loginWithGoogle('valid-token')).resolves.toMatchObject(
+      {
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        user: { email: 'google@example.com' },
+      },
+    );
+
+    expect(usersService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'google@example.com',
+        googleId: 'google-user-id',
+      }),
+    );
+  });
+
+  it('only lets the authenticated account with the invited email join the farm', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      email: 'invited@example.com',
+      farmId: 'farm-1',
+      role: Role.FARMER,
+      type: 'farm_invite',
+    });
+    usersService.findById.mockResolvedValue({
+      id: 'user-1',
+      email: 'other@example.com',
+      role: Role.FARMER,
+      isActive: true,
+    });
+
+    await expect(
+      service.acceptInviteToken('invite-token', 'user-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.farmStaff.upsert).not.toHaveBeenCalled();
+  });
+
+  it('adds the authenticated account after it accepts its own invitation', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      email: 'invited@example.com',
+      farmId: 'farm-1',
+      role: Role.TECHNICIAN,
+      type: 'farm_invite',
+    });
+    const invitedUser = {
+      id: 'user-1',
+      email: 'invited@example.com',
+      fullName: 'Invited User',
+      role: Role.TECHNICIAN,
+      isActive: true,
+    };
+    usersService.findById.mockResolvedValue(invitedUser);
+    prisma.farm.findUnique.mockResolvedValue({
+      id: 'farm-1',
+      name: 'Farm A',
+      ownerId: 'manager-1',
+      workspaceId: 'workspace-1',
+    });
+    prisma.farmStaff.findUnique.mockResolvedValue(null);
+    prisma.farmStaff.upsert.mockResolvedValue({ id: 'staff-1' });
+    prisma.workspaceMember.upsert.mockResolvedValue({ id: 'membership-1' });
+
+    await expect(
+      service.acceptInviteToken('invite-token', 'user-1'),
+    ).resolves.toMatchObject({ success: true, role: Role.TECHNICIAN });
+
+    expect(prisma.farmStaff.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          farmId: 'farm-1',
+          userId: 'user-1',
+          role: Role.TECHNICIAN,
+        }),
+      }),
+    );
+    expect(prisma.workspaceMember.upsert).toHaveBeenCalled();
   });
 
   it('rotates and revokes the previous refresh session', async () => {

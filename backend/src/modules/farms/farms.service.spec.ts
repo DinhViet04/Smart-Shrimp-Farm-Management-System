@@ -1,6 +1,117 @@
 import { FarmsService } from './farms.service.js';
 
 describe('FarmsService list query', () => {
+  it('rejects direct staff assignment and requires an email invitation', async () => {
+    const farmAccess = {
+      assertCanManageFarm: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new FarmsService(
+      {} as any,
+      farmAccess as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    await expect(
+      service.assignStaff(
+        'farm-id',
+        'employee-id',
+        'manager-id',
+        'FARM_MANAGER',
+      ),
+    ).rejects.toThrow(
+      'Không thể gán nhân viên trực tiếp; vui lòng mời nhân viên qua email',
+    );
+  });
+
+  it.each(['FARMER', 'TECHNICIAN'] as const)(
+    'sends an invitation for an existing %s without assigning the account',
+    async (role) => {
+      const prisma = {
+        farm: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'farm-id',
+            name: 'Farm A',
+            ownerId: 'manager-id',
+            workspaceId: 'workspace-id',
+            owner: {
+              id: 'manager-id',
+              fullName: 'Manager',
+              email: 'manager@example.com',
+            },
+          }),
+        },
+        user: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'employee-id',
+            email: 'employee@example.com',
+            fullName: 'Employee',
+            role,
+            isActive: true,
+          }),
+          update: jest.fn(),
+        },
+        farmStaff: { upsert: jest.fn() },
+        workspaceMember: { upsert: jest.fn() },
+      };
+      const farmAccess = {
+        assertCanManageFarm: jest.fn().mockResolvedValue(undefined),
+      };
+      const jwtService = {
+        signAsync: jest.fn().mockResolvedValue('invite-token'),
+      };
+      const configService = {
+        get: jest.fn((key: string) =>
+          key === 'FRONTEND_URL' ? 'http://localhost:5173' : 'secret',
+        ),
+      };
+      const emailService = {
+        sendFarmInvitationExistingUser: jest.fn().mockResolvedValue(undefined),
+      };
+      const notificationsService = {
+        createFarmJoinNotification: jest.fn(),
+        createStaffJoinedNotification: jest.fn(),
+      };
+      const service = new FarmsService(
+        prisma as any,
+        farmAccess as any,
+        jwtService as any,
+        configService as any,
+        emailService as any,
+        notificationsService as any,
+      );
+
+      await expect(
+        service.inviteStaffByEmail(
+          'farm-id',
+          'employee@example.com',
+          role,
+          'manager-id',
+          'FARM_MANAGER',
+        ),
+      ).resolves.toMatchObject({ status: 'invited' });
+
+      expect(emailService.sendFarmInvitationExistingUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toEmail: 'employee@example.com',
+          role,
+          inviteLink: 'http://localhost:5173/login?inviteToken=invite-token',
+        }),
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.farmStaff.upsert).not.toHaveBeenCalled();
+      expect(prisma.workspaceMember.upsert).not.toHaveBeenCalled();
+      expect(
+        notificationsService.createFarmJoinNotification,
+      ).not.toHaveBeenCalled();
+      expect(
+        notificationsService.createStaffJoinedNotification,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects farm creation outside a workspace the manager administers', async () => {
     const prisma = {
       workspaceMember: { findFirst: jest.fn().mockResolvedValue(null) },

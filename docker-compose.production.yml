@@ -1,0 +1,152 @@
+name: ${COMPOSE_PROJECT_NAME:-ssfm}
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - data
+
+  migrate:
+    build:
+      context: ./backend
+      target: migrator
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+      DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env.production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
+  seed:
+    profiles: ["seed"]
+    build:
+      context: ./backend
+      target: migrator
+    command: ["npx", "prisma", "db", "seed"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+      DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env.production}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL in .env.production}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env.production}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-System Administrator}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - data
+
+  ai-service:
+    build:
+      context: ./ai-service
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CORS_ORIGINS: ${AI_CORS_ORIGINS:?Set AI_CORS_ORIGINS in .env.production}
+      GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID:-}
+      GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE: ${GOOGLE_DRIVE_SERVICE_ACCOUNT_FILE:-service_account.json}
+      GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: ${GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:-}
+      AUTO_SYNC_DRIVE_ON_STARTUP: ${AUTO_SYNC_DRIVE_ON_STARTUP:-false}
+    volumes:
+      - ai_data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - data
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TRUST_PROXY: "true"
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+      DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env.production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env.production}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-15m}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
+      FRONTEND_URL: ${FRONTEND_URL:?Set FRONTEND_URL in .env.production}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env.production}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID in .env.production}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST in .env.production}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:?Set SMTP_USER in .env.production}
+      SMTP_PASS: ${SMTP_PASS:?Set SMTP_PASS in .env.production}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM in .env.production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      AI_SERVICE_URL: http://ai-service:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge
+      - data
+
+  web:
+    build:
+      context: ./frontend-web
+      args:
+        VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in .env.production}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:?Set VITE_GOOGLE_CLIENT_ID in .env.production}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - edge
+
+volumes:
+  postgres_data:
+  ai_data:
+
+networks:
+  edge:
+  data:

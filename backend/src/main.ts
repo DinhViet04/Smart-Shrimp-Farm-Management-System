@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { getAllowedOrigins } from './config/environment.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -12,28 +13,7 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  const defaultOrigins = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:8081',
-    'http://localhost:8082',
-    'http://localhost:19006',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:8081',
-  ];
-
-  const envOrigins = (
-    process.env.CORS_ORIGINS ??
-    process.env.FRONTEND_URL ??
-    ''
-  )
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  const allowedOrigins = Array.from(
-    new Set([...defaultOrigins, ...envOrigins]),
-  );
+  const allowedOrigins = getAllowedOrigins(process.env);
 
   // Only allow configured frontends and local dev tools (Expo Web/Mobile)
   app.enableCors({

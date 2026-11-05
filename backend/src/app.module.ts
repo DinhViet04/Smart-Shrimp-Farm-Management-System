@@ -30,11 +30,12 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module.js';
 import { SupportModule } from './modules/support/support.module.js';
+import { validateEnvironment } from './config/environment.js';
 
 @Module({
   imports: [
     // Global config — loads .env automatically
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
 
     ThrottlerModule.forRoot([
       {

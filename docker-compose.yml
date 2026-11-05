@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:15-alpine
     container_name: ssfm-postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: rootpassword
-      POSTGRES_DB: ssfm_db
+      POSTGRES_USER: ${POSTGRES_USER:-ssfm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ssfm_db}
     ports:
       - "5432:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
   redis:
     image: redis:7
     container_name: ssfm-redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "6379:6379"
 

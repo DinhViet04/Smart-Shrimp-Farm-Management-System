@@ -7,15 +7,9 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { getAllowedOrigins } from '../../config/environment.js';
 
-const allowedOrigins = (
-  process.env.CORS_ORIGINS ??
-  process.env.FRONTEND_URL ??
-  'http://localhost:5173'
-)
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = getAllowedOrigins(process.env);
 
 @WebSocketGateway({
   cors: {

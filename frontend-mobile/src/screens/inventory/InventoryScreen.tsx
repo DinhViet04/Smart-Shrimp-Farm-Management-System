@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import { inventoryService, InventoryItem } from '../../services/inventoryService
 import { pondService, OverviewFarm } from '../../services/pondService';
 import { useAuth } from '../../context/AuthContext';
 import NotificationButton from '../../components/NotificationButton';
+import HeaderLogo from '../../components/HeaderLogo';
 
 type CategoryFilter = 'ALL' | 'FEED' | 'MEDICINE' | 'CHEMICAL';
 
@@ -1445,3 +1446,4 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+

@@ -26,6 +26,8 @@ import {
   ShieldCheck,
   Bot,
   Plus,
+  Utensils,
+  Package,
 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { pondService, OverviewFarm, OverviewPond, OverviewCrop } from '../services/pondService';
@@ -514,18 +516,18 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
       <View style={styles.quickActionsSection}>
         <Text style={styles.sectionHeaderTitle}>TÁC NGHIỆP NHANH HÀNG NGÀY</Text>
         <View style={styles.quickActionsGrid}>
-          {/* Action 1: Quản lý ao nuôi */}
+          {/* Action 1: Ghi cữ cho ăn */}
           <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' }]}
-            onPress={() => navigation.navigate('Ao/Vụ')}
+            style={[styles.quickActionButton, { backgroundColor: '#f0fdfa', borderColor: '#99f6e4' }]}
+            onPress={() => navigation.navigate('FeedingLog')}
             activeOpacity={0.8}
           >
-            <View style={[styles.quickActionIconBox, { backgroundColor: '#10b981' }]}>
-              <Waves size={18} color="#ffffff" />
+            <View style={[styles.quickActionIconBox, { backgroundColor: '#0d9488' }]}>
+              <Utensils size={18} color="#ffffff" />
             </View>
             <View style={styles.quickActionTextBox}>
-              <Text style={[styles.quickActionTitle, { color: '#065f46' }]}>Quản lý ao nuôi</Text>
-              <Text style={[styles.quickActionDesc, { color: '#047857' }]}>Danh sách ao & vụ</Text>
+              <Text style={[styles.quickActionTitle, { color: '#134e4a' }]}>Nhật ký cho ăn</Text>
+              <Text style={[styles.quickActionDesc, { color: '#0f766e' }]}>Cữ 1-7 • Lịch sử ăn</Text>
             </View>
           </TouchableOpacity>
 
@@ -544,33 +546,83 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             </View>
           </TouchableOpacity>
 
-          {/* Action 3: Báo cáo sự cố */}
+          {/* Action 3: Sức khỏe tôm */}
           <TouchableOpacity
             style={[styles.quickActionButton, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
-            onPress={() => navigation.navigate('Sự cố', { screen: 'IncidentCreate' })}
+            onPress={() => navigation.navigate('ShrimpHealth')}
             activeOpacity={0.8}
           >
             <View style={[styles.quickActionIconBox, { backgroundColor: '#ef4444' }]}>
-              <AlertTriangle size={18} color="#ffffff" />
+              <HeartPulse size={18} color="#ffffff" />
             </View>
             <View style={styles.quickActionTextBox}>
-              <Text style={[styles.quickActionTitle, { color: '#991b1b' }]}>Báo cáo sự cố</Text>
-              <Text style={[styles.quickActionDesc, { color: '#b91c1c' }]}>Tôm nổi đầu, hỏng máy</Text>
+              <Text style={[styles.quickActionTitle, { color: '#991b1b' }]}>Sức khỏe tôm</Text>
+              <Text style={[styles.quickActionDesc, { color: '#b91c1c' }]}>Quan sát & hao hụt</Text>
             </View>
           </TouchableOpacity>
 
-          {/* Action 4: Theo dõi tăng trưởng */}
+          {/* Action 4: Báo cáo sự cố */}
           <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}
-            onPress={() => navigation.navigate('Theo dõi tăng trưởng')}
+            style={[styles.quickActionButton, { backgroundColor: '#fff7ed', borderColor: '#ffedd5' }]}
+            onPress={() => navigation.navigate('Sự cố', { screen: 'IncidentCreate' })}
             activeOpacity={0.8}
           >
-            <View style={[styles.quickActionIconBox, { backgroundColor: '#4f46e5' }]}>
-              <TrendingUp size={18} color="#ffffff" />
+            <View style={[styles.quickActionIconBox, { backgroundColor: '#f97316' }]}>
+              <AlertTriangle size={18} color="#ffffff" />
             </View>
             <View style={styles.quickActionTextBox}>
-              <Text style={[styles.quickActionTitle, { color: '#312e81' }]}>Tăng trưởng tôm</Text>
-              <Text style={[styles.quickActionDesc, { color: '#4338ca' }]}>Kích cỡ & FCR</Text>
+              <Text style={[styles.quickActionTitle, { color: '#9a3412' }]}>Báo cáo sự cố</Text>
+              <Text style={[styles.quickActionDesc, { color: '#c2410c' }]}>Tôm nổi đầu, khí độc</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Action 5: Phù hợp theo vai trò */}
+          {userRole === 'FARMER' ? (
+            <TouchableOpacity
+              style={[styles.quickActionButton, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}
+              onPress={() => navigation.navigate('Kho vật tư')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickActionIconBox, { backgroundColor: '#16a34a' }]}>
+                <Package size={18} color="#ffffff" />
+              </View>
+              <View style={styles.quickActionTextBox}>
+                <Text style={[styles.quickActionTitle, { color: '#14532d' }]}>Kho thức ăn</Text>
+                <Text style={[styles.quickActionDesc, { color: '#15803d' }]}>Xem tồn kho cám</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.quickActionButton, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}
+              onPress={() => navigation.navigate('Theo dõi tăng trưởng')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickActionIconBox, { backgroundColor: '#4f46e5' }]}>
+                <TrendingUp size={18} color="#ffffff" />
+              </View>
+              <View style={styles.quickActionTextBox}>
+                <Text style={[styles.quickActionTitle, { color: '#312e81' }]}>Tăng trưởng tôm</Text>
+                <Text style={[styles.quickActionDesc, { color: '#4338ca' }]}>Kích cỡ & FCR</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Action 6: Quản lý ao nuôi */}
+          <TouchableOpacity
+            style={[styles.quickActionButton, { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' }]}
+            onPress={() => navigation.navigate('Ao/Vụ')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIconBox, { backgroundColor: '#10b981' }]}>
+              <Waves size={18} color="#ffffff" />
+            </View>
+            <View style={styles.quickActionTextBox}>
+              <Text style={[styles.quickActionTitle, { color: '#065f46' }]}>
+                {userRole === 'FARMER' ? 'Ao phụ trách' : 'Quản lý ao nuôi'}
+              </Text>
+              <Text style={[styles.quickActionDesc, { color: '#047857' }]}>
+                {userRole === 'FARMER' ? 'Danh sách ao của tôi' : 'Danh sách ao & vụ'}
+              </Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -839,10 +891,15 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                       <View style={styles.activeActionsRow}>
                         <TouchableOpacity
                           style={styles.cardFeedingButton}
-                          onPress={() => navigation.navigate('Ao/Vụ')}
+                          onPress={() =>
+                            navigation.navigate('FeedingLog', {
+                              pondId: pond.id,
+                            })
+                          }
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.cardFeedingButtonText}>Chi tiết ao</Text>
+                          <Utensils size={13} color="#ffffff" style={{ marginRight: 4 }} />
+                          <Text style={styles.cardFeedingButtonText}>Cho ăn</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -1458,10 +1515,12 @@ const styles = StyleSheet.create({
   },
   cardFeedingButton: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: '#0d9488',
     paddingVertical: 7,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cardFeedingButtonText: {
     fontSize: 12,

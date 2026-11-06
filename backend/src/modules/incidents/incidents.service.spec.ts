@@ -34,7 +34,15 @@ describe('IncidentsService', () => {
     assertCanManageFarm: jest.fn(),
     getAccessibleFarmIds: jest.fn(),
   };
-  const service = new IncidentsService(prisma as any, farmAccess as any);
+  const notificationsService = {
+    notifyIncidentReported: jest.fn(),
+    notifyIncidentAssigned: jest.fn(),
+  };
+  const service = new IncidentsService(
+    prisma as any,
+    farmAccess as any,
+    notificationsService as any,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();

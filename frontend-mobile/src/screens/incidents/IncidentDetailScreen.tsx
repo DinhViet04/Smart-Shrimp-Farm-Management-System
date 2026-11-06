@@ -1,447 +1,231 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  SafeAreaView,
 } from 'react-native';
 import {
   AlertTriangle,
-  Stethoscope,
   CheckCircle2,
   Clock,
-  Package,
-  Pill,
-  FlaskConical,
-  Send,
-  Sparkles,
   User,
-  Waves,
-  Building2,
+  MapPin,
+  Wrench,
   RotateCcw,
-  Copy,
-  ShieldCheck,
+  History,
+  Send,
+  X,
+  UserCheck,
   ShieldAlert,
-  ChevronDown,
-  RefreshCw,
-  Search,
 } from 'lucide-react-native';
 import { AuthContext } from '../../context/AuthContext';
 import {
   incidentService,
   type Incident,
-  type IncidentStatus,
-  type IncidentTechnician,
+  type IncidentStaff,
 } from '../../services/incidentService';
-import { inventoryService, type InventoryItem } from '../../services/inventoryService';
-import { chatbotService } from '../../services/chatbotService';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import {
+  FARM_INCIDENT_CATEGORIES,
+  FARM_INCIDENT_SEVERITIES,
+  parseIncidentMetadata,
+  formatDate,
+} from '../../constants/farmIncidentConstants';
 
-type IncidentStackParamList = {
-  IncidentList: undefined;
-  IncidentDetail: { incidentId: string };
-};
-
-type WorkspaceTab = 'TREATMENT' | 'AI_ADVISOR' | 'TIMELINE';
-
-const STATUS_CONFIG: Record<
-  IncidentStatus,
-  { label: string; color: string; bg: string; border: string; icon: any }
-> = {
-  OPEN: {
-    label: 'Chờ xử lý',
-    color: '#d97706',
-    bg: '#fef3c7',
-    border: '#fde68a',
-    icon: AlertTriangle,
-  },
-  TREATING: {
-    label: 'Đang điều trị',
-    color: '#4f46e5',
-    bg: '#e0e7ff',
-    border: '#c7d2fe',
-    icon: Stethoscope,
-  },
-  RESOLVED: {
-    label: 'Đã xử lý',
-    color: '#059669',
-    bg: '#ecfdf5',
-    border: '#a7f3d0',
-    icon: CheckCircle2,
-  },
-};
+type StaffRoleFilter = 'ALL' | 'TECHNICIAN' | 'FARMER';
 
 export default function IncidentDetailScreen({
   route,
   navigation,
-}: NativeStackScreenProps<IncidentStackParamList, 'IncidentDetail'>) {
-  const { userToken, userRole, userId, currentUser } = useContext(AuthContext);
+}: {
+  route: any;
+  navigation: any;
+}) {
   const { incidentId } = route.params;
+  const { userRole, userId } = useContext(AuthContext);
+
+  const isManager = userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
 
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('TREATMENT');
+  const [error, setError] = useState('');
 
-  // ── Farm Manager Assignment State ──
-  const [technicians, setTechnicians] = useState<IncidentTechnician[]>([]);
-  const [loadingTechnicians, setLoadingTechnicians] = useState(false);
-  const [showAssignPicker, setShowAssignPicker] = useState(false);
+  // Assigned Staff progress update form
+  const [updateNote, setUpdateNote] = useState('');
+  const [resolveNote, setResolveNote] = useState('');
+  const [isFinishing, setIsFinishing] = useState(false);
 
-  // ── Tab 1: Treatment Form & Inventory State ──
-  const [inventories, setInventories] = useState<InventoryItem[]>([]);
-  const [loadingInventory, setLoadingInventory] = useState(false);
-  const [selectedInventoryId, setSelectedInventoryId] = useState<string>('');
-  const [inventorySearch, setInventorySearch] = useState<string>('');
-  const [quantityUsed, setQuantityUsed] = useState<string>('');
-  const [treatmentNote, setTreatmentNote] = useState<string>('');
-  const [observationNote, setObservationNote] = useState<string>('');
-  const [resultNote, setResultNote] = useState<string>('');
-  const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'MEDICINE' | 'CHEMICAL'>('ALL');
-  const [reopenReason, setReopenReason] = useState<string>('');
-  const [formErrors, setFormErrors] = useState<{
-    quantityUsed?: string;
-    treatmentNote?: string;
-    reopenReason?: string;
-  }>({});
+  // Manager Assign modal state
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [staffList, setStaffList] = useState<IncidentStaff[]>([]);
+  const [staffRoleFilter, setStaffRoleFilter] = useState<StaffRoleFilter>('ALL');
+  const [selectedStaffId, setSelectedStaffId] = useState('');
+  const [assignNote, setAssignNote] = useState('');
+  const [loadingStaff, setLoadingStaff] = useState(false);
 
-  // ── Tab 2: AI Clinical Assistant State ──
-  const [aiAnalysis, setAiAnalysis] = useState<string>('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiChatInput, setAiChatInput] = useState<string>('');
-  const [chatHistory, setChatHistory] = useState<
-    { id: string; sender: 'user' | 'bot'; text: string; time: string }[]
-  >([]);
+  // Manager Reopen
+  const [showReopenBox, setShowReopenBox] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
 
-  // 1. Fetch Incident Detail
-  const loadIncident = useCallback(async () => {
+  const loadDetail = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const data = await incidentService.getById(incidentId);
       setIncident(data);
-
-      const farmId = data.crop?.pond?.farm?.id;
-      if (farmId) {
-        // Load inventory for this farm
-        loadInventory(farmId);
-        // Load technicians if user can assign
-        if (userRole === 'FARM_MANAGER') {
-          loadTechnicians(farmId);
-        }
-      }
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể tải chi tiết sự cố');
+      console.warn('Lỗi tải chi tiết sự cố:', err);
+      setError(err?.message || 'Không thể tải chi tiết sự cố.');
     } finally {
       setLoading(false);
     }
-  }, [incidentId, userToken, userRole]);
-
-  // 2. Fetch Medicines & Chemicals from Inventory
-  const loadInventory = useCallback(async (farmId?: string) => {
-    setLoadingInventory(true);
-    try {
-      const items = await inventoryService.getInventory(undefined, undefined, farmId);
-      // Filter only Medicine and Chemical
-      const medChem = items.filter(
-        (i) => i.category === 'MEDICINE' || i.category === 'CHEMICAL'
-      );
-      setInventories(medChem);
-    } catch {
-      // Ignore inventory error
-    } finally {
-      setLoadingInventory(false);
-    }
-  }, []);
-
-  // Load Technicians for Farm Manager
-  const loadTechnicians = useCallback(async (farmId: string) => {
-    setLoadingTechnicians(true);
-    try {
-      const list = await incidentService.getTechnicians(farmId);
-      setTechnicians(list);
-    } catch {
-      // Ignore
-    } finally {
-      setLoadingTechnicians(false);
-    }
-  }, []);
-
-  // 3. Initial AI Diagnostic Analysis
-  const runAIAnalysis = useCallback(async (inc: Incident) => {
-    setAiLoading(true);
-    const pondName = inc.crop?.pond?.name || 'ao nuôi';
-    const farmName = inc.crop?.pond?.farm?.name || 'trang trại';
-    const pondId = (inc.crop?.pond as any)?.id;
-    const prompt = `Phân tích sự cố thủy sản: "${inc.title}". Mô tả triệu chứng: "${inc.description}" tại ao ${pondName} - ${farmName}. 
-Hãy thực hiện 3 công việc:
-1. Chẩn đoán các nguyên nhân có thể gây ra sự cố này.
-2. Đưa ra danh sách thuốc hoặc hóa chất khuyên dùng cụ thể và liều lượng xử lý khuyến nghị.
-3. Hướng dẫn các bước điều trị và theo dõi môi trường nước.`;
-
-    try {
-      const res = await chatbotService.ask(prompt, pondId);
-      setAiAnalysis(res.answer);
-      setChatHistory([
-        {
-          id: 'initial',
-          sender: 'bot',
-          text: res.answer,
-          time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    } catch {
-      setAiAnalysis('Chưa thể lấy phân tích tự động từ AI. Bạn có thể đặt câu hỏi bên dưới.');
-    } finally {
-      setAiLoading(false);
-    }
-  }, []);
+  }, [incidentId]);
 
   useEffect(() => {
-    loadIncident();
-  }, [loadIncident]);
+    loadDetail();
+  }, [loadDetail]);
 
-  useEffect(() => {
-    if (incident && !aiAnalysis && !aiLoading) {
-      runAIAnalysis(incident);
-    }
-  }, [incident, aiAnalysis, aiLoading, runAIAnalysis]);
-
-  // ── Permissions ──
-  const currentUserId = userId || (currentUser?.id ?? currentUser?.userId);
-  const isAssignedToMe = Boolean(
-    incident?.assignedToId && currentUserId && incident.assignedToId === currentUserId
-  );
-  const canTreat =
-    userRole === 'TECHNICIAN'
-      ? isAssignedToMe
-      : userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
-
-  // ── Actions ──
-
-  // Assign Technician (FARM_MANAGER only)
-  const handleAssignTechnician = async (techId: string) => {
+  // Load staff (both TECHNICIAN and FARMER) when manager opens assign modal
+  const handleOpenAssignModal = async () => {
     if (!incident) return;
-    setSaving(true);
+    setShowAssignModal(true);
+    setSelectedStaffId(incident.assignedToId || '');
+    setAssignNote('');
+    setStaffRoleFilter('ALL');
+    setLoadingStaff(true);
+
     try {
-      await incidentService.assign(incident.id, techId);
-      setShowAssignPicker(false);
-      await loadIncident();
-      Alert.alert('Thành công', 'Đã phân công kỹ thuật viên phụ trách sự cố.');
-    } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể phân công kỹ thuật viên');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Start Treatment (OPEN -> TREATING)
-  const handleStartTreatment = async () => {
-    if (!incident) return;
-    setSaving(true);
-    try {
-      await incidentService.start(incident.id);
-      await loadIncident();
-      Alert.alert('Thành công', 'Đã chuyển sự cố sang trạng thái đang điều trị.');
-    } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể bắt đầu điều trị');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Record Treatment Update & Deduct Inventory
-  const handleSaveTreatment = async (shouldResolve = false) => {
-    if (!incident) return;
-
-    const errs: typeof formErrors = {};
-    const selectedItem = inventories.find((i) => i.id === selectedInventoryId);
-
-    if (selectedInventoryId && selectedItem) {
-      const qtyNum = Number(quantityUsed);
-      if (!quantityUsed || isNaN(qtyNum) || qtyNum <= 0) {
-        errs.quantityUsed = 'Vui lòng nhập số lượng/liều lượng xuất lớn hơn 0.';
-      } else if (qtyNum > selectedItem.quantity) {
-        errs.quantityUsed = `Vượt quá tồn kho hiện có (${selectedItem.quantity} ${selectedItem.unit}).`;
+      const farmId =
+        incident.crop?.pond?.farm?.id || (incident.crop?.pond as any)?.farmId || '';
+      if (farmId) {
+        const list = await incidentService.getStaff(farmId);
+        setStaffList(list);
       }
-    } else if (!treatmentNote.trim()) {
-      errs.treatmentNote = 'Vui lòng chọn thuốc/hóa chất từ kho hoặc nhập phác đồ điều trị.';
+    } catch (err) {
+      console.warn('Lỗi tải danh sách nhân sự trang trại:', err);
+    } finally {
+      setLoadingStaff(false);
     }
+  };
 
-    if (treatmentNote.trim().length > 2000) {
-      errs.treatmentNote = 'Nội dung phác đồ không được vượt quá 2000 ký tự.';
+  // Filtered staff list in modal
+  const filteredStaffList = useMemo(() => {
+    if (staffRoleFilter === 'TECHNICIAN') {
+      return staffList.filter((s) => s.role === 'TECHNICIAN');
     }
+    if (staffRoleFilter === 'FARMER') {
+      return staffList.filter((s) => s.role === 'FARMER');
+    }
+    return staffList;
+  }, [staffList, staffRoleFilter]);
 
-    if (Object.keys(errs).length > 0) {
-      setFormErrors(errs);
-      Alert.alert('Kiểm tra dữ liệu', Object.values(errs)[0]);
+  const handleAssignSubmit = async () => {
+    if (!incident || !selectedStaffId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn nhân sự (Kỹ thuật viên hoặc Công nhân) phụ trách.');
       return;
     }
-    setFormErrors({});
-
     setSaving(true);
     try {
-      // Step 0: If OPEN, start treatment automatically
-      if (incident.status === 'OPEN') {
-        try {
-          await incidentService.start(incident.id);
-        } catch {
-          // ignore if already started
-        }
-      }
-
-      let finalNote = treatmentNote.trim();
-      if (!finalNote && selectedItem) {
-        finalNote = `Sử dụng ${selectedItem.itemName} (${quantityUsed} ${selectedItem.unit}) để điều trị sự cố.`;
-      }
-      let fullTreatmentText = finalNote;
-
-      // Step 1: Deduct inventory if selected
-      if (selectedInventoryId && selectedItem) {
-        const qtyNum = Number(quantityUsed);
-        if (qtyNum > 0) {
-          const pondId = (incident.crop?.pond as any)?.id;
-          try {
-            await inventoryService.recordUsage(selectedItem.id, {
-              quantityUsed: qtyNum,
-              notes: `[Điều trị sự cố: ${incident.title}] ${finalNote}`,
-              pondId,
-            });
-            const invPrefix = `[Xuất kho: ${selectedItem.itemName} — ${qtyNum} ${selectedItem.unit}]`;
-            fullTreatmentText = `${invPrefix} ${finalNote}`;
-          } catch (e: any) {
-            console.warn('Deduct inventory error:', e);
-            Alert.alert('Lưu ý kho', `Không thể trừ kho vật tư: ${e.message || 'Lỗi không xác định'}`);
-          }
-        }
-      }
-
-      // Step 2: Add Treatment Update or Resolve
-      if (!shouldResolve) {
+      await incidentService.assign(incident.id, selectedStaffId);
+      if (assignNote.trim()) {
         await incidentService.addUpdate(incident.id, {
-          treatment: fullTreatmentText,
-          observation: observationNote.trim() || undefined,
-          result: resultNote.trim() || undefined,
+          treatment: `Chỉ đạo của Quản lý: ${assignNote.trim()}`,
         });
-        Alert.alert('Thành công', 'Đã ghi nhận phương án điều trị & khấu trừ tồn kho thành công!');
-      } else {
-        await incidentService.resolve(incident.id, {
-          treatment: fullTreatmentText || 'Đã hoàn tất điều trị sự cố.',
-          result: resultNote.trim() || observationNote.trim() || undefined,
-        });
-        Alert.alert('Thành công', 'Đã hoàn tất điều trị và đóng sự cố thành công!');
       }
-
-      // Reset form fields
-      setSelectedInventoryId('');
-      setQuantityUsed('');
-      setTreatmentNote('');
-      setObservationNote('');
-      setResultNote('');
-
-      await loadIncident();
-      const farmId = incident.crop?.pond?.farm?.id;
-      if (farmId) loadInventory(farmId);
+      setShowAssignModal(false);
+      setAssignNote('');
+      await loadDetail();
+      Alert.alert('Thành công', 'Đã phân công nhiệm vụ xử lý sự cố thành công!');
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể lưu tiến trình điều trị.');
+      Alert.alert('Lỗi', err?.message || 'Không thể phân công nhiệm vụ.');
     } finally {
       setSaving(false);
     }
   };
 
-  // Reopen Incident
+  // Assigned Staff begins repair
+  const handleStartRepair = async () => {
+    if (!incident) return;
+    setSaving(true);
+    try {
+      await incidentService.startTreatment(incident.id);
+      await loadDetail();
+      Alert.alert('Thành công', 'Đã xác nhận bắt đầu tiến hành khắc phục sự cố tại hiện trường.');
+    } catch (err: any) {
+      Alert.alert('Lỗi', err?.message || 'Không thể cập nhật trạng thái.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Assigned Staff saves progress or completes
+  const handleSaveProgress = async () => {
+    if (!incident) return;
+    if (!updateNote.trim() && !resolveNote.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập nội dung công việc đã xử lý.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (isFinishing) {
+        await incidentService.resolve(incident.id, {
+          treatment: updateNote.trim() || 'Đã khắc phục hoàn tất sự cố.',
+          result:
+            resolveNote.trim() ||
+            'Nghiệm thu hoàn tất, thiết bị/cơ sở hạ tầng đã vận hành ổn định trở lại.',
+        });
+        Alert.alert('Thành công', 'Đã hoàn tất nghiệm thu và đóng sự cố!');
+      } else {
+        await incidentService.addUpdate(incident.id, {
+          treatment: updateNote.trim(),
+        });
+        Alert.alert('Thành công', 'Đã lưu cập nhật tiến trình khắc phục.');
+      }
+      setUpdateNote('');
+      setResolveNote('');
+      setIsFinishing(false);
+      await loadDetail();
+    } catch (err: any) {
+      Alert.alert('Lỗi', err?.message || 'Không thể lưu cập nhật.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Manager reopens
   const handleReopen = async () => {
     if (!incident) return;
     if (!reopenReason.trim()) {
-      setFormErrors((prev) => ({ ...prev, reopenReason: 'Vui lòng nhập lý do mở lại sự cố.' }));
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập lý do mở lại sự cố.');
+      Alert.alert('Lỗi', 'Vui lòng nhập lý do mở lại sự cố.');
       return;
     }
-    if (reopenReason.trim().length > 1000) {
-      setFormErrors((prev) => ({ ...prev, reopenReason: 'Lý do mở lại không được vượt quá 1000 ký tự.' }));
-      Alert.alert('Quá dài', 'Lý do mở lại không được vượt quá 1000 ký tự.');
-      return;
-    }
-    setFormErrors((prev) => ({ ...prev, reopenReason: undefined }));
     setSaving(true);
     try {
-      await incidentService.reopen(incident.id, reopenReason.trim());
+      await incidentService.reopen(incident.id, { reason: reopenReason.trim() });
+      setShowReopenBox(false);
       setReopenReason('');
-      await loadIncident();
-      Alert.alert('Thành công', 'Đã mở lại sự cố để tiếp tục theo dõi điều trị.');
+      await loadDetail();
+      Alert.alert('Thành công', 'Đã mở lại sự cố.');
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể mở lại sự cố');
+      Alert.alert('Lỗi', err?.message || 'Không thể mở lại sự cố.');
     } finally {
       setSaving(false);
     }
   };
 
-  // Quick apply AI recommendation medicine into notes & form
-  const handleQuickApplyMedicine = (medName: string) => {
-    // Check if item exists in inventory
-    const match = inventories.find(
-      (inv) =>
-        inv.itemName.toLowerCase().includes(medName.toLowerCase()) ||
-        medName.toLowerCase().includes(inv.itemName.toLowerCase())
-    );
-    if (match) {
-      setSelectedInventoryId(match.id);
-      Alert.alert(
-        'Đã chọn vật tư',
-        `Đã chọn "${match.itemName}" từ kho (Tồn kho: ${match.quantity} ${match.unit})`
-      );
-    }
-    setTreatmentNote((prev) =>
-      prev ? `${prev}\n- Áp dụng: ${medName}` : `- Áp dụng phác đồ AI: ${medName}`
-    );
-    setActiveTab('TREATMENT');
-  };
-
-  // Follow-up question to AI
-  const handleAskAI = async () => {
-    if (!aiChatInput.trim() || aiLoading) return;
-    const userText = aiChatInput.trim();
-    setAiChatInput('');
-
-    const newMsg = {
-      id: Date.now().toString(),
-      sender: 'user' as const,
-      text: userText,
-      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setChatHistory((prev) => [...prev, newMsg]);
-    setAiLoading(true);
-
-    try {
-      const pondId = (incident?.crop?.pond as any)?.id;
-      const prompt = `Đối với sự cố "${incident?.title}": ${userText}`;
-      const res = await chatbotService.ask(prompt, pondId);
-
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'bot' as const,
-          text: res.answer,
-          time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-    } catch {
-      Alert.alert('Lỗi', 'Không thể gửi câu hỏi đến trợ lý AI lúc này.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  if (loading && !incident) {
+  if (loading) {
     return (
       <View style={styles.centerBox}>
-        <ActivityIndicator size="large" color="#4f46e5" />
-        <Text style={styles.loadingText}>Đang tải chi tiết sự cố & kho thuốc...</Text>
+        <ActivityIndicator size="large" color="#dc2626" />
+        <Text style={styles.loadingText}>Đang tải chi tiết sự cố...</Text>
       </View>
     );
   }
@@ -449,1463 +233,1055 @@ Hãy thực hiện 3 công việc:
   if (!incident) {
     return (
       <View style={styles.centerBox}>
-        <Text style={styles.emptyTitle}>Không tìm thấy thông tin sự cố</Text>
+        <AlertTriangle size={48} color="#ef4444" />
+        <Text style={styles.errorTitle}>Không tìm thấy sự cố</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>Quay lại</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const cfg = STATUS_CONFIG[incident.status] || STATUS_CONFIG.OPEN;
-  const StatusIcon = cfg.icon;
+  const { category, severity, location, cleanTitle, cleanDescription } = parseIncidentMetadata(
+    incident.title,
+    incident.description
+  );
+  const isAssigned = Boolean(incident.assignedToId || incident.assignedTo);
+  const isResolved = incident.status === 'RESOLVED';
+  const isAssignedToMe = incident.assignedToId === userId || incident.assignedTo?.id === userId;
+  const pondName = incident.crop?.pond?.name;
+  const displayLoc = location || (pondName ? `Ao nuôi ${pondName}` : 'Toàn trang trại');
+  const assignedRole = (incident.assignedTo as any)?.role || '';
+  const assignedRoleLabel =
+    assignedRole === 'TECHNICIAN'
+      ? 'Kỹ thuật viên'
+      : assignedRole === 'FARMER'
+      ? 'Công nhân'
+      : '';
 
-  const filteredInventory = inventories.filter((i) => {
-    if (categoryFilter === 'MEDICINE' && i.category !== 'MEDICINE') return false;
-    if (categoryFilter === 'CHEMICAL' && i.category !== 'CHEMICAL') return false;
-    if (inventorySearch.trim()) {
-      return i.itemName.toLowerCase().includes(inventorySearch.toLowerCase());
-    }
-    return true;
-  });
-
-  const selectedItem = inventories.find((i) => i.id === selectedInventoryId);
+  const matchedCat = FARM_INCIDENT_CATEGORIES.find((c) =>
+    category.toLowerCase().includes(c.id.toLowerCase())
+  );
+  const matchedSev = FARM_INCIDENT_SEVERITIES.find(
+    (s) => s.id.toLowerCase() === severity.toLowerCase()
+  );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* ── 1. Incident Master Summary Card ── */}
-      <View style={styles.masterCard}>
-        <View style={styles.cardHeaderRow}>
-          <View style={styles.pondTag}>
-            <Waves size={14} color="#0284c7" />
-            <Text style={styles.pondTagText}>{incident.crop?.pond?.name || 'Ao nuôi'}</Text>
-            {incident.crop?.pond?.farm?.name && (
-              <Text style={styles.farmTagText}>• {incident.crop.pond.farm.name}</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Header Summary Card */}
+        <View style={styles.headerCard}>
+          <View style={styles.badgeRow}>
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: matchedCat ? matchedCat.badgeBg : '#f1f5f9' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  { color: matchedCat ? matchedCat.badgeText : '#475569' },
+                ]}
+              >
+                {matchedCat ? `${matchedCat.icon} ${matchedCat.label}` : category || 'Khác'}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: matchedSev ? matchedSev.badgeBg : '#f1f5f9' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  { color: matchedSev ? matchedSev.badgeText : '#475569' },
+                ]}
+              >
+                {matchedSev ? matchedSev.label : severity}
+              </Text>
+            </View>
+
+            {isResolved ? (
+              <View style={[styles.badge, { backgroundColor: '#ecfdf5' }]}>
+                <Text style={[styles.badgeText, { color: '#059669' }]}>✓ Đã hoàn thành</Text>
+              </View>
+            ) : isAssigned ? (
+              <View style={[styles.badge, { backgroundColor: '#eff6ff' }]}>
+                <Text style={[styles.badgeText, { color: '#2563eb' }]}>Đang xử lý</Text>
+              </View>
+            ) : (
+              <View style={[styles.badge, { backgroundColor: '#fffbeb' }]}>
+                <Text style={[styles.badgeText, { color: '#d97706' }]}>
+                  {isManager ? 'Chờ phân công' : 'Chờ tiếp nhận'}
+                </Text>
+              </View>
             )}
           </View>
 
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: cfg.bg, borderColor: cfg.border },
-            ]}
-          >
-            <StatusIcon size={12} color={cfg.color} />
-            <Text style={[styles.statusBadgeText, { color: cfg.color }]}>
-              {cfg.label}
-            </Text>
-          </View>
-        </View>
+          <Text style={styles.incidentTitle}>{cleanTitle}</Text>
 
-        <Text style={styles.incidentTitle}>{incident.title}</Text>
-        <Text style={styles.incidentDesc}>{incident.description}</Text>
-
-        <View style={styles.metaDivider} />
-
-        <View style={styles.metaGrid}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Người báo cáo:</Text>
-            <Text style={styles.metaValue}>
-              {incident.reporter?.fullName || 'Nông dân thực địa'}
-            </Text>
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <MapPin size={14} color="#64748b" />
+              <Text style={styles.metaText}>{displayLoc}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Clock size={14} color="#94a3b8" />
+              <Text style={styles.metaTextTime}>Báo cáo: {formatDate(incident.createdAt)}</Text>
+            </View>
           </View>
 
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Kỹ thuật phụ trách:</Text>
-            <Text
-              style={[
-                styles.metaValue,
-                isAssignedToMe ? { color: '#4f46e5', fontWeight: '800' } : {},
-              ]}
-            >
-              {isAssignedToMe
-                ? 'Bạn phụ trách (Chính)'
-                : incident.assignedTo?.fullName || 'Chưa phân công'}
-            </Text>
-          </View>
-        </View>
+          {/* Assigned Staff Banner */}
+          <View style={styles.assignSection}>
+            <View style={styles.assignInfo}>
+              <Text style={styles.assignLabel}>Nhân sự phụ trách:</Text>
+              {isAssigned ? (
+                <View style={styles.assignedNameRow}>
+                  <Text style={styles.assignVal}>
+                    👤 {incident.assignedTo?.fullName || 'Đã phân công'}
+                  </Text>
+                  {assignedRoleLabel ? (
+                    <View
+                      style={[
+                        styles.roleBadge,
+                        assignedRole === 'TECHNICIAN'
+                          ? styles.roleBadgeTech
+                          : styles.roleBadgeFarmer,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.roleBadgeText,
+                          assignedRole === 'TECHNICIAN'
+                            ? styles.roleBadgeTextTech
+                            : styles.roleBadgeTextFarmer,
+                        ]}
+                      >
+                        {assignedRoleLabel}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                <Text style={styles.assignValUnassigned}>Chưa phân công nhân sự</Text>
+              )}
+            </View>
 
-        {/* ── Farm Manager Technician Assignment Section ── */}
-        {userRole === 'FARM_MANAGER' && incident.status !== 'RESOLVED' && (
-          <View style={styles.managerAssignBox}>
-            <View style={styles.managerAssignHeader}>
-              <Text style={styles.managerAssignTitle}>Phân công Kỹ thuật viên:</Text>
+            {/* Manager Assign Button */}
+            {isManager && (
               <TouchableOpacity
-                onPress={() => setShowAssignPicker(!showAssignPicker)}
-                style={styles.changeAssignBtn}
+                style={styles.assignBtn}
+                onPress={handleOpenAssignModal}
+                activeOpacity={0.8}
               >
-                <Text style={styles.changeAssignBtnText}>
-                  {showAssignPicker ? 'Đóng chọn' : 'Thay đổi phân công'}
+                <UserCheck size={14} color="#ffffff" />
+                <Text style={styles.assignBtnText}>
+                  {isAssigned ? 'Đổi phân công' : 'Phân công ngay'}
                 </Text>
-                <ChevronDown size={14} color="#4f46e5" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Description Section */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Mô tả hiện trạng hiện trường</Text>
+          <Text style={styles.descriptionText}>
+            {cleanDescription || 'Không có mô tả chi tiết từ người báo cáo.'}
+          </Text>
+          <View style={styles.reporterInfo}>
+            <Text style={styles.reporterText}>
+              Người báo: {incident.reporter?.fullName || 'Nhân sự trang trại'} ({incident.reporter?.role || 'FARMER'})
+            </Text>
+          </View>
+        </View>
+
+        {/* Assigned Staff Quick Start Button (Only for assigned staff when OPEN) */}
+        {!isManager && isAssignedToMe && incident.status === 'OPEN' && (
+          <View style={styles.quickStartCard}>
+            <Text style={styles.quickStartTitle}>Bạn được Quản lý phân công xử lý sự cố này</Text>
+            <Text style={styles.quickStartDesc}>
+              Bấm xác nhận bắt đầu khi bạn đã có mặt tại hiện trường để tiếp nhận công việc.
+            </Text>
+            <TouchableOpacity
+              style={styles.quickStartBtn}
+              onPress={handleStartRepair}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              <Wrench size={16} color="#ffffff" />
+              <Text style={styles.quickStartBtnText}>
+                {saving ? 'Đang cập nhật...' : 'Bắt đầu xử lý tại hiện trường'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Progress Timeline (Viewable by everyone) */}
+        <View style={styles.sectionCard}>
+          <View style={styles.timelineHeader}>
+            <History size={16} color="#2563eb" />
+            <Text style={styles.sectionTitle}>
+              Nhật ký tiến trình xử lý ({incident.updates?.length || 0})
+            </Text>
+          </View>
+
+          {incident.updates && incident.updates.length > 0 ? (
+            <View style={styles.timelineList}>
+              {incident.updates.map((up, idx) => (
+                <View key={up.id || idx} style={styles.timelineItem}>
+                  <View style={styles.timelineDot} />
+                  <View style={styles.timelineContent}>
+                    <View style={styles.timelineMeta}>
+                      <Text style={styles.timelineAuthor}>
+                        {up.author?.fullName || 'Hệ thống'} ({up.author?.role || 'Nhân sự'})
+                      </Text>
+                      <Text style={styles.timelineTime}>{formatDate(up.createdAt)}</Text>
+                    </View>
+                    <Text style={styles.timelineTreatment}>{up.treatment}</Text>
+                    {up.result ? (
+                      <View style={styles.resultBox}>
+                        <Text style={styles.resultLabel}>Kết quả nghiệm thu:</Text>
+                        <Text style={styles.resultText}>{up.result}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyTimeline}>
+              <Text style={styles.emptyTimelineText}>Chưa có cập nhật tiến trình nào.</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Assigned Staff Progress Update Form: ONLY for the assigned staff when not resolved */}
+        {!isManager && isAssignedToMe && !isResolved && (
+          <View style={styles.updateFormCard}>
+            <Text style={styles.formTitle}>Cập nhật tiến trình khắc phục</Text>
+
+            <TextInput
+              style={styles.textArea}
+              placeholder="Ghi chú công việc đã làm (VD: Đã kiểm tra mô tơ, thay dây curoa...)"
+              placeholderTextColor="#94a3b8"
+              value={updateNote}
+              onChangeText={setUpdateNote}
+              multiline
+              numberOfLines={3}
+            />
+
+            {/* Checkbox Complete */}
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setIsFinishing(!isFinishing)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, isFinishing && styles.checkboxActive]}>
+                {isFinishing && <CheckCircle2 size={16} color="#ffffff" />}
+              </View>
+              <Text style={styles.checkboxLabel}>
+                Nghiệm thu hoàn tất & đóng sự cố này
+              </Text>
+            </TouchableOpacity>
+
+            {isFinishing && (
+              <TextInput
+                style={[styles.textArea, { marginTop: 8 }]}
+                placeholder="Kết quả nghiệm thu (VD: Quạt đã chạy êm, thiết bị đã ổn định)"
+                placeholderTextColor="#94a3b8"
+                value={resolveNote}
+                onChangeText={setResolveNote}
+                multiline
+                numberOfLines={2}
+              />
+            )}
+
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={handleSaveProgress}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              <Send size={16} color="#ffffff" />
+              <Text style={styles.submitBtnText}>
+                {saving
+                  ? 'Đang lưu...'
+                  : isFinishing
+                  ? 'Hoàn thành & Nghiệm thu sự cố'
+                  : 'Lưu cập nhật tiến độ'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Manager Reopen Box */}
+        {isManager && isResolved && (
+          <View style={styles.reopenCard}>
+            {!showReopenBox ? (
+              <TouchableOpacity
+                style={styles.reopenTriggerBtn}
+                onPress={() => setShowReopenBox(true)}
+              >
+                <RotateCcw size={16} color="#dc2626" />
+                <Text style={styles.reopenTriggerText}>
+                  Mở lại sự cố nếu sự cố tái phát
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.reopenForm}>
+                <Text style={styles.reopenTitle}>Mở lại sự cố</Text>
+                <TextInput
+                  style={styles.textArea}
+                  placeholder="Nhập lý do mở lại sự cố (VD: Thiết bị vừa bật lại thì bị rung lắc)"
+                  placeholderTextColor="#94a3b8"
+                  value={reopenReason}
+                  onChangeText={setReopenReason}
+                  multiline
+                  numberOfLines={2}
+                />
+                <View style={styles.reopenBtnRow}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setShowReopenBox(false)}
+                  >
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.confirmReopenBtn}
+                    onPress={handleReopen}
+                    disabled={saving}
+                  >
+                    <Text style={styles.confirmReopenText}>Xác nhận mở lại</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Assign Modal for Manager: Supports assigning to BOTH TECHNICIAN and FARMER */}
+      <Modal visible={showAssignModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Phân công xử lý sự cố</Text>
+                <Text style={styles.modalSubtitle}>
+                  Chọn Kỹ thuật viên (Tech) hoặc Công nhân (Farmer) phụ trách
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                <X size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            {showAssignPicker && (
-              <View style={styles.assignPickerContainer}>
-                {loadingTechnicians ? (
-                  <ActivityIndicator size="small" color="#4f46e5" />
-                ) : technicians.length === 0 ? (
-                  <Text style={styles.noTechText}>
-                    Trang trại chưa có kỹ thuật viên nào khác.
-                  </Text>
-                ) : (
-                  technicians.map((t) => (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={[
-                        styles.techPickItem,
-                        incident.assignedToId === t.id && styles.techPickItemActive,
-                      ]}
-                      onPress={() => handleAssignTechnician(t.id)}
-                      disabled={saving}
-                    >
-                      <User size={14} color={incident.assignedToId === t.id ? '#ffffff' : '#475569'} />
-                      <Text
-                        style={[
-                          styles.techPickItemText,
-                          incident.assignedToId === t.id && styles.techPickItemTextActive,
-                        ]}
-                      >
-                        {t.fullName} ({t.email})
-                      </Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ── Permission Alert for Technicians ── */}
-        {userRole === 'TECHNICIAN' && !isAssignedToMe && (
-          <View style={styles.notAssignedWarningBox}>
-            <ShieldAlert size={18} color="#b45309" />
-            <View style={styles.warningTextWrap}>
-              <Text style={styles.warningTitle}>Sự cố chưa được phân công cho bạn</Text>
-              <Text style={styles.warningDesc}>
-                Phụ trách: {incident.assignedTo?.fullName || 'Chưa phân công'}. Bạn có thể xem
-                tiến trình và đối chiếu phác đồ AI.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* ── Start Treatment Button (if OPEN and permitted) ── */}
-        {incident.status === 'OPEN' && canTreat && (
-          <TouchableOpacity
-            style={styles.startTreatmentBtn}
-            onPress={handleStartTreatment}
-            disabled={saving}
-            activeOpacity={0.8}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Stethoscope size={18} color="#ffffff" />
-                <Text style={styles.startTreatmentBtnText}>
-                  Bắt đầu điều trị sự cố ngay (Chuyển sang TREATING)
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── 2. Workspace Navigation Tabs ── */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'TREATMENT' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('TREATMENT')}
-        >
-          <Stethoscope
-            size={16}
-            color={activeTab === 'TREATMENT' ? '#4f46e5' : '#64748b'}
-          />
-          <Text
-            style={[
-              styles.tabBtnText,
-              activeTab === 'TREATMENT' && styles.tabBtnTextActive,
-            ]}
-          >
-            Phác đồ & Kho thuốc
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'AI_ADVISOR' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('AI_ADVISOR')}
-        >
-          <Sparkles
-            size={16}
-            color={activeTab === 'AI_ADVISOR' ? '#4f46e5' : '#64748b'}
-          />
-          <Text
-            style={[
-              styles.tabBtnText,
-              activeTab === 'AI_ADVISOR' && styles.tabBtnTextActive,
-            ]}
-          >
-            Trợ lý AI
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'TIMELINE' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('TIMELINE')}
-        >
-          <Clock
-            size={16}
-            color={activeTab === 'TIMELINE' ? '#4f46e5' : '#64748b'}
-          />
-          <Text
-            style={[
-              styles.tabBtnText,
-              activeTab === 'TIMELINE' && styles.tabBtnTextActive,
-            ]}
-          >
-            Lịch sử ({incident.updates?.length || 0})
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── TAB 1: TREATMENT & INVENTORY WORKSPACE ── */}
-      {activeTab === 'TREATMENT' && (
-        <View style={styles.tabContent}>
-          {incident.status === 'RESOLVED' ? (
-            <View style={styles.resolvedBox}>
-              <CheckCircle2 size={36} color="#059669" />
-              <Text style={styles.resolvedTitle}>Sự cố này đã được điều trị thành công!</Text>
-              <Text style={styles.resolvedDesc}>
-                Các chỉ số ao và sức khỏe tôm đã ổn định trở lại.
-              </Text>
-
-              {/* Reopen form if symptoms return */}
-              <View style={styles.reopenSection}>
-                <Text style={styles.reopenLabel}>NẾU TRIỆU CHỨNG TÁI PHÁT (MỞ LẠI SỰ CỐ):</Text>
-                <TextInput
-                  style={[styles.textArea, formErrors.reopenReason && styles.inputError]}
-                  multiline
-                  placeholder="Nhập lý do mở lại sự cố (ví dụ: Tôm nổi đầu lại sau 2 ngày)..."
-                  placeholderTextColor="#94a3b8"
-                  value={reopenReason}
-                  onChangeText={(val) => {
-                    setReopenReason(val);
-                    if (formErrors.reopenReason) {
-                      setFormErrors((prev) => ({ ...prev, reopenReason: undefined }));
-                    }
-                  }}
-                />
-                {formErrors.reopenReason ? (
-                  <Text style={styles.errorText}>{formErrors.reopenReason}</Text>
-                ) : null}
-                <TouchableOpacity
-                  style={styles.reopenBtn}
-                  onPress={handleReopen}
-                  disabled={saving}
-                >
-                  <RotateCcw size={16} color="#ffffff" />
-                  <Text style={styles.reopenBtnText}>Xác nhận mở lại sự cố</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : !canTreat ? (
-            <View style={styles.readOnlyBox}>
-              <Text style={styles.readOnlyTitle}>Chế độ xem tiến trình</Text>
-              <Text style={styles.readOnlyText}>
-                Bạn không được phân công điều trị sự cố này nên không thể thực hiện xuất kho hay cập
-                nhật phác đồ. Bạn vẫn có thể xem các cập nhật trước đó và tham khảo trợ lý AI ở tab bên cạnh.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.workspaceForm}>
-              <View style={styles.formHeaderRow}>
-                <View style={styles.formHeaderLeft}>
-                  <Package size={20} color="#4f46e5" />
-                  <Text style={styles.formTitle}>XUẤT KHO THUỐC & GHI NHẬN ĐIỀU TRỊ</Text>
-                </View>
-                <TouchableOpacity onPress={() => loadInventory(incident.crop?.pond?.farm?.id)}>
-                  <RefreshCw size={15} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.formSubtitle}>
-                Hệ thống tự động trừ tồn kho vật tư và tạo nhật ký xuất kho ngay khi ghi nhận.
-              </Text>
-
-              {/* Category selector */}
-              <View style={styles.catFilterRow}>
-                {[
-                  ['ALL', 'Tất cả'],
-                  ['MEDICINE', 'Thuốc / Men'],
-                  ['CHEMICAL', 'Hóa chất / Vôi'],
-                ].map(([cat, label]) => (
+            {/* Role Filter Tabs inside Modal */}
+            <View style={styles.modalRoleTabs}>
+              {[
+                ['ALL', `Tất cả (${staffList.length})`],
+                ['TECHNICIAN', `Kỹ thuật (${staffList.filter((s) => s.role === 'TECHNICIAN').length})`],
+                ['FARMER', `Công nhân (${staffList.filter((s) => s.role === 'FARMER').length})`],
+              ].map(([key, label]) => {
+                const isActive = staffRoleFilter === key;
+                return (
                   <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.catFilterChip,
-                      categoryFilter === cat && styles.catFilterChipActive,
-                    ]}
-                    onPress={() => setCategoryFilter(cat as any)}
+                    key={key}
+                    style={[styles.modalRoleTab, isActive && styles.modalRoleTabActive]}
+                    onPress={() => setStaffRoleFilter(key as StaffRoleFilter)}
                   >
                     <Text
                       style={[
-                        styles.catFilterText,
-                        categoryFilter === cat && styles.catFilterTextActive,
+                        styles.modalRoleTabText,
+                        isActive && styles.modalRoleTabTextActive,
                       ]}
                     >
                       {label}
                     </Text>
                   </TouchableOpacity>
-                ))}
+                );
+              })}
+            </View>
+
+            {loadingStaff ? (
+              <View style={styles.centerBox}>
+                <ActivityIndicator size="small" color="#dc2626" />
+                <Text style={styles.loadingText}>Đang tải danh sách nhân sự...</Text>
               </View>
-
-              {/* Inventory search input */}
-              <View style={styles.invSearchBox}>
-                <Search size={14} color="#94a3b8" />
-                <TextInput
-                  style={styles.invSearchInput}
-                  placeholder="Lọc nhanh thuốc/hóa chất..."
-                  placeholderTextColor="#94a3b8"
-                  value={inventorySearch}
-                  onChangeText={setInventorySearch}
-                />
+            ) : filteredStaffList.length === 0 ? (
+              <View style={styles.emptyStaffBox}>
+                <Text style={styles.emptyStaffText}>Không có nhân sự nào trong mục này</Text>
               </View>
+            ) : (
+              <ScrollView style={styles.techList}>
+                {filteredStaffList.map((staff) => {
+                  const isSelected = selectedStaffId === staff.id;
+                  const isTech = staff.role === 'TECHNICIAN';
 
-              {/* Medicine items picker */}
-              <Text style={styles.fieldLabel}>CHỌN VẬT TƯ SỬ DỤNG TỪ KHO:</Text>
-              {loadingInventory ? (
-                <View style={styles.invLoadingBox}>
-                  <ActivityIndicator size="small" color="#4f46e5" />
-                  <Text style={styles.invLoadingText}>Đang tải kho vật tư trang trại...</Text>
-                </View>
-              ) : (
-                <View style={styles.invListContainer}>
-                  {/* Option: Không xuất kho */}
-                  <TouchableOpacity
-                    style={[
-                      styles.invCardItem,
-                      !selectedInventoryId && styles.invCardItemActive,
-                    ]}
-                    onPress={() => setSelectedInventoryId('')}
-                  >
-                    <View style={styles.invCardLeft}>
-                      <Text
-                        style={[
-                          styles.invCardName,
-                          !selectedInventoryId && styles.invCardNameActive,
-                        ]}
-                      >
-                        Không xuất kho
-                      </Text>
-                      <Text style={styles.invCardSub}>Chỉ ghi nhận phác đồ hướng dẫn</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* List of Medicines & Chemicals */}
-                  {filteredInventory.length === 0 ? (
-                    <Text style={styles.noInvText}>
-                      Không tìm thấy thuốc/hóa chất phù hợp trong kho.
-                    </Text>
-                  ) : (
-                    filteredInventory.map((item) => {
-                      const isSelected = selectedInventoryId === item.id;
-                      const isLow = item.quantity <= item.minThreshold;
-
-                      return (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[
-                            styles.invCardItem,
-                            isSelected && styles.invCardItemActive,
-                            isLow && !isSelected && styles.invCardItemLow,
-                          ]}
-                          onPress={() => setSelectedInventoryId(item.id)}
-                        >
-                          <View style={styles.invCardLeft}>
-                            <View style={styles.invBadgeRow}>
-                              <Text
-                                style={[
-                                  styles.invCatBadge,
-                                  item.category === 'MEDICINE'
-                                    ? styles.invCatMedicine
-                                    : styles.invCatChemical,
-                                ]}
-                              >
-                                {item.category === 'MEDICINE' ? 'Thuốc' : 'Hóa chất'}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.invCardName,
-                                  isSelected && styles.invCardNameActive,
-                                ]}
-                              >
-                                {item.itemName}
-                              </Text>
-                            </View>
-                            <Text style={styles.invCardSub}>
-                              Tồn kho:{' '}
-                              <Text style={{ fontWeight: '800', color: isSelected ? '#312e81' : '#0f172a' }}>
-                                {item.quantity} {item.unit}
-                              </Text>
-                              {isLow ? ' (Sắp hết)' : ''}
+                  return (
+                    <TouchableOpacity
+                      key={staff.id}
+                      style={[styles.techItem, isSelected && styles.techItemActive]}
+                      onPress={() => setSelectedStaffId(staff.id)}
+                    >
+                      <User size={16} color={isSelected ? '#dc2626' : '#64748b'} />
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.staffNameRow}>
+                          <Text
+                            style={[styles.techName, isSelected && styles.techNameActive]}
+                          >
+                            {staff.fullName}
+                          </Text>
+                          <View
+                            style={[
+                              styles.miniRoleBadge,
+                              isTech ? styles.miniRoleBadgeTech : styles.miniRoleBadgeFarmer,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniRoleBadgeText,
+                                isTech
+                                  ? styles.miniRoleBadgeTextTech
+                                  : styles.miniRoleBadgeTextFarmer,
+                              ]}
+                            >
+                              {isTech ? 'Kỹ thuật' : 'Công nhân'}
                             </Text>
                           </View>
-                          {isSelected && (
-                            <CheckCircle2 size={18} color="#4f46e5" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </View>
-              )}
-
-              {/* Quantity Used Input */}
-              {selectedItem && (
-                <View style={styles.inputGroup}>
-                  <Text style={styles.fieldLabel}>
-                    LIỀU LƯỢNG / SỐ LƯỢNG XUẤT SỬ DỤNG ({selectedItem.unit.toUpperCase()}):{' '}
-                    <Text style={{ color: '#ef4444' }}>*</Text>
-                  </Text>
-                  <View style={styles.qtyInputRow}>
-                    <TextInput
-                      style={[styles.qtyInput, formErrors.quantityUsed && styles.inputError]}
-                      keyboardType="numeric"
-                      placeholder={`Ví dụ: 2.5`}
-                      placeholderTextColor="#94a3b8"
-                      value={quantityUsed}
-                      onChangeText={(val) => {
-                        setQuantityUsed(val);
-                        if (formErrors.quantityUsed) {
-                          setFormErrors((prev) => ({ ...prev, quantityUsed: undefined }));
-                        }
-                      }}
-                    />
-                    <Text style={styles.unitBadge}>{selectedItem.unit}</Text>
-                  </View>
-                  {formErrors.quantityUsed ? (
-                    <Text style={styles.errorText}>{formErrors.quantityUsed}</Text>
-                  ) : null}
-                  <Text style={styles.stockNotice}>
-                    Tồn kho khả dụng: {selectedItem.quantity} {selectedItem.unit}
-                  </Text>
-                </View>
-              )}
-
-              {/* Treatment Instructions */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>
-                  PHÁC ĐỒ / HƯỚNG DẪN ĐIỀU TRỊ:{' '}
-                  {!selectedInventoryId && <Text style={{ color: '#ef4444' }}>*</Text>}
-                </Text>
-                <TextInput
-                  style={[styles.textArea, formErrors.treatmentNote && styles.inputError]}
-                  multiline
-                  placeholder="Ghi rõ cách pha chế, thời điểm tạt thuốc, các chú ý an toàn..."
-                  placeholderTextColor="#94a3b8"
-                  value={treatmentNote}
-                  onChangeText={(val) => {
-                    setTreatmentNote(val);
-                    if (formErrors.treatmentNote) {
-                      setFormErrors((prev) => ({ ...prev, treatmentNote: undefined }));
-                    }
-                  }}
-                />
-                {formErrors.treatmentNote ? (
-                  <Text style={styles.errorText}>{formErrors.treatmentNote}</Text>
-                ) : null}
-              </View>
-
-              {/* Observation */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>QUAN SÁT TÌNH TRẠNG SAU KHI XỬ LÝ:</Text>
-                <TextInput
-                  style={styles.textAreaSmall}
-                  multiline
-                  placeholder="Ví dụ: Tôm đã bớt nổi đầu sau 2 tiếng sục khí, màu nước ổn định..."
-                  placeholderTextColor="#94a3b8"
-                  value={observationNote}
-                  onChangeText={setObservationNote}
-                />
-              </View>
-
-              {/* Result Note */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.fieldLabel}>ĐÁNH GIÁ KẾT QUẢ / TIẾN TRÌNH KHỎI BỆNH:</Text>
-                <TextInput
-                  style={styles.textAreaSmall}
-                  multiline
-                  placeholder="Ví dụ: Tôm bơi nhanh nhẹn, ăn nhá bình thường, đạt chỉ tiêu..."
-                  placeholderTextColor="#94a3b8"
-                  value={resultNote}
-                  onChangeText={setResultNote}
-                />
-              </View>
-
-              {/* Form Action Buttons */}
-              <View style={styles.formActionButtons}>
-                <TouchableOpacity
-                  style={styles.saveUpdateBtn}
-                  onPress={() => handleSaveTreatment(false)}
-                  disabled={saving}
-                  activeOpacity={0.8}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <>
-                      <Stethoscope size={18} color="#ffffff" />
-                      <Text style={styles.saveUpdateBtnText}>
-                        Ghi nhận cập nhật & Trừ kho
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.resolveBtn}
-                  onPress={() => handleSaveTreatment(true)}
-                  disabled={saving}
-                  activeOpacity={0.8}
-                >
-                  <CheckCircle2 size={18} color="#ffffff" />
-                  <Text style={styles.resolveBtnText}>
-                    Đã điều trị xong & Đóng sự cố
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* ── TAB 2: AI CLINICAL ADVISOR WORKSPACE ── */}
-      {activeTab === 'AI_ADVISOR' && (
-        <View style={styles.tabContent}>
-          <View style={styles.aiCard}>
-            <View style={styles.aiCardHeader}>
-              <View style={styles.aiHeaderLeft}>
-                <Sparkles size={20} color="#4f46e5" />
-                <Text style={styles.aiCardTitle}>Trợ lý AI Phác đồ điều trị</Text>
-              </View>
-              {aiLoading && <ActivityIndicator size="small" color="#4f46e5" />}
-            </View>
-
-            <Text style={styles.aiSubtitle}>
-              Tự động phân tích triệu chứng dựa trên kho tri thức chuyên sâu và đối soát kho thuốc.
-            </Text>
-
-            {/* Matching Stock Medicines Suggestion */}
-            {inventories.length > 0 && (
-              <View style={styles.aiStockMatchBox}>
-                <Text style={styles.aiStockMatchTitle}>
-                  📦 Vật tư kho trang trại sẵn có khuyên dùng:
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
-                  {inventories.slice(0, 5).map((inv) => (
-                    <TouchableOpacity
-                      key={inv.id}
-                      style={styles.quickMedChip}
-                      onPress={() => handleQuickApplyMedicine(inv.itemName)}
-                    >
-                      <Pill size={12} color="#4f46e5" />
-                      <Text style={styles.quickMedText}>{inv.itemName}</Text>
-                      <Text style={styles.quickMedStock}>
-                        ({inv.quantity} {inv.unit})
-                      </Text>
+                        </View>
+                        {staff.email ? (
+                          <Text style={styles.techEmail}>{staff.email}</Text>
+                        ) : null}
+                      </View>
+                      {isSelected && <CheckCircle2 size={18} color="#dc2626" />}
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+                  );
+                })}
+              </ScrollView>
             )}
 
-            {/* Chat History Messages */}
-            <View style={styles.chatList}>
-              {chatHistory.map((msg) => (
-                <View
-                  key={msg.id}
-                  style={[
-                    styles.chatBubble,
-                    msg.sender === 'user' ? styles.userBubble : styles.botBubble,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chatText,
-                      msg.sender === 'user' ? styles.userText : styles.botText,
-                    ]}
-                  >
-                    {msg.text}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.chatTime,
-                      msg.sender === 'user' ? { color: '#c7d2fe' } : { color: '#94a3b8' },
-                    ]}
-                  >
-                    {msg.time}
-                  </Text>
+            <Text style={styles.inputLabel}>Chỉ đạo / Hướng dẫn của Quản lý:</Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="VD: Kiểm tra gấp dàn quạt số 2 hoặc thay van cống xả..."
+              placeholderTextColor="#94a3b8"
+              value={assignNote}
+              onChangeText={setAssignNote}
+              multiline
+              numberOfLines={2}
+            />
 
-                  {/* Quick Action: Apply to form */}
-                  {msg.sender === 'bot' && (
-                    <TouchableOpacity
-                      style={styles.applyBtn}
-                      onPress={() => {
-                        setTreatmentNote(msg.text);
-                        setActiveTab('TREATMENT');
-                        Alert.alert(
-                          'Đã áp dụng',
-                          'Phác đồ từ trợ lý AI đã được điền vào biểu mẫu điều trị!'
-                        );
-                      }}
-                    >
-                      <Copy size={12} color="#4f46e5" />
-                      <Text style={styles.applyBtnText}>
-                        Sao chép phác đồ này vào biểu mẫu
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </View>
-
-            {/* Follow-up question input */}
-            <View style={styles.aiInputRow}>
-              <TextInput
-                style={styles.aiTextInput}
-                placeholder="Hỏi thêm về liều lượng, thời điểm tạt..."
-                placeholderTextColor="#94a3b8"
-                value={aiChatInput}
-                onChangeText={setAiChatInput}
-              />
+            <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.aiSendBtn}
-                onPress={handleAskAI}
-                disabled={aiLoading}
+                style={styles.modalCancelBtn}
+                onPress={() => setShowAssignModal(false)}
               >
-                <Send size={16} color="#ffffff" />
+                <Text style={styles.modalCancelText}>Đóng</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={handleAssignSubmit}
+                disabled={saving}
+              >
+                <Text style={styles.modalSaveText}>
+                  {saving ? 'Đang lưu...' : 'Xác nhận phân công'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
-      )}
-
-      {/* ── TAB 3: TREATMENT TIMELINE ── */}
-      {activeTab === 'TIMELINE' && (
-        <View style={styles.tabContent}>
-          <Text style={styles.formTitle}>LỊCH SỬ TIẾN TRÌNH ĐIỀU TRỊ</Text>
-
-          {!incident.updates || incident.updates.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Clock size={32} color="#94a3b8" />
-              <Text style={styles.emptyTitle}>Chưa có lần cập nhật điều trị nào</Text>
-            </View>
-          ) : (
-            <View style={styles.timelineList}>
-              {incident.updates.map((update, idx) => (
-                <View key={update.id || idx} style={styles.timelineItem}>
-                  <View style={styles.timelineDot} />
-                  <View style={styles.timelineCard}>
-                    <View style={styles.timelineHeader}>
-                      <Text style={styles.authorName}>
-                        {update.author?.fullName || 'Kỹ thuật viên'}
-                      </Text>
-                      <Text style={styles.timelineTime}>
-                        {new Date(update.createdAt).toLocaleString('vi-VN')}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.treatmentText}>
-                      <Text style={styles.boldLabel}>
-                        {update.eventType === 'TREATMENT' || update.eventType === 'RESOLVED'
-                          ? 'Điều trị: '
-                          : 'Sự kiện: '}
-                      </Text>
-                      {update.treatment}
-                    </Text>
-
-                    {update.observation ? (
-                      <Text style={styles.treatmentText}>
-                        <Text style={styles.boldLabel}>Quan sát: </Text>
-                        {update.observation}
-                      </Text>
-                    ) : null}
-
-                    {update.result ? (
-                      <Text style={styles.treatmentText}>
-                        <Text style={styles.boldLabel}>Kết quả: </Text>
-                        {update.result}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </ScrollView>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
   },
   content: {
     padding: 16,
-    gap: 14,
+    gap: 16,
     paddingBottom: 40,
   },
   centerBox: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
-    gap: 12,
+    padding: 20,
+    gap: 10,
   },
   loadingText: {
     fontSize: 13,
     color: '#64748b',
-    fontWeight: '600',
   },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#334155',
-  },
-  masterCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pondTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  pondTagText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0284c7',
-  },
-  farmTagText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 3.5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  incidentTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  incidentDesc: {
-    fontSize: 13,
-    color: '#475569',
-    lineHeight: 19,
-  },
-  metaDivider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginVertical: 4,
-  },
-  metaGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    padding: 10,
-  },
-  metaItem: {
-    flex: 1,
-  },
-  metaLabel: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  metaValue: {
-    fontSize: 12,
+  errorTitle: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1e293b',
-    marginTop: 2,
-  },
-  managerAssignBox: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    gap: 8,
-  },
-  managerAssignHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  managerAssignTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1e40af',
-  },
-  changeAssignBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  changeAssignBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4f46e5',
-  },
-  assignPickerContainer: {
-    gap: 6,
-    paddingTop: 4,
-  },
-  techPickItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  techPickItemActive: {
-    backgroundColor: '#4f46e5',
-    borderColor: '#4f46e5',
-  },
-  techPickItemText: {
-    fontSize: 12,
-    color: '#334155',
-    fontWeight: '600',
-  },
-  techPickItemTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  noTechText: {
-    fontSize: 12,
-    color: '#64748b',
-    fontStyle: 'italic',
-  },
-  notAssignedWarningBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: '#fffbeb',
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-  },
-  warningTextWrap: {
-    flex: 1,
-  },
-  warningTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#b45309',
-  },
-  warningDesc: {
-    fontSize: 11,
-    color: '#92400e',
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  startTreatmentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#4f46e5',
-    paddingVertical: 12,
-    borderRadius: 14,
-    shadowColor: '#4f46e5',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 3,
-    marginTop: 4,
-  },
-  startTreatmentBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 14,
-    padding: 4,
-  },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  tabBtnActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  tabBtnTextActive: {
-    color: '#4f46e5',
-  },
-  tabContent: {
-    marginTop: 4,
-  },
-  readOnlyBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 6,
-  },
-  readOnlyTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  readOnlyText: {
-    fontSize: 12,
-    color: '#64748b',
-    lineHeight: 18,
-  },
-  workspaceForm: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 12,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  formHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  formTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#1e1b4b',
-    letterSpacing: 0.3,
-  },
-  formSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    lineHeight: 16,
-  },
-  catFilterRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  catFilterChip: {
-    flex: 1,
-    paddingVertical: 6,
-    alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
-  catFilterChipActive: {
-    backgroundColor: '#4f46e5',
-  },
-  catFilterText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  catFilterTextActive: {
-    color: '#ffffff',
-  },
-  invSearchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    height: 38,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  invSearchInput: {
-    flex: 1,
-    fontSize: 12,
-    color: '#0f172a',
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#475569',
-    marginTop: 4,
-  },
-  invLoadingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-  },
-  invLoadingText: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  invListContainer: {
-    gap: 6,
-    maxHeight: 220,
-  },
-  invCardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  invCardItemActive: {
-    backgroundColor: '#eef2ff',
-    borderColor: '#4f46e5',
-  },
-  invCardItemLow: {
-    borderColor: '#fde68a',
-    backgroundColor: '#fffdf5',
-  },
-  invCardLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  invBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  invCatBadge: {
-    fontSize: 9,
-    fontWeight: '800',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  invCatMedicine: {
-    backgroundColor: '#dcfce7',
-    color: '#15803d',
-  },
-  invCatChemical: {
-    backgroundColor: '#dbeafe',
-    color: '#1d4ed8',
-  },
-  invCardName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  invCardNameActive: {
-    color: '#4338ca',
-    fontWeight: '800',
-  },
-  invCardSub: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  noInvText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-    padding: 8,
-  },
-  inputGroup: {
-    gap: 4,
-  },
-  qtyInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    overflow: 'hidden',
-  },
-  qtyInput: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  unitBadge: {
-    paddingHorizontal: 14,
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#64748b',
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 12,
-  },
-  stockNotice: {
-    fontSize: 11,
-    color: '#059669',
-    fontWeight: '600',
-  },
-  textArea: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    color: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  textAreaSmall: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 10,
-    fontSize: 12,
-    color: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    minHeight: 55,
-    textAlignVertical: 'top',
-  },
-  formActionButtons: {
-    gap: 8,
-    marginTop: 6,
-  },
-  saveUpdateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#4f46e5',
-    paddingVertical: 13,
-    borderRadius: 14,
-    shadowColor: '#4f46e5',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  saveUpdateBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  resolveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#059669',
-    paddingVertical: 13,
-    borderRadius: 14,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  resolveBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  resolvedBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-    gap: 8,
-  },
-  resolvedTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#065f46',
-    textAlign: 'center',
-  },
-  resolvedDesc: {
-    fontSize: 12,
-    color: '#047857',
-    textAlign: 'center',
-  },
-  reopenSection: {
-    width: '100%',
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingTop: 14,
-    gap: 8,
-  },
-  reopenLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#d97706',
-  },
-  reopenBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#d97706',
-    paddingVertical: 11,
-    borderRadius: 12,
-  },
-  reopenBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  aiCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 12,
-  },
-  aiCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  aiHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  aiCardTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#1e1b4b',
-  },
-  aiSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    lineHeight: 16,
-  },
-  aiStockMatchBox: {
-    backgroundColor: '#f5f3ff',
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ddd6fe',
-  },
-  aiStockMatchTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#5b21b6',
-  },
-  quickMedChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: '#c4b5fd',
-  },
-  quickMedText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#4f46e5',
-  },
-  quickMedStock: {
-    fontSize: 10,
-    color: '#6b7280',
-  },
-  chatList: {
-    gap: 10,
-    marginTop: 4,
-  },
-  chatBubble: {
-    padding: 12,
-    borderRadius: 14,
-    maxWidth: '92%',
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#4f46e5',
-  },
-  botBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  chatText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  userText: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  botText: {
-    color: '#1e293b',
-  },
-  chatTime: {
-    fontSize: 9,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-  },
-  applyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    color: '#dc2626',
     marginTop: 8,
-    backgroundColor: '#e0e7ff',
+  },
+  backBtn: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#e2e8f0',
+  },
+  backBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+
+  /* Header Card */
+  headerCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 12,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    alignSelf: 'flex-start',
   },
-  applyBtnText: {
-    fontSize: 10,
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  incidentTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    lineHeight: 24,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  metaTextTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  assignSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  assignInfo: {
+    flex: 1,
+  },
+  assignLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  assignedNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    flexWrap: 'wrap',
+  },
+  assignVal: {
+    fontSize: 13,
     fontWeight: '700',
     color: '#4f46e5',
   },
-  aiInputRow: {
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  roleBadgeTech: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  roleBadgeFarmer: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  roleBadgeTextTech: {
+    color: '#2563eb',
+  },
+  roleBadgeTextFarmer: {
+    color: '#16a34a',
+  },
+  assignValUnassigned: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#d97706',
+    marginTop: 2,
+  },
+  assignBtn: {
     flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 6,
+  },
+  assignBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
+  /* Description Section */
+  sectionCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  descriptionText: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 20,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+  },
+  reporterInfo: {
+    marginTop: 4,
+  },
+  reporterText: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+
+  /* Quick Start Card */
+  quickStartCard: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
     gap: 8,
+  },
+  quickStartTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#312e81',
+  },
+  quickStartDesc: {
+    fontSize: 12,
+    color: '#4338ca',
+    lineHeight: 18,
+  },
+  quickStartBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4f46e5',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 6,
+    gap: 8,
+  },
+  quickStartBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
+  /* Timeline */
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timelineList: {
+    marginTop: 6,
+    gap: 12,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2563eb',
     marginTop: 6,
   },
-  aiTextInput: {
+  timelineContent: {
     flex: 1,
     backgroundColor: '#f8fafc',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 12,
-    color: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  aiSendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#4f46e5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timelineList: {
-    gap: 12,
-    marginTop: 10,
-    borderLeftWidth: 2,
-    borderLeftColor: '#c7d2fe',
-    paddingLeft: 12,
-    marginLeft: 6,
-  },
-  timelineItem: {
-    position: 'relative',
-  },
-  timelineDot: {
-    position: 'absolute',
-    left: -18,
-    top: 14,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#4f46e5',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  timelineCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     gap: 4,
   },
-  timelineHeader: {
+  timelineMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  authorName: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1e1b4b',
+  timelineAuthor: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
   },
   timelineTime: {
     fontSize: 10,
     color: '#94a3b8',
   },
-  treatmentText: {
+  timelineTreatment: {
     fontSize: 12,
-    color: '#334155',
+    color: '#0f172a',
     lineHeight: 17,
   },
-  boldLabel: {
+  resultBox: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  resultLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  resultText: {
+    fontSize: 12,
+    color: '#065f46',
+    marginTop: 2,
+  },
+  emptyTimeline: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  emptyTimelineText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+
+  /* Update Form */
+  updateFormCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 10,
+  },
+  formTitle: {
+    fontSize: 14,
     fontWeight: '800',
     color: '#0f172a',
   },
-  emptyBox: {
+  textArea: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    padding: 10,
+    fontSize: 13,
+    color: '#0f172a',
+    textAlignVertical: 'top',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#94a3b8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    paddingVertical: 11,
+    gap: 8,
+    marginTop: 6,
+  },
+  submitBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
+  /* Reopen */
+  reopenCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+  },
+  reopenTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingVertical: 30,
+    paddingVertical: 8,
   },
-  inputError: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
+  reopenTriggerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#dc2626',
   },
-  errorText: {
+  reopenForm: {
+    gap: 8,
+  },
+  reopenTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991b1b',
+  },
+  reopenBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 4,
+  },
+  cancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+  },
+  cancelBtnText: {
     fontSize: 12,
-    color: '#ef4444',
-    fontWeight: '500',
-    marginTop: 3,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  confirmReopenBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#dc2626',
+  },
+  confirmReopenText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
+  /* Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '85%',
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  modalRoleTabs: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 4,
+  },
+  modalRoleTab: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modalRoleTabActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  modalRoleTabText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  modalRoleTabTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  techList: {
+    maxHeight: 200,
+  },
+  emptyStaffBox: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  emptyStaffText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  techItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 6,
+    gap: 8,
+  },
+  techItemActive: {
+    borderColor: '#dc2626',
+    backgroundColor: '#fff1f2',
+  },
+  staffNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  techName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  techNameActive: {
+    color: '#dc2626',
+  },
+  miniRoleBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  miniRoleBadgeTech: {
+    backgroundColor: '#eff6ff',
+  },
+  miniRoleBadgeFarmer: {
+    backgroundColor: '#ecfdf5',
+  },
+  miniRoleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  miniRoleBadgeTextTech: {
+    color: '#2563eb',
+  },
+  miniRoleBadgeTextFarmer: {
+    color: '#16a34a',
+  },
+  techEmail: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+  },
+  modalCancelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  modalSaveBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#dc2626',
+  },
+  modalSaveText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });

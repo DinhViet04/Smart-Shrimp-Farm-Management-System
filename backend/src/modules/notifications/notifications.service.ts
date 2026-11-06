@@ -502,6 +502,164 @@ export class NotificationsService {
     return createdNotifications;
   }
 
+  /**
+   * Tạo và gửi thông báo thời gian thực khi có sự cố được báo cáo bởi Farmer hoặc Technician
+   * Gửi trực tiếp đến tất cả Farm Manager và Owner của trang trại.
+   */
+  async notifyIncidentReported(params: {
+    farmId: string;
+    farmName: string;
+    pondId?: string;
+    pondName?: string;
+    incidentId: string;
+    title: string;
+    reporterName: string;
+    reporterRole: string;
+    category?: string;
+    severity?: string;
+    recipientUserIds: string[];
+  }) {
+    const {
+      farmId,
+      farmName,
+      pondId,
+      pondName,
+      incidentId,
+      title,
+      reporterName,
+      reporterRole,
+      category,
+      severity,
+      recipientUserIds,
+    } = params;
+
+    if (!recipientUserIds || recipientUserIds.length === 0) return [];
+
+    const roleLabel =
+      reporterRole === 'FARMER'
+        ? 'Nông dân/Nhân viên ao'
+        : reporterRole === 'TECHNICIAN'
+        ? 'Kỹ thuật viên'
+        : reporterRole;
+
+    const notifTitle = `[Báo cáo sự cố] ${title}`;
+    const locationStr = pondName ? `tại ${pondName} (${farmName})` : `tại trang trại ${farmName}`;
+    const categoryStr = category ? ` • Phân loại: ${category}` : '';
+    const severityStr = severity ? ` • Mức độ: ${severity}` : '';
+    const notifMessage = `${reporterName} (${roleLabel}) vừa báo cáo sự cố mới ${locationStr}${categoryStr}${severityStr}. Vui lòng kiểm tra và phân công xử lý.`;
+
+    const level =
+      severity === 'CRITICAL' || severity === 'HIGH' || severity === 'Khẩn cấp' || severity === 'Cao'
+        ? NotificationLevel.WARNING
+        : NotificationLevel.INFO;
+
+    const notificationsData: Prisma.NotificationUncheckedCreateInput[] =
+      recipientUserIds.map((userId) => ({
+        userId,
+        farmId,
+        pondId: pondId || undefined,
+        level,
+        title: notifTitle,
+        message: notifMessage,
+        isRead: false,
+      }));
+
+    await this.prisma.notification.createMany({
+      data: notificationsData,
+    });
+
+    const createdNotifications = await this.prisma.notification.findMany({
+      where: {
+        userId: { in: recipientUserIds },
+        title: notifTitle,
+        message: notifMessage,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: recipientUserIds.length,
+    });
+
+    const notifMap = new Map(createdNotifications.map((n) => [n.userId, n]));
+
+    for (const userId of recipientUserIds) {
+      const notif = notifMap.get(userId) || {
+        id: `temp_${Date.now()}_${userId}`,
+        userId,
+        farmId,
+        pondId,
+        level,
+        title: notifTitle,
+        message: notifMessage,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.gateway.sendNotificationToUser(userId, {
+        ...notif,
+        farmId,
+        pondId,
+        pondName,
+        farmName,
+        incidentId,
+        category: 'INCIDENT',
+      });
+    }
+
+    return createdNotifications;
+  }
+
+  /**
+   * Tạo và gửi thông báo khi Quản lý phân công xử lý sự cố cho Kỹ thuật viên
+   */
+  async notifyIncidentAssigned(params: {
+    farmId: string;
+    farmName: string;
+    pondId?: string;
+    pondName?: string;
+    incidentId: string;
+    title: string;
+    assigneeId: string;
+    managerName: string;
+  }) {
+    const {
+      farmId,
+      farmName,
+      pondId,
+      pondName,
+      incidentId,
+      title,
+      assigneeId,
+      managerName,
+    } = params;
+
+    const locationStr = pondName ? `tại ${pondName}` : `trang trại ${farmName}`;
+    const notifTitle = `[Phân công sự cố] ${title}`;
+    const notifMessage = `Quản lý ${managerName} đã phân công bạn xử lý sự cố "${title}" ${locationStr}. Vui lòng tiếp nhận và cập nhật tiến độ xử lý.`;
+
+    const notification = await this.prisma.notification.create({
+      data: {
+        userId: assigneeId,
+        farmId,
+        pondId: pondId || undefined,
+        level: NotificationLevel.WARNING,
+        title: notifTitle,
+        message: notifMessage,
+        isRead: false,
+      },
+    });
+
+    this.gateway.sendNotificationToUser(assigneeId, {
+      ...notification,
+      farmId,
+      pondId,
+      pondName,
+      farmName,
+      incidentId,
+      category: 'INCIDENT_ASSIGNMENT',
+    });
+
+    return notification;
+  }
+
   async getUserNotifications(userId: string) {
     const where: Prisma.NotificationWhereInput = { userId };
     const notifications = await this.prisma.notification.findMany({

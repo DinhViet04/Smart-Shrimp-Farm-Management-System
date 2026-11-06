@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import {
 } from '../../services/growthService';
 import { chatbotService, PondOption } from '../../services/chatbotService';
 import NotificationButton from '../../components/NotificationButton';
+import HeaderLogo from '../../components/HeaderLogo';
 import { useAuth } from '../../context/AuthContext';
 
 export default function GrowthTrackingScreen() {
@@ -197,9 +198,7 @@ export default function GrowthTrackingScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <TrendingUp size={22} color="#6366f1" />
-        </View>
+        <HeaderLogo size={32} showText={false} />
         <View style={styles.headerTitles}>
           <Text style={styles.headerTitle}>Theo Dõi Tăng Trưởng</Text>
           <Text style={styles.headerSubtitle}>
@@ -861,3 +860,4 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
+

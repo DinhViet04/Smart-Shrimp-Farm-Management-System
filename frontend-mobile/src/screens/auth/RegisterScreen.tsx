@@ -1,13 +1,33 @@
 import React, { useState } from 'react';
-import { 
-  View, Text, TextInput, TouchableOpacity, StyleSheet, 
-  ImageBackground, KeyboardAvoidingView, Platform, 
-  ScrollView, ActivityIndicator, Alert, Image
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Image,
 } from 'react-native';
-import { User, Mail, Phone, Lock, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import {
+  User,
+  Mail,
+  Phone,
+  Lock,
+  ArrowRight,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Check,
+} from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { API_ENDPOINT } from '../../config/api';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -17,75 +37,144 @@ type AuthStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Register'>;
 
+const ROLES = [
+  { key: 'FARM_MANAGER', label: 'Quản lý', sublabel: 'Chủ trang trại' },
+  { key: 'TECHNICIAN', label: 'Kỹ thuật viên', sublabel: 'Môi trường & bệnh' },
+  { key: 'FARMER', label: 'Nhân viên ao', sublabel: 'Cho ăn & vận hành' },
+];
+
 export default function RegisterScreen() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<'FARM_MANAGER' | 'TECHNICIAN' | 'FARMER'>('FARM_MANAGER');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const navigation = useNavigation<NavigationProp>();
 
   const handleRegister = async () => {
-    if (!fullName || !email || !password || !confirmPassword) {
-      Alert.alert('Lỗi', 'Vui lòng điền các trường bắt buộc (*)');
+    // 1. Validate Họ và tên
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      Alert.alert('Thiếu thông tin', 'Họ tên không được để trống.');
       return;
     }
-    
+    if (trimmedName.length < 2) {
+      Alert.alert('Họ tên không hợp lệ', 'Họ tên phải có ít nhất 2 ký tự.');
+      return;
+    }
+
+    // 2. Validate Email
+    const trimmedEmail = email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      Alert.alert('Email không hợp lệ', 'Vui lòng nhập định dạng email chính xác (ví dụ: user@example.com).');
+      return;
+    }
+
+    // 3. Validate Số điện thoại (nếu có nhập)
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone && !/^0[35789][0-9]{8}$/.test(trimmedPhone)) {
+      Alert.alert(
+        'Số điện thoại không hợp lệ',
+        'Số điện thoại phải có đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).'
+      );
+      return;
+    }
+
+    // 4. Validate Mật khẩu (chuẩn DTO Backend & Web)
+    const passwordRegex = /((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/;
+    if (password.length < 8) {
+      Alert.alert('Mật khẩu yếu', 'Mật khẩu phải có ít nhất 8 ký tự.');
+      return;
+    }
+    if (!passwordRegex.test(password)) {
+      Alert.alert(
+        'Mật khẩu chưa đủ mạnh',
+        'Mật khẩu phải chứa chữ hoa, chữ thường và ít nhất một số hoặc ký tự đặc biệt.'
+      );
+      return;
+    }
+
+    // 5. Validate Mật khẩu xác nhận
     if (password !== confirmPassword) {
-      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp');
+      Alert.alert('Xác nhận mật khẩu', 'Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const apiUrl = 'http://localhost:3000'; // Đổi thành IP máy nếu test trên điện thoại thật
-      
-      const response = await fetch(`${apiUrl}/api/auth/register`, {
+      const response = await fetch(`${API_ENDPOINT}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          fullName, 
-          email, 
+        body: JSON.stringify({
+          fullName: trimmedName,
+          email: trimmedEmail.toLowerCase(),
           password,
-          phone: phone || undefined 
+          phone: trimmedPhone || undefined,
+          role,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        const errorMsg = Array.isArray(data.message) ? data.message[0] : (data.message || 'Đăng ký thất bại');
+        const errorMsg = data?.message
+          ? (Array.isArray(data.message) ? data.message.join('\n') : data.message)
+          : `Đăng ký thất bại (mã ${response.status})`;
         Alert.alert('Đăng ký thất bại', errorMsg);
-      } else {
-        Alert.alert('Thành công', 'Đăng ký tài khoản thành công! Vui lòng đăng nhập.');
-        navigation.navigate('Login');
+        return;
       }
+
+      Alert.alert(
+        'Đăng ký thành công',
+        `Chào mừng ${trimmedName}! Tài khoản của bạn đã được khởi tạo thành công với vai trò ${
+          role === 'FARM_MANAGER' ? 'Quản lý' : role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nhân viên ao'
+        }. Vui lòng đăng nhập để tiếp tục.`,
+        [
+          {
+            text: 'Đăng nhập ngay',
+            onPress: () => navigation.navigate('Login'),
+          },
+        ]
+      );
     } catch (error) {
-      Alert.alert('Lỗi kết nối', 'Không thể kết nối đến máy chủ. Hãy kiểm tra lại kết nối mạng.');
+      Alert.alert(
+        'Lỗi kết nối',
+        'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng và đảm bảo backend đang hoạt động.'
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <ImageBackground 
-      source={require('../../../assets/images/anhnen.png')} 
+    <ImageBackground
+      source={require('../../../assets/images/anhnen.png')}
       style={styles.background}
       resizeMode="cover"
     >
       <View style={styles.overlay}>
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.container}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
-            {/* Header/Logo */}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Header / Logo */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.logoWrapper}>
+              <TouchableOpacity
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+                style={styles.logoWrapper}
+                activeOpacity={0.8}
+              >
                 <Image source={require('../../../assets/images/logonen.jpg')} style={styles.logo} />
                 <Text style={styles.logoText}>SSFM</Text>
               </TouchableOpacity>
@@ -93,24 +182,26 @@ export default function RegisterScreen() {
 
             {/* Glassmorphism Card */}
             <View style={styles.card}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
-                onPress={() => navigation.goBack()}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+                accessibilityLabel="Quay lại"
               >
                 <ArrowLeft color="#475569" size={20} />
               </TouchableOpacity>
 
-              <Text style={styles.title}>Đăng Ký Mới</Text>
-              <Text style={styles.subtitle}>Điền thông tin của bạn để thiết lập trang trại.</Text>
+              <Text style={styles.title}>Đăng Ký Tài Khoản</Text>
+              <Text style={styles.subtitle}>Điền thông tin của bạn để bắt đầu làm việc trên trang trại.</Text>
 
               <View style={styles.form}>
-                
-                {/* Row 1: FullName and Phone */}
+                {/* FullName and Phone */}
                 <View style={styles.row}>
                   <View style={[styles.inputGroup, { flex: 1 }]}>
-                    <Text style={styles.label}>HỌ VÀ TÊN <Text style={{color: '#2563eb'}}>*</Text></Text>
+                    <Text style={styles.label}>
+                      HỌ VÀ TÊN <Text style={{ color: '#2563eb' }}>*</Text>
+                    </Text>
                     <View style={styles.inputContainer}>
-                      <User color="#64748b" size={20} style={styles.inputIcon} />
+                      <User color="#64748b" size={18} style={styles.inputIcon} />
                       <TextInput
                         style={styles.input}
                         placeholder="Nguyễn Văn A"
@@ -124,7 +215,7 @@ export default function RegisterScreen() {
                   <View style={[styles.inputGroup, { flex: 1 }]}>
                     <Text style={styles.label}>SỐ ĐIỆN THOẠI</Text>
                     <View style={styles.inputContainer}>
-                      <Phone color="#64748b" size={20} style={styles.inputIcon} />
+                      <Phone color="#64748b" size={18} style={styles.inputIcon} />
                       <TextInput
                         style={styles.input}
                         placeholder="0912345678"
@@ -140,64 +231,122 @@ export default function RegisterScreen() {
 
                 {/* Email Input */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>ĐỊA CHỈ EMAIL <Text style={{color: '#2563eb'}}>*</Text></Text>
+                  <Text style={styles.label}>
+                    ĐỊA CHỈ EMAIL <Text style={{ color: '#2563eb' }}>*</Text>
+                  </Text>
                   <View style={styles.inputContainer}>
-                    <Mail color="#64748b" size={20} style={styles.inputIcon} />
+                    <Mail color="#64748b" size={18} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
-                      placeholder="Email của bạn"
+                      placeholder="user@example.com"
                       placeholderTextColor="#94a3b8"
                       value={email}
                       onChangeText={setEmail}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      autoCorrect={false}
                     />
+                  </View>
+                </View>
+
+                {/* Role Selector */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>
+                    VAI TRÒ TRANG TRẠI <Text style={{ color: '#2563eb' }}>*</Text>
+                  </Text>
+                  <View style={styles.roleContainer}>
+                    {ROLES.map((r) => {
+                      const isSelected = role === r.key;
+                      return (
+                        <TouchableOpacity
+                          key={r.key}
+                          style={[styles.roleChip, isSelected && styles.roleChipSelected]}
+                          onPress={() => setRole(r.key as any)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.roleHeader}>
+                            <Text style={[styles.roleChipLabel, isSelected && styles.roleChipLabelSelected]}>
+                              {r.label}
+                            </Text>
+                            {isSelected && <Check size={14} color="#2563eb" />}
+                          </View>
+                          <Text style={[styles.roleChipSub, isSelected && styles.roleChipSubSelected]}>
+                            {r.sublabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
                 {/* Password Input */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>MẬT KHẨU <Text style={{color: '#2563eb'}}>*</Text></Text>
+                  <Text style={styles.label}>
+                    MẬT KHẨU <Text style={{ color: '#2563eb' }}>*</Text>
+                  </Text>
                   <View style={styles.inputContainer}>
-                    <Lock color="#64748b" size={20} style={styles.inputIcon} />
+                    <Lock color="#64748b" size={18} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
-                      placeholder="••••••••"
+                      placeholder="Tối thiểu 8 ký tự (hoa, thường, số)"
                       placeholderTextColor="#94a3b8"
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
+                      autoCapitalize="none"
                     />
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.eyeIcon}
                       onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                     >
-                      <Text style={{color: '#64748b', fontSize: 12}}>{showPassword ? 'ẨN' : 'HIỆN'}</Text>
+                      {showPassword ? (
+                        <EyeOff color="#64748b" size={18} />
+                      ) : (
+                        <Eye color="#64748b" size={18} />
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* Confirm Password Input */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>XÁC NHẬN MẬT KHẨU <Text style={{color: '#2563eb'}}>*</Text></Text>
+                  <Text style={styles.label}>
+                    XÁC NHẬN MẬT KHẨU <Text style={{ color: '#2563eb' }}>*</Text>
+                  </Text>
                   <View style={styles.inputContainer}>
-                    <Lock color="#64748b" size={20} style={styles.inputIcon} />
+                    <Lock color="#64748b" size={18} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
-                      placeholder="••••••••"
+                      placeholder="Nhập lại mật khẩu"
                       placeholderTextColor="#94a3b8"
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
-                      secureTextEntry={!showPassword}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
                     />
+                    <TouchableOpacity
+                      style={styles.eyeIcon}
+                      onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff color="#64748b" size={18} />
+                      ) : (
+                        <Eye color="#64748b" size={18} />
+                      )}
+                    </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* Register Button */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.loginButton}
                   onPress={handleRegister}
                   disabled={isLoading}
+                  activeOpacity={0.85}
                 >
                   <LinearGradient
                     colors={['#1d4ed8', '#2563eb']}
@@ -210,7 +359,7 @@ export default function RegisterScreen() {
                     ) : (
                       <>
                         <Text style={styles.loginButtonText}>Hoàn Tất Đăng Ký</Text>
-                        <ArrowRight color="#ffffff" size={20} />
+                        <ArrowRight color="#ffffff" size={18} />
                       </>
                     )}
                   </LinearGradient>
@@ -240,7 +389,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)', 
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   container: {
     flex: 1,
@@ -253,7 +402,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: 16,
     alignItems: 'center',
   },
   logoWrapper: {
@@ -277,11 +426,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 32,
-    padding: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 28,
+    padding: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.8)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.15,
@@ -292,58 +441,58 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 24,
-    right: 24,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    top: 22,
+    right: 22,
+    backgroundColor: '#f1f5f9',
     width: 36,
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
+    borderColor: '#e2e8f0',
     zIndex: 10,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginBottom: 8,
-    marginTop: 8,
+    marginBottom: 4,
+    marginTop: 4,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#475569',
-    marginBottom: 24,
+    fontSize: 13.5,
+    color: '#64748b',
+    marginBottom: 18,
   },
   form: {
-    gap: 16,
+    gap: 14,
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   inputGroup: {
-    gap: 8,
+    gap: 6,
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 'bold',
     color: '#334155',
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(238, 242, 255, 0.6)', 
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 16,
-    height: 50,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    height: 48,
     paddingHorizontal: 12,
   },
   inputIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   input: {
     flex: 1,
@@ -353,42 +502,80 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   eyeIcon: {
-    padding: 8,
+    padding: 6,
+  },
+  roleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  roleChip: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  roleChipSelected: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  roleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roleChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  roleChipLabelSelected: {
+    color: '#2563eb',
+  },
+  roleChipSub: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  roleChipSubSelected: {
+    color: '#3b82f6',
   },
   loginButton: {
-    marginTop: 10,
-    shadowColor: '#1e3a8a',
+    marginTop: 6,
+    shadowColor: '#1d4ed8',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-    borderRadius: 16,
+    shadowRadius: 8,
+    elevation: 6,
+    borderRadius: 14,
   },
   buttonGradient: {
     flexDirection: 'row',
-    height: 52,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
   },
   loginButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: 'bold',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 12,
   },
   footerText: {
-    fontSize: 14,
-    color: '#475569',
+    fontSize: 13.5,
+    color: '#64748b',
     fontWeight: '500',
   },
   registerLink: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: 'bold',
     color: '#2563eb',
   },

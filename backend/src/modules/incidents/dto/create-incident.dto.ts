@@ -1,9 +1,18 @@
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateIncidentDto {
+  @IsOptional()
   @IsUUID('4')
-  cropId: string;
+  cropId?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  pondId?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  farmId?: string;
 
   @IsString()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -16,4 +25,21 @@ export class CreateIncidentDto {
   @IsNotEmpty()
   @MaxLength(2000)
   description: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  severity?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  selfAssign?: boolean;
 }
+

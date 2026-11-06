@@ -1,17 +1,39 @@
 import React, { useState } from 'react';
-import { 
-  View, Text, TouchableOpacity, ImageBackground, StyleSheet, 
-  SafeAreaView, Platform, StatusBar, Image, ScrollView, Dimensions 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ImageBackground,
+  StyleSheet,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Droplets, ArrowRight, Bot, Activity, Thermometer, Waves,
-  AlertTriangle, CheckCircle2, Map as MapIcon, Send,
-  TrendingUp, ActivitySquare, CheckCircle, Camera,
-  Phone, Mail, MapPin 
+import {
+  Droplets,
+  ArrowRight,
+  Bot,
+  Activity,
+  Thermometer,
+  Waves,
+  AlertTriangle,
+  CheckCircle2,
+  Map as MapIcon,
+  Send,
+  TrendingUp,
+  Camera,
+  Phone,
+  Mail,
+  MapPin,
+  LayoutDashboard,
 } from 'lucide-react-native';
+import { useAuth } from '../../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -25,32 +47,63 @@ type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Home'>;
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { userToken, userRole, setIsViewingHome, logout } = useAuth();
   const [scrollY, setScrollY] = useState(0);
+
+  const roleLabel =
+    userRole === 'FARM_MANAGER'
+      ? 'Quản lý'
+      : userRole === 'TECHNICIAN'
+      ? 'Kỹ thuật'
+      : userRole === 'FARMER'
+      ? 'Nông dân'
+      : 'Người dùng';
+
+  const handleReturnToWork = () => {
+    setIsViewingHome(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle={scrollY > 50 ? 'dark-content' : 'light-content'} />
+
       {/* Dynamic Navigation Bar */}
       <View style={[styles.navBar, scrollY > 50 && styles.navBarScrolled]}>
         <View style={styles.logoWrapper}>
-          <Image 
-            source={require('../../../assets/images/logonen.jpg')} 
-            style={styles.logoImage} 
+          <Image
+            source={require('../../../assets/images/logonen.jpg')}
+            style={styles.logoImage}
           />
           <Text style={[styles.logoText, scrollY > 50 && styles.logoTextScrolled]}>SSFM</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-          <Text style={[styles.loginLink, scrollY > 50 && styles.loginLinkScrolled]}>Đăng nhập</Text>
-        </TouchableOpacity>
+
+        {/* Right Nav Action: If logged in, show "Vào làm việc" button; if not, show "Đăng nhập" */}
+        {userToken ? (
+          <TouchableOpacity
+            style={[styles.workButton, scrollY > 50 && styles.workButtonScrolled]}
+            onPress={handleReturnToWork}
+            activeOpacity={0.8}
+          >
+            <LayoutDashboard size={14} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={styles.workButtonText}>Vào làm việc →</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => navigation?.navigate && navigation.navigate('Login')}>
+            <Text style={[styles.loginLink, scrollY > 50 && styles.loginLinkScrolled]}>
+              Đăng nhập
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
         scrollEventThrottle={16}
       >
         {/* HERO SECTION */}
-        <ImageBackground 
-          source={require('../../../assets/images/unnamed.jpg')} 
+        <ImageBackground
+          source={require('../../../assets/images/unnamed.jpg')}
           style={styles.heroBackground}
           resizeMode="cover"
         >
@@ -78,69 +131,127 @@ export default function HomeScreen() {
               Chuyển đổi số toàn diện trang trại nuôi tôm. Tự động hóa quy trình, tối ưu hóa hệ số FCR, và cảnh báo sớm rủi ro môi trường.
             </Text>
 
-            <TouchableOpacity 
-              style={styles.primaryButton}
-              onPress={() => navigation.navigate('Register')}
-            >
-              <LinearGradient
-                colors={['#2563eb', '#60a5fa']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryButtonGradient}
+            {/* Primary Action Button: If logged in, return to workspace; if not, Register */}
+            {userToken ? (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleReturnToWork}
+                activeOpacity={0.8}
               >
-                <Text style={styles.primaryButtonText}>Dùng thử ngay</Text>
-                <ArrowRight color="#fff" size={20} />
-              </LinearGradient>
-            </TouchableOpacity>
-            
+                <LinearGradient
+                  colors={['#16a34a', '#22c55e']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryButtonGradient}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    Quay lại không gian làm việc ({roleLabel})
+                  </Text>
+                  <ArrowRight color="#fff" size={20} />
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => navigation?.navigate && navigation.navigate('Register')}
+              >
+                <LinearGradient
+                  colors={['#2563eb', '#60a5fa']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryButtonGradient}
+                >
+                  <Text style={styles.primaryButtonText}>Dùng thử ngay</Text>
+                  <ArrowRight color="#fff" size={20} />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
             {/* Mockup Dashboard */}
             <View style={styles.heroMockupCard}>
               <View style={styles.mockupHeader}>
                 <View>
-                  <Text style={{fontWeight: 'bold', fontSize: 16, color: '#1e293b'}}>Ao nuôi A1 - Tăng trưởng</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Cập nhật trực tiếp</Text>
+                  <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#1e293b' }}>
+                    Ao nuôi A1 - Tăng trưởng
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>Cập nhật trực tiếp</Text>
                 </View>
                 <View style={styles.mockupStatus}>
                   <CheckCircle2 size={12} color="#15803d" />
-                  <Text style={{fontSize: 10, fontWeight: 'bold', color: '#15803d', marginLeft: 4}}>Ổn định</Text>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#15803d', marginLeft: 4 }}>
+                    Ổn định
+                  </Text>
                 </View>
               </View>
-              
+
               <View style={styles.mockupContent}>
                 <View style={styles.mockupRow}>
-                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                    <TrendingUp size={16} color="#2563eb" style={{marginRight: 6}} />
-                    <Text style={{fontSize: 13, color: '#475569', fontWeight: '500'}}>Tốc độ tăng trưởng</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TrendingUp size={16} color="#2563eb" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, color: '#475569', fontWeight: '500' }}>
+                      Tốc độ tăng trưởng
+                    </Text>
                   </View>
-                  <Text style={{fontWeight: 'bold', color: '#0f172a'}}>1.2 g/ngày</Text>
+                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>1.2 g/ngày</Text>
                 </View>
-                
-                {/* Fake Bar Chart */}
-                <View style={{flexDirection: 'row', height: 40, alignItems: 'flex-end', marginTop: 12, gap: 4}}>
+
+                {/* Bar Chart Mockup */}
+                <View style={{ flexDirection: 'row', height: 40, alignItems: 'flex-end', marginTop: 12, gap: 4 }}>
                   {[30, 45, 40, 60, 55, 75, 80, 95].map((h, i) => (
-                    <View key={i} style={{flex: 1, height: `${h}%`, backgroundColor: '#3b82f6', borderRadius: 4, opacity: 0.8}} />
+                    <View
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: `${h}%`,
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4,
+                        opacity: 0.8,
+                      }}
+                    />
                   ))}
                 </View>
-                
-                <View style={{flexDirection: 'row', marginTop: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 16, gap: 12}}>
+
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    marginTop: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: '#e2e8f0',
+                    paddingTop: 16,
+                    gap: 12,
+                  }}
+                >
                   <View style={styles.mockupBox}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                       <Thermometer size={14} color="#64748b" />
-                      <Text style={{fontSize: 11, color: '#64748b', marginLeft: 4}}>Nhiệt độ</Text>
+                      <Text style={{ fontSize: 11, color: '#64748b', marginLeft: 4 }}>Nhiệt độ</Text>
                     </View>
-                    <Text style={{fontSize: 18, fontWeight: 'bold', color: '#0f172a'}}>28.5<Text style={{fontSize: 12, fontWeight: 'normal', color: '#94a3b8'}}> °C</Text></Text>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a' }}>
+                      28.5
+                      <Text style={{ fontSize: 12, fontWeight: 'normal', color: '#94a3b8' }}> °C</Text>
+                    </Text>
                   </View>
-                  <View style={[styles.mockupBox, {backgroundColor: 'rgba(239, 246, 255, 0.5)', borderColor: 'rgba(219, 234, 254, 0.8)'}]}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
+                  <View
+                    style={[
+                      styles.mockupBox,
+                      {
+                        backgroundColor: 'rgba(239, 246, 255, 0.5)',
+                        borderColor: 'rgba(219, 234, 254, 0.8)',
+                      },
+                    ]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                       <Droplets size={14} color="#2563eb" />
-                      <Text style={{fontSize: 11, color: '#2563eb', marginLeft: 4}}>Oxy hòa tan</Text>
+                      <Text style={{ fontSize: 11, color: '#2563eb', marginLeft: 4 }}>Oxy hòa tan</Text>
                     </View>
-                    <Text style={{fontSize: 18, fontWeight: 'bold', color: '#0f172a'}}>6.8<Text style={{fontSize: 12, fontWeight: 'normal', color: '#94a3b8'}}> mg/L</Text></Text>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a' }}>
+                      6.8
+                      <Text style={{ fontSize: 12, fontWeight: 'normal', color: '#94a3b8' }}> mg/L</Text>
+                    </Text>
                   </View>
                 </View>
               </View>
             </View>
-            
           </View>
         </ImageBackground>
 
@@ -148,51 +259,89 @@ export default function HomeScreen() {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionSectionSub}>TÍNH NĂNG NÂNG CAO</Text>
           <Text style={styles.sectionTitle}>Kiểm Soát Toàn Diện Với Hình Ảnh Thực Tế</Text>
-          
+
           {/* Real image card */}
           <View style={styles.featureImageCard}>
-            <Image 
-              source={require('../../../assets/images/xu-ly-ao-nuoi-dam-bao-moi-truong-nuoi-tom-tot-nhat.jpg')} 
-              style={styles.featureImage} 
+            <Image
+              source={require('../../../assets/images/xu-ly-ao-nuoi-dam-bao-moi-truong-nuoi-tom-tot-nhat.jpg')}
+              style={styles.featureImage}
             />
             <LinearGradient
               colors={['transparent', 'rgba(30, 58, 138, 0.8)']}
               style={styles.featureImageOverlay}
             />
             <View style={styles.featureImageTextContainer}>
-              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Camera size={20} color="#93c5fd" />
-                <Text style={{color: '#dbeafe', fontWeight: '600', marginLeft: 8}}>Hình ảnh thực tế từ nông trại</Text>
+                <Text style={{ color: '#dbeafe', fontWeight: '600', marginLeft: 8 }}>
+                  Hình ảnh thực tế từ nông trại
+                </Text>
               </View>
-              <Text style={{color: 'rgba(255,255,255,0.9)', fontSize: 13}}>Theo dõi thông số môi trường nước cực kỳ chính xác.</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13 }}>
+                Theo dõi thông số môi trường nước cực kỳ chính xác.
+              </Text>
             </View>
           </View>
-          
+
           {/* Water Quality Stats */}
           <View style={styles.featureDetailCard}>
-            <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20}}>
-              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 20,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={styles.iconBox}>
                   <Waves size={24} color="#2563eb" />
                 </View>
-                <View style={{marginLeft: 12}}>
-                  <Text style={{fontSize: 16, fontWeight: 'bold', color: '#1e3a8a'}}>Chất lượng nước</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Phân tích thời gian thực</Text>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1e3a8a' }}>
+                    Chất lượng nước
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>Phân tích thời gian thực</Text>
                 </View>
               </View>
-              <View style={{backgroundColor: '#dcfce3', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0'}}>
-                <Text style={{fontSize: 12, fontWeight: 'bold', color: '#15803d'}}>An toàn</Text>
+              <View
+                style={{
+                  backgroundColor: '#dcfce3',
+                  paddingHorizontal: 12,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#15803d' }}>An toàn</Text>
               </View>
             </View>
-            
+
             <View style={styles.chartCard}>
-              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
-                <Text style={{fontSize: 14, fontWeight: '600', color: '#475569'}}>Chỉ số pH</Text>
-                <Text style={{fontSize: 18, fontWeight: 'bold', color: '#1e3a8a'}}>7.8</Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#475569' }}>Chỉ số pH</Text>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1e3a8a' }}>7.8</Text>
               </View>
-              <View style={{flexDirection: 'row', height: 48, alignItems: 'flex-end', gap: 2}}>
+              <View style={{ flexDirection: 'row', height: 48, alignItems: 'flex-end', gap: 2 }}>
                 {[40, 45, 50, 55, 60, 55, 50, 48, 50, 55].map((h, i) => (
-                  <View key={i} style={{flex: 1, height: `${h}%`, backgroundColor: '#60a5fa', borderTopLeftRadius: 2, borderTopRightRadius: 2}} />
+                  <View
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: `${h}%`,
+                      backgroundColor: '#60a5fa',
+                      borderTopLeftRadius: 2,
+                      borderTopRightRadius: 2,
+                    }}
+                  />
                 ))}
               </View>
             </View>
@@ -200,148 +349,133 @@ export default function HomeScreen() {
         </View>
 
         {/* SECTION 2: AI & Analytics */}
-        <View style={[styles.sectionContainer, {backgroundColor: '#f8fafc'}]}>
-          <View style={[styles.featureDetailCard, {backgroundColor: 'rgba(239, 246, 255, 0.5)'}]}>
-             <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20}}>
-                <View style={[styles.iconBox, {backgroundColor: '#2563eb'}]}>
-                  <Bot size={24} color="#ffffff" />
-                </View>
-                <View style={{marginLeft: 12}}>
-                  <Text style={{fontSize: 16, fontWeight: 'bold', color: '#1e3a8a'}}>Phân tích AI & RAG</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Tư vấn thông minh 24/7</Text>
-                </View>
+        <View style={[styles.sectionContainer, { backgroundColor: '#f8fafc' }]}>
+          <View style={[styles.featureDetailCard, { backgroundColor: 'rgba(239, 246, 255, 0.5)' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              <View style={[styles.iconBox, { backgroundColor: '#2563eb' }]}>
+                <Bot size={24} color="#ffffff" />
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1e3a8a' }}>
+                  Phân tích AI & RAG
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Tư vấn thông minh 24/7</Text>
+              </View>
             </View>
-            
+
             <View style={styles.chatMockup}>
               <View style={styles.chatHeader}>
-                <View style={{width: 24, height: 24, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 8}}>
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8,
+                  }}
+                >
                   <Bot size={14} color="#fff" />
                 </View>
-                <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 13}}>Trợ lý Tôm Thông Minh</Text>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
+                  Trợ lý Tôm Thông Minh
+                </Text>
               </View>
-              <View style={{padding: 16, backgroundColor: '#fff', height: 200}}>
-                <View style={{alignSelf: 'flex-end', backgroundColor: '#3b82f6', padding: 10, borderRadius: 16, borderTopRightRadius: 4, marginBottom: 12, maxWidth: '85%'}}>
-                  <Text style={{color: '#fff', fontSize: 13}}>Gợi ý lượng thức ăn cho Ao A1 hôm nay?</Text>
+              <View style={{ padding: 16, backgroundColor: '#fff', height: 200 }}>
+                <View
+                  style={{
+                    alignSelf: 'flex-end',
+                    backgroundColor: '#3b82f6',
+                    padding: 10,
+                    borderRadius: 16,
+                    borderTopRightRadius: 4,
+                    marginBottom: 12,
+                    maxWidth: '85%',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13 }}>Gợi ý lượng thức ăn cho Ao A1 hôm nay?</Text>
                 </View>
-                <View style={{alignSelf: 'flex-start', backgroundColor: '#f8fafc', padding: 12, borderRadius: 16, borderTopLeftRadius: 4, borderWidth: 1, borderColor: '#e2e8f0', maxWidth: '90%'}}>
-                  <Text style={{color: '#334155', fontSize: 13}}>Dựa trên phân tích <Text style={{fontWeight: 'bold'}}>FCR (1.15)</Text>, hệ thống khuyến nghị:</Text>
-                  <Text style={{color: '#475569', fontSize: 13, marginTop: 4}}>• Giảm 10% lượng thức ăn chiều.</Text>
-                  <Text style={{color: '#475569', fontSize: 13, marginTop: 2}}>• Bổ sung vitamin C.</Text>
-                  <View style={{marginTop: 8, backgroundColor: '#dbeafe', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                    <Text style={{color: '#1d4ed8', fontSize: 10, fontWeight: 'bold'}}>Độ tin cậy: 98%</Text>
+                <View
+                  style={{
+                    alignSelf: 'flex-start',
+                    backgroundColor: '#f8fafc',
+                    padding: 12,
+                    borderRadius: 16,
+                    borderTopLeftRadius: 4,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    maxWidth: '90%',
+                  }}
+                >
+                  <Text style={{ color: '#334155', fontSize: 13 }}>
+                    Dựa trên phân tích <Text style={{ fontWeight: 'bold' }}>FCR (1.15)</Text>, hệ thống khuyến nghị:
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>
+                    • Giảm 10% lượng thức ăn chiều.
+                  </Text>
+                  <Text style={{ color: '#475569', fontSize: 13, marginTop: 2 }}>
+                    • Bổ sung vitamin C.
+                  </Text>
+                  <View
+                    style={{
+                      marginTop: 8,
+                      backgroundColor: '#dbeafe',
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                    }}
+                  >
+                    <Text style={{ color: '#1d4ed8', fontSize: 10, fontWeight: 'bold' }}>
+                      Độ tin cậy: 98%
+                    </Text>
                   </View>
                 </View>
               </View>
-              <View style={{padding: 10, backgroundColor: '#f8fafc', borderTopWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row', alignItems: 'center'}}>
-                <View style={{flex: 1, height: 36, backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, justifyContent: 'center'}}>
-                  <Text style={{color: '#94a3b8', fontSize: 12}}>Hỏi trợ lý AI...</Text>
-                </View>
-                <View style={{width: 36, height: 36, borderRadius: 18, backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center', marginLeft: 8}}>
-                  <Send size={16} color="#fff" style={{marginLeft: -2}} />
-                </View>
-              </View>
-            </View>
-          </View>
-          
-          <View style={[styles.featureImageCard, {marginTop: 24}]}>
-            <Image 
-              source={require('../../../assets/images/chat.jpg')} 
-              style={styles.featureImage} 
-            />
-            <LinearGradient
-              colors={['transparent', 'rgba(30, 58, 138, 0.9)']}
-              style={styles.featureImageOverlay}
-            />
-            <View style={styles.featureImageTextContainer}>
-              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
-                <Activity size={20} color="#93c5fd" />
-                <Text style={{color: '#dbeafe', fontWeight: '600', marginLeft: 8}}>Quản lý mọi lúc mọi nơi</Text>
-              </View>
-              <Text style={{color: 'rgba(255,255,255,0.9)', fontSize: 13}}>Sử dụng AI để phân tích số liệu ngay trên hiện trường.</Text>
             </View>
           </View>
         </View>
 
-        {/* SECTION 3: Pond Map */}
-        <View style={[styles.sectionContainer, {backgroundColor: '#eff6ff'}]}>
-          <Text style={styles.sectionSectionSub}>SỐ HÓA TRANG TRẠI</Text>
-          <Text style={styles.sectionTitle}>Bản Đồ Quản Lý Trực Quan</Text>
-          
-          <View style={styles.mapCard}>
-            <Image source={require('../../../assets/images/map-bg.png')} style={styles.mapImage} />
-            <View style={styles.mapOverlay} />
-            
-            {/* Ponds */}
-            <View style={[styles.pondMarker, {top: '20%', left: '20%', borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.4)'}]}>
-              <Text style={styles.pondMarkerText}>Ao A1</Text>
-            </View>
-            <View style={[styles.pondMarker, {top: '45%', left: '55%', borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.4)'}]}>
-              <Text style={styles.pondMarkerText}>Ao A2</Text>
-            </View>
-            <View style={[styles.pondMarker, {bottom: '20%', left: '15%', borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.4)'}]}>
-              <Text style={styles.pondMarkerText}>Ao B1</Text>
-            </View>
-            
-            {/* Map Legend */}
-            <View style={styles.mapLegend}>
-              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
-                <View style={{width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6', marginRight: 6}} />
-                <Text style={{fontSize: 10, color: '#334155'}}>Tối ưu & An toàn</Text>
-              </View>
-              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
-                <View style={{width: 8, height: 8, borderRadius: 4, backgroundColor: '#fbbf24', marginRight: 6}} />
-                <Text style={{fontSize: 10, color: '#334155'}}>Cần lưu ý</Text>
-              </View>
-              <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                <View style={{width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginRight: 6}} />
-                <Text style={{fontSize: 10, color: '#334155'}}>Cảnh báo nguy cơ</Text>
-              </View>
-            </View>
-          </View>
-          
-          <View style={[styles.featureDetailCard, {marginTop: 20}]}>
-            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}}>
-              <MapIcon size={20} color="#3b82f6" style={{marginRight: 8}} />
-              <Text style={{fontSize: 18, fontWeight: 'bold', color: '#1e3a8a'}}>Chi tiết Ao A1</Text>
-            </View>
-            
-            <View style={{backgroundColor: '#eff6ff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#dbeafe', marginBottom: 12}}>
-              <Text style={{fontSize: 12, color: '#64748b', marginBottom: 4}}>Thông số vụ nuôi</Text>
-              <Text style={{fontSize: 18, fontWeight: 'bold', color: '#2563eb'}}>Ngày 45 <Text style={{fontSize: 12, color: '#94a3b8', fontWeight: 'normal'}}>/ 90 ngày</Text></Text>
-            </View>
-            
-            <View style={{backgroundColor: '#eff6ff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#dbeafe', marginBottom: 12}}>
-              <Text style={{fontSize: 12, color: '#64748b', marginBottom: 8}}>Tỷ lệ sống ước tính</Text>
-              <Text style={{fontSize: 24, fontWeight: 'bold', color: '#16a34a', marginBottom: 8}}>92%</Text>
-              <View style={{height: 6, backgroundColor: '#cbd5e1', borderRadius: 3, width: '100%'}}>
-                <View style={{height: 6, backgroundColor: '#22c55e', borderRadius: 3, width: '92%'}} />
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* SECTION 4: Feature Grid */}
+        {/* SECTION 3: Ecosystem */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionSectionSub}>HỆ SINH THÁI TOÀN DIỆN</Text>
           <Text style={styles.sectionTitle}>Đầy Đủ Tính Năng Cho Trang Trại Của Bạn</Text>
-          <Text style={{color: '#475569', fontSize: 14, marginBottom: 24, lineHeight: 22}}>Smart Shrimp Farm Management System (SSFM) cung cấp giải pháp số hóa toàn diện giúp bạn theo dõi, quản lý và tối ưu hóa mọi quy trình.</Text>
-          
-          <View style={{gap: 16}}>
+
+          <View style={{ gap: 14 }}>
             {[
-              { Icon: MapIcon, title: "Quản lý Ao & Nông trại", desc: "Quản lý danh mục, sơ đồ ao nuôi và theo dõi lịch sử vụ nuôi." },
-              { Icon: Droplets, title: "Chất lượng Nước", desc: "Theo dõi các thông số môi trường (pH, độ mặn, DO)." },
-              { Icon: Activity, title: "Quản lý Tồn kho", desc: "Kiểm soát lượng thức ăn, quản lý nhà cung cấp." },
-              { Icon: TrendingUp, title: "Chăm sóc & FCR", desc: "Tính toán tỷ lệ sống, hệ số FCR và dự báo hiệu suất." },
-              { Icon: AlertTriangle, title: "Cảnh báo & Sự cố", desc: "Phát hiện rủi ro, cảnh báo sớm biến động môi trường." },
-              { Icon: Bot, title: "AI & Thống kê", desc: "Trợ lý ảo RAG giải đáp kỹ thuật, phân tích dữ liệu AI." }
+              {
+                Icon: MapIcon,
+                title: 'Quản lý Trang trại & Ao nuôi',
+                desc: 'Sơ đồ ao nuôi, tạo và quản lý tiến độ chu kỳ mùa vụ.',
+              },
+              {
+                Icon: Droplets,
+                title: 'Môi trường Nước Tức thời',
+                desc: 'Quan trắc DO, pH, độ mặn, nhiệt độ và khí độc nguy hại.',
+              },
+              {
+                Icon: TrendingUp,
+                title: 'Theo dõi Tăng trưởng & FCR',
+                desc: 'Đánh giá mẻ chài, kích cỡ tôm, tính toán sinh khối và chỉ số FCR.',
+              },
+              {
+                Icon: AlertTriangle,
+                title: 'Sự cố Cơ sở Hạ tầng',
+                desc: 'Báo cáo và phân công sửa chữa quạt nước, điện, cống, bạt ao.',
+              },
             ].map((feat, i) => (
               <View key={i} style={styles.gridCard}>
                 <View style={styles.gridIconBox}>
-                  <feat.Icon size={24} color="#2563eb" />
+                  <feat.Icon size={22} color="#2563eb" />
                 </View>
-                <View style={{flex: 1}}>
-                  <Text style={{fontSize: 16, fontWeight: 'bold', color: '#1e293b', marginBottom: 4}}>{feat.title}</Text>
-                  <Text style={{fontSize: 13, color: '#64748b', lineHeight: 20}}>{feat.desc}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1e293b', marginBottom: 2 }}>
+                    {feat.title}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748b', lineHeight: 18 }}>
+                    {feat.desc}
+                  </Text>
                 </View>
               </View>
             ))}
@@ -350,30 +484,21 @@ export default function HomeScreen() {
 
         {/* FOOTER */}
         <View style={styles.footer}>
-          <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}}>
-            <Image source={require('../../../assets/images/logonen.jpg')} style={{width: 36, height: 36, borderRadius: 18}} />
-            <Text style={{fontSize: 20, fontWeight: 'bold', color: '#fff', marginLeft: 12}}>SSFM</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <Image
+              source={require('../../../assets/images/logonen.jpg')}
+              style={{ width: 34, height: 34, borderRadius: 17 }}
+            />
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#fff', marginLeft: 10 }}>SSFM</Text>
           </View>
-          <Text style={{color: '#94a3b8', fontSize: 13, lineHeight: 22, marginBottom: 24}}>
-            Hệ thống Quản lý Trang trại Nuôi tôm Thông minh cung cấp nền tảng quản trị kỹ thuật số toàn diện, tối ưu hóa năng suất và giảm thiểu rủi ro môi trường.
+          <Text style={{ color: '#94a3b8', fontSize: 12, lineHeight: 18, marginBottom: 20 }}>
+            Hệ thống Quản lý Trang trại Nuôi tôm Thông minh SSFM - Nền tảng kỹ thuật số toàn diện.
           </Text>
-          
-          <Text style={{color: '#fff', fontWeight: 'bold', marginBottom: 12, fontSize: 14}}>LIÊN HỆ</Text>
-          <View style={styles.footerContactRow}>
-            <MapPin size={16} color="#3b82f6" />
-            <Text style={styles.footerContactText}>123 Đường Công Nghệ, TP. HCM</Text>
-          </View>
-          <View style={styles.footerContactRow}>
-            <Phone size={16} color="#3b82f6" />
-            <Text style={styles.footerContactText}>0123 456 789</Text>
-          </View>
-          <View style={styles.footerContactRow}>
-            <Mail size={16} color="#3b82f6" />
-            <Text style={styles.footerContactText}>contact@ssfm-example.com</Text>
-          </View>
-          
-          <View style={{marginTop: 32, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#334155', alignItems: 'center'}}>
-             <Text style={{color: '#64748b', fontSize: 12}}>&copy; {new Date().getFullYear()} SSFM. All rights reserved.</Text>
+
+          <View style={{ borderTopWidth: 1, borderTopColor: '#334155', paddingTop: 16, alignItems: 'center' }}>
+            <Text style={{ color: '#64748b', fontSize: 11 }}>
+              &copy; {new Date().getFullYear()} SSFM. All rights reserved.
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -388,25 +513,26 @@ const styles = StyleSheet.create({
   },
   navBar: {
     position: 'absolute',
-    top: 0, left: 0, right: 0,
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 12 : 12,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 12,
+    paddingBottom: 10,
     zIndex: 100,
   },
   navBarScrolled: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 2,
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : {}) as any,
+    elevation: 3,
   },
   logoWrapper: {
     flexDirection: 'row',
@@ -417,14 +543,14 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(255, 255, 255, 0.6)',
   },
   logoText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#ffffff', 
-    marginLeft: 10,
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    color: '#ffffff',
+    marginLeft: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
@@ -432,134 +558,157 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     textShadowColor: 'transparent',
   },
+  workButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  workButtonScrolled: {
+    backgroundColor: '#15803d',
+  },
+  workButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
   loginLink: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#ffffff',
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   loginLinkScrolled: {
     color: '#1e293b',
     textShadowColor: 'transparent',
   },
-  
+
   // HERO
   heroBackground: {
     width: '100%',
-    minHeight: Dimensions.get('window').height,
-    justifyContent: 'center',
+    paddingTop: 80,
+    paddingBottom: 40,
   },
   gradientOverlay: {
-    position: 'absolute',
-    left: 0, right: 0, top: 0, bottom: 0,
+    ...StyleSheet.absoluteFill,
   },
   heroContent: {
     paddingHorizontal: 20,
-    paddingTop: 100,
-    paddingBottom: 40,
+    paddingTop: 20,
   },
   badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    marginBottom: 20,
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)' } : {}) as any,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
   },
   pingDotOuter: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#93c5fd', 
-    justifyContent: 'center', alignItems: 'center',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
     marginRight: 6,
   },
   pingDotInner: {
-    width: 4, height: 4, borderRadius: 2,
-    backgroundColor: '#3b82f6', 
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#16a34a',
   },
   badgeText: {
-    color: '#1e293b', fontSize: 11, fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1e3a8a',
   },
   title: {
-    fontSize: 42,
+    fontSize: 32,
     fontWeight: '900',
     color: '#0f172a',
-    lineHeight: 46,
-    marginBottom: 16,
+    lineHeight: 40,
+    marginBottom: 12,
   },
   titleHighlight: {
-    color: '#2563eb', 
+    color: '#2563eb',
   },
   subtitle: {
-    fontSize: 15,
-    color: '#334155', 
-    lineHeight: 24,
-    fontWeight: '500',
-    marginBottom: 28,
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 20,
+    marginBottom: 20,
   },
   primaryButton: {
-    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
     shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 6,
-    marginBottom: 32,
-    borderRadius: 30,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 28,
   },
   primaryButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 30,
-    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 10,
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '800',
   },
-  
+
+  // Mockup card
   heroMockupCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 24,
-    padding: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: '#e2e8f0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 8,
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(20px)' } : {}) as any,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    overflow: 'hidden',
   },
   mockupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 12,
-    marginBottom: 16,
+    borderBottomColor: '#f1f5f9',
   },
   mockupStatus: {
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#dcfce3', 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  mockupContent: {},
+  mockupContent: {
+    padding: 14,
+  },
   mockupRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -567,189 +716,103 @@ const styles = StyleSheet.create({
   },
   mockupBox: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: '#e2e8f0',
   },
 
-  // COMMON SECTION
+  // Sections
   sectionContainer: {
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    backgroundColor: '#ffffff',
+    padding: 20,
   },
   sectionSectionSub: {
+    fontSize: 11,
+    fontWeight: '800',
     color: '#2563eb',
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginBottom: 8,
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
   sectionTitle: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: '900',
-    color: '#1e3a8a',
-    marginBottom: 24,
-    lineHeight: 34,
+    color: '#0f172a',
+    marginBottom: 16,
   },
-  
-  // FEATURES
   featureImageCard: {
-    height: 250,
-    borderRadius: 24,
+    borderRadius: 16,
     overflow: 'hidden',
+    height: 180,
+    marginBottom: 16,
     position: 'relative',
-    marginBottom: 20,
   },
   featureImage: {
     width: '100%',
     height: '100%',
   },
   featureImageOverlay: {
-    position: 'absolute',
-    left: 0, right: 0, top: 0, bottom: 0,
+    ...StyleSheet.absoluteFill,
   },
   featureImageTextContainer: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+    bottom: 14,
+    left: 14,
+    right: 14,
   },
   featureDetailCard: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-  },
-  iconBox: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#dbeafe',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
   },
-  
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+  },
   chatMockup: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    overflow: 'hidden',
   },
   chatHeader: {
-    backgroundColor: '#2563eb',
-    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#2563eb',
+    padding: 10,
   },
-  
-  // MAP
-  mapCard: {
-    height: 300,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    position: 'relative',
-  },
-  mapImage: {
-    width: '100%',
-    height: '100%',
-    opacity: 0.8,
-  },
-  mapOverlay: {
-    position: 'absolute',
-    left: 0, right: 0, top: 0, bottom: 0,
-    backgroundColor: 'rgba(219, 234, 254, 0.2)',
-  },
-  pondMarker: {
-    position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pondMarkerText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#fff',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  mapLegend: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(8px)' } : {}) as any,
-  },
-  
-  // GRID
   gridCard: {
     flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
     alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 12,
   },
   gridIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: '#eff6ff',
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
+    alignItems: 'center',
   },
-
-  // FOOTER
   footer: {
     backgroundColor: '#0f172a',
     padding: 24,
-    paddingTop: 40,
     paddingBottom: 40,
-  },
-  footerContactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  footerContactText: {
-    color: '#94a3b8',
-    fontSize: 13,
-    marginLeft: 12,
   },
 });

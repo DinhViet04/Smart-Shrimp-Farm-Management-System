@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package,
-  TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen
+  TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen, AlertTriangle
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
@@ -21,6 +21,7 @@ const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
+const FarmIncidentDashboard = lazy(() => import('../features/incidents/FarmIncidentDashboard'));
 
 interface CurrentUser {
   id?: string;
@@ -150,6 +151,7 @@ export default function Dashboard() {
     { name: 'Quản Lý Kho', icon: <Package className="w-5 h-5" /> },
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
+    { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
@@ -402,6 +404,8 @@ export default function Dashboard() {
                 if (tab === 'Môi trường nước') {
                   if (config) setEnvConfig(config);
                   setActiveTab('Môi trường nước');
+                } else if (tab === 'Sự cố trang trại' || tab === 'Báo cáo sự cố' || tab === 'Sự cố') {
+                  setActiveTab('Sự cố trang trại');
                 } else if (tab === 'Sức khỏe tôm' || tab === 'Sự cố & Điều trị') {
                   setHealthConfig({
                     farmId: config?.farmId,
@@ -546,6 +550,10 @@ export default function Dashboard() {
               initialSubTab={activeTab === 'Sự cố & Điều trị' ? 'incident' : healthConfig?.subTab}
               role="FARM_MANAGER"
             />
+          ) : activeTab === 'Sự cố trang trại' || activeTab === 'Báo cáo sự cố' ? (
+            <div className="w-full max-w-7xl mx-auto">
+              <FarmIncidentDashboard role="FARM_MANAGER" />
+            </div>
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">
               <div className="text-center">

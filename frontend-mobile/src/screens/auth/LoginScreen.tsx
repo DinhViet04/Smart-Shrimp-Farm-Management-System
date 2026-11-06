@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ImageBackground, KeyboardAvoidingView, Platform,
@@ -29,8 +29,18 @@ export default function LoginScreen() {
   const navigation = useNavigation<NavigationProp>();
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ email và mật khẩu');
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập địa chỉ email.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert('Email không hợp lệ', 'Vui lòng nhập đúng định dạng email (ví dụ: user@example.com).');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập mật khẩu.');
       return;
     }
 
@@ -39,7 +49,7 @@ export default function LoginScreen() {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: trimmedEmail.toLowerCase(), password }),
       });
 
       const data = await response.json();

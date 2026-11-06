@@ -8,6 +8,16 @@ export interface ChatbotSource {
   relevanceScore?: number;
 }
 
+export interface AgentActionDraft {
+  type: 'SLOT_FILLING' | 'CONFIRM_ACTION';
+  intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+  collectedData: Record<string, any>;
+  missingFields: string[];
+  quickSuggestions?: string[];
+  summary?: Record<string, string>;
+  isExecuted?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'ai' | 'user' | 'bot';
@@ -20,6 +30,7 @@ export interface ChatMessage {
   recommendations?: string[];
   poweredBy?: string;
   isError?: boolean;
+  actionDraft?: AgentActionDraft;
 }
 
 export interface ChatSession {
@@ -36,6 +47,7 @@ export interface ChatbotResponse {
   pondName?: string;
   recommendations?: string[];
   poweredBy?: string;
+  actionDraft?: AgentActionDraft;
 }
 
 export interface PondOption {
@@ -76,8 +88,20 @@ export const chatbotService = {
   /**
    * Send question to AI RAG backend
    */
-  async ask(question: string, pondId?: string, farmId?: string): Promise<ChatbotResponse> {
-    const payload: { question: string; pondId?: string; farmId?: string } = {
+  async ask(
+    question: string,
+    pondId?: string,
+    farmId?: string,
+    history?: Array<{ sender: 'user' | 'ai'; text: string }>,
+    pendingAction?: any,
+  ): Promise<ChatbotResponse> {
+    const payload: {
+      question: string;
+      pondId?: string;
+      farmId?: string;
+      history?: Array<{ sender: 'user' | 'ai'; text: string }>;
+      pendingAction?: any;
+    } = {
       question: question.trim(),
     };
 
@@ -87,8 +111,30 @@ export const chatbotService = {
     if (farmId) {
       payload.farmId = farmId;
     }
+    if (history) {
+      payload.history = history;
+    }
+    if (pendingAction) {
+      payload.pendingAction = pendingAction;
+    }
 
     return apiClient.post<ChatbotResponse>('/chatbot/ask', payload);
+  },
+
+  /**
+   * Thực thi hành động do AI đề xuất sau khi người dùng xác nhận
+   */
+  async executeAction(action: {
+    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+    data: Record<string, any>;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    entity: any;
+    type: string;
+    redirectTab?: string;
+  }> {
+    return apiClient.post('/chatbot/execute-action', action);
   },
 
   /**
@@ -118,15 +164,13 @@ export const chatbotService = {
     try {
       const json = await AsyncStorage.getItem(SESSIONS_STORAGE_KEY);
       if (json) {
-        const parsed = JSON.parse(json);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
+        return JSON.parse(json);
       }
     } catch (e) {
-      console.error('Error loading chat sessions:', e);
+      console.error('Error loading chat sessions', e);
     }
     const defaultSession = createNewSession();
+    await this.saveSessions([defaultSession]);
     return [defaultSession];
   },
 
@@ -137,7 +181,7 @@ export const chatbotService = {
     try {
       await AsyncStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
     } catch (e) {
-      console.error('Error saving chat sessions:', e);
+      console.error('Error saving chat sessions', e);
     }
   },
 
@@ -147,7 +191,7 @@ export const chatbotService = {
   async getActiveSessionId(): Promise<string | null> {
     try {
       return await AsyncStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    } catch {
+    } catch (e) {
       return null;
     }
   },
@@ -159,28 +203,27 @@ export const chatbotService = {
     try {
       await AsyncStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id);
     } catch (e) {
-      console.error('Error setting active session ID:', e);
+      console.error('Error setting active session ID', e);
     }
   },
 
   /**
-   * Backward compatibility: get single session history
+   * Delete a session
    */
-  async getLocalHistory(): Promise<ChatMessage[]> {
+  async deleteSession(sessionId: string): Promise<ChatSession[]> {
     const sessions = await this.getSessions();
-    return sessions[0]?.messages || [];
-  },
-
-  /**
-   * Backward compatibility: clear history
-   */
-  async clearLocalHistory(): Promise<void> {
-    try {
-      const fresh = createNewSession();
-      await this.saveSessions([fresh]);
-      await this.setActiveSessionId(fresh.id);
-    } catch (e) {
-      console.error('Error clearing sessions:', e);
+    const filtered = sessions.filter((s) => s.id !== sessionId);
+    if (filtered.length === 0) {
+      const newDef = createNewSession();
+      await this.saveSessions([newDef]);
+      await this.setActiveSessionId(newDef.id);
+      return [newDef];
     }
+    await this.saveSessions(filtered);
+    const activeId = await this.getActiveSessionId();
+    if (activeId === sessionId) {
+      await this.setActiveSessionId(filtered[0].id);
+    }
+    return filtered;
   },
 };

@@ -31,6 +31,7 @@ export type NotificationCategory =
   | 'FEEDING'
   | 'FIVE_T'
   | 'INCIDENT'
+  | 'INCIDENT_ASSIGNMENT'
   | 'SYSTEM'
   | 'INVENTORY';
 
@@ -108,12 +109,14 @@ export default function NotificationDropdown({
     socketRef.current = socket;
 
     socket.on('newNotification', (notification: NotificationItem) => {
+      const item = notification;
       setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
       
       // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
       const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
       const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
-      const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+      const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
+      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
       const promptText = isGrowth 
         ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này' 
         : isShrimpHealth 
@@ -268,7 +271,8 @@ export default function NotificationDropdown({
       setSelectedItem(null);
       const isGrowth = item.category === 'GROWTH' || item.title?.toLowerCase().includes('tăng trưởng') || item.title?.toLowerCase().includes('kích cỡ') || item.title?.toLowerCase().includes('fcr');
       const isShrimpHealth = item.category === 'SHRIMP_HEALTH' || item.title?.toLowerCase().includes('sức khỏe tôm');
-      const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+      const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
+      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
       onNavigateTab(targetTab, {
         farmId: item.farmId,
         pondId: item.pondId,
@@ -618,7 +622,8 @@ export default function NotificationDropdown({
                         const farmId = selectedItem.farmId;
                         const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ');
                         const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
-                        const targetTab = isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+                        const isIncident = selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố');
+      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
                         setSelectedItem(null);
                         setIsOpen(false);
                         onNavigateTab(targetTab, { farmId, pondId });

@@ -31,6 +31,8 @@ export interface ShrimpHealthRecord {
   note?: string;
   createdAt: string;
   pond?: { name: string };
+  farm?: { name: string };
+  recorder?: { fullName: string };
 }
 
 export interface CreateMortalityPayload {
@@ -70,6 +72,7 @@ export const shrimpHealthService = {
     const response = await apiClient.get<any>(`/shrimp-health/history${qs ? `?${qs}` : ''}`);
     if (Array.isArray(response)) return response;
     if (response && Array.isArray(response.records)) return response.records;
+    if (response && Array.isArray(response.content)) return response.content;
     return [];
   },
 

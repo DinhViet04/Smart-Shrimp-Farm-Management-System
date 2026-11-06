@@ -35,6 +35,11 @@ export class GetIncidentsDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true')
   @IsBoolean()
+  reportedByMe?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
   activeOnly?: boolean;
 
   @IsOptional()
@@ -57,6 +62,7 @@ export class GetIncidentsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1900)
   year?: number;
 
   @IsOptional()

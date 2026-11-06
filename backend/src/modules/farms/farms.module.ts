@@ -10,5 +10,6 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
   imports: [PrismaModule, FarmAccessModule, AuthModule, NotificationsModule],
   controllers: [FarmsController],
   providers: [FarmsService],
+  exports: [FarmsService],
 })
 export class FarmsModule {}

@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useState } from 'react';
+import React, { useCallback, useContext, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -8,361 +8,581 @@ import {
   TouchableOpacity,
   View,
   TextInput,
+  SafeAreaView,
+  ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   AlertTriangle,
-  Stethoscope,
   CheckCircle2,
   Search,
   Plus,
-  Waves,
-  Building2,
-  User,
+  MapPin,
   Clock,
+  User,
+  Building2,
+  Wrench,
   ChevronRight,
-  ShieldAlert,
+  RotateCcw,
 } from 'lucide-react-native';
 import { AuthContext } from '../../context/AuthContext';
-import { incidentService, type Incident, type IncidentStatus } from '../../services/incidentService';
+import { incidentService, type Incident } from '../../services/incidentService';
+import {
+  FARM_INCIDENT_CATEGORIES,
+  FARM_INCIDENT_SEVERITIES,
+  parseIncidentMetadata,
+  isFarmInfrastructureIncident,
+  formatDate,
+} from '../../constants/farmIncidentConstants';
+import HeaderLogo from '../../components/HeaderLogo';
+import NotificationButton from '../../components/NotificationButton';
 
-const STATUS_CONFIG: Record<
-  IncidentStatus,
-  { label: string; color: string; bg: string; border: string; icon: any }
-> = {
-  OPEN: {
-    label: 'Chờ xử lý',
-    color: '#d97706',
-    bg: '#fef3c7',
-    border: '#fde68a',
-    icon: AlertTriangle,
-  },
-  TREATING: {
-    label: 'Đang điều trị',
-    color: '#4f46e5',
-    bg: '#e0e7ff',
-    border: '#c7d2fe',
-    icon: Stethoscope,
-  },
-  RESOLVED: {
-    label: 'Đã xử lý',
-    color: '#059669',
-    bg: '#ecfdf5',
-    border: '#a7f3d0',
-    icon: CheckCircle2,
-  },
-};
+type MainStatusTab = 'all' | 'open' | 'treating' | 'resolved';
 
 export default function IncidentListScreen({ navigation }: { navigation: any }) {
-  const { userToken, userRole, userId } = useContext(AuthContext);
+  const { userRole, userId } = useContext(AuthContext);
+
+  const isManager = userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
+  const isTechnician = userRole === 'TECHNICIAN';
+  const isFarmer = userRole === 'FARMER';
+
+  // Raw incidents from backend
   const [items, setItems] = useState<Incident[]>([]);
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
-  // Default to assignedToMe if user is TECHNICIAN
-  const [assignedToMe, setAssignedToMe] = useState<boolean>(userRole === 'TECHNICIAN');
-  const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  // Main filters
+  const [statusTab, setStatusTab] = useState<MainStatusTab>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+
+  // Sub-View for Tech or Farmer: 'assigned_to_me' vs 'all_reports'
+  const [staffViewMode, setStaffViewMode] = useState<'assigned_to_me' | 'all_reports'>(
+    isTechnician ? 'assigned_to_me' : 'all_reports'
+  );
+
+  const loadIncidents = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      // Fetch all items for the chosen assignment mode so counts are accurate across all status tabs
-      const res = await incidentService.getAll(
-        userToken || undefined,
-        undefined,
-        userRole === 'ADMIN' ? false : assignedToMe
-      );
-      setItems(res.content || []);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Không thể tải sự cố');
+      const res = await incidentService.getAll({
+        size: '150',
+      });
+      const list = Array.isArray(res)
+        ? res
+        : Array.isArray((res as any)?.content)
+        ? (res as any).content
+        : [];
+      setItems(list);
+    } catch (err: any) {
+      console.warn('Lỗi tải danh sách sự cố:', err);
+      setError(err?.message || 'Không thể tải danh sách sự cố. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
-  }, [assignedToMe, userRole, userToken]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      loadIncidents();
+    }, [loadIncidents])
   );
 
-  // Filter by status and search text
-  const filteredItems = items.filter((item) => {
-    if (selectedStatus && item.status !== selectedStatus) {
-      return false;
+  // 1. STRICT WHITELIST FILTER: Only objective farm infrastructure incidents
+  const farmOnlyIncidents = useMemo(() => {
+    return items.filter((i) => isFarmInfrastructureIncident(i.title, i.description));
+  }, [items]);
+
+  // 2. ROLE SCOPING
+  const roleScopedIncidents = useMemo(() => {
+    // MANAGER: Sees ALL farm incidents across all ponds & facilities
+    if (isManager) {
+      return farmOnlyIncidents;
     }
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    const title = item.title?.toLowerCase() || '';
-    const desc = item.description?.toLowerCase() || '';
-    const pond = item.crop?.pond?.name?.toLowerCase() || '';
-    const farm = item.crop?.pond?.farm?.name?.toLowerCase() || '';
-    return title.includes(q) || desc.includes(q) || pond.includes(q) || farm.includes(q);
-  });
+
+    // TECHNICIAN: Can view assigned tasks or all reports
+    if (isTechnician) {
+      if (staffViewMode === 'assigned_to_me') {
+        return farmOnlyIncidents.filter(
+          (i) => i.assignedToId === userId || i.assignedTo?.id === userId
+        );
+      }
+      return farmOnlyIncidents;
+    }
+
+    // FARMER: Sees reported by self OR assigned to self
+    if (isFarmer) {
+      if (staffViewMode === 'assigned_to_me') {
+        return farmOnlyIncidents.filter(
+          (i) => i.assignedToId === userId || i.assignedTo?.id === userId
+        );
+      }
+      return farmOnlyIncidents.filter(
+        (i) =>
+          i.reporter?.id === userId ||
+          (i as any).reporterId === userId ||
+          i.assignedToId === userId ||
+          i.assignedTo?.id === userId
+      );
+    }
+
+    return farmOnlyIncidents;
+  }, [farmOnlyIncidents, isManager, isTechnician, isFarmer, staffViewMode, userId]);
+
+  // 3. Status Grouping
+  const openIncidents = useMemo(() => {
+    return roleScopedIncidents.filter((i) => i.status === 'OPEN' && !i.assignedToId);
+  }, [roleScopedIncidents]);
+
+  const treatingIncidents = useMemo(() => {
+    return roleScopedIncidents.filter(
+      (i) => i.status === 'TREATING' || (i.status === 'OPEN' && Boolean(i.assignedToId))
+    );
+  }, [roleScopedIncidents]);
+
+  const resolvedIncidents = useMemo(() => {
+    return roleScopedIncidents.filter((i) => i.status === 'RESOLVED');
+  }, [roleScopedIncidents]);
+
+  // 4. Tab selection
+  const currentTabIncidents = useMemo(() => {
+    if (statusTab === 'open') return openIncidents;
+    if (statusTab === 'treating') return treatingIncidents;
+    if (statusTab === 'resolved') return resolvedIncidents;
+    return roleScopedIncidents;
+  }, [statusTab, openIncidents, treatingIncidents, resolvedIncidents, roleScopedIncidents]);
+
+  // 5. Category & Search filtering
+  const filteredIncidents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return currentTabIncidents.filter((item) => {
+      const { category, location, cleanTitle, cleanDescription } = parseIncidentMetadata(
+        item.title,
+        item.description
+      );
+
+      // Category filter
+      if (selectedCategory && !category.toLowerCase().includes(selectedCategory.toLowerCase())) {
+        return false;
+      }
+
+      // Search query
+      if (q) {
+        const pondName = item.crop?.pond?.name?.toLowerCase() || '';
+        const farmName = item.crop?.pond?.farm?.name?.toLowerCase() || '';
+        const matchTitle = cleanTitle.toLowerCase().includes(q);
+        const matchDesc = cleanDescription.toLowerCase().includes(q);
+        const matchLoc = location.toLowerCase().includes(q);
+        const matchPond = pondName.includes(q);
+        const matchFarm = farmName.includes(q);
+        if (!matchTitle && !matchDesc && !matchLoc && !matchPond && !matchFarm) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [currentTabIncidents, selectedCategory, search]);
 
   const counts = {
-    all: items.length,
-    open: items.filter((i) => i.status === 'OPEN').length,
-    treating: items.filter((i) => i.status === 'TREATING').length,
-    resolved: items.filter((i) => i.status === 'RESOLVED').length,
+    all: roleScopedIncidents.length,
+    open: openIncidents.length,
+    treating: treatingIncidents.length,
+    resolved: resolvedIncidents.length,
+  };
+
+  const renderCategoryBadge = (categoryStr: string) => {
+    const matched = FARM_INCIDENT_CATEGORIES.find((c) =>
+      categoryStr.toLowerCase().includes(c.id.toLowerCase())
+    );
+    const bg = matched ? matched.badgeBg : '#f1f5f9';
+    const text = matched ? matched.badgeText : '#475569';
+    const label = matched ? `${matched.icon} ${matched.label}` : categoryStr || 'Khác';
+
+    return (
+      <View style={[styles.badge, { backgroundColor: bg }]}>
+        <Text style={[styles.badgeText, { color: text }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderSeverityBadge = (severityStr: string) => {
+    const matched = FARM_INCIDENT_SEVERITIES.find(
+      (s) => s.id.toLowerCase() === (severityStr || '').toLowerCase()
+    );
+    const bg = matched ? matched.badgeBg : '#f1f5f9';
+    const text = matched ? matched.badgeText : '#475569';
+    const label = matched ? matched.label : severityStr || 'Trung bình';
+
+    return (
+      <View style={[styles.badge, { backgroundColor: bg }]}>
+        <Text style={[styles.badgeText, { color: text }]}>{label}</Text>
+      </View>
+    );
+  };
+
+  const renderItem = ({ item }: { item: Incident }) => {
+    const { category, severity, location, cleanTitle, cleanDescription } = parseIncidentMetadata(
+      item.title,
+      item.description
+    );
+
+    const isAssigned = Boolean(item.assignedToId || item.assignedTo);
+    const isResolved = item.status === 'RESOLVED';
+    const pondName = item.crop?.pond?.name;
+    const displayLoc = location || (pondName ? `Ao nuôi ${pondName}` : 'Toàn trang trại');
+    const assignedRole = (item.assignedTo as any)?.role || '';
+    const roleBadge = assignedRole === 'TECHNICIAN' ? 'Kỹ thuật' : assignedRole === 'FARMER' ? 'Công nhân' : '';
+
+    return (
+      <TouchableOpacity
+        style={[styles.card, isResolved && styles.cardResolved]}
+        onPress={() => navigation.navigate('IncidentDetail', { incidentId: item.id })}
+        activeOpacity={0.7}
+      >
+        {/* Top: Category & Severity Badges */}
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardBadges}>
+            {renderCategoryBadge(category)}
+            {renderSeverityBadge(severity)}
+          </View>
+
+          {/* Status Indicator */}
+          {isResolved ? (
+            <View style={[styles.statusPill, { backgroundColor: '#ecfdf5' }]}>
+              <CheckCircle2 size={12} color="#059669" />
+              <Text style={[styles.statusPillText, { color: '#059669' }]}>Đã giải quyết</Text>
+            </View>
+          ) : isAssigned ? (
+            <View style={[styles.statusPill, { backgroundColor: '#eff6ff' }]}>
+              <Wrench size={12} color="#2563eb" />
+              <Text style={[styles.statusPillText, { color: '#2563eb' }]}>Đang xử lý</Text>
+            </View>
+          ) : (
+            <View style={[styles.statusPill, { backgroundColor: '#fffbeb' }]}>
+              <AlertTriangle size={12} color="#d97706" />
+              <Text style={[styles.statusPillText, { color: '#d97706' }]}>
+                {isManager ? 'Chờ phân công' : 'Chờ tiếp nhận'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Title */}
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {cleanTitle}
+        </Text>
+
+        {/* Description snippet */}
+        {cleanDescription ? (
+          <Text style={styles.cardDesc} numberOfLines={2}>
+            {cleanDescription}
+          </Text>
+        ) : null}
+
+        {/* Location & Time info */}
+        <View style={styles.cardMetaRow}>
+          <View style={styles.metaItem}>
+            <MapPin size={13} color="#64748b" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {displayLoc}
+            </Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Clock size={13} color="#94a3b8" />
+            <Text style={styles.metaTextTime}>{formatDate(item.createdAt)}</Text>
+          </View>
+        </View>
+
+        {/* Footer: Assignment / Reporter info */}
+        <View style={styles.cardFooter}>
+          <View style={styles.footerLeft}>
+            {isAssigned ? (
+              <View style={styles.assignedTag}>
+                <User size={12} color="#4f46e5" />
+                <Text style={styles.assignedTagText}>
+                  Phụ trách: {item.assignedTo?.fullName || 'Đã phân công'}
+                  {roleBadge ? ` (${roleBadge})` : ''}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.unassignedTag}>
+                <Text style={styles.unassignedTagText}>
+                  {isManager ? '⚡ Nhấn để phân công nhiệm vụ' : 'Chưa phân công người phụ trách'}
+                </Text>
+              </View>
+            )}
+          </View>
+          <ChevronRight size={16} color="#94a3b8" />
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <View style={styles.container}>
-      {/* ── Top Bar & Search ── */}
-      <View style={styles.topBar}>
-        <View style={styles.searchBox}>
-          <Search size={18} color="#94a3b8" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm theo tên sự cố, ao, trại..."
-            placeholderTextColor="#94a3b8"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
-
-        {userRole !== 'ADMIN' && (
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('IncidentCreate')}
-            activeOpacity={0.8}
-          >
-            <Plus size={18} color="#ffffff" />
-            <Text style={styles.createBtnText}>Báo sự cố</Text>
-          </TouchableOpacity>
-        )}
+    <SafeAreaView style={styles.safeArea}>
+      {/* Top Header */}
+      <View style={styles.topHeader}>
+        <HeaderLogo size={32} showText={true} textColor="#dc2626" />
+        <Text style={styles.topHeaderTitle}>
+          {isManager ? 'Quản lý sự cố trang trại' : 'Sự cố cơ sở hạ tầng'}
+        </Text>
+        <NotificationButton color="#dc2626" size={22} />
       </View>
 
-      {/* ── Assigned To Me Toggle (For Technicians) ── */}
-      {userRole === 'TECHNICIAN' && (
-        <View style={styles.toggleContainer}>
-          <View style={styles.toggleRow}>
+      <View style={styles.container}>
+        {/* Search Bar (Manager only views; Farmer and Technician can report) */}
+        <View style={styles.actionRow}>
+          <View style={[styles.searchBox, isManager && { flex: 1 }]}>
+            <Search size={16} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Tìm theo sự cố, thiết bị, vị trí..."
+              placeholderTextColor="#94a3b8"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+
+          {/* "+ Báo sự cố" Button: ONLY for Farmer and Technician */}
+          {!isManager && (
             <TouchableOpacity
-              style={[styles.toggleBtn, assignedToMe && styles.toggleBtnActive]}
-              onPress={() => setAssignedToMe(true)}
+              style={styles.reportBtn}
+              onPress={() => navigation.navigate('IncidentCreate')}
               activeOpacity={0.8}
             >
-              <User size={14} color={assignedToMe ? '#ffffff' : '#64748b'} />
-              <Text style={[styles.toggleBtnText, assignedToMe && styles.toggleBtnTextActive]}>
-                Phân công cho tôi
+              <Plus size={16} color="#ffffff" />
+              <Text style={styles.reportBtnText}>Báo sự cố</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Staff Sub-View Toggle (For Technician or Farmer) */}
+        {(isTechnician || isFarmer) && (
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.toggleBtn,
+                staffViewMode === 'assigned_to_me' && styles.toggleBtnActive,
+              ]}
+              onPress={() => setStaffViewMode('assigned_to_me')}
+              activeOpacity={0.8}
+            >
+              <User
+                size={14}
+                color={staffViewMode === 'assigned_to_me' ? '#ffffff' : '#64748b'}
+              />
+              <Text
+                style={[
+                  styles.toggleBtnText,
+                  staffViewMode === 'assigned_to_me' && styles.toggleBtnTextActive,
+                ]}
+              >
+                Giao cho tôi
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.toggleBtn, !assignedToMe && styles.toggleBtnActive]}
-              onPress={() => setAssignedToMe(false)}
+              style={[
+                styles.toggleBtn,
+                staffViewMode === 'all_reports' && styles.toggleBtnActive,
+              ]}
+              onPress={() => setStaffViewMode('all_reports')}
               activeOpacity={0.8}
             >
-              <Building2 size={14} color={!assignedToMe ? '#ffffff' : '#64748b'} />
-              <Text style={[styles.toggleBtnText, !assignedToMe && styles.toggleBtnTextActive]}>
-                Tất cả sự cố trang trại
+              <Building2
+                size={14}
+                color={staffViewMode === 'all_reports' ? '#ffffff' : '#64748b'}
+              />
+              <Text
+                style={[
+                  styles.toggleBtnText,
+                  staffViewMode === 'all_reports' && styles.toggleBtnTextActive,
+                ]}
+              >
+                {isFarmer ? 'Sự cố tôi gửi' : 'Tất cả sự cố'}
               </Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.toggleDesc}>
-            {assignedToMe
-              ? '🎯 Đang lọc các sự cố được giao trực tiếp cho bạn điều trị.'
-              : '🌐 Đang xem toàn bộ sự cố trên các ao thuộc trang trại.'}
-          </Text>
-        </View>
-      )}
+        )}
 
-      {/* ── Status Tabs ── */}
-      <View style={styles.statusTabs}>
-        {[
-          ['', `Tất cả (${counts.all})`],
-          ['OPEN', `Chờ (${counts.open})`],
-          ['TREATING', `Điều trị (${counts.treating})`],
-          ['RESOLVED', `Đã xử lý (${counts.resolved})`],
-        ].map(([val, label]) => (
-          <TouchableOpacity
-            key={val}
-            onPress={() => setSelectedStatus(val)}
-            style={[styles.statusTab, selectedStatus === val && styles.statusTabActive]}
-          >
-            <Text
-              style={[
-                styles.statusTabText,
-                selectedStatus === val && styles.statusTabTextActive,
-              ]}
-            >
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      {/* ── Incident List ── */}
-      {loading && items.length === 0 ? (
-        <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#4f46e5" />
-          <Text style={styles.loadingText}>Đang nạp danh sách sự cố & điều trị...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={['#4f46e5']} />}
-          contentContainerStyle={filteredItems.length ? styles.listContent : styles.emptyContent}
-          ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <CheckCircle2 size={44} color="#10b981" />
-              <Text style={styles.emptyTitle}>
-                {assignedToMe
-                  ? 'Bạn không có sự cố nào cần xử lý lúc này'
-                  : 'Không có sự cố nào trong danh sách'}
-              </Text>
-              <Text style={styles.emptyDesc}>
-                Các ao nuôi đang trong tầm kiểm soát an toàn.
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.OPEN;
-            const Icon = cfg.icon;
-            const isAssignedToMe = item.assignedToId === userId;
-
+        {/* Main Status Tabs */}
+        <View style={styles.statusTabs}>
+          {[
+            ['all', `Tất cả (${counts.all})`],
+            ['open', `Chờ (${counts.open})`],
+            ['treating', `Đang xử lý (${counts.treating})`],
+            ['resolved', `Đã xử lý (${counts.resolved})`],
+          ].map(([val, label]) => {
+            const isActive = statusTab === val;
             return (
               <TouchableOpacity
-                style={[
-                  styles.card,
-                  isAssignedToMe && item.status !== 'RESOLVED' && styles.cardAssignedToMe,
-                ]}
-                onPress={() => navigation.navigate('IncidentDetail', { incidentId: item.id })}
-                activeOpacity={0.85}
+                key={val}
+                onPress={() => setStatusTab(val as MainStatusTab)}
+                style={[styles.statusTab, isActive && styles.statusTabActive]}
+                activeOpacity={0.7}
               >
-                {/* Header Row */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardPondTag}>
-                    <Waves size={13} color="#0284c7" />
-                    <Text style={styles.cardPondName}>
-                      {item.crop?.pond?.name || 'Ao nuôi'}
-                    </Text>
-                    {item.crop?.pond?.farm?.name && (
-                      <Text style={styles.cardFarmName}>
-                        • {item.crop.pond.farm.name}
-                      </Text>
-                    )}
-                  </View>
-
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      { backgroundColor: cfg.bg, borderColor: cfg.border },
-                    ]}
-                  >
-                    <Icon size={12} color={cfg.color} />
-                    <Text style={[styles.statusBadgeText, { color: cfg.color }]}>
-                      {cfg.label}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Title & Description */}
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardDesc} numberOfLines={2}>
-                  {item.description}
+                <Text style={[styles.statusTabText, isActive && styles.statusTabTextActive]}>
+                  {label}
                 </Text>
-
-                {/* Footer Info */}
-                <View style={styles.cardFooter}>
-                  <View style={styles.footerLeft}>
-                    {isAssignedToMe ? (
-                      <View style={styles.myDutyBadge}>
-                        <User size={11} color="#4f46e5" />
-                        <Text style={styles.myDutyText}>Bạn phụ trách điều trị</Text>
-                      </View>
-                    ) : item.assignedTo?.fullName ? (
-                      <View style={styles.assignedBadge}>
-                        <User size={11} color="#475569" />
-                        <Text style={styles.assignedText} numberOfLines={1}>
-                          {item.assignedTo.fullName}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.unassignedBadge}>
-                        <ShieldAlert size={11} color="#d97706" />
-                        <Text style={styles.unassignedText}>Chưa phân công</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.footerRight}>
-                    <Stethoscope size={12} color="#4f46e5" />
-                    <Text style={styles.updatesCountText}>
-                      {item._count?.updates ?? item.updates?.length ?? 0} lần điều trị
-                    </Text>
-                    <ChevronRight size={14} color="#94a3b8" />
-                  </View>
-                </View>
               </TouchableOpacity>
             );
-          }}
-        />
-      )}
-    </View>
+          })}
+        </View>
+
+        {/* Category Horizontal Pills */}
+        <View style={styles.categoryScrollContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+            <TouchableOpacity
+              style={[styles.catPill, !selectedCategory && styles.catPillActive]}
+              onPress={() => setSelectedCategory('')}
+            >
+              <Text style={[styles.catPillText, !selectedCategory && styles.catPillTextActive]}>
+                Tất cả loại
+              </Text>
+            </TouchableOpacity>
+            {FARM_INCIDENT_CATEGORIES.map((cat) => {
+              const isActive = selectedCategory === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.catPill, isActive && styles.catPillActive]}
+                  onPress={() => setSelectedCategory(isActive ? '' : cat.id)}
+                >
+                  <Text style={[styles.catPillText, isActive && styles.catPillTextActive]}>
+                    {cat.icon} {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Error notice */}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {/* Incident List */}
+        {loading && items.length === 0 ? (
+          <View style={styles.centerBox}>
+            <ActivityIndicator size="large" color="#dc2626" />
+            <Text style={styles.loadingText}>Đang tải danh sách sự cố cơ sở hạ tầng...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredIncidents}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            refreshControl={
+              <RefreshControl refreshing={loading} onRefresh={loadIncidents} colors={['#dc2626']} />
+            }
+            contentContainerStyle={
+              filteredIncidents.length ? styles.listContent : styles.emptyContent
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyBox}>
+                <CheckCircle2 size={44} color="#10b981" />
+                <Text style={styles.emptyTitle}>
+                  {isFarmer && staffViewMode === 'assigned_to_me'
+                    ? 'Bạn chưa có nhiệm vụ nào được giao'
+                    : isTechnician && staffViewMode === 'assigned_to_me'
+                    ? 'Hiện bạn chưa có sự cố nào được phân công'
+                    : 'Không có sự cố nào trong danh mục này'}
+                </Text>
+                <Text style={styles.emptyDesc}>
+                  Hệ thống thiết bị và cơ sở hạ tầng trang trại đang vận hành ổn định.
+                </Text>
+                {(search || selectedCategory) && (
+                  <TouchableOpacity
+                    style={styles.resetFilterBtn}
+                    onPress={() => {
+                      setSearch('');
+                      setSelectedCategory('');
+                    }}
+                  >
+                    <RotateCcw size={14} color="#dc2626" />
+                    <Text style={styles.resetFilterText}>Xóa bộ lọc tìm kiếm</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
+          />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fee2e2',
+  },
+  topHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
   },
-  topBar: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 8,
+    gap: 10,
+    backgroundColor: '#ffffff',
   },
   searchBox: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f1f5f9',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    height: 40,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 13,
     color: '#0f172a',
+    paddingVertical: 0,
   },
-  createBtn: {
+  reportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     backgroundColor: '#dc2626',
-    height: 44,
-    paddingHorizontal: 14,
     borderRadius: 12,
-    shadowColor: '#dc2626',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 12,
+    height: 40,
+    gap: 6,
   },
-  createBtnText: {
-    color: '#ffffff',
+  reportBtnText: {
     fontSize: 13,
-    fontWeight: '800',
-  },
-  toggleContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   toggleRow: {
     flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingBottom: 8,
     gap: 8,
   },
   toggleBtn: {
@@ -370,228 +590,256 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    backgroundColor: '#f1f5f9',
+    gap: 6,
   },
   toggleBtnActive: {
     backgroundColor: '#4f46e5',
-    borderColor: '#4f46e5',
   },
   toggleBtnText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#64748b',
   },
   toggleBtnTextActive: {
     color: '#ffffff',
-  },
-  toggleDesc: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 4,
-    fontStyle: 'italic',
+    fontWeight: '700',
   },
   statusTabs: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
     gap: 6,
-    marginBottom: 8,
   },
   statusTab: {
     flex: 1,
-    paddingVertical: 7,
-    alignItems: 'center',
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   statusTabActive: {
-    backgroundColor: '#1e1b4b',
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
   },
   statusTabText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#64748b',
   },
   statusTabTextActive: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  categoryScrollContainer: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  categoryPills: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  catPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  catPillActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  catPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  catPillTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    gap: 10,
+    padding: 14,
+    gap: 12,
+    paddingBottom: 30,
   },
   emptyContent: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     padding: 24,
   },
   centerBox: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    gap: 12,
+    gap: 10,
   },
   loadingText: {
     fontSize: 13,
     color: '#64748b',
-    fontWeight: '600',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#dc2626',
+    paddingHorizontal: 14,
+    paddingVertical: 4,
   },
   emptyBox: {
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
     paddingVertical: 40,
+    gap: 8,
   },
   emptyTitle: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#334155',
     textAlign: 'center',
   },
   emptyDesc: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#94a3b8',
     textAlign: 'center',
     maxWidth: 280,
+    lineHeight: 18,
   },
-  errorText: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 8,
-    backgroundColor: '#fef2f2',
-    color: '#dc2626',
+  resetFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
+    backgroundColor: '#fee2e2',
+  },
+  resetFilterText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#dc2626',
   },
+
+  /* Card */
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowRadius: 4,
+    elevation: 2,
+    gap: 10,
   },
-  cardAssignedToMe: {
-    borderColor: '#c7d2fe',
-    backgroundColor: '#fafbff',
+  cardResolved: {
+    backgroundColor: '#fafafa',
+    borderColor: '#e2e8f0',
+    opacity: 0.85,
   },
-  cardHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  cardPondTag: {
+  cardBadges: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
+    flexWrap: 'wrap',
   },
-  cardPondName: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0284c7',
-  },
-  cardFarmName: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  badge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 6,
   },
-  statusBadgeText: {
+  badgeText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
+    lineHeight: 20,
   },
   cardDesc: {
     fontSize: 12,
-    color: '#475569',
+    color: '#64748b',
     lineHeight: 17,
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  metaTextTime: {
+    fontSize: 11,
+    color: '#94a3b8',
   },
   cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
   },
   footerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flex: 1,
   },
-  myDutyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#e0e7ff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  myDutyText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#4338ca',
-  },
-  assignedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  assignedText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  unassignedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#fef3c7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  unassignedText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#b45309',
-  },
-  footerRight: {
+  assignedTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  updatesCountText: {
+  assignedTagText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#4f46e5',
+  },
+  unassignedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  unassignedTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#d97706',
   },
 });

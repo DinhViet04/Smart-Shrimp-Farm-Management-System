@@ -26,6 +26,16 @@ export interface RealtimeWeather {
   recordedAt: string;
 }
 
+export interface AgentActionDraft {
+  type: 'SLOT_FILLING' | 'CONFIRM_ACTION';
+  intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+  collectedData: Record<string, any>;
+  missingFields: string[];
+  quickSuggestions?: string[];
+  summary?: Record<string, string>;
+  isExecuted?: boolean;
+}
+
 export interface ChatbotResponse {
   answer: string;
   sources?: ChatbotSource[];
@@ -33,6 +43,8 @@ export interface ChatbotResponse {
   sourceType?: 'LOCAL_DOCUMENT' | 'OPENAI_KNOWLEDGE' | 'HYBRID';
   hasLocalKnowledge?: boolean;
   weather?: RealtimeWeather;
+  actionDraft?: AgentActionDraft;
+  poweredBy?: string;
 }
 
 export interface KnowledgeDoc {
@@ -49,10 +61,15 @@ export interface KnowledgeDoc {
 }
 
 export const chatbotService = {
-  ask: async (question: string, pondId?: string): Promise<ChatbotResponse> => {
+  ask: async (
+    question: string,
+    pondId?: string,
+    history?: Array<{ sender: 'user' | 'ai'; text: string }>,
+    pendingAction?: any,
+  ): Promise<ChatbotResponse> => {
     const res = await apiFetch(`${apiUrl}/api/chatbot/ask`, {
       method: 'POST',
-      body: JSON.stringify({ question, pondId }),
+      body: JSON.stringify({ question, pondId, history, pendingAction }),
     });
     if (!res.ok) {
       let errMsg = 'Không thể kết nối đến Trợ lý AI';
@@ -65,6 +82,35 @@ export const chatbotService = {
         if (res.status === 403) errMsg = 'Bạn không có quyền truy cập dữ liệu trang trại/ao nuôi này';
         else if (res.status === 429) errMsg = 'Đã vượt quá số lượt hỏi AI cho phép trong 1 phút. Vui lòng chờ giây lát';
         else if (res.status === 504) errMsg = 'Dịch vụ AI phản hồi quá lâu (Timeout). Vui lòng thử lại';
+      }
+      throw new Error(errMsg);
+    }
+    return res.json();
+  },
+
+  executeAction: async (action: {
+    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+    data: Record<string, any>;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    entity: any;
+    type: string;
+    redirectTab?: string;
+  }> => {
+    const res = await apiFetch(`${apiUrl}/api/chatbot/execute-action`, {
+      method: 'POST',
+      body: JSON.stringify(action),
+    });
+    if (!res.ok) {
+      let errMsg = 'Không thể thực thi hành động tạo mới';
+      try {
+        const errJson = await res.json();
+        if (errJson?.message) {
+          errMsg = Array.isArray(errJson.message) ? errJson.message.join(', ') : errJson.message;
+        }
+      } catch {
+        /* ignore */
       }
       throw new Error(errMsg);
     }

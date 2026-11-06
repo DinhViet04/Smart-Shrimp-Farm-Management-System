@@ -11,6 +11,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { AgentActionService } from './agent-action.service';
+import { RoleContextService } from './role-context.service';
+import { ExecuteActionDto } from './dto/execute-action.dto';
 import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service';
 import { WeatherService, WeatherData } from './weather.service';
 
@@ -31,6 +34,8 @@ export class ChatbotService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
     private readonly weatherService: WeatherService,
+    private readonly agentActionService: AgentActionService,
+    private readonly roleContextService: RoleContextService,
   ) {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
@@ -334,6 +339,32 @@ export class ChatbotService implements OnModuleInit {
     let pondContextPayload: any = null;
     let pondRealtimeContext = '';
 
+    // 1. Kiểm tra xem người dùng có đang thực hiện luồng Hành Động (Action Flow: Tạo Farm, Ao, Vụ nuôi)
+    try {
+      const agentActionResult = await this.agentActionService.handleAgentConversation(
+        question,
+        currentUser,
+        dto.history,
+        dto.pendingAction,
+      );
+      if (agentActionResult && agentActionResult.isAgentAction) {
+        return {
+          answer: agentActionResult.answer || '',
+          sources: [],
+          hasLocalKnowledge: false,
+          sourceType: 'OPENAI_KNOWLEDGE',
+          actionDraft: agentActionResult.actionDraft,
+          poweredBy: 'SSFM Smart Action Agent (OpenAI)',
+        };
+      }
+    } catch (agentErr: any) {
+      this.logger.warn('Error in agent action processing:', agentErr?.message || agentErr);
+    }
+
+    // 🔒 2. FULL-CONTEXT DATA ACCESS ENGINE: Truy vấn toàn bộ dữ liệu lịch sử & hiện tại được cô lập đúng theo Role & Người dùng
+    const userScopedData = await this.roleContextService.buildUserScopedContext(currentUser, question);
+    const roleBasedSystemContext = userScopedData.summaryText;
+
     try {
       // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
       if (dto.pondId) {
@@ -590,6 +621,9 @@ export class ChatbotService implements OnModuleInit {
           const systemPrompt = `Bạn là Trợ lý Kỹ thuật Nuôi Tôm Thông Minh AI của hệ thống Smart Shrimp Farm Management.
 Nhiệm vụ của bạn là tư vấn, giải đáp chuyên môn kỹ thuật sâu sắc cho người nuôi tôm và kỹ thuật viên.
 
+${roleBasedSystemContext}
+
+
 ${pondRealtimeContext}
 
 KHO TÀI LIỆU CẨM NANG NỘI BỘ TRANG TRẠI (RAG CONTEXT):
@@ -762,4 +796,12 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
       'Seed completed: 3 knowledge documents with OpenAI vector chunks successfully created.',
     );
   }
+
+  /**
+   * Thực thi hành động do AI tạo (Tạo Farm, Pond, Crop) sau khi người dùng bấm xác nhận
+   */
+  async executeAction(dto: ExecuteActionDto, currentUser: AuthUser) {
+    return this.agentActionService.executeAgentAction(dto, currentUser);
+  }
+
 }

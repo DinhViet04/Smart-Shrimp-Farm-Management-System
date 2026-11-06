@@ -1,22 +1,28 @@
 /**
  * MainNavigator.tsx
  *
- * Root navigator for authenticated users.
- * Structure:
- *   BottomTab
- *    ├── Dashboard
- *    ├── Ao/Vụ
- *    ├── Môi trường  ← Stack navigator wrapping EnvironmentScreen
- *    │     ├── EnvironmentHome  (EnvironmentScreen)
- *    │     └── RecordWaterQuality  (RecordWaterQualityScreen)
- *    ├── Theo dõi tăng trưởng
- *    ├── Sự cố
- *    ├── Kho vật tư
- *    └── Cài đặt
+ * Root navigator for Farm Managers and Administrators.
+ * Architecture:
+ *   RootStack (Native Stack)
+ *    ├── MainTabs (Bottom Tab Navigator)
+ *    │     ├── Dashboard (Tổng quan)
+ *    │     ├── Ao/Vụ (Ao & Vụ nuôi)
+ *    │     ├── Môi trường (EnvironmentStackNavigator)
+ *    │     │     ├── EnvironmentHome (EnvironmentScreen)
+ *    │     │     ├── RecordWaterQuality (RecordWaterQualityScreen)
+ *    │     │     └── RecordHistory (RecordHistoryScreen)
+ *    │     ├── Theo dõi tăng trưởng (GrowthTrackingScreen)
+ *    │     ├── Sự cố (IncidentStackNavigator)
+ *    │     ├── Kho vật tư (InventoryScreen)
+ *    │     └── Cài đặt (SettingsScreen)
+ *    ├── FeedingLog (FeedingLogScreen - Full screen log)
+ *    └── ShrimpHealth (ShrimpHealthScreen - Full screen health check)
  */
 import React from 'react';
+import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   LayoutDashboard,
   Waves,
@@ -33,17 +39,20 @@ import EnvironmentScreen from '../screens/EnvironmentScreen';
 import GrowthTrackingScreen from '../screens/growth/GrowthTrackingScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import FeedingLogScreen from '../screens/feeding/FeedingLogScreen';
+import ShrimpHealthScreen from '../screens/shrimp-health/ShrimpHealthScreen';
 import RecordWaterQualityScreen from '../screens/water-quality/RecordWaterQualityScreen';
 import RecordHistoryScreen from '../screens/water-quality/RecordHistoryScreen';
 import IncidentStackNavigator from './IncidentNavigator';
 import NotificationButton from '../components/NotificationButton';
 
 const Tab = createBottomTabNavigator();
+const RootStack = createNativeStackNavigator();
 const EnvironmentStack = createNativeStackNavigator();
 
 /**
  * Stack navigator for the Môi trường tab.
- * Allows pushing sub-screens (RecordWaterQuality, future History, etc.)
+ * Allows pushing sub-screens (RecordWaterQuality, RecordHistory)
  * without breaking the bottom tab bar.
  */
 export function EnvironmentStackNavigator() {
@@ -88,10 +97,10 @@ export function EnvironmentStackNavigator() {
   );
 }
 
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform } from 'react-native';
-
-export default function MainNavigator() {
+/**
+ * Main 7-Tab Navigator for FARM_MANAGER / ADMIN
+ */
+function MainTabs() {
   const insets = useSafeAreaInsets();
   // Khoảng cách an toàn phía dưới cho Android navigation bar / gesture bar / iOS home bar
   const bottomInset = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
@@ -110,6 +119,7 @@ export default function MainNavigator() {
           if (route.name === 'Sự cố') return <AlertTriangle color={color} size={iconSize} />;
           if (route.name === 'Kho vật tư') return <Package color={color} size={iconSize} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={iconSize} />;
+          return <LayoutDashboard color={color} size={iconSize} />;
         },
         tabBarShowLabel: true,
         tabBarActiveTintColor: '#2563eb',
@@ -157,14 +167,10 @@ export default function MainNavigator() {
         name="Ao/Vụ"
         component={PondsScreen}
         options={{
+          headerTitle: 'Quản lý Ao & Vụ nuôi',
           tabBarLabel: 'Ao/Vụ',
         }}
       />
-      {/*
-       * Môi trường tab uses its own stack so child screens
-       * (RecordWaterQuality, History, etc.) can be pushed without
-       * losing the bottom tab bar.
-       */}
       <Tab.Screen
         name="Môi trường"
         component={EnvironmentStackNavigator}
@@ -206,5 +212,19 @@ export default function MainNavigator() {
         }}
       />
     </Tab.Navigator>
+  );
+}
+
+/**
+ * Root Stack for Authenticated Managers/Admins
+ * Allows full-screen views (FeedingLog, ShrimpHealth) without tab bar clashing
+ */
+export default function MainNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="MainTabs" component={MainTabs} />
+      <RootStack.Screen name="FeedingLog" component={FeedingLogScreen} />
+      <RootStack.Screen name="ShrimpHealth" component={ShrimpHealthScreen} />
+    </RootStack.Navigator>
   );
 }

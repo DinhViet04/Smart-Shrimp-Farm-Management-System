@@ -9,5 +9,6 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
   imports: [PrismaModule, FarmAccessModule, NotificationsModule],
   controllers: [PondsController],
   providers: [PondsService],
+  exports: [PondsService],
 })
 export class PondsModule {}

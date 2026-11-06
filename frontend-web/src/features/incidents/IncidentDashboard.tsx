@@ -40,6 +40,131 @@ const STATUS_STYLES: Record<IncidentStatus, string> = {
 
 export type IncidentSubTab = 'incident' | 'treatment' | 'history';
 
+export const INCIDENT_CATEGORIES = [
+  { id: 'Sức khỏe & Dịch bệnh', label: 'Bệnh tôm / Sức khỏe', icon: '🦐', placeholder: 'Ví dụ: Tôm nổi đầu tấp mé bờ lúc sáng sớm' },
+  { id: 'Môi trường nước', label: 'Môi trường & Nước ao', icon: '💧', placeholder: 'Ví dụ: Khí độc NO2 vượt ngưỡng 5.0mg/l, oxy hòa tan giảm mạnh' },
+  { id: 'Thiết bị & Máy móc', label: 'Thiết bị & Quạt nước', icon: '⚙️', placeholder: 'Ví dụ: Dàn quạt nước số 2 bị kẹt trục, máy sục khí ngưng hoạt động' },
+  { id: 'Điện lưới & Năng lượng', label: 'Điện & Máy phát', icon: '⚡', placeholder: 'Ví dụ: Mất điện lưới trạm bơm, máy phát dự phòng không tự nổ' },
+  { id: 'Bờ ao & Hạ tầng', label: 'Bờ ao & Bạt HDPE', icon: '🏞️', placeholder: 'Ví dụ: Rò rỉ bạt lót bờ tây ao A1, sạt lở mé mương thoát nước' },
+  { id: 'Kho thức ăn & Vật tư', label: 'Kho thức ăn & Thuốc', icon: '📦', placeholder: 'Ví dụ: Phát hiện bao cám ẩm mốc, thiếu hóa chất vôi tạt cấp bách' },
+  { id: 'Sự cố khác / An ninh', label: 'An ninh & Sự cố khác', icon: '🚨', placeholder: 'Ví dụ: Mưa dông bão làm rách lưới che, người lạ tiếp cận khu vực nuôi' },
+];
+
+export const INCIDENT_SEVERITIES = [
+  { id: 'Thấp', label: 'Thấp', sublabel: 'Theo dõi thường kỳ', color: 'border-slate-200 bg-slate-50 text-slate-700' },
+  { id: 'Trung bình', label: 'Trung bình', sublabel: 'Cần kiểm tra trong ca', color: 'border-blue-200 bg-blue-50 text-blue-700' },
+  { id: 'Cao', label: 'Cao', sublabel: 'Cần xử lý sớm', color: 'border-amber-200 bg-amber-50 text-amber-800' },
+  { id: 'Khẩn cấp', label: 'Khẩn cấp', sublabel: 'Nguy cơ thiệt hại tức thì', color: 'border-rose-300 bg-rose-50 text-rose-700 font-bold' },
+];
+
+export function parseIncidentMetadata(title: string, description: string) {
+  let category = '';
+  let cleanTitle = title;
+  const catMatch = title.match(/^\[(.*?)\]/);
+  if (catMatch) {
+    category = catMatch[1];
+    cleanTitle = title.replace(/^\[(.*?)\]\s*/, '');
+  } else {
+    const descCatMatch = description.match(/\[Phân loại:\s*(.*?)\]/i);
+    if (descCatMatch) category = descCatMatch[1];
+  }
+
+  let severity = '';
+  const descSevMatch = description.match(/\[Mức độ:\s*(.*?)\]/i);
+  if (descSevMatch) severity = descSevMatch[1];
+
+  let location = '';
+  const descLocMatch = description.match(/\[Vị trí:\s*(.*?)\]/i);
+  if (descLocMatch) location = descLocMatch[1];
+
+  const cleanDescription = description.replace(/^(\[.*?\]\s*)+\n*/, '').trim();
+
+  return { category, severity, location, cleanTitle, cleanDescription };
+}
+
+export function renderCategoryBadge(category: string) {
+  if (!category) return null;
+  const catUpper = category.toUpperCase();
+  if (catUpper.includes('BỆNH') || catUpper.includes('TÔM') || catUpper.includes('SỨC KHỎE')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+        <span>🦐</span> {category}
+      </span>
+    );
+  }
+  if (catUpper.includes('MÔI TRƯỜNG') || catUpper.includes('NƯỚC')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700 border border-cyan-200">
+        <span>💧</span> {category}
+      </span>
+    );
+  }
+  if (catUpper.includes('THIẾT BỊ') || catUpper.includes('MÁY') || catUpper.includes('QUẠT')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+        <span>⚙️</span> {category}
+      </span>
+    );
+  }
+  if (catUpper.includes('ĐIỆN') || catUpper.includes('NĂNG LƯỢNG')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-yellow-50 px-2 py-0.5 text-[10px] font-bold text-yellow-800 border border-yellow-200">
+        <span>⚡</span> {category}
+      </span>
+    );
+  }
+  if (catUpper.includes('BỜ AO') || catUpper.includes('BẠT') || catUpper.includes('HẠ TẦNG')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+        <span>🏞️</span> {category}
+      </span>
+    );
+  }
+  if (catUpper.includes('KHO') || catUpper.includes('THỨC ĂN') || catUpper.includes('VẬT TƯ')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
+        <span>📦</span> {category}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-200">
+      <span>🚨</span> {category}
+    </span>
+  );
+}
+
+export function renderSeverityBadge(severity: string) {
+  if (!severity) return null;
+  const sevUpper = severity.toUpperCase();
+  if (sevUpper.includes('KHẨN CẤP') || sevUpper.includes('CRITICAL')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-rose-600 text-white px-2 py-0.5 text-[10px] font-black animate-pulse shadow-xs">
+        ● KHẨN CẤP
+      </span>
+    );
+  }
+  if (sevUpper.includes('CAO') || sevUpper.includes('HIGH')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 text-[10px] font-bold">
+        ● Mức cao
+      </span>
+    );
+  }
+  if (sevUpper.includes('TRUNG BÌNH') || sevUpper.includes('MEDIUM')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
+        ● Mức vừa
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-medium">
+      ● Mức thấp
+    </span>
+  );
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Đã xảy ra lỗi';
 }
@@ -106,7 +231,15 @@ export default function IncidentDashboard({
   const [treatment, setTreatment] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [activeCrops, setActiveCrops] = useState<Crop[]>([]);
-  const [createForm, setCreateForm] = useState({ cropId: '', title: '', description: '' });
+  const [createForm, setCreateForm] = useState({
+    cropId: '',
+    category: 'Sức khỏe & Dịch bệnh',
+    severity: 'Trung bình',
+    location: '',
+    title: '',
+    description: '',
+    selfAssign: false,
+  });
   const [createErrors, setCreateErrors] = useState<CreateIncidentErrors>({});
   const [technicians, setTechnicians] = useState<IncidentTechnician[]>([]);
   const [activeWorkspaceIncident, setActiveWorkspaceIncident] = useState<Incident | null>(null);
@@ -297,7 +430,7 @@ export default function IncidentDashboard({
     const [detailResult, techniciansResult] = await Promise.allSettled([
       incidentService.getById(incident.id),
       canAssign
-        ? incidentService.getTechnicians(incident.crop.pond.farm.id)
+        ? incident.crop?.pond?.farm?.id ? incidentService.getTechnicians(incident.crop.pond.farm.id) : Promise.resolve([])
         : Promise.resolve([]),
     ]);
 
@@ -326,24 +459,44 @@ export default function IncidentDashboard({
 
   const createIncident = async () => {
     const validationErrors: CreateIncidentErrors = {};
-    if (!createForm.cropId) validationErrors.cropId = 'Vui lòng chọn một vụ nuôi đang hoạt động.';
+    if (!createForm.cropId) validationErrors.cropId = 'Vui lòng chọn một vụ/ao nuôi liên quan.';
     if (!createForm.title.trim()) validationErrors.title = 'Vui lòng nhập tiêu đề sự cố.';
-    if (!createForm.description.trim()) validationErrors.description = 'Vui lòng mô tả tình trạng sự cố.';
+    if (!createForm.description.trim()) validationErrors.description = 'Vui lòng mô tả chi tiết tình trạng sự cố.';
     setCreateErrors(validationErrors);
 
     if (Object.keys(validationErrors).length > 0) {
-      setError('Vui lòng kiểm tra lại các trường được đánh dấu.');
+      setError('Vui lòng kiểm tra lại các trường được đánh dấu đỏ.');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await incidentService.create(createForm);
+      await incidentService.create({
+        cropId: createForm.cropId,
+        title: createForm.title.trim(),
+        description: createForm.description.trim(),
+        category: createForm.category,
+        severity: createForm.severity,
+        location: createForm.location.trim() || undefined,
+        selfAssign: role === 'TECHNICIAN' ? createForm.selfAssign : false,
+      });
       setShowCreate(false);
-      setCreateForm({ cropId: activeCrops[0]?.id || '', title: '', description: '' });
+      setCreateForm({
+        cropId: activeCrops[0]?.id || '',
+        category: 'Sức khỏe & Dịch bệnh',
+        severity: 'Trung bình',
+        location: '',
+        title: '',
+        description: '',
+        selfAssign: false,
+      });
       setCreateErrors({});
       await loadIncidents();
-      setNotice('Đã báo cáo sự cố thành công.');
+      setNotice(
+        role === 'TECHNICIAN' && createForm.selfAssign
+          ? 'Đã ghi nhận sự cố và bạn đã tự tiếp nhận xử lý ca này.'
+          : 'Đã gửi báo cáo sự cố thành công! Quản lý trang trại đã nhận được thông báo để điều phối xử lý.'
+      );
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -358,9 +511,9 @@ export default function IncidentDashboard({
     loadActiveCrops();
   };
 
-  const updateCreateField = (field: keyof typeof createForm, value: string) => {
+  const updateCreateField = (field: string, value: any) => {
     setCreateForm((current) => ({ ...current, [field]: value }));
-    setCreateErrors((current) => ({ ...current, [field]: undefined }));
+    setCreateErrors((current) => ({ ...current, [field as keyof CreateIncidentErrors]: undefined }));
   };
 
   const assignTechnician = async (assignedToId: string) => {
@@ -740,29 +893,33 @@ export default function IncidentDashboard({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {paginatedItems.map((item) => (
+                      {paginatedItems.map((item) => {
+                        const meta = parseIncidentMetadata(item.title, item.description);
+                        return (
                         <div
                           key={item.id}
                           className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:border-amber-300"
                         >
                           <div className="space-y-3">
                             {/* Badges row */}
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200 text-[11px] font-bold">
                                 <Waves className="w-3 h-3 text-cyan-600" />
-                                <span>{item.crop.pond.name}</span>
+                                <span>{item.crop?.pond?.name || 'Chung'}</span>
                               </span>
-                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-black text-amber-700">
+                              {renderCategoryBadge(meta.category)}
+                              {renderSeverityBadge(meta.severity)}
+                              <span className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
                                 ● Sự cố mới
                               </span>
                             </div>
 
                             <h4 className="text-base font-extrabold text-slate-900 group-hover:text-amber-700 transition-colors line-clamp-2">
-                              {item.title}
+                              {meta.cleanTitle}
                             </h4>
 
                             <p className="text-xs font-medium text-slate-500 leading-relaxed line-clamp-3 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                              {item.description}
+                              {meta.cleanDescription}
                             </p>
                           </div>
 
@@ -792,7 +949,7 @@ export default function IncidentDashboard({
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   )}
 
@@ -866,29 +1023,33 @@ export default function IncidentDashboard({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {paginatedItems.map((item) => (
+                      {paginatedItems.map((item) => {
+                        const meta = parseIncidentMetadata(item.title, item.description);
+                        return (
                         <div
                           key={item.id}
                           className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md hover:border-indigo-300"
                         >
                           <div className="space-y-3">
                             {/* Badges row */}
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200 text-[11px] font-bold">
                                 <Waves className="w-3 h-3 text-cyan-600" />
-                                <span>{item.crop.pond.name}</span>
+                                <span>{item.crop?.pond?.name || 'Chung'}</span>
                               </span>
-                              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-black text-indigo-700">
+                              {renderCategoryBadge(meta.category)}
+                              {renderSeverityBadge(meta.severity)}
+                              <span className="ml-auto rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-black text-indigo-700">
                                 ● Đang điều trị
                               </span>
                             </div>
 
                             <h4 className="text-base font-extrabold text-slate-900 group-hover:text-indigo-700 transition-colors line-clamp-2">
-                              {item.title}
+                              {meta.cleanTitle}
                             </h4>
 
                             <p className="text-xs font-medium text-slate-500 leading-relaxed line-clamp-2">
-                              {item.description}
+                              {meta.cleanDescription}
                             </p>
 
                             {/* Box can thiệp gần nhất */}
@@ -933,7 +1094,7 @@ export default function IncidentDashboard({
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   )}
 
@@ -974,8 +1135,10 @@ export default function IncidentDashboard({
           <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
               <div>
-                <h3 className="text-lg font-black text-slate-800">Báo cáo sự cố ao nuôi</h3>
-                <p className="text-xs text-slate-500">Ghi nhận triệu chứng bất thường để kỹ thuật viên xử lý.</p>
+                <h3 className="text-lg font-black text-slate-800">Báo Cáo Sự Cố Trang Trại</h3>
+                <p className="text-xs text-slate-500">
+                  Ghi nhận mọi sự cố (bệnh tôm, máy móc, điện, ao, kho...) để Quản lý tiếp nhận và điều phối kịp thời.
+                </p>
               </div>
               <button
                 onClick={() => {
@@ -989,77 +1152,181 @@ export default function IncidentDashboard({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Phân loại sự cố */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">
-                  Vụ nuôi đang hoạt động <span className="text-rose-500">*</span>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                  Phân loại sự cố <span className="text-rose-500">*</span>
                 </label>
-                <select
-                  value={createForm.cropId}
-                  onChange={(event) => updateCreateField('cropId', event.target.value)}
-                  className={`w-full rounded-xl border bg-white p-3 text-xs font-semibold outline-none ${
-                    createErrors.cropId ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-400'
-                  }`}
-                >
-                  {loadingCrops && <option value="">Đang tải vụ nuôi...</option>}
-                  {!loadingCrops && activeCrops.length === 0 && (
-                    <option value="">Không có vụ nuôi đang hoạt động</option>
-                  )}
-                  {activeCrops.map((crop) => (
-                    <option key={crop.id} value={crop.id}>
-                      {crop.pond.farm?.name || 'Trang trại'} · {crop.pond.name} · Bắt đầu {new Date(crop.startDate).toLocaleDateString('vi-VN')}
-                    </option>
-                  ))}
-                </select>
-                {createErrors.cropId && (
-                  <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-600">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    {createErrors.cropId}
-                  </p>
-                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {INCIDENT_CATEGORIES.map((cat) => {
+                    const isSelected = createForm.category === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => updateCreateField('category', cat.id)}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold shadow-xs ring-1 ring-indigo-500/30'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 text-xs font-medium'
+                        }`}
+                      >
+                        <span className="text-base">{cat.icon}</span>
+                        <span className="text-[11px] leading-tight line-clamp-1">{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
+              {/* Mức độ nghiêm trọng */}
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                  Mức độ khẩn cấp <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {INCIDENT_SEVERITIES.map((sev) => {
+                    const isSelected = createForm.severity === sev.id;
+                    return (
+                      <button
+                        key={sev.id}
+                        type="button"
+                        onClick={() => updateCreateField('severity', sev.id)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                          isSelected
+                            ? `${sev.color} ring-2 ring-indigo-500/30 shadow-xs font-bold`
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="text-xs font-bold">{sev.label}</span>
+                        <span className="text-[9.5px] opacity-75">{sev.sublabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Vị trí / Vụ nuôi */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">
+                    Ao / Vụ nuôi liên quan <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={createForm.cropId}
+                    onChange={(event) => updateCreateField('cropId', event.target.value)}
+                    className={`w-full rounded-xl border bg-white p-2.5 text-xs font-semibold outline-none ${
+                      createErrors.cropId ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-400'
+                    }`}
+                  >
+                    {loadingCrops && <option value="">Đang tải vụ nuôi...</option>}
+                    {!loadingCrops && activeCrops.length === 0 && (
+                      <option value="">Không có vụ nuôi đang hoạt động</option>
+                    )}
+                    {activeCrops.map((crop) => (
+                      <option key={crop.id} value={crop.id}>
+                        {crop.pond.farm?.name || 'Trại'} · {crop.pond.name}
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.cropId && (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                      <AlertCircle className="h-3 w-3" />
+                      {createErrors.cropId}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">
+                    Vị trí / Khu vực cụ thể
+                  </label>
+                  <input
+                    value={createForm.location}
+                    onChange={(event) => updateCreateField('location', event.target.value)}
+                    maxLength={100}
+                    className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-semibold outline-none focus:border-indigo-400"
+                    placeholder="Ví dụ: Cống xả, Trạm bơm 1, Kho cám A..."
+                  />
+                </div>
+              </div>
+
+              {/* Tiêu đề */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700">
-                  Tiêu đề sự cố <span className="text-rose-500">*</span>
+                  Tiêu đề tóm tắt sự cố <span className="text-rose-500">*</span>
                 </label>
                 <input
                   value={createForm.title}
                   onChange={(event) => updateCreateField('title', event.target.value)}
                   maxLength={200}
-                  className={`w-full rounded-xl border p-3 text-xs font-semibold outline-none ${
+                  className={`w-full rounded-xl border p-2.5 text-xs font-semibold outline-none ${
                     createErrors.title ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-400'
                   }`}
-                  placeholder="Ví dụ: Tôm nổi đầu tấp mé bờ lúc sáng sớm"
+                  placeholder={
+                    INCIDENT_CATEGORIES.find(c => c.id === createForm.category)?.placeholder ||
+                    'Ví dụ: Tôm nổi đầu, hỏng máy quạt, rò rỉ bạt đáy...'
+                  }
                 />
                 {createErrors.title && (
-                  <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-600">
-                    <AlertCircle className="h-3.5 w-3.5" />
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                    <AlertCircle className="h-3 w-3" />
                     {createErrors.title}
                   </p>
                 )}
               </div>
 
+              {/* Mô tả */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700">
-                  Mô tả chi tiết triệu chứng & mức độ <span className="text-rose-500">*</span>
+                  Mô tả chi tiết tình trạng & đề xuất xử lý <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   value={createForm.description}
                   onChange={(event) => updateCreateField('description', event.target.value)}
                   maxLength={2000}
-                  rows={4}
-                  className={`w-full rounded-xl border p-3 text-xs outline-none font-medium ${
+                  rows={3}
+                  className={`w-full rounded-xl border p-2.5 text-xs outline-none font-medium ${
                     createErrors.description ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-400'
                   }`}
-                  placeholder="Mô tả dấu hiệu cụ thể (màu sắc, đường ruột, mang, tỷ lệ đàn bị ảnh hưởng)..."
+                  placeholder="Mô tả hiện tượng quan sát được, thời điểm bắt đầu, thiệt hại ước tính và đề xuất bộ phận/nhân sự cần hỗ trợ..."
                 />
                 {createErrors.description && (
-                  <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-600">
-                    <AlertCircle className="h-3.5 w-3.5" />
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                    <AlertCircle className="h-3 w-3" />
                     {createErrors.description}
                   </p>
                 )}
               </div>
+
+              {/* Phân công xử lý */}
+              {role === 'TECHNICIAN' ? (
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3.5 space-y-2">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createForm.selfAssign}
+                      onChange={(e) => updateCreateField('selfAssign', e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-indigo-950">
+                        Tôi là Kỹ thuật viên phụ trách và sẽ tự tiếp nhận xử lý ca này
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                        Nếu bỏ chọn, sự cố sẽ chuyển ngay đến <strong>Quản lý trang trại</strong> để liên hệ thợ điện, cơ khí, kho bãi hoặc kỹ thuật viên chuyên trách khác.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-teal-100 bg-teal-50/60 p-3 text-xs text-teal-800 flex items-start gap-2.5">
+                  <span className="text-base">📢</span>
+                  <div className="text-[11px] leading-relaxed">
+                    <strong>Thông báo gửi tới Quản lý:</strong> Sự cố bạn báo cáo sẽ được gửi tức thời đến Quản lý trang trại để liên hệ đúng bộ phận chuyên môn xử lý.
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button
@@ -1102,13 +1369,13 @@ export default function IncidentDashboard({
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold">
                   <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    Trang trại: {selected.crop.pond.farm.name}
+                    Trang trại: {selected.crop?.pond?.farm?.name || '--'}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-lg bg-cyan-50 text-cyan-800 border border-cyan-200">
-                    Ao: {selected.crop.pond.name}
+                    Ao: {selected.crop?.pond?.name || '--'}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200">
-                    {selected.crop.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}
+                    {selected.crop?.stage === 'NURSERY' ? 'Vụ Ương' : 'Vụ Thương phẩm'}
                   </span>
                 </div>
               </div>

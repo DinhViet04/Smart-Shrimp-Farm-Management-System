@@ -417,6 +417,20 @@ export default function PondsScreen({ navigation, route }: any) {
             </TouchableOpacity>
           )}
 
+          {activeCrop && (
+            <TouchableOpacity
+              style={styles.cardActionBtn}
+              onPress={() =>
+                navigation.navigate('FeedingLog', {
+                  pondId: item.id,
+                })
+              }
+            >
+              <Utensils size={14} color="#0d9488" />
+              <Text style={[styles.cardActionText, { color: '#0d9488' }]}>Cho ăn</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.cardActionBtn}
             onPress={() => navigation.navigate('Môi trường', { screen: 'RecordWaterQuality' })}
@@ -444,9 +458,13 @@ export default function PondsScreen({ navigation, route }: any) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleBlock}>
-          <Text style={styles.headerTitle}>Quản Lý Ao & Vụ Nuôi</Text>
+          <Text style={styles.headerTitle}>
+            {userRole === 'FARMER' ? 'Ao Nuôi Phụ Trách' : 'Quản Lý Ao & Vụ Nuôi'}
+          </Text>
           <Text style={styles.headerSubtitle}>
-            Theo dõi diện tích, ngày nuôi DOC & sinh khối ao
+            {userRole === 'FARMER'
+              ? 'Theo dõi ao nuôi được phân công, ngày nuôi DOC & sinh khối'
+              : 'Theo dõi diện tích, ngày nuôi DOC & sinh khối ao'}
           </Text>
         </View>
 

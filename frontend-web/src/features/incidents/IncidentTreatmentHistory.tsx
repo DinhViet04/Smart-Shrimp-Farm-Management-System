@@ -193,8 +193,8 @@ export default function IncidentTreatmentHistory({
   const getCropDetail = useCallback(
     (inc: Incident) => {
       if (!inc.crop) return null;
-      const matched = crops.find((c) => c.id === inc.crop.id);
-      const matchedSeason = allSeasons.find((s) => s.cropIds.includes(inc.crop.id));
+      const matched = crops.find((c) => c.id === inc.crop?.id);
+      const matchedSeason = allSeasons.find((s) => inc.crop?.id ? s.cropIds.includes(inc.crop.id) : false);
       return {
         id: inc.crop.id,
         seasonName: matchedSeason?.seasonName,

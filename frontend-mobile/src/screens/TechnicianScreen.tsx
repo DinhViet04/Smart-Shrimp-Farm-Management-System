@@ -24,6 +24,8 @@ import {
   Scale,
   RefreshCw,
   Building2,
+  Utensils,
+  HeartPulse,
 } from 'lucide-react-native';
 import { AuthContext } from '../context/AuthContext';
 import { growthService, TrajectoryPoint } from '../services/growthService';
@@ -339,6 +341,38 @@ export default function TechnicianScreen({ navigation }: TechnicianScreenProps) 
             <View style={styles.actionTextContainer}>
               <Text style={styles.actionTitle}>4. Kiểm tra tồn kho thức ăn & thuốc</Text>
               <Text style={styles.actionDesc}>Theo dõi tồn kho cám, men vi sinh, vôi, khoáng</Text>
+            </View>
+            <ArrowRight size={16} color="#94a3b8" />
+          </TouchableOpacity>
+
+          {/* 5. Sức khỏe đàn tôm */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ShrimpHealth')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#fef2f2' }]}>
+              <HeartPulse color="#ef4444" size={20} />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>5. Kiểm tra sức khỏe đàn tôm</Text>
+              <Text style={styles.actionDesc}>Quan sát dấu hiệu bệnh, tôm lờ đờ, tấp mé, tôm chết</Text>
+            </View>
+            <ArrowRight size={16} color="#94a3b8" />
+          </TouchableOpacity>
+
+          {/* 6. Nhật ký cho ăn */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('FeedingLog')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#f0fdfa' }]}>
+              <Utensils color="#0d9488" size={20} />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>6. Ghi nhận cữ cho ăn & lượng cám</Text>
+              <Text style={styles.actionDesc}>Phân bổ 1-7 cữ ăn/ngày, theo dõi sức ăn theo nhá</Text>
             </View>
             <ArrowRight size={16} color="#94a3b8" />
           </TouchableOpacity>

@@ -56,7 +56,17 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export const incidentService = {
-  create: async (payload: { cropId: string; title: string; description: string }) => {
+  create: async (payload: {
+    cropId?: string;
+    pondId?: string;
+    farmId?: string;
+    title: string;
+    description: string;
+    category?: string;
+    severity?: string;
+    location?: string;
+    selfAssign?: boolean;
+  }) => {
     const response = await apiFetch(`${apiUrl}/api/incidents`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -67,6 +77,7 @@ export const incidentService = {
   getAll: async (filters: {
     status?: string;
     assignedToMe?: boolean;
+    reportedByMe?: boolean;
     activeOnly?: boolean;
     search?: string;
     farmId?: string;
@@ -81,6 +92,7 @@ export const incidentService = {
     const params = new URLSearchParams();
     if (filters.status) params.set('status', filters.status);
     if (filters.assignedToMe) params.set('assignedToMe', 'true');
+    if (filters.reportedByMe) params.set('reportedByMe', 'true');
     if (filters.activeOnly) params.set('activeOnly', 'true');
     if (filters.search) params.set('search', filters.search);
     if (filters.farmId) params.set('farmId', filters.farmId);
@@ -99,15 +111,20 @@ export const incidentService = {
   },
 
   getTechnicians: async (farmId: string) => {
-    const response = await apiFetch(`${apiUrl}/api/farm-staffs?farmId=${encodeURIComponent(farmId)}`);
-    const staff = await handleResponse<Array<{
-      role: string;
-      isActive: boolean;
-      user: IncidentTechnician & { role: string; isActive: boolean };
-    }>>(response);
-    return staff
-      .filter((entry) => entry.user.role === 'TECHNICIAN' && entry.isActive && entry.user.isActive)
-      .map((entry) => ({ id: entry.user.id, fullName: entry.user.fullName, email: entry.user.email }));
+    try {
+      const response = await apiFetch(`${apiUrl}/api/farm-staffs?farmId=${encodeURIComponent(farmId)}`);
+      const staff = await handleResponse<Array<{
+        role: string;
+        isActive: boolean;
+        user?: IncidentTechnician & { role?: string; isActive?: boolean };
+      }>>(response);
+      if (!Array.isArray(staff)) return [];
+      return staff
+        .filter((entry) => entry?.user?.role === 'TECHNICIAN' && entry.isActive && entry.user?.isActive)
+        .map((entry) => ({ id: entry.user!.id, fullName: entry.user!.fullName, email: entry.user!.email }));
+    } catch {
+      return [];
+    }
   },
 
   assign: async (id: string, assignedToId: string) => {

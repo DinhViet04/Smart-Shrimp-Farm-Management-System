@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+﻿import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
@@ -172,7 +172,7 @@ describe('AuthService password reset', () => {
     const verifyIdToken = jest
       .spyOn(OAuth2Client.prototype, 'verifyIdToken')
       .mockRejectedValue(
-        new Error('Wrong recipient, payload audience != requiredAudience'),
+        new Error('Wrong recipient, payload audience != requiredAudience') as never,
       );
 
     await expect(
@@ -194,7 +194,7 @@ describe('AuthService password reset', () => {
         name: 'Google User',
         email_verified: true,
       }),
-    } as any);
+    } as never);
     usersService.findByEmail.mockResolvedValue(null);
     usersService.create.mockResolvedValue({
       id: 'user-google',
@@ -363,3 +363,4 @@ describe('AuthService password reset', () => {
     });
   });
 });
+

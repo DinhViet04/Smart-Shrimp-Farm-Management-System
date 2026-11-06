@@ -1,4 +1,4 @@
-import { SupportService } from './support.service.js';
+﻿import { SupportService } from './support.service.js';
 
 describe('SupportService', () => {
   it('limits regular users to their own support tickets', async () => {
@@ -44,7 +44,7 @@ describe('SupportService', () => {
           workspaceId: 'workspace-id',
           subject: 'Need help',
           description: 'Cannot access farm data',
-          priority: 'HIGH',
+          priority: 'HIGH', scope: 'WORKSPACE' as any,
         },
         'user-id',
       ),
@@ -60,7 +60,7 @@ describe('SupportService', () => {
           workspaceId: 'workspace-id',
           subject: '   ',
           description: 'Cannot access farm data',
-          priority: 'HIGH',
+          priority: 'HIGH', scope: 'WORKSPACE' as any,
         },
         'user-id',
       ),
@@ -107,7 +107,7 @@ describe('SupportService', () => {
         workspaceId: 'workspace-id',
         subject: 'Need help',
         description: 'Cannot access farm data',
-        priority: 'HIGH',
+        priority: 'HIGH', scope: 'WORKSPACE' as any,
       },
       'user-id',
     );
@@ -204,3 +204,5 @@ describe('SupportService', () => {
     ).rejects.toThrow('Phải chỉ định Admin phụ trách');
   });
 });
+
+

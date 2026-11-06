@@ -9,6 +9,7 @@ import {
   AuthUser,
   FarmAccessService,
 } from '../farm-access/farm-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { CreateIncidentDto } from './dto/create-incident.dto.js';
 import { GetIncidentsDto } from './dto/get-incidents.dto.js';
 import { AssignIncidentDto } from './dto/assign-incident.dto.js';
@@ -21,6 +22,7 @@ export class IncidentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findAll(user: AuthUser, query: GetIncidentsDto) {
@@ -71,6 +73,11 @@ export class IncidentsService {
 
     if (query.status) where.status = query.status;
     else if (query.activeOnly) where.status = { in: ['OPEN', 'TREATING'] };
+    if (user.role === 'FARMER') {
+      where.reporterId = user.userId;
+    } else if (query.reportedByMe) {
+      where.reporterId = user.userId;
+    }
     if (query.assignedToMe) where.assignedToId = user.userId;
     if (query.search?.trim()) {
       where.OR = [
@@ -152,44 +159,147 @@ export class IncidentsService {
   }
 
   async create(user: AuthUser, dto: CreateIncidentDto) {
-    const crop = await this.getCropWithFarm(dto.cropId);
-    await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
-    if (crop.status !== 'ACTIVE') {
-      throw new BadRequestException(
-        'Chỉ được ghi nhận sự cố cho vụ nuôi đang hoạt động',
-      );
+    let targetCropId = dto.cropId;
+
+    if (!targetCropId) {
+      if (dto.pondId) {
+        const pondCrop = await this.prisma.crop.findFirst({
+          where: { pondId: dto.pondId },
+          orderBy: [{ status: 'asc' }, { startDate: 'desc' }],
+        });
+        if (pondCrop) targetCropId = pondCrop.id;
+      }
+
+      if (!targetCropId && dto.farmId) {
+        const farmCrop = await this.prisma.crop.findFirst({
+          where: { pond: { farmId: dto.farmId } },
+          orderBy: [{ status: 'asc' }, { startDate: 'desc' }],
+        });
+        if (farmCrop) targetCropId = farmCrop.id;
+      }
+
+      if (!targetCropId) {
+        const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
+        const anyCrop = await this.prisma.crop.findFirst({
+          where: accessibleFarmIds ? { pond: { farmId: { in: accessibleFarmIds } } } : {},
+          orderBy: [{ status: 'asc' }, { startDate: 'desc' }],
+        });
+        if (anyCrop) targetCropId = anyCrop.id;
+      }
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const incident = await tx.incident.create({
+    if (!targetCropId) {
+      throw new BadRequestException('Không tìm thấy ao nuôi hoặc vụ nuôi tham chiếu cho trang trại');
+    }
+
+    const crop = await this.getCropWithFarm(targetCropId);
+    await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+
+    // Định dạng tiêu đề & mô tả nếu có danh mục / mức độ / vị trí cụ thể
+    let finalTitle = dto.title.trim();
+    if (dto.category && !finalTitle.toUpperCase().startsWith('[') && !finalTitle.includes(dto.category)) {
+      finalTitle = `[${dto.category}] ${finalTitle}`;
+    }
+
+    let finalDescription = dto.description.trim();
+    const metaTags: string[] = [];
+    if (dto.category) metaTags.push(`[Phân loại: ${dto.category}]`);
+    if (dto.severity) metaTags.push(`[Mức độ: ${dto.severity}]`);
+    if (dto.location) metaTags.push(`[Vị trí: ${dto.location}]`);
+    if (metaTags.length > 0 && !finalDescription.startsWith('[')) {
+      finalDescription = `${metaTags.join(' ')}\n\n${finalDescription}`;
+    }
+
+    // Role FARMER và TECHNICIAN chỉ có quyền báo cáo sự cố lên Quản lý (không tự phân công).
+    // Chỉ FARM_MANAGER hoặc ADMIN mới có thể tự tiếp nhận ngay khi tạo sự cố nếu muốn.
+    const canSelfAssign = (user.role === 'FARM_MANAGER' || user.role === 'ADMIN') && Boolean(dto.selfAssign);
+
+    const incident = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.incident.create({
         data: {
-          cropId: dto.cropId,
-          title: dto.title.trim(),
-          description: dto.description.trim(),
+          cropId: targetCropId,
+          title: finalTitle,
+          description: finalDescription,
           reporterId: user.userId,
-          ...(user.role === 'TECHNICIAN' ? { assignedToId: user.userId } : {}),
+          ...(canSelfAssign ? { assignedToId: user.userId, status: 'TREATING' } : {}),
         },
       });
       await tx.incidentTreatmentUpdate.create({
         data: {
-          incidentId: incident.id,
+          incidentId: created.id,
           authorId: user.userId,
-          treatment: 'Đã báo cáo sự cố',
-          status: 'OPEN',
+          treatment: canSelfAssign
+            ? 'Quản lý tự tiếp nhận và xử lý sự cố'
+            : 'Đã báo cáo sự cố lên Quản lý trang trại để tiếp nhận & phân công nhân sự khắc phục',
+          status: canSelfAssign ? 'TREATING' : 'OPEN',
           eventType: 'REPORTED',
         },
       });
-      return incident;
+      return created;
     });
+
+    // Gửi thông báo thời gian thực tới Farm Manager / Owner
+    try {
+      const farmId = crop.pond.farmId;
+      const farm = await this.prisma.farm?.findUnique?.({
+        where: { id: farmId },
+        select: { ownerId: true, name: true },
+      });
+
+      const managerStaff =
+        (await this.prisma.farmStaff?.findMany?.({
+          where: {
+            farmId,
+            role: 'FARM_MANAGER',
+            isActive: true,
+          },
+          select: { userId: true },
+        })) || [];
+
+      const managerIds = new Set<string>();
+      if (farm?.ownerId && farm.ownerId !== user.userId) {
+        managerIds.add(farm.ownerId);
+      }
+      for (const m of managerStaff) {
+        if (m.userId !== user.userId) {
+          managerIds.add(m.userId);
+        }
+      }
+
+      if (managerIds.size > 0 && this.notificationsService?.notifyIncidentReported) {
+        const reporter = await this.prisma.user?.findUnique?.({
+          where: { id: user.userId },
+          select: { fullName: true },
+        });
+
+        await this.notificationsService.notifyIncidentReported({
+          farmId,
+          farmName: farm?.name || 'Trang trại',
+          pondId: crop.pond.id,
+          pondName: crop.pond.name,
+          incidentId: incident.id,
+          title: incident.title,
+          reporterName: reporter?.fullName || 'Nhân viên trang trại',
+          reporterRole: user.role,
+          category: dto.category,
+          severity: dto.severity,
+          recipientUserIds: Array.from(managerIds),
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send incident notification to managers:', notifErr);
+    }
+
+    return incident;
   }
 
   async assign(user: AuthUser, id: string, dto: AssignIncidentDto) {
     const incident = await this.getIncident(id);
     const farmId = incident.crop.pond.farmId;
     await this.farmAccess.assertCanManageFarm(user, farmId);
-    if (user.role !== 'FARM_MANAGER') {
+    if (user.role !== 'FARM_MANAGER' && user.role !== 'ADMIN') {
       throw new ForbiddenException(
-        'Chỉ quản lý trang trại được phân công kỹ thuật viên',
+        'Chỉ quản lý trang trại hoặc quản trị viên mới được phân công nhân sự',
       );
     }
     if (incident.status === 'RESOLVED') {
@@ -211,10 +321,11 @@ export class IncidentsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const nextStatus = incident.status === 'OPEN' ? 'TREATING' : incident.status;
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.incident.update({
         where: { id },
-        data: { assignedToId: dto.assignedToId },
+        data: { assignedToId: dto.assignedToId, status: nextStatus },
         include: {
           assignedTo: { select: { id: true, fullName: true, email: true } },
         },
@@ -223,13 +334,36 @@ export class IncidentsService {
         data: {
           incidentId: id,
           authorId: user.userId,
-          treatment: `Phân công kỹ thuật viên: ${technician.user.fullName}`,
-          status: incident.status,
+          treatment: `Quản lý phân công xử lý: ${technician.user.fullName}`,
+          status: nextStatus,
           eventType: 'ASSIGNED',
         },
       });
       return updated;
     });
+
+    try {
+      if (this.notificationsService?.notifyIncidentAssigned) {
+        const manager = await this.prisma.user?.findUnique?.({
+          where: { id: user.userId },
+          select: { fullName: true },
+        });
+        await this.notificationsService.notifyIncidentAssigned({
+          farmId,
+          farmName: incident.crop.pond.farm?.name || 'Trang trại',
+          pondId: incident.crop.pond.id,
+          pondName: incident.crop.pond.name,
+          incidentId: incident.id,
+          title: incident.title,
+          assigneeId: dto.assignedToId,
+          managerName: manager?.fullName || 'Quản lý trang trại',
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send assignment notification to technician:', notifErr);
+    }
+
+    return result;
   }
 
   async startTreatment(user: AuthUser, id: string) {
@@ -382,7 +516,7 @@ export class IncidentsService {
   private async getIncident(id: string) {
     const incident = await this.prisma.incident.findUnique({
       where: { id },
-      include: { crop: { include: { pond: true } } },
+      include: { crop: { include: { pond: { include: { farm: true } } } } },
     });
     if (!incident) throw new NotFoundException('Không tìm thấy sự cố');
     return incident;

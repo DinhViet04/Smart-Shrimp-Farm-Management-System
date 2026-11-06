@@ -8,6 +8,8 @@ type AuthContextType = {
   userId: string | null;
   currentUser: any | null;
   isLoading: boolean;
+  isViewingHome: boolean;
+  setIsViewingHome: (viewing: boolean) => void;
   login: (token: string, user: any, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateCurrentUser: (userData: any) => Promise<void>;
@@ -19,6 +21,8 @@ export const AuthContext = createContext<AuthContextType>({
   userId: null,
   currentUser: null,
   isLoading: true,
+  isViewingHome: false,
+  setIsViewingHome: () => {},
   login: async () => {},
   logout: async () => {},
   updateCurrentUser: async () => {},
@@ -30,6 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isViewingHome, setIsViewingHome] = useState(false);
 
   const loadToken = async () => {
     try {
@@ -91,6 +96,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setCurrentUser(user);
       }
       setUserToken(token);
+      setIsViewingHome(false);
     } catch (e) {
       console.error('Failed to save token', e);
     } finally {
@@ -132,6 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUserRole(null);
       setUserId(null);
       setCurrentUser(null);
+      setIsViewingHome(false);
     } catch (e) {
       console.error('Failed to remove token', e);
     } finally {
@@ -147,6 +154,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         userId,
         currentUser,
         isLoading,
+        isViewingHome,
+        setIsViewingHome,
         login,
         logout,
         updateCurrentUser,

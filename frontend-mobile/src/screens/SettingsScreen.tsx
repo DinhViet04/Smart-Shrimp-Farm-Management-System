@@ -25,11 +25,16 @@ import {
   CheckCircle2,
   X,
   Lock,
+  Users,
+  Sparkles,
 } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { userService, UserProfile } from '../services/userService';
+import { requestOpenAIChat } from '../components/FloatingAIChatModal';
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<any>();
   const { currentUser, userRole, logout, updateCurrentUser } = useAuth();
 
   const [profile, setProfile] = useState<UserProfile | null>(currentUser);
@@ -72,8 +77,6 @@ export default function SettingsScreen() {
 
   const getRoleLabel = (role?: string) => {
     switch (role) {
-      case 'ADMIN':
-        return 'Quản trị viên';
       case 'FARM_MANAGER':
         return 'Quản lý trang trại';
       case 'TECHNICIAN':
@@ -189,6 +192,7 @@ export default function SettingsScreen() {
   };
 
   const roleStyle = getRoleBadgeStyle(profile?.role || userRole || undefined);
+  const resolvedRole = profile?.role || userRole;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -264,9 +268,46 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      {resolvedRole === 'FARM_MANAGER' && (
+        <>
+          <Text style={styles.sectionHeader}>QUẢN LÝ TRANG TRẠI</Text>
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => navigation.navigate('Workspace')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconBox, { backgroundColor: '#eff6ff' }]}>
+                <Users size={20} color="#2563eb" />
+              </View>
+              <View style={styles.menuTextBox}>
+                <Text style={styles.menuTitle}>Quản lý nhân sự</Text>
+                <Text style={styles.menuSubtitle}>Thành viên và phân quyền workspace</Text>
+              </View>
+              <ChevronRight size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
       {/* ── 3. Support & Application Info ──────────────────────────────── */}
       <Text style={styles.sectionHeader}>HỖ TRỢ & HỆ THỐNG</Text>
       <View style={styles.menuContainer}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={requestOpenAIChat}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconBox, { backgroundColor: '#fff7ed' }]}>
+            <Sparkles size={20} color="#ea580c" />
+          </View>
+          <View style={styles.menuTextBox}>
+            <Text style={styles.menuTitle}>Trợ lý Tôm AI</Text>
+            <Text style={styles.menuSubtitle}>Mở tư vấn kỹ thuật & khôi phục nút nổi AI</Text>
+          </View>
+          <ChevronRight size={18} color="#94a3b8" />
+        </TouchableOpacity>
+
         <View style={styles.menuItem}>
           <View style={[styles.iconBox, { backgroundColor: '#f8fafc' }]}>
             <Shield size={20} color="#64748b" />

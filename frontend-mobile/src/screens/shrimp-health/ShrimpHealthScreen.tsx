@@ -1,10 +1,12 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  FlatList,
+  Platform,
   TouchableOpacity,
   TextInput,
   Alert,
@@ -19,14 +21,13 @@ import {
   CheckCircle2,
   AlertTriangle,
   History,
-  ArrowLeft,
   User,
   Clock,
   Sparkles,
 } from 'lucide-react-native';
 import { pondService, OverviewPond, OverviewCrop } from '../../services/pondService';
-import NotificationButton from '../../components/NotificationButton';
-import HeaderLogo from '../../components/HeaderLogo';
+import BusinessHeader from '../../components/BusinessHeader';
+import { useAuth } from '../../context/AuthContext';
 import {
   shrimpHealthService,
   ShrimpHealthStatusType,
@@ -38,10 +39,27 @@ import {
 interface ShrimpHealthScreenProps {
   navigation?: any;
   route?: any;
+  embedded?: boolean;
 }
 
-export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthScreenProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'RECORD' | 'HISTORY'>('RECORD');
+const COMMON_SYMPTOMS: { id: string; label: string; defaultStatus: ShrimpHealthStatusType }[] = [
+  { id: 'tap_me', label: 'Tấp mé bờ', defaultStatus: 'EDGE_GATHERING' },
+  { id: 'lo_do', label: 'Lờ đờ, bơi yếu', defaultStatus: 'LETHARGIC' },
+  { id: 'bo_an', label: 'Bỏ ăn / Ăn kém', defaultStatus: 'LOSS_OF_APPETITE' },
+  { id: 'phan_trang', label: 'Phân trắng / Ruột trống', defaultStatus: 'LOSS_OF_APPETITE' },
+  { id: 'dom_trang', label: 'Đốm trắng / Đỏ thân', defaultStatus: 'LETHARGIC' },
+  { id: 'den_mang', label: 'Đen mang / Vàng mang', defaultStatus: 'LETHARGIC' },
+  { id: 'duc_co', label: 'Đục cơ / Cong thân', defaultStatus: 'LETHARGIC' },
+  { id: 'teo_gan', label: 'Gan tụy teo / Nhạt màu', defaultStatus: 'LOSS_OF_APPETITE' },
+  { id: 'mem_vo', label: 'Mềm vỏ / Chậm lớn', defaultStatus: 'LETHARGIC' },
+];
+
+export default function ShrimpHealthScreen({ route, embedded = false }: ShrimpHealthScreenProps = {}) {
+  const { userRole } = useAuth();
+  const canRecordHealth = userRole === 'TECHNICIAN';
+  const [activeSubTab, setActiveSubTab] = useState<'RECORD' | 'HISTORY'>(
+    canRecordHealth ? 'RECORD' : 'HISTORY'
+  );
   const [ponds, setPonds] = useState<OverviewPond[]>([]);
   const [crops, setCrops] = useState<OverviewCrop[]>([]);
   const [selectedPondId, setSelectedPondId] = useState<string>(() => {
@@ -54,15 +72,31 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
   // Form State
   const [healthStatus, setHealthStatus] = useState<ShrimpHealthStatusType>('NORMAL');
   const [healthSeverity, setHealthSeverity] = useState<ShrimpSeverityType>('NORMAL');
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [affectedPct, setAffectedPct] = useState('0');
   const [healthNote, setHealthNote] = useState('');
   const [deadQuantity, setDeadQuantity] = useState('');
   const [mortalityCause, setMortalityCause] = useState('');
 
+  const toggleSymptom = (symptom: { label: string; defaultStatus: ShrimpHealthStatusType }) => {
+    setSelectedSymptoms((prev) => {
+      const exists = prev.includes(symptom.label);
+      const next = exists ? prev.filter((s) => s !== symptom.label) : [...prev, symptom.label];
+      if (!exists && healthStatus === 'NORMAL') {
+        setHealthStatus(symptom.defaultStatus);
+        if (healthSeverity === 'NORMAL') setHealthSeverity('MILD');
+        if (affectedPct === '0' || !affectedPct) setAffectedPct('10');
+      }
+      return next;
+    });
+  };
+
   // History State
   const [healthRecords, setHealthRecords] = useState<ShrimpHealthRecord[]>([]);
   const [mortalityLogs, setMortalityLogs] = useState<MortalityRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState<number>(0);
+  const HISTORY_PAGE_SIZE = 10;
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -105,10 +139,14 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
       setLoadingHistory(true);
       const records = await shrimpHealthService.getHistory(selectedPondId);
       setHealthRecords(records || []);
+      setHistoryPage(0);
 
       if (activeCrop) {
         const morts = await shrimpHealthService.getMortalityLogs(activeCrop.id).catch(() => []);
         setMortalityLogs(morts || []);
+      } else {
+        // Ao không có vụ ACTIVE → xóa số liệu tôm chết của ao trước
+        setMortalityLogs([]);
       }
     } catch (e) {
       console.warn('Error loading health history:', e);
@@ -116,6 +154,12 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
       setLoadingHistory(false);
     }
   }, [selectedPondId, activeCrop]);
+
+  const totalHistoryPages = Math.max(1, Math.ceil(healthRecords.length / HISTORY_PAGE_SIZE));
+  const paginatedHealthRecords = useMemo(() => {
+    const start = historyPage * HISTORY_PAGE_SIZE;
+    return healthRecords.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [healthRecords, historyPage]);
 
   useEffect(() => {
     if (activeSubTab === 'HISTORY') {
@@ -141,9 +185,19 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
       return;
     }
 
-    // 2. Validate bắt buộc mô tả khi tôm bất thường
-    if (healthStatus !== 'NORMAL' && !healthNote.trim()) {
-      Alert.alert('Thiếu thông tin', 'Khi phát hiện tôm có triệu chứng bất thường, vui lòng nhập mô tả chi tiết biểu hiện lâm sàng.');
+    // 2. Validate bắt buộc mô tả hoặc chọn triệu chứng khi tôm bất thường
+    const combinedNote = [
+      selectedSymptoms.length > 0 ? `Triệu chứng: ${selectedSymptoms.join(', ')}` : '',
+      healthNote.trim(),
+    ]
+      .filter(Boolean)
+      .join('. ');
+
+    if (healthStatus !== 'NORMAL' && !combinedNote) {
+      Alert.alert(
+        'Thiếu thông tin',
+        'Khi phát hiện tôm có triệu chứng bất thường, vui lòng chọn ít nhất 1 triệu chứng lâm sàng hoặc nhập mô tả chi tiết.'
+      );
       return;
     }
 
@@ -178,7 +232,7 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
         healthStatus,
         severity: healthSeverity,
         affectedPercentage: pct || 0,
-        note: healthNote.trim() || undefined,
+        note: combinedNote || undefined,
       });
 
       if (parsedDeadQty > 0) {
@@ -190,6 +244,7 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
       }
 
       Alert.alert('Thành công', 'Đã lưu ghi nhận sức khỏe tôm và số liệu hao hụt.');
+      setSelectedSymptoms([]);
       setHealthNote('');
       setDeadQuantity('');
       setMortalityCause('');
@@ -208,29 +263,7 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => {
-              if (navigation?.canGoBack && navigation.canGoBack()) {
-                navigation.goBack();
-              } else if (navigation?.navigate) {
-                navigation.navigate('MainTabs');
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft size={20} color="#0f172a" />
-          </TouchableOpacity>
-          <View style={styles.headerTitleBlock}>
-            <Text style={styles.headerTitle}>Sức Khỏe Tôm</Text>
-            <Text style={styles.headerSubtitle}>
-              Ghi nhận dấu hiệu lâm sàng • Theo dõi tỷ lệ hao hụt đàn tôm
-            </Text>
-          </View>
-        </View>
-      </View>
+      {!embedded && <BusinessHeader title="Sức khỏe tôm" />}
 
       {/* Pond Selector Bar */}
       <View style={styles.pondSelectorBar}>
@@ -257,28 +290,30 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
         </ScrollView>
       </View>
 
-      {/* 2 Sub Tabs: Ghi nhận kiểm tra vs Lịch sử sức khỏe */}
-      <View style={styles.subTabsRow}>
-        <TouchableOpacity
-          style={[styles.subTabItem, activeSubTab === 'RECORD' && styles.subTabItemActive]}
-          onPress={() => setActiveSubTab('RECORD')}
-        >
-          <HeartPulse size={15} color={activeSubTab === 'RECORD' ? '#ef4444' : '#64748b'} />
-          <Text style={[styles.subTabText, activeSubTab === 'RECORD' && styles.subTabTextActive]}>
-            Ghi nhận kiểm tra
-          </Text>
-        </TouchableOpacity>
+      {/* 2 Sub Tabs: Ghi nhận kiểm tra vs Lịch sử sức khỏe (Chỉ hiện khi có quyền ghi nhận) */}
+      {canRecordHealth && (
+        <View style={styles.subTabsRow}>
+          <TouchableOpacity
+            style={[styles.subTabItem, activeSubTab === 'RECORD' && styles.subTabItemActive]}
+            onPress={() => setActiveSubTab('RECORD')}
+          >
+            <HeartPulse size={15} color={activeSubTab === 'RECORD' ? '#ef4444' : '#64748b'} />
+            <Text style={[styles.subTabText, activeSubTab === 'RECORD' && styles.subTabTextActive]}>
+              Ghi nhận kiểm tra
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.subTabItem, activeSubTab === 'HISTORY' && styles.subTabItemActive]}
-          onPress={() => setActiveSubTab('HISTORY')}
-        >
-          <History size={15} color={activeSubTab === 'HISTORY' ? '#ef4444' : '#64748b'} />
-          <Text style={[styles.subTabText, activeSubTab === 'HISTORY' && styles.subTabTextActive]}>
-            Lịch sử sức khỏe
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.subTabItem, activeSubTab === 'HISTORY' && styles.subTabItemActive]}
+            onPress={() => setActiveSubTab('HISTORY')}
+          >
+            <History size={15} color={activeSubTab === 'HISTORY' ? '#ef4444' : '#64748b'} />
+            <Text style={[styles.subTabText, activeSubTab === 'HISTORY' && styles.subTabTextActive]}>
+              Lịch sử sức khỏe
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Main Content Area */}
       {isLoading ? (
@@ -286,7 +321,7 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
           <ActivityIndicator size="large" color="#ef4444" />
           <Text style={styles.loadingText}>Đang tải dữ liệu sức khỏe tôm...</Text>
         </View>
-      ) : (
+      ) : activeSubTab === 'RECORD' ? (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -322,191 +357,289 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
           </View>
 
           {/* ════════════ SUB-TAB 1: GHI NHẬN KIỂM TRA ════════════ */}
-          {activeSubTab === 'RECORD' ? (
-            <View>
-              <Text style={styles.fieldLabel}>Tình trạng sức khỏe tôm quan sát được:</Text>
-              <View style={styles.healthOptionsRow}>
-                {[
-                  { value: 'NORMAL', label: 'Bình thường' },
-                  { value: 'LETHARGIC', label: 'Lờ đờ, bơi yếu' },
-                  { value: 'EDGE_GATHERING', label: 'Tấp mé bờ' },
-                  { value: 'LOSS_OF_APPETITE', label: 'Bỏ ăn / Ăn kém' },
-                ].map((opt) => {
-                  const sel = healthStatus === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[styles.optionChip, sel && styles.optionChipSelected]}
-                      onPress={() => setHealthStatus(opt.value as any)}
-                    >
-                      <Text style={[styles.optionChipText, sel && styles.optionChipTextSelected]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Mức độ nghiêm trọng:</Text>
-              <View style={styles.healthOptionsRow}>
-                {[
-                  { value: 'NORMAL', label: 'Bình thường' },
-                  { value: 'MILD', label: 'Nhẹ (<15%)' },
-                  { value: 'MODERATE', label: 'Trung bình (15-40%)' },
-                  { value: 'SEVERE', label: 'Nặng (>40%)' },
-                ].map((opt) => {
-                  const sel = healthSeverity === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[styles.optionChip, sel && styles.optionChipSelected]}
-                      onPress={() => setHealthSeverity(opt.value as any)}
-                    >
-                      <Text style={[styles.optionChipText, sel && styles.optionChipTextSelected]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={[styles.inputGroup, { marginTop: 14 }]}>
-                <Text style={styles.fieldLabel}>Tỷ lệ tôm bị ảnh hưởng (%):</Text>
-                <TextInput
-                  style={styles.standardInput}
-                  keyboardType="numeric"
-                  value={affectedPct}
-                  onChangeText={setAffectedPct}
-                  placeholder="0"
-                />
-              </View>
-
-              <View style={[styles.inputGroup, { marginTop: 14 }]}>
-                <Text style={styles.fieldLabel}>Số tôm chết vớt được hôm nay (con):</Text>
-                <TextInput
-                  style={styles.standardInput}
-                  keyboardType="numeric"
-                  value={deadQuantity}
-                  onChangeText={setDeadQuantity}
-                  placeholder="Ví dụ: 15"
-                />
-              </View>
-
-              <View style={[styles.inputGroup, { marginTop: 14 }]}>
-                <Text style={styles.fieldLabel}>Nguyên nhân nghi ngờ (nếu có tôm chết):</Text>
-                <TextInput
-                  style={styles.standardInput}
-                  value={mortalityCause}
-                  onChangeText={setMortalityCause}
-                  placeholder="Ví dụ: Sốc nhiệt sau mưa, khí độc tầng đáy..."
-                />
-              </View>
-
-              <View style={[styles.inputGroup, { marginTop: 14 }]}>
-                <Text style={styles.fieldLabel}>Ghi chú triệu chứng lâm sàng:</Text>
-                <TextInput
-                  style={[styles.standardInput, { height: 70 }]}
-                  multiline
-                  value={healthNote}
-                  onChangeText={setHealthNote}
-                  placeholder="Mô tả màu sắc gan tụy, đường ruột, đục cơ, mềm vỏ..."
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-                onPress={handleSubmitHealth}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <Text style={styles.submitButtonText}>Lưu Bản Ghi Sức Khỏe</Text>
-                )}
-              </TouchableOpacity>
+          <View>
+            <Text style={styles.fieldLabel}>Tình trạng sức khỏe tôm quan sát được:</Text>
+            <View style={styles.healthOptionsRow}>
+              {[
+                { value: 'NORMAL', label: 'Bình thường' },
+                { value: 'LETHARGIC', label: 'Lờ đờ, bơi yếu' },
+                { value: 'EDGE_GATHERING', label: 'Tấp mé bờ' },
+                { value: 'LOSS_OF_APPETITE', label: 'Bỏ ăn / Ăn kém' },
+              ].map((opt) => {
+                const sel = healthStatus === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.optionChip, sel && styles.optionChipSelected]}
+                    onPress={() => {
+                      setHealthStatus(opt.value as any);
+                      if (opt.value === 'NORMAL') {
+                        setSelectedSymptoms([]);
+                        setHealthSeverity('NORMAL');
+                        setAffectedPct('0');
+                      }
+                    }}
+                  >
+                    <Text style={[styles.optionChipText, sel && styles.optionChipTextSelected]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          ) : (
-            /* ════════════ SUB-TAB 2: LỊCH SỬ SỨC KHỎE ════════════ */
+
+            {/* Quick-select 9 Clinical Symptoms (Synced with Web CreateShrimpHealth.tsx) */}
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+              Chọn nhanh triệu chứng lâm sàng (nếu có):
+            </Text>
+            <View style={styles.healthOptionsRow}>
+              {COMMON_SYMPTOMS.map((sym) => {
+                const isSelected = selectedSymptoms.includes(sym.label);
+                return (
+                  <TouchableOpacity
+                    key={sym.id}
+                    style={[styles.optionChip, isSelected && styles.optionChipSelected]}
+                    onPress={() => toggleSymptom(sym)}
+                  >
+                    <Text style={[styles.optionChipText, isSelected && styles.optionChipTextSelected]}>
+                      {isSelected ? `✓ ${sym.label}` : sym.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Mức độ nghiêm trọng:</Text>
+            <View style={styles.healthOptionsRow}>
+              {[
+                { value: 'NORMAL', label: 'Bình thường' },
+                { value: 'MILD', label: 'Nhẹ (<15%)' },
+                { value: 'MODERATE', label: 'Trung bình (15-40%)' },
+                { value: 'SEVERE', label: 'Nặng (>40%)' },
+              ].map((opt) => {
+                const sel = healthSeverity === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.optionChip, sel && styles.optionChipSelected]}
+                    onPress={() => setHealthSeverity(opt.value as any)}
+                  >
+                    <Text style={[styles.optionChipText, sel && styles.optionChipTextSelected]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 14 }]}>
+              <Text style={styles.fieldLabel}>Tỷ lệ tôm bị ảnh hưởng (%):</Text>
+              <TextInput
+                style={styles.standardInput}
+                keyboardType="numeric"
+                value={affectedPct}
+                onChangeText={setAffectedPct}
+                placeholder="0"
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 14 }]}>
+              <Text style={styles.fieldLabel}>Số tôm chết vớt được hôm nay (con):</Text>
+              <TextInput
+                style={styles.standardInput}
+                keyboardType="numeric"
+                value={deadQuantity}
+                onChangeText={setDeadQuantity}
+                placeholder="Ví dụ: 15"
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 14 }]}>
+              <Text style={styles.fieldLabel}>Nguyên nhân nghi ngờ (nếu có tôm chết):</Text>
+              <TextInput
+                style={styles.standardInput}
+                value={mortalityCause}
+                onChangeText={setMortalityCause}
+                placeholder="Ví dụ: Sốc nhiệt sau mưa, khí độc tầng đáy..."
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 14 }]}>
+              <Text style={styles.fieldLabel}>Ghi chú triệu chứng lâm sàng:</Text>
+              <TextInput
+                style={[styles.standardInput, { height: 70 }]}
+                multiline
+                value={healthNote}
+                onChangeText={setHealthNote}
+                placeholder="Mô tả màu sắc gan tụy, đường ruột, đục cơ, mềm vỏ..."
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+              onPress={handleSubmitHealth}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Lưu Bản Ghi Sức Khỏe</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      ) : (
+        /* ════════════ SUB-TAB 2: LỊCH SỬ SỨC KHỎE (VIRTUALIZED FLATLIST) ════════════ */
+        <FlatList
+          data={loadingHistory ? [] : paginatedHealthRecords}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.scrollContent}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                setIsRefreshing(true);
+                loadInitialData();
+                loadHistory();
+              }}
+              colors={['#ef4444']}
+            />
+          }
+          ListHeaderComponent={
             <View>
+              <View style={styles.pondStatusBanner}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.bannerHeaderRow}>
+                    <Text style={styles.statusBannerTitle}>
+                      {activePond ? activePond.name : 'Chưa chọn ao'}
+                    </Text>
+                    {activeCrop && (
+                      <View style={styles.activeCropPill}>
+                        <Text style={styles.activeCropPillText}>ĐANG NUÔI</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.statusBannerDesc}>
+                    {activeCrop
+                      ? `Thả: ${activeCrop.initialShrimpCount?.toLocaleString()} con • Ao: ${activePond?.areaSize} m²`
+                      : 'Ao hiện chưa có vụ nuôi ACTIVE.'}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.historyHeaderRow}>
                 <Text style={styles.historyListTitle}>
-                  Lịch sử quan sát ao: {activePond?.name}
+                  Lịch sử quan sát ao: {activePond?.name} ({healthRecords.length} bản ghi)
                 </Text>
                 <TouchableOpacity onPress={loadHistory} style={styles.historyRefreshBtn}>
                   <Text style={styles.historyRefreshText}>Làm mới</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          }
+          ListEmptyComponent={
+            loadingHistory ? (
+              <ActivityIndicator size="large" color="#ef4444" style={{ marginTop: 24 }} />
+            ) : (
+              <View style={styles.emptyCard}>
+                <HeartPulse size={36} color="#cbd5e1" />
+                <Text style={styles.emptyCardTitle}>Chưa có bản ghi sức khỏe</Text>
+                <Text style={styles.emptyCardDesc}>
+                  {canRecordHealth
+                    ? 'Hãy ghi nhận kiểm tra sức khỏe đàn tôm định kỳ để kịp thời phát hiện bệnh.'
+                    : 'Kỹ thuật viên chưa ghi nhận bản ghi kiểm tra sức khỏe nào cho ao này.'}
+                </Text>
+              </View>
+            )
+          }
+          renderItem={({ item }) => {
+            const dateStr = new Date(item.recordTime || item.createdAt).toLocaleDateString(
+              'vi-VN',
+              {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              }
+            );
 
-              {loadingHistory ? (
-                <ActivityIndicator size="large" color="#ef4444" style={{ marginTop: 24 }} />
-              ) : healthRecords.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <HeartPulse size={36} color="#cbd5e1" />
-                  <Text style={styles.emptyCardTitle}>Chưa có bản ghi sức khỏe</Text>
-                  <Text style={styles.emptyCardDesc}>
-                    Hãy ghi nhận kiểm tra sức khỏe đàn tôm định kỳ để kịp thời phát hiện bệnh.
-                  </Text>
+            return (
+              <View style={styles.historyCard}>
+                <View style={styles.historyCardHeader}>
+                  <View style={styles.historyDateRow}>
+                    <Clock size={13} color="#64748b" />
+                    <Text style={styles.historyDateText}>{dateStr}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.severityPill,
+                      item.severity === 'SEVERE'
+                        ? styles.severityPillDanger
+                        : item.severity === 'MODERATE'
+                        ? styles.severityPillWarning
+                        : styles.severityPillGood,
+                    ]}
+                  >
+                    <Text style={styles.severityPillText}>
+                      {item.severity === 'NORMAL'
+                        ? 'Bình thường'
+                        : item.severity === 'MILD'
+                        ? 'Nhẹ'
+                        : item.severity === 'MODERATE'
+                        ? 'Trung bình'
+                        : 'Nặng'}
+                    </Text>
+                  </View>
                 </View>
-              ) : (
-                healthRecords.map((item) => {
-                  const dateStr = new Date(item.recordTime || item.createdAt).toLocaleDateString(
-                    'vi-VN',
-                    {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }
-                  );
 
-                  return (
-                    <View key={item.id} style={styles.historyCard}>
-                      <View style={styles.historyCardHeader}>
-                        <View style={styles.historyDateRow}>
-                          <Clock size={13} color="#64748b" />
-                          <Text style={styles.historyDateText}>{dateStr}</Text>
-                        </View>
-                        <View
-                          style={[
-                            styles.severityPill,
-                            item.severity === 'SEVERE'
-                              ? styles.severityPillDanger
-                              : item.severity === 'MODERATE'
-                              ? styles.severityPillWarning
-                              : styles.severityPillGood,
-                          ]}
-                        >
-                          <Text style={styles.severityPillText}>
-                            {item.severity === 'NORMAL'
-                              ? 'Bình thường'
-                              : item.severity === 'MILD'
-                              ? 'Nhẹ'
-                              : item.severity === 'MODERATE'
-                              ? 'Trung bình'
-                              : 'Nặng'}
-                          </Text>
-                        </View>
-                      </View>
+                <Text style={styles.historyStatusText}>
+                  Tình trạng:{' '}
+                  {item.healthStatus === 'NORMAL'
+                    ? 'Đàn tôm bình thường'
+                    : item.healthStatus === 'LETHARGIC'
+                    ? 'Lờ đờ, bơi yếu'
+                    : item.healthStatus === 'EDGE_GATHERING'
+                    ? 'Tấp mé bờ'
+                    : 'Bỏ ăn / Kém ăn'}
+                  {item.affectedPercentage > 0 ? ` (${item.affectedPercentage}%)` : ''}
+                </Text>
 
-                      <Text style={styles.historyStatusText}>
-                        Tình trạng:{' '}
-                        {item.healthStatus === 'NORMAL'
-                          ? 'Đàn tôm bình thường'
-                          : item.healthStatus === 'LETHARGIC'
-                          ? 'Lờ đờ, bơi yếu'
-                          : item.healthStatus === 'EDGE_GATHERING'
-                          ? 'Tấp mé bờ'
-                          : 'Bỏ ăn / Kém ăn'}
-                        {item.affectedPercentage > 0 ? ` (${item.affectedPercentage}%)` : ''}
-                      </Text>
-
-                      {item.note ? (
-                        <Text style={styles.historyNoteText}>Ghi chú: {item.note}</Text>
-                      ) : null}
-                    </View>
-                  );
-                })
+                {item.note ? (
+                  <Text style={styles.historyNoteText}>Ghi chú: {item.note}</Text>
+                ) : null}
+              </View>
+            );
+          }}
+          ListFooterComponent={
+            <View>
+              {!loadingHistory && totalHistoryPages > 1 && (
+                <View style={styles.paginationRow}>
+                  <TouchableOpacity
+                    style={[styles.pageButton, historyPage === 0 && styles.pageButtonDisabled]}
+                    onPress={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                    disabled={historyPage === 0}
+                  >
+                    <Text style={styles.pageButtonText}>◀</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.pageIndicator}>
+                    Trang {historyPage + 1} / {totalHistoryPages}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.pageButton,
+                      historyPage === totalHistoryPages - 1 && styles.pageButtonDisabled,
+                    ]}
+                    onPress={() => setHistoryPage((p) => Math.min(totalHistoryPages - 1, p + 1))}
+                    disabled={historyPage === totalHistoryPages - 1}
+                  >
+                    <Text style={styles.pageButtonText}>▶</Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* Mortality Summary Section */}
@@ -529,8 +662,8 @@ export default function ShrimpHealthScreen({ navigation, route }: ShrimpHealthSc
                 </View>
               )}
             </View>
-          )}
-        </ScrollView>
+          }
+        />
       )}
     </SafeAreaView>
   );
@@ -540,36 +673,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-  },
-  header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    marginRight: 10,
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
-  headerTitleBlock: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
   },
   pondSelectorBar: {
     backgroundColor: '#ffffff',
@@ -871,6 +974,36 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9f1239',
     marginTop: 2,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 14,
+  },
+  pageButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pageButtonDisabled: {
+    opacity: 0.4,
+  },
+  pageButtonText: {
+    fontSize: 12,
+    color: '#ef4444',
+    fontWeight: '700',
+  },
+  pageIndicator: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
   },
 });
 

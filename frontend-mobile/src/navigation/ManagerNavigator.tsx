@@ -3,11 +3,12 @@
  *
  * Dedicated navigator for FARM_MANAGER role.
  * Business functions:
- *   - Tab 1: Trang trại    — Xem farms/ao, tạo vụ nuôi (FarmManagementScreen)
- *   - Tab 2: Môi trường    — Xem thông số nước (view-only, no record)
- *   - Tab 3: Tình trạng tôm — Xem tăng trưởng + sức khoẻ (ShrimpStatusScreen)
- *   - Tab 4: Sự cố         — Xem tất cả sự cố từ farmer + technician
- *   - Tab 5: Cài đặt       — Hồ sơ, bảo mật, hỗ trợ, workspace nhân sự
+ *   - Tab 1: Trang trại     — Xem farms/ao, tạo vụ nuôi (FarmManagementScreen)
+ *   - Tab 2: Môi trường     — Xem thông số nước (view-only, no record)
+ *   - Tab 3: Tình trạng tôm — Xem tăng trưởng + sức khoẻ (view-only, ShrimpStatusScreen)
+ *   - Tab 4: Sự cố          — Xem & phân công sự cố từ farmer + technician
+ *   - Tab 5: Kho            — Quản lý vật tư, thêm vật tư mới, nhập/xuất kho (InventoryScreen)
+ *   - Tab 6: Cài đặt        — Hồ sơ, bảo mật, hỗ trợ, workspace nhân sự
  */
 import React from 'react';
 import { Platform } from 'react-native';
@@ -19,6 +20,7 @@ import {
   Thermometer,
   HeartPulse,
   ShieldAlert,
+  Package,
   Settings,
 } from 'lucide-react-native';
 
@@ -27,10 +29,10 @@ import ShrimpStatusScreen from '../screens/manager/ShrimpStatusScreen';
 import WorkspaceScreen from '../screens/manager/WorkspaceScreen';
 import EnvironmentScreen from '../screens/EnvironmentScreen';
 import RecordHistoryScreen from '../screens/water-quality/RecordHistoryScreen';
+import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import IncidentStackNavigator from './IncidentNavigator';
-import NotificationButton from '../components/NotificationButton';
-import HeaderLogo from '../components/HeaderLogo';
+import BusinessHeader from '../components/BusinessHeader';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -69,14 +71,14 @@ function ManagerTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerLeft: () => <HeaderLogo size={32} showText={true} textColor="#2563eb" />,
-        headerRight: () => <NotificationButton color="#0f172a" />,
+        header: () => <BusinessHeader title={route.name} />,
         tabBarIcon: ({ color }) => {
           const iconSize = 21;
           if (route.name === 'Trang trại') return <Building2 color={color} size={iconSize} />;
           if (route.name === 'Môi trường') return <Thermometer color={color} size={iconSize} />;
           if (route.name === 'Tình trạng tôm') return <HeartPulse color={color} size={iconSize} />;
           if (route.name === 'Sự cố') return <ShieldAlert color={color} size={iconSize} />;
+          if (route.name === 'Kho') return <Package color={color} size={iconSize} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={iconSize} />;
           return <Building2 color={color} size={iconSize} />;
         },
@@ -101,24 +103,13 @@ function ManagerTabs() {
           shadowRadius: 4,
         },
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#ffffff',
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: '#f1f5f9',
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          color: '#0f172a',
-        },
       })}
     >
       <Tab.Screen
         name="Trang trại"
         component={FarmManagementScreen}
         options={{
-          headerTitle: '',
+          headerTitle: 'Trang trại',
           tabBarLabel: 'Trang trại',
         }}
       />
@@ -134,7 +125,7 @@ function ManagerTabs() {
         name="Tình trạng tôm"
         component={ShrimpStatusScreen}
         options={{
-          headerTitle: '',
+          headerTitle: 'Tình trạng tôm',
           tabBarLabel: 'Tôm',
         }}
       />
@@ -147,10 +138,18 @@ function ManagerTabs() {
         }}
       />
       <Tab.Screen
+        name="Kho"
+        component={InventoryScreen}
+        options={{
+          headerShown: false,
+          tabBarLabel: 'Kho',
+        }}
+      />
+      <Tab.Screen
         name="Cài đặt"
         component={SettingsScreen}
         options={{
-          headerTitle: '',
+          headerTitle: 'Cài đặt',
           tabBarLabel: 'Cài đặt',
         }}
       />

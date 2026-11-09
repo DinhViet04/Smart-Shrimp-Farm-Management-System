@@ -46,9 +46,9 @@ export default function ShrimpStatusScreen() {
       {/* Content */}
       <View style={styles.tabContent}>
         {activeTab === 'GROWTH' ? (
-          <GrowthTrackingScreen />
+          <GrowthTrackingScreen embedded />
         ) : (
-          <ShrimpHealthScreen />
+          <ShrimpHealthScreen embedded />
         )}
       </View>
     </SafeAreaView>

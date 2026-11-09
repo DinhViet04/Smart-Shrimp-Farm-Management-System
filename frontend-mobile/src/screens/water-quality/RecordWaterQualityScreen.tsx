@@ -24,8 +24,10 @@ import {
   Modal,
   FlatList,
   Platform,
+  Alert,
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
+import { toLocalDateTimeString } from '../../utils/date';
 import {
   getFarms,
   getPonds,
@@ -326,9 +328,9 @@ export default function RecordWaterQualityScreen({
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
   const [selectedPondId, setSelectedPondId] = useState<string | null>(null);
 
-  // recordTime — defaults to now, editable as ISO string
+  // recordTime — defaults to local now (UTC+7), editable as ISO string
   const [recordTime, setRecordTime] = useState<string>(
-    new Date().toISOString().slice(0, 16),
+    toLocalDateTimeString(),
   );
 
   const [form, setForm] = useState<FormValues>(INITIAL_FORM);
@@ -401,6 +403,129 @@ export default function RecordWaterQualityScreen({
     return Object.keys(newErrors).length === 0;
   };
 
+  // ── Abnormal parameter recommendations (synced with Web RecordWaterQuality.tsx) ──
+  const getAbnormalIssues = (): { name: string; value: string; status: 'warning' | 'danger'; recommendation: string }[] => {
+    const issues: { name: string; value: string; status: 'warning' | 'danger'; recommendation: string }[] = [];
+
+    const temp = numVal('temperature');
+    const tempSt = getTemperatureStatus(temp);
+    if (tempSt === 'danger' || tempSt === 'warning') {
+      issues.push({
+        name: 'Nhiệt độ nước',
+        value: `${temp}°C`,
+        status: tempSt,
+        recommendation:
+          temp !== null && temp > 30
+            ? 'Bật quạt nước, xả bớt tầng nước mặt, cấp thêm nước mát tầng đáy'
+            : 'Theo dõi tôm giảm ăn khi lạnh, duy trì mực nước sâu và che chắn gió',
+      });
+    }
+
+    const ph = numVal('ph');
+    const phSt = getPhStatus(ph);
+    if (phSt === 'danger' || phSt === 'warning') {
+      issues.push({
+        name: 'Độ pH',
+        value: `${ph}`,
+        status: phSt,
+        recommendation:
+          ph !== null && ph < 7.5
+            ? 'Tạt vôi nông nghiệp CaCO3 hoặc Dolomite để nâng và ổn định hệ đệm pH'
+            : 'Đánh mật rỉ đường + men vi sinh vào buổi sáng nắng để khống chế tảo và hạ pH',
+      });
+    }
+
+    const doVal = numVal('dissolvedOxygen');
+    const doSt = getDoStatus(doVal);
+    if (doSt === 'danger' || doSt === 'warning') {
+      issues.push({
+        name: 'Oxy hòa tan (DO)',
+        value: `${doVal} mg/L`,
+        status: doSt,
+        recommendation:
+          doSt === 'danger'
+            ? 'BẬT TẤT CẢ DÀN QUẠT & SỤC KHÍ ĐÁY, rải ngay oxy viên cấp cứu vùng tập trung tôm'
+            : 'Tăng cường số giờ chạy quạt nước, giảm 30% lượng thức ăn cữ tới để tránh tiêu hao oxy',
+      });
+    }
+
+    const sal = numVal('salinity');
+    const salSt = getSalinityStatus(sal);
+    if (salSt === 'danger' || salSt === 'warning') {
+      issues.push({
+        name: 'Độ mặn',
+        value: `${sal}‰`,
+        status: salSt,
+        recommendation: 'Kiểm tra nguồn nước cấp và điều chỉnh độ mặn thích ứng với giai đoạn sinh trưởng của tôm',
+      });
+    }
+
+    const alk = numVal('alkalinity');
+    const alkSt = getAlkalinityStatus(alk);
+    if (alkSt === 'danger' || alkSt === 'warning') {
+      issues.push({
+        name: 'Độ kiềm',
+        value: `${alk} mg/L`,
+        status: alkSt,
+        recommendation:
+          alk !== null && alk < 100
+            ? 'Tạt vôi canxi, khoáng Bicarbonate để tôm cứng vỏ nhanh sau lột xác'
+            : 'Thay nước chậm hoặc xử lý bớt hàm lượng khoáng dư thừa trong ao',
+      });
+    }
+
+    const nh3 = numVal('nh3');
+    const nh3St = getNh3Status(nh3);
+    if (nh3St === 'danger' || nh3St === 'warning') {
+      issues.push({
+        name: 'Khí độc NH3',
+        value: `${nh3} mg/L`,
+        status: nh3St,
+        recommendation:
+          nh3St === 'danger'
+            ? 'Cắt ngay 50% thức ăn, tạt Yucca hoặc vi sinh xử lý đáy ao khẩn cấp để hấp thụ khí độc'
+            : 'Tăng cường quạt nước, kiểm tra xi-phông đáy ao sạch sẽ bùn bã hữu cơ',
+      });
+    }
+
+    const h2s = numVal('h2s');
+    const h2sSt = getH2sStatus(h2s);
+    if (h2sSt === 'danger' || h2sSt === 'warning') {
+      issues.push({
+        name: 'Khí độc H2S',
+        value: `${h2s} mg/L`,
+        status: h2sSt,
+        recommendation: 'Giữ pH > 7.8, rải vôi/oxy viên vùng đáy ao tích tụ mùn bã, tạt vi sinh đối kháng vi khuẩn đáy',
+      });
+    }
+
+    const trans = numVal('transparency');
+    const transSt = getTransparencyStatus(trans);
+    if (transSt === 'danger' || transSt === 'warning') {
+      issues.push({
+        name: 'Độ trong',
+        value: `${trans} cm`,
+        status: transSt,
+        recommendation:
+          trans !== null && trans < 20
+            ? 'Tảo nở hoa quá dày, nguy cơ sụp tảo, cần dùng vi sinh cắt tảo hoặc xả bớt nước mặt'
+            : 'Nước quá trong nghèo dinh dưỡng, cần gây màu nước bằng khoáng chất và men vi sinh',
+      });
+    }
+
+    const colorSt = getWaterColorStatus(form.waterColor);
+    if (colorSt === 'danger' || colorSt === 'warning') {
+      issues.push({
+        name: 'Màu nước',
+        value: form.waterColor,
+        status: colorSt,
+        recommendation: 'Màu nước bất thường cảnh báo tảo tàn hoặc ô nhiễm hữu cơ nặng, cần kiểm tra mẫu nước và xử lý',
+      });
+    }
+
+    return issues;
+  };
+
   // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!selectedPondId) {
@@ -432,11 +557,30 @@ export default function RecordWaterQualityScreen({
         note: form.note || undefined,
       });
 
-      setSnackbar({ visible: true, message: '✓ Ghi nhận thông số thành công!' });
-      setTimeout(() => {
-        setSnackbar({ visible: false, message: '' });
-        navigation?.goBack?.();
-      }, 2000);
+      const abnormalIssues = getAbnormalIssues();
+      if (abnormalIssues.length > 0) {
+        const hasDanger = abnormalIssues.some((i) => i.status === 'danger');
+        const detailLines = abnormalIssues
+          .map(
+            (i) =>
+              `• ${i.name} (${i.value}) [${i.status === 'danger' ? 'NGUY HIỂM' : 'CẢNH BÁO'}]:\n  → ${i.recommendation}`
+          )
+          .join('\n\n');
+
+        Alert.alert(
+          hasDanger
+            ? '🚨 Đã lưu — Phát hiện chỉ số NGUY HIỂM!'
+            : '⚠️ Đã lưu — Có chỉ số cần chú ý xử lý',
+          detailLines,
+          [{ text: 'Đã nắm rõ phác đồ', onPress: () => navigation?.goBack?.() }]
+        );
+      } else {
+        setSnackbar({ visible: true, message: '✓ Môi trường nước đạt chuẩn! Ghi nhận thành công.' });
+        setTimeout(() => {
+          setSnackbar({ visible: false, message: '' });
+          navigation?.goBack?.();
+        }, 1500);
+      }
     } catch (err: any) {
       setSnackbar({
         visible: true,

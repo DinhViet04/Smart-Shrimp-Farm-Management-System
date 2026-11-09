@@ -93,6 +93,14 @@ export default function NotificationButton({
     setUnreadCount(0);
   };
 
+  const handleDeleteNotification = async (item: AppNotification) => {
+    await notificationService.deleteNotification(item.id);
+    setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+    if (!item.isRead) {
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+  };
+
   const getLevelConfig = (level: string) => {
     switch (level) {
       case 'DANGER':
@@ -143,7 +151,17 @@ export default function NotificationButton({
             >
               {item.title}
             </Text>
-            {!item.isRead && <View style={styles.unreadDot} />}
+            <View style={styles.itemHeaderActions}>
+              {!item.isRead && <View style={styles.unreadDot} />}
+              <TouchableOpacity
+                style={styles.deleteItemBtn}
+                onPress={() => handleDeleteNotification(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Xóa thông báo"
+              >
+                <X size={14} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Text style={styles.itemMessage} numberOfLines={3}>
@@ -421,7 +439,16 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#16a34a',
+  },
+  itemHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginLeft: 6,
+  },
+  deleteItemBtn: {
+    padding: 2,
+    borderRadius: 6,
   },
   itemMessage: {
     fontSize: 13,

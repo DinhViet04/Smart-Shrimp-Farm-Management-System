@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from './apiClient';
+import { pondService } from './pondService';
 
 export interface ChatbotSource {
   title: string;
@@ -141,6 +142,19 @@ export const chatbotService = {
    * Fetch active ponds for context selection
    */
   async getPonds(): Promise<PondOption[]> {
+    try {
+      const overview = await pondService.getOverview();
+      if (Array.isArray(overview?.ponds) && overview.ponds.length > 0) {
+        return overview.ponds.map((p) => ({
+          id: p.id,
+          name: p.name,
+          farmId: p.farmId,
+        }));
+      }
+    } catch {
+      // Fallback to /ponds below
+    }
+
     try {
       const response = await apiClient.get<any[]>('/ponds');
       if (Array.isArray(response)) {

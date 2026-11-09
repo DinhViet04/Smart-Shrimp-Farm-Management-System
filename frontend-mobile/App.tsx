@@ -39,7 +39,7 @@ function RootNavigator() {
     );
   }
 
-  // Phân quyền theo role khi đã đăng nhập
+  // Phân quyền theo 3 role trên Mobile khi đã đăng nhập
   const renderRoleNavigator = () => {
     if (userRole === 'TECHNICIAN') return <TechnicianNavigator />;
     if (userRole === 'FARMER') return <FarmerNavigator />;

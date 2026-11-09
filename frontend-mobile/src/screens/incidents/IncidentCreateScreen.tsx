@@ -33,7 +33,7 @@ import {
 
 export default function IncidentCreateScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { userRole } = useContext(AuthContext);
-  const isManager = userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
+  const isManager = userRole === 'FARM_MANAGER';
 
   // State
   const [locationType, setLocationType] = useState<'pond' | 'facility'>('pond');
@@ -115,12 +115,12 @@ export default function IncidentCreateScreen({ navigation }: { navigation: { goB
       const selectedPond = ponds.find((p) => p.id === selectedPondId);
       const computedLocation =
         locationType === 'pond'
-          ? `Ao: ${selectedPond?.name || selectedPondId}${locationDetail ? ` (${locationDetail.trim()})` : ''}`
-          : `${facilityArea}${locationDetail ? ` - ${locationDetail.trim()}` : ''}`;
+          ? `${selectedPond?.name || 'Ao nuôi'}${locationDetail.trim() ? ` (${locationDetail.trim()})` : ''}`
+          : `${facilityArea}${locationDetail.trim() ? ` - ${locationDetail.trim()}` : ''}`;
 
       const payload: any = {
-        title: `[${category}] ${title.trim()}`,
-        description: `[Mức độ: ${severity}]\n[Vị trí: ${computedLocation}]\n${description.trim()}`,
+        title: title.trim(),
+        description: description.trim(),
         category,
         severity,
         location: computedLocation,

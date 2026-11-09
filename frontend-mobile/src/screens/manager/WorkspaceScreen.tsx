@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Alert,
   SafeAreaView,
 } from 'react-native';
 import {
@@ -19,6 +18,7 @@ import {
   Sprout,
   Shield,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react-native';
 import { apiClient } from '../../services/apiClient';
 import { UserProfile } from '../../services/userService';
@@ -35,6 +35,18 @@ const fmtDate = (d?: string) => {
   try { return new Date(d).toLocaleDateString('vi-VN'); } catch { return d; }
 };
 
+interface WorkspaceSummary {
+  id: string;
+  name: string;
+}
+
+interface WorkspaceMemberResponse {
+  id: string;
+  isActive: boolean;
+  joinedAt: string;
+  user: UserProfile & { isActive?: boolean };
+}
+
 export default function WorkspaceScreen() {
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [filtered, setFiltered] = useState<UserProfile[]>([]);
@@ -42,21 +54,31 @@ export default function WorkspaceScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadMembers = useCallback(async () => {
     try {
-      // Fetch workspace members — endpoint returns array of users in the same workspace
-      const data = await apiClient.get<UserProfile[]>('/users/workspace');
-      setMembers(data);
+      setLoadError(null);
+      const workspaces = await apiClient.get<WorkspaceSummary[]>('/workspaces');
+      const memberGroups = await Promise.all(
+        workspaces.map(async (workspace) => {
+          const workspaceMembers = await apiClient.get<WorkspaceMemberResponse[]>(
+            `/workspaces/${workspace.id}/members`,
+          );
+          return workspaceMembers.map((member) => ({
+            ...member.user,
+            status: member.isActive && member.user.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+            createdAt: member.joinedAt,
+          }));
+        }),
+      );
+      const uniqueMembers = Array.from(
+        new Map(memberGroups.flat().map((member) => [member.id, member])).values(),
+      );
+      setMembers(uniqueMembers);
     } catch (err: any) {
-      // Fallback: try general users list
-      try {
-        const data = await apiClient.get<UserProfile[]>('/users');
-        setMembers(Array.isArray(data) ? data : []);
-      } catch (err2: any) {
-        Alert.alert('Lỗi', err2?.message || 'Không thể tải danh sách nhân sự.');
-        setMembers([]);
-      }
+      setLoadError(err?.message || 'Không thể tải danh sách nhân sự.');
+      setMembers([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -139,6 +161,19 @@ export default function WorkspaceScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <View style={styles.loadingContainer}>
+        <AlertCircle size={36} color="#dc2626" />
+        <Text style={styles.errorTitle}>Không tải được danh sách nhân sự</Text>
+        <Text style={styles.errorText}>{loadError}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadMembers}>
+          <Text style={styles.retryButtonText}>Thử lại</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Summary */}
@@ -212,6 +247,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { marginTop: 10, color: '#64748b', fontSize: 14 },
+  errorTitle: { marginTop: 12, color: '#991b1b', fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  errorText: { marginTop: 6, color: '#64748b', fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
+  retryButton: {
+    marginTop: 14, minHeight: 44, paddingHorizontal: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563eb',
+  },
+  retryButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
 
   summaryRow: {
     flexDirection: 'row', backgroundColor: '#ffffff',

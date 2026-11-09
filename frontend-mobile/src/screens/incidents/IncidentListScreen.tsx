@@ -1,7 +1,8 @@
-import React, { useCallback, useContext, useState, useMemo } from 'react';
+import React, { useCallback, useContext, useState, useMemo, useEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -34,15 +35,14 @@ import {
   isFarmInfrastructureIncident,
   formatDate,
 } from '../../constants/farmIncidentConstants';
-import HeaderLogo from '../../components/HeaderLogo';
-import NotificationButton from '../../components/NotificationButton';
+import BusinessHeader from '../../components/BusinessHeader';
 
 type MainStatusTab = 'all' | 'open' | 'treating' | 'resolved';
 
 export default function IncidentListScreen({ navigation }: { navigation: any }) {
   const { userRole, userId } = useContext(AuthContext);
 
-  const isManager = userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
+  const isManager = userRole === 'FARM_MANAGER';
   const isTechnician = userRole === 'TECHNICIAN';
   const isFarmer = userRole === 'FARMER';
 
@@ -55,10 +55,12 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
   const [statusTab, setStatusTab] = useState<MainStatusTab>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [search, setSearch] = useState<string>('');
+  const [page, setPage] = useState<number>(0);
+  const PAGE_SIZE = 10;
 
-  // Sub-View for Tech or Farmer: 'assigned_to_me' vs 'all_reports'
-  const [staffViewMode, setStaffViewMode] = useState<'assigned_to_me' | 'all_reports'>(
-    isTechnician ? 'assigned_to_me' : 'all_reports'
+  // Sub-View for Technician: 'assigned_to_me' vs 'my_reports' (matching Web FarmIncidentDashboard)
+  const [staffViewMode, setStaffViewMode] = useState<'assigned_to_me' | 'my_reports'>(
+    'assigned_to_me'
   );
 
   const loadIncidents = useCallback(async () => {
@@ -67,6 +69,7 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
     try {
       const res = await incidentService.getAll({
         size: '150',
+        reportedByMe: isFarmer ? true : undefined,
       });
       const list = Array.isArray(res)
         ? res
@@ -80,7 +83,7 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isFarmer]);
 
   useFocusEffect(
     useCallback(() => {
@@ -93,36 +96,29 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
     return items.filter((i) => isFarmInfrastructureIncident(i.title, i.description));
   }, [items]);
 
-  // 2. ROLE SCOPING
+  // 2. ROLE SCOPING (Synced with Web FarmIncidentDashboard)
   const roleScopedIncidents = useMemo(() => {
     // MANAGER: Sees ALL farm incidents across all ponds & facilities
     if (isManager) {
       return farmOnlyIncidents;
     }
 
-    // TECHNICIAN: Can view assigned tasks or all reports
+    // TECHNICIAN: Toggles between 'assigned_to_me' and 'my_reports'
     if (isTechnician) {
       if (staffViewMode === 'assigned_to_me') {
         return farmOnlyIncidents.filter(
           (i) => i.assignedToId === userId || i.assignedTo?.id === userId
         );
       }
-      return farmOnlyIncidents;
+      return farmOnlyIncidents.filter(
+        (i) => i.reporter?.id === userId || (i as any).reporterId === userId
+      );
     }
 
-    // FARMER: Sees reported by self OR assigned to self
+    // FARMER: Only sees incidents reported by self
     if (isFarmer) {
-      if (staffViewMode === 'assigned_to_me') {
-        return farmOnlyIncidents.filter(
-          (i) => i.assignedToId === userId || i.assignedTo?.id === userId
-        );
-      }
       return farmOnlyIncidents.filter(
-        (i) =>
-          i.reporter?.id === userId ||
-          (i as any).reporterId === userId ||
-          i.assignedToId === userId ||
-          i.assignedTo?.id === userId
+        (i) => i.reporter?.id === userId || (i as any).reporterId === userId
       );
     }
 
@@ -184,6 +180,16 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
       return true;
     });
   }, [currentTabIncidents, selectedCategory, search]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [statusTab, selectedCategory, search, staffViewMode]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE));
+  const paginatedIncidents = useMemo(() => {
+    const start = page * PAGE_SIZE;
+    return filteredIncidents.slice(start, start + PAGE_SIZE);
+  }, [filteredIncidents, page]);
 
   const counts = {
     all: roleScopedIncidents.length,
@@ -325,13 +331,7 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Top Header */}
-      <View style={styles.topHeader}>
-        <HeaderLogo size={32} showText={true} textColor="#dc2626" />
-        <Text style={styles.topHeaderTitle}>
-          {isManager ? 'Quản lý sự cố trang trại' : 'Sự cố cơ sở hạ tầng'}
-        </Text>
-        <NotificationButton color="#dc2626" size={22} />
-      </View>
+      <BusinessHeader title={isManager ? 'Quản lý sự cố' : 'Sự cố cơ sở hạ tầng'} />
 
       <View style={styles.container}>
         {/* Search Bar (Manager only views; Farmer and Technician can report) */}
@@ -360,8 +360,8 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
           )}
         </View>
 
-        {/* Staff Sub-View Toggle (For Technician or Farmer) */}
-        {(isTechnician || isFarmer) && (
+        {/* Staff Sub-View Toggle (For Technician only: Assigned to me vs My reports) */}
+        {isTechnician && (
           <View style={styles.toggleRow}>
             <TouchableOpacity
               style={[
@@ -381,29 +381,29 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
                   staffViewMode === 'assigned_to_me' && styles.toggleBtnTextActive,
                 ]}
               >
-                Giao cho tôi
+                Nhiệm vụ được giao
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
                 styles.toggleBtn,
-                staffViewMode === 'all_reports' && styles.toggleBtnActive,
+                staffViewMode === 'my_reports' && styles.toggleBtnActive,
               ]}
-              onPress={() => setStaffViewMode('all_reports')}
+              onPress={() => setStaffViewMode('my_reports')}
               activeOpacity={0.8}
             >
               <Building2
                 size={14}
-                color={staffViewMode === 'all_reports' ? '#ffffff' : '#64748b'}
+                color={staffViewMode === 'my_reports' ? '#ffffff' : '#64748b'}
               />
               <Text
                 style={[
                   styles.toggleBtnText,
-                  staffViewMode === 'all_reports' && styles.toggleBtnTextActive,
+                  staffViewMode === 'my_reports' && styles.toggleBtnTextActive,
                 ]}
               >
-                {isFarmer ? 'Sự cố tôi gửi' : 'Tất cả sự cố'}
+                Báo cáo của tôi
               </Text>
             </TouchableOpacity>
           </View>
@@ -472,9 +472,13 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
           </View>
         ) : (
           <FlatList
-            data={filteredIncidents}
+            data={paginatedIncidents}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            removeClippedSubviews={Platform.OS === 'android'}
             refreshControl={
               <RefreshControl refreshing={loading} onRefresh={loadIncidents} colors={['#dc2626']} />
             }
@@ -485,8 +489,8 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
               <View style={styles.emptyBox}>
                 <CheckCircle2 size={44} color="#10b981" />
                 <Text style={styles.emptyTitle}>
-                  {isFarmer && staffViewMode === 'assigned_to_me'
-                    ? 'Bạn chưa có nhiệm vụ nào được giao'
+                  {isFarmer
+                    ? 'Bạn chưa gửi báo cáo sự cố nào'
                     : isTechnician && staffViewMode === 'assigned_to_me'
                     ? 'Hiện bạn chưa có sự cố nào được phân công'
                     : 'Không có sự cố nào trong danh mục này'}
@@ -508,6 +512,32 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
                 )}
               </View>
             }
+            ListFooterComponent={
+              totalPages > 1 ? (
+                <View style={styles.paginationRow}>
+                  <TouchableOpacity
+                    style={[styles.pageButton, page === 0 && styles.pageButtonDisabled]}
+                    onPress={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                  >
+                    <Text style={styles.pageButtonText}>◀</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.pageIndicator}>
+                    Trang {page + 1} / {totalPages}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.pageButton,
+                      page === totalPages - 1 && styles.pageButtonDisabled,
+                    ]}
+                    onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={page === totalPages - 1}
+                  >
+                    <Text style={styles.pageButtonText}>▶</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null
+            }
           />
         )}
       </View>
@@ -519,21 +549,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#ffffff',
-  },
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#fee2e2',
-  },
-  topHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
   },
   container: {
     flex: 1,
@@ -841,5 +856,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#d97706',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 14,
+  },
+  pageButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pageButtonDisabled: {
+    opacity: 0.4,
+  },
+  pageButtonText: {
+    fontSize: 12,
+    color: '#dc2626',
+    fontWeight: '700',
+  },
+  pageIndicator: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
   },
 });

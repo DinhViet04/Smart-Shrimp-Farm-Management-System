@@ -50,7 +50,7 @@ export default function IncidentDetailScreen({
   const { incidentId } = route.params;
   const { userRole, userId } = useContext(AuthContext);
 
-  const isManager = userRole === 'FARM_MANAGER' || userRole === 'ADMIN';
+  const isManager = userRole === 'FARM_MANAGER';
 
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,13 +92,13 @@ export default function IncidentDetailScreen({
     loadDetail();
   }, [loadDetail]);
 
-  // Load staff (both TECHNICIAN and FARMER) when manager opens assign modal
+  // Load technicians when manager opens assign modal
   const handleOpenAssignModal = async () => {
     if (!incident) return;
     setShowAssignModal(true);
     setSelectedStaffId(incident.assignedToId || '');
     setAssignNote('');
-    setStaffRoleFilter('ALL');
+    setStaffRoleFilter('TECHNICIAN');
     setLoadingStaff(true);
 
     try {
@@ -109,26 +109,20 @@ export default function IncidentDetailScreen({
         setStaffList(list);
       }
     } catch (err) {
-      console.warn('Lỗi tải danh sách nhân sự trang trại:', err);
+      console.warn('Lỗi tải danh sách kỹ thuật viên trang trại:', err);
     } finally {
       setLoadingStaff(false);
     }
   };
 
-  // Filtered staff list in modal
+  // Filtered staff list in modal (only TECHNICIAN as enforced by backend)
   const filteredStaffList = useMemo(() => {
-    if (staffRoleFilter === 'TECHNICIAN') {
-      return staffList.filter((s) => s.role === 'TECHNICIAN');
-    }
-    if (staffRoleFilter === 'FARMER') {
-      return staffList.filter((s) => s.role === 'FARMER');
-    }
-    return staffList;
-  }, [staffList, staffRoleFilter]);
+    return staffList.filter((s) => s.role === 'TECHNICIAN');
+  }, [staffList]);
 
   const handleAssignSubmit = async () => {
     if (!incident || !selectedStaffId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn nhân sự (Kỹ thuật viên hoặc Công nhân) phụ trách.');
+      Alert.alert('Thông báo', 'Vui lòng chọn Kỹ thuật viên phụ trách.');
       return;
     }
     setSaving(true);
@@ -564,7 +558,7 @@ export default function IncidentDetailScreen({
         )}
       </ScrollView>
 
-      {/* Assign Modal for Manager: Supports assigning to BOTH TECHNICIAN and FARMER */}
+      {/* Assign Modal for Manager: Assigns to TECHNICIAN (matching Web & Backend) */}
       <Modal visible={showAssignModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -572,7 +566,7 @@ export default function IncidentDetailScreen({
               <View>
                 <Text style={styles.modalTitle}>Phân công xử lý sự cố</Text>
                 <Text style={styles.modalSubtitle}>
-                  Chọn Kỹ thuật viên (Tech) hoặc Công nhân (Farmer) phụ trách
+                  Chọn Kỹ thuật viên phụ trách xử lý sự cố tại hiện trường ({filteredStaffList.length})
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowAssignModal(false)}>
@@ -580,41 +574,14 @@ export default function IncidentDetailScreen({
               </TouchableOpacity>
             </View>
 
-            {/* Role Filter Tabs inside Modal */}
-            <View style={styles.modalRoleTabs}>
-              {[
-                ['ALL', `Tất cả (${staffList.length})`],
-                ['TECHNICIAN', `Kỹ thuật (${staffList.filter((s) => s.role === 'TECHNICIAN').length})`],
-                ['FARMER', `Công nhân (${staffList.filter((s) => s.role === 'FARMER').length})`],
-              ].map(([key, label]) => {
-                const isActive = staffRoleFilter === key;
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.modalRoleTab, isActive && styles.modalRoleTabActive]}
-                    onPress={() => setStaffRoleFilter(key as StaffRoleFilter)}
-                  >
-                    <Text
-                      style={[
-                        styles.modalRoleTabText,
-                        isActive && styles.modalRoleTabTextActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
             {loadingStaff ? (
               <View style={styles.centerBox}>
                 <ActivityIndicator size="small" color="#dc2626" />
-                <Text style={styles.loadingText}>Đang tải danh sách nhân sự...</Text>
+                <Text style={styles.loadingText}>Đang tải danh sách kỹ thuật viên...</Text>
               </View>
             ) : filteredStaffList.length === 0 ? (
               <View style={styles.emptyStaffBox}>
-                <Text style={styles.emptyStaffText}>Không có nhân sự nào trong mục này</Text>
+                <Text style={styles.emptyStaffText}>Trang trại chưa có Kỹ thuật viên nào đang hoạt động</Text>
               </View>
             ) : (
               <ScrollView style={styles.techList}>

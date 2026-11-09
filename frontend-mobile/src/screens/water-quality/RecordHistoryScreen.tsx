@@ -194,9 +194,12 @@ export default function RecordHistoryScreen() {
     [userToken, selectedFarmId, selectedPondId, fromDate, toDate, page, size, sortOrder],
   );
 
+  // Tăng mỗi lần bấm Tìm kiếm / Đặt lại để effect tải lại với bộ lọc MỚI
+  const [searchVersion, setSearchVersion] = useState(0);
+
   useEffect(() => {
     fetchHistory();
-  }, [page, sortOrder]);
+  }, [page, sortOrder, searchVersion]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -206,7 +209,7 @@ export default function RecordHistoryScreen() {
   const handleSearch = () => {
     setPage(0);
     setShowFilters(false);
-    fetchHistory();
+    setSearchVersion((v) => v + 1);
   };
 
   const handleReset = () => {
@@ -217,6 +220,7 @@ export default function RecordHistoryScreen() {
     setPage(0);
     setSortOrder('desc');
     setShowFilters(false);
+    setSearchVersion((v) => v + 1);
   };
 
   const totalPages = Math.ceil(totalElements / size);

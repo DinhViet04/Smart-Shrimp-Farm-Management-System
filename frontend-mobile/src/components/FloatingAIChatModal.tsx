@@ -16,11 +16,11 @@ import ChatbotScreen from '../screens/ChatbotScreen';
 const MASCOT_IMAGE = require('../../assets/images/shrimp-mascot.jpg');
 
 // Kích thước bong bóng và khoảng cách mép an toàn
-const BUTTON_SIZE = 62;
+const BUTTON_SIZE = 50;
 const SCREEN_MARGIN = 14; // Giữ mép 14px để bong bóng luôn trọn vẹn 100% trên màn hình, KHÔNG bị mất góc
-const STORAGE_KEY = '@ssfm_floating_messenger_pos';
+const STORAGE_KEY = '@ssfm_floating_messenger_pos_v2';
 const TAB_H = Platform.OS === 'ios' ? 82 : 62;
-const DISMISS_SIZE = 54;
+const DISMISS_SIZE = 48;
 
 // Trạng thái mờ khi nghỉ (idle) và sáng khi kích hoạt (active)
 const IDLE_OPACITY = 0.38;
@@ -34,7 +34,10 @@ function dims() {
 
 function getDefaultPos() {
   const { W, H } = dims();
-  return { x: W - BUTTON_SIZE - SCREEN_MARGIN, y: H * 0.52 };
+  return {
+    x: W - BUTTON_SIZE - SCREEN_MARGIN,
+    y: H - BUTTON_SIZE - TAB_H - 28,
+  };
 }
 
 // Tính toán vị trí snap về cạnh màn hình gần nhất, đảm bảo hiển thị trọn vẹn toàn bộ hình tròn
@@ -65,6 +68,12 @@ function isInDismissZone(x: number, y: number) {
 }
 
 interface FloatingAIChatModalProps { }
+
+let openAIChatListener: (() => void) | null = null;
+
+export function requestOpenAIChat() {
+  openAIChatListener?.();
+}
 
 export default function FloatingAIChatModal(_props: FloatingAIChatModalProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -140,6 +149,28 @@ export default function FloatingAIChatModal(_props: FloatingAIChatModalProps) {
       }
     };
   }, [startIdleTimer]);
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', () => {
+      const safePos = snapToEdge(panOffset.current.x, panOffset.current.y);
+      pan.setValue(safePos);
+      panOffset.current = safePos;
+    });
+
+    return () => subscription.remove();
+  }, [pan]);
+
+  useEffect(() => {
+    openAIChatListener = () => {
+      setIsVisible(true);
+      scaleAnim.setValue(1);
+      wakeUpBubble();
+      setIsOpen(true);
+    };
+    return () => {
+      openAIChatListener = null;
+    };
+  }, [scaleAnim, wakeUpBubble]);
 
   // Vòng lặp nhịp thở nhẹ (Breathing pulse ring)
   useEffect(() => {

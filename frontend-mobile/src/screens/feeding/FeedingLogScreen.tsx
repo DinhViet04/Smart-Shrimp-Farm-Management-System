@@ -1,16 +1,19 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  FlatList,
+  Platform,
   TouchableOpacity,
   TextInput,
   Alert,
   ActivityIndicator,
   StatusBar,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import {
   Utensils,
@@ -25,7 +28,7 @@ import {
   Edit3,
   Divide,
   Package,
-  ArrowLeft,
+  AlertCircle,
 } from 'lucide-react-native';
 import { pondService, OverviewPond, OverviewCrop } from '../../services/pondService';
 import {
@@ -36,15 +39,17 @@ import {
   DailyFeedingGroup,
 } from '../../services/feedingLogService';
 import { inventoryService, InventoryItem } from '../../services/inventoryService';
-import HeaderLogo from '../../components/HeaderLogo';
-import NotificationButton from '../../components/NotificationButton';
+import BusinessHeader from '../../components/BusinessHeader';
+import { toLocalDateString, shiftLocalDate } from '../../utils/date';
 
 interface FeedingLogScreenProps {
   navigation?: any;
   route?: any;
 }
 
-export default function FeedingLogScreen({ navigation, route }: FeedingLogScreenProps) {
+export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 420;
   const [activeSubTab, setActiveSubTab] = useState<'RECORD' | 'HISTORY'>('RECORD');
   const [ponds, setPonds] = useState<OverviewPond[]>([]);
   const [crops, setCrops] = useState<OverviewCrop[]>([]);
@@ -57,12 +62,13 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Feeding Form State
-  const [feedingDate, setFeedingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [feedingDate, setFeedingDate] = useState(() => toLocalDateString());
   const [selectedFeedProductId, setSelectedFeedProductId] = useState<string>('');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('7_SESSIONS');
   const [batchFeedAmount, setBatchFeedAmount] = useState<string>('');
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [loadingDailyDetails, setLoadingDailyDetails] = useState<boolean>(false);
+  const [dailyDetailsError, setDailyDetailsError] = useState<string | null>(null);
 
   // Active status map of 7 sessions
   const [activeSessionsMap, setActiveSessionsMap] = useState<Record<string, boolean>>(() => {
@@ -88,24 +94,27 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
   // Feeding History State
   const [historyGroups, setHistoryGroups] = useState<DailyFeedingGroup[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historyPage, setHistoryPage] = useState<number>(0);
+  const HISTORY_PAGE_SIZE = 10;
 
   // Initialize data on mount
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [overview, feeds] = await Promise.all([
-        pondService.getOverview(),
-        inventoryService.getInventory('FEED'),
-      ]);
-      setPonds(overview.ponds || []);
+      const overview = await pondService.getOverview();
+      const pondList = overview.ponds || [];
+      setPonds(pondList);
       setCrops(overview.crops || []);
-      setFeedProducts(feeds || []);
 
-      if (overview.ponds?.length > 0) {
-        const paramPond = overview.ponds.find((p) => p.id === route?.params?.pondId);
-        const targetId = paramPond ? paramPond.id : overview.ponds[0].id;
-        setSelectedPondId(targetId);
+      let targetPond = pondList[0];
+      if (pondList.length > 0) {
+        const paramPond = pondList.find((p) => p.id === route?.params?.pondId);
+        targetPond = paramPond || pondList[0];
+        setSelectedPondId(targetPond.id);
       }
+
+      const feeds = await inventoryService.getInventory('FEED', undefined, targetPond?.farmId);
+      setFeedProducts(feeds || []);
       if (feeds?.length > 0) {
         setSelectedFeedProductId(feeds[0].id);
         setSessions((prev) =>
@@ -135,11 +144,28 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
     (c) => c.pondId === selectedPondId && c.status === 'ACTIVE'
   );
 
+  // Reload feed products when switching to a pond belonging to another farm
+  useEffect(() => {
+    if (!activePond?.farmId) return;
+    inventoryService
+      .getInventory('FEED', undefined, activePond.farmId)
+      .then((feeds) => {
+        const list = feeds || [];
+        setFeedProducts(list);
+        if (list.length > 0 && !list.some((f) => f.id === selectedFeedProductId)) {
+          setSelectedFeedProductId(list[0].id);
+          setSessions((prev) => prev.map((s) => ({ ...s, feedProductId: list[0].id })));
+        }
+      })
+      .catch(() => {});
+  }, [activePond?.farmId]);
+
   // Auto Load Existing Daily Feeding Details When Date or Pond Changes
   const loadDailyDetails = useCallback(async () => {
     if (!selectedPondId || !feedingDate) return;
     try {
       setLoadingDailyDetails(true);
+      setDailyDetailsError(null);
       const existingLogs = await feedingLogService.getDailyDetails(selectedPondId, feedingDate);
       if (Array.isArray(existingLogs) && existingLogs.length > 0) {
         setIsEditMode(true);
@@ -174,7 +200,10 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
           }))
         );
       }
-    } catch (e) {
+    } catch (e: any) {
+      setDailyDetailsError(
+        e?.message || 'Không thể tải nhật ký hiện tại. Vui lòng thử lại.',
+      );
       console.warn('Error fetching daily feeding details:', e);
     } finally {
       setLoadingDailyDetails(false);
@@ -194,15 +223,22 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
       setLoadingHistory(true);
       const res = await feedingLogService.getAllGrouped({
         pondId: selectedPondId,
-        size: 30,
+        size: 120,
       });
       setHistoryGroups(res.data || []);
+      setHistoryPage(0);
     } catch (e) {
       console.warn('Error fetching feeding history:', e);
     } finally {
       setLoadingHistory(false);
     }
   }, [selectedPondId]);
+
+  const totalHistoryPages = Math.max(1, Math.ceil(historyGroups.length / HISTORY_PAGE_SIZE));
+  const paginatedHistoryGroups = useMemo(() => {
+    const start = historyPage * HISTORY_PAGE_SIZE;
+    return historyGroups.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [historyGroups, historyPage]);
 
   useEffect(() => {
     if (activeSubTab === 'HISTORY') {
@@ -211,13 +247,11 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
   }, [activeSubTab, loadFeedingHistory]);
 
   const adjustDate = (daysDelta: number) => {
-    const current = new Date(feedingDate);
-    current.setDate(current.getDate() + daysDelta);
-    setFeedingDate(current.toISOString().slice(0, 10));
+    setFeedingDate(shiftLocalDate(feedingDate, daysDelta));
   };
 
   const isToday = useMemo(() => {
-    return feedingDate === new Date().toISOString().slice(0, 10);
+    return feedingDate === toLocalDateString();
   }, [feedingDate]);
 
   const handleSessionChange = (index: number, field: keyof SingleSessionPayload, value: any) => {
@@ -258,10 +292,6 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
   const handleDistributeFeed = () => {
     const totalKg = parseFloat(batchFeedAmount);
     if (isNaN(totalKg) || totalKg <= 0) {
-      Alert.alert('Chưa hợp lệ', 'Vui lòng nhập tổng lượng thức ăn cả ngày (kg) là số dương.');
-      return;
-    }
-    if (isNaN(totalKg) || totalKg <= 0) {
       Alert.alert('Số lượng không hợp lệ', 'Tổng lượng thức ăn cần chia phải là số dương (> 0 kg).');
       return;
     }
@@ -277,16 +307,22 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
       return;
     }
 
-    const perSession = parseFloat((totalKg / activeIndices.length).toFixed(1));
+    const N = activeIndices.length;
+    const basePerSession = Math.ceil((totalKg / N) * 100) / 100;
+    const sumFirst = basePerSession * (N - 1);
+    const lastSessionAmount = parseFloat((totalKg - sumFirst).toFixed(2));
+
     setSessions((prev) =>
       prev.map((s, idx) => {
-        if (activeIndices.includes(idx)) {
-          return { ...s, feedAmount: perSession };
+        const pos = activeIndices.indexOf(idx);
+        if (pos !== -1) {
+          const amt = pos < N - 1 ? basePerSession : lastSessionAmount;
+          return { ...s, feedAmount: amt, feedingStatus: 'COMPLETED' };
         }
         return s;
       })
     );
-    Alert.alert('Đã chia đều', `Đã chia ${totalKg} kg đều cho ${activeIndices.length} cữ ăn (~${perSession} kg/cữ).`);
+    Alert.alert('Đã chia đều', `Đã chia chính xác ${totalKg} kg cho ${N} cữ đang bật!`);
   };
 
   const handleSubmitFeeding = async () => {
@@ -319,28 +355,29 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
       return;
     }
 
-    // 5. Chuẩn bị payload và validate số liệu từng cữ
+    // 5. Chuẩn bị payload cho đầy đủ 7 cữ (như Web) để các cữ bị tắt được reset về SKIPPED (0 kg) và hoàn kho
+    const hasAnyActive = sessions.some((s) => activeSessionsMap[s.feedingSession] ?? true);
+    if (!hasAnyActive) {
+      Alert.alert('Chưa có cữ ăn', 'Vui lòng bật ít nhất một cữ ăn hoạt động.');
+      return;
+    }
+
     const activePayload: SingleSessionPayload[] = [];
     for (const s of sessions) {
       const isActive = activeSessionsMap[s.feedingSession] ?? true;
-      if (!isActive) continue;
-
       const amt = Number(s.feedAmount);
-      if (s.feedingStatus !== 'SKIPPED' && (isNaN(amt) || amt < 0)) {
+      if (isActive && s.feedingStatus !== 'SKIPPED' && (isNaN(amt) || amt < 0)) {
         Alert.alert('Số liệu không hợp lệ', `Lượng thức ăn cữ ${s.feedingSession.replace('SESSION_', '')} không được là số âm.`);
         return;
       }
 
+      const isCompletedSession = isActive && s.feedingStatus !== 'SKIPPED';
       activePayload.push({
         ...s,
         feedProductId: s.feedProductId || selectedFeedProductId,
-        feedAmount: s.feedingStatus === 'SKIPPED' ? 0 : Math.max(0, amt || 0),
+        feedingStatus: isCompletedSession ? 'COMPLETED' : 'SKIPPED',
+        feedAmount: isCompletedSession ? Math.max(0, amt || 0) : 0,
       });
-    }
-
-    if (activePayload.length === 0) {
-      Alert.alert('Chưa có cữ ăn', 'Vui lòng bật ít nhất một cữ ăn hoạt động.');
-      return;
     }
 
     // 6. Kiểm tra tồn kho thức ăn (Stock Deficit Check y như Web)
@@ -373,9 +410,14 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
         sessions: activePayload,
       });
       setIsEditMode(true);
+      inventoryService
+        .getInventory('FEED', undefined, activePond.farmId)
+        .then((feeds) => setFeedProducts(feeds || []))
+        .catch(() => {});
+      const completedCount = activePayload.filter((s) => s.feedingStatus !== 'SKIPPED').length;
       Alert.alert(
         'Thành công',
-        `Đã lưu nhật ký cho ăn ngày ${feedingDate} (${activePayload.length} cữ • Tổng: ${totalDailyFeedKg.toFixed(1)} kg). Lượng thức ăn đã được ghi nhận trừ kho!`
+        `Đã lưu nhật ký cho ăn ngày ${feedingDate} (${completedCount} cữ • Tổng: ${totalDailyFeedKg.toFixed(2)} kg). Lượng thức ăn đã được ghi nhận trừ kho!`
       );
     } catch (e: any) {
       Alert.alert('Thất bại', e.message || 'Lỗi khi lưu nhật ký cho ăn.');
@@ -402,6 +444,10 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                 group.feedingDate
               );
               Alert.alert('Thành công', 'Đã xóa nhật ký cho ăn.');
+              inventoryService
+                .getInventory('FEED', undefined, group.farmId || activePond?.farmId)
+                .then((feeds) => setFeedProducts(feeds || []))
+                .catch(() => {});
               loadFeedingHistory();
               if (feedingDate === group.feedingDate) {
                 loadDailyDetails();
@@ -420,17 +466,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <HeaderLogo size={36} showText={false} />
-          <View style={styles.headerTitleBlock}>
-            <Text style={styles.headerTitle}>Nhật Ký Cho Ăn</Text>
-            <Text style={styles.headerSubtitle}>
-              Ghi nhận cữ ăn hàng ngày • Quản lý lượng thức ăn ao nuôi
-            </Text>
-          </View>
-        </View>
-      </View>
+      <BusinessHeader title="Nhật ký cho ăn" />
 
       {/* Pond Selector Horizontal Bar */}
       <View style={styles.pondSelectorBar}>
@@ -465,7 +501,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
         >
           <Utensils size={15} color={activeSubTab === 'RECORD' ? '#0d9488' : '#64748b'} />
           <Text style={[styles.subTabText, activeSubTab === 'RECORD' && styles.subTabTextActive]}>
-            Ghi nhận cho ăn
+            Ghi nhận
           </Text>
         </TouchableOpacity>
 
@@ -475,7 +511,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
         >
           <History size={15} color={activeSubTab === 'HISTORY' ? '#0d9488' : '#64748b'} />
           <Text style={[styles.subTabText, activeSubTab === 'HISTORY' && styles.subTabTextActive]}>
-            Lịch sử cho ăn
+            Lịch sử
           </Text>
         </TouchableOpacity>
       </View>
@@ -486,7 +522,18 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
           <ActivityIndicator size="large" color="#0d9488" />
           <Text style={styles.loadingText}>Đang tải dữ liệu nhật ký cho ăn...</Text>
         </View>
-      ) : (
+      ) : ponds.length === 0 ? (
+        <View style={styles.emptyAssignmentState}>
+          <Waves size={34} color="#94a3b8" />
+          <Text style={styles.emptyAssignmentTitle}>Chưa có ao được phân công</Text>
+          <Text style={styles.emptyAssignmentText}>
+            Liên hệ quản lý trang trại để được thêm vào workspace và phân công ao nuôi.
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadInitialData}>
+            <Text style={styles.retryButtonText}>Tải lại danh sách</Text>
+          </TouchableOpacity>
+        </View>
+      ) : activeSubTab === 'RECORD' ? (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -502,7 +549,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
         >
           {/* Active Pond Status Banner */}
           <View style={styles.pondStatusBanner}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <View style={styles.bannerHeaderRow}>
                 <Text style={styles.statusBannerTitle}>
                   {activePond ? activePond.name : 'Chưa chọn ao'}
@@ -522,7 +569,19 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
           </View>
 
           {/* ════════════ SUB-TAB 1: RECORD FEEDING ════════════ */}
-          {activeSubTab === 'RECORD' ? (
+          {dailyDetailsError ? (
+              <View style={styles.loadErrorCard}>
+                <AlertCircle size={28} color="#dc2626" />
+                <Text style={styles.loadErrorTitle}>Không tải được nhật ký hiện tại</Text>
+                <Text style={styles.loadErrorText}>{dailyDetailsError}</Text>
+                <Text style={styles.loadErrorHint}>
+                  Form đã được khóa để tránh ghi đè dữ liệu cũ.
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={loadDailyDetails}>
+                  <Text style={styles.retryButtonText}>Thử tải lại</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
             <View>
               {/* Date Navigator Bar */}
               <View style={styles.dateNavigator}>
@@ -552,7 +611,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                 {!isToday && (
                   <TouchableOpacity
                     style={styles.todayPill}
-                    onPress={() => setFeedingDate(new Date().toISOString().slice(0, 10))}
+                    onPress={() => setFeedingDate(toLocalDateString())}
                   >
                     <Text style={styles.todayPillText}>Về hôm nay</Text>
                   </TouchableOpacity>
@@ -597,13 +656,17 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
               {/* Preset Section (4, 5, 6, 7 cữ) */}
               <View style={styles.presetSection}>
                 <Text style={styles.fieldLabel}>Chọn số cữ ăn / ngày:</Text>
-                <View style={styles.presetRow}>
+                <View style={[styles.presetRow, isCompact && styles.presetRowCompact]}>
                   {PRESET_OPTIONS.map((opt) => {
                     const active = selectedPresetId === opt.id;
                     return (
                       <TouchableOpacity
                         key={opt.id}
-                        style={[styles.presetChip, active && styles.presetChipActive]}
+                        style={[
+                          styles.presetChip,
+                          isCompact && styles.presetChipCompact,
+                          active && styles.presetChipActive,
+                        ]}
                         onPress={() => applyPreset(opt.id)}
                       >
                         <Text
@@ -626,7 +689,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                   <Divide size={15} color="#0f766e" />
                   <Text style={styles.batchTitle}>Chia đều lượng ăn trong ngày</Text>
                 </View>
-                <View style={styles.batchInputRow}>
+                <View style={[styles.batchInputRow, isCompact && styles.stackOnCompact]}>
                   <TextInput
                     style={styles.batchInput}
                     keyboardType="numeric"
@@ -711,8 +774,14 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                       </View>
 
                       {!isSkipped && (
-                        <View style={styles.sessionInputsRow}>
-                          <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={[styles.sessionInputsRow, isCompact && styles.stackOnCompact]}>
+                          <View
+                            style={[
+                              styles.sessionInputGroup,
+                              !isCompact && styles.sessionInputGroupSpacing,
+                              isCompact && styles.fullWidthGroup,
+                            ]}
+                          >
                             <Text style={styles.inputSubLabel}>Lượng ăn (kg):</Text>
                             <TextInput
                               style={styles.sessionInput}
@@ -725,7 +794,7 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                             />
                           </View>
 
-                          <View style={{ flex: 1.4 }}>
+                          <View style={[styles.sessionNoteGroup, isCompact && styles.fullWidthGroup]}>
                             <Text style={styles.inputSubLabel}>Kiểm tra nhá/vó ăn:</Text>
                             <TextInput
                               style={styles.sessionInput}
@@ -756,12 +825,54 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                 )}
               </TouchableOpacity>
             </View>
-          ) : (
-            /* ════════════ SUB-TAB 2: FEEDING HISTORY ════════════ */
+          )}
+        </ScrollView>
+      ) : (
+        /* ════════════ SUB-TAB 2: FEEDING HISTORY (VIRTUALIZED FLATLIST) ════════════ */
+        <FlatList
+          data={loadingHistory ? [] : paginatedHistoryGroups}
+          keyExtractor={(item) => item.feedingDate}
+          contentContainerStyle={styles.scrollContent}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                setIsRefreshing(true);
+                loadInitialData();
+                loadFeedingHistory();
+              }}
+              colors={['#0d9488']}
+            />
+          }
+          ListHeaderComponent={
             <View>
+              <View style={styles.pondStatusBanner}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={styles.bannerHeaderRow}>
+                    <Text style={styles.statusBannerTitle}>
+                      {activePond ? activePond.name : 'Chưa chọn ao'}
+                    </Text>
+                    {activeCrop && (
+                      <View style={styles.activeCropPill}>
+                        <Text style={styles.activeCropPillText}>ĐANG NUÔI</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.statusBannerDesc}>
+                    {activeCrop
+                      ? `Thả: ${activeCrop.initialShrimpCount?.toLocaleString()} con • Diện tích: ${activePond?.areaSize} m²`
+                      : 'Ao hiện chưa có vụ nuôi ACTIVE.'}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.historyHeaderRow}>
                 <Text style={styles.historyListTitle}>
-                  Lịch sử cho ăn ao: {activePond?.name}
+                  Lịch sử cho ăn ao: {activePond?.name} ({historyGroups.length} ngày)
                 </Text>
                 <TouchableOpacity
                   onPress={loadFeedingHistory}
@@ -770,71 +881,97 @@ export default function FeedingLogScreen({ navigation, route }: FeedingLogScreen
                   <Text style={styles.historyRefreshText}>Làm mới</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          }
+          ListEmptyComponent={
+            loadingHistory ? (
+              <ActivityIndicator size="large" color="#0d9488" style={{ marginTop: 24 }} />
+            ) : (
+              <View style={styles.emptyCard}>
+                <Utensils size={36} color="#cbd5e1" />
+                <Text style={styles.emptyCardTitle}>Chưa có nhật ký cho ăn</Text>
+                <Text style={styles.emptyCardDesc}>
+                  Hãy ghi nhật ký cữ ăn hôm nay để theo dõi FCR và chi phí thức ăn.
+                </Text>
+              </View>
+            )
+          }
+          renderItem={({ item }) => (
+            <View style={styles.historyItemCard}>
+              <View style={styles.historyCardHeader}>
+                <View style={styles.historyDateRow}>
+                  <Calendar size={14} color="#0f766e" />
+                  <Text style={styles.historyDateText}>{item.feedingDate}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleDeleteDailyFeeding(item)}
+                  style={styles.historyDeleteButton}
+                >
+                  <Trash2 size={15} color="#ef4444" />
+                </TouchableOpacity>
+              </View>
 
-              {loadingHistory ? (
-                <ActivityIndicator size="large" color="#0d9488" style={{ marginTop: 24 }} />
-              ) : historyGroups.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Utensils size={36} color="#cbd5e1" />
-                  <Text style={styles.emptyCardTitle}>Chưa có nhật ký cho ăn</Text>
-                  <Text style={styles.emptyCardDesc}>
-                    Hãy ghi nhật ký cữ ăn hôm nay để theo dõi FCR và chi phí thức ăn.
+              <View style={styles.historyMetricsRow}>
+                <View style={styles.historyMetricBox}>
+                  <Text style={styles.historyMetricLabel}>Tổng lượng ăn</Text>
+                  <Text style={styles.historyMetricVal}>
+                    {Number(item.totalFeedAmount).toFixed(1)} kg
                   </Text>
                 </View>
-              ) : (
-                historyGroups.map((item) => (
-                  <View key={item.feedingDate} style={styles.historyItemCard}>
-                    <View style={styles.historyCardHeader}>
-                      <View style={styles.historyDateRow}>
-                        <Calendar size={14} color="#0f766e" />
-                        <Text style={styles.historyDateText}>{item.feedingDate}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteDailyFeeding(item)}
-                        style={styles.historyDeleteButton}
-                      >
-                        <Trash2 size={15} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
 
-                    <View style={styles.historyMetricsRow}>
-                      <View style={styles.historyMetricBox}>
-                        <Text style={styles.historyMetricLabel}>Tổng lượng ăn</Text>
-                        <Text style={styles.historyMetricVal}>
-                          {Number(item.totalFeedAmount).toFixed(1)} kg
-                        </Text>
-                      </View>
+                <View style={styles.historyMetricBox}>
+                  <Text style={styles.historyMetricLabel}>Số cữ hoàn thành</Text>
+                  <Text style={styles.historyMetricVal}>
+                    {item.completedCount}/{item.sessionCount} cữ
+                  </Text>
+                </View>
+              </View>
 
-                      <View style={styles.historyMetricBox}>
-                        <Text style={styles.historyMetricLabel}>Số cữ hoàn thành</Text>
-                        <Text style={styles.historyMetricVal}>
-                          {item.completedCount}/{item.sessionCount} cữ
-                        </Text>
-                      </View>
-                    </View>
-
-                    {item.feedProductNames && item.feedProductNames.length > 0 && (
-                      <Text style={styles.historyFeedText}>
-                        Thức ăn: {item.feedProductNames.join(', ')}
-                      </Text>
-                    )}
-
-                    <TouchableOpacity
-                      style={styles.historyEditBtn}
-                      onPress={() => {
-                        setFeedingDate(item.feedingDate);
-                        setActiveSubTab('RECORD');
-                      }}
-                    >
-                      <Edit3 size={13} color="#0f766e" />
-                      <Text style={styles.historyEditText}>Xem & Chỉnh sửa ngày này</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
+              {item.feedProductNames && item.feedProductNames.length > 0 && (
+                <Text style={styles.historyFeedText}>
+                  Thức ăn: {item.feedProductNames.join(', ')}
+                </Text>
               )}
+
+              <TouchableOpacity
+                style={styles.historyEditBtn}
+                onPress={() => {
+                  setFeedingDate(item.feedingDate);
+                  setActiveSubTab('RECORD');
+                }}
+              >
+                <Edit3 size={13} color="#0f766e" />
+                <Text style={styles.historyEditText}>Xem & Chỉnh sửa ngày này</Text>
+              </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
+          ListFooterComponent={
+            !loadingHistory && totalHistoryPages > 1 ? (
+              <View style={styles.paginationRow}>
+                <TouchableOpacity
+                  style={[styles.pageButton, historyPage === 0 && styles.pageButtonDisabled]}
+                  onPress={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                  disabled={historyPage === 0}
+                >
+                  <Text style={styles.pageButtonText}>◀</Text>
+                </TouchableOpacity>
+                <Text style={styles.pageIndicator}>
+                  Trang {historyPage + 1} / {totalHistoryPages}
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.pageButton,
+                    historyPage === totalHistoryPages - 1 && styles.pageButtonDisabled,
+                  ]}
+                  onPress={() => setHistoryPage((p) => Math.min(totalHistoryPages - 1, p + 1))}
+                  disabled={historyPage === totalHistoryPages - 1}
+                >
+                  <Text style={styles.pageButtonText}>▶</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
+          }
+        />
       )}
     </SafeAreaView>
   );
@@ -844,36 +981,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-  },
-  header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    marginRight: 10,
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
-  headerTitleBlock: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
   },
   pondSelectorBar: {
     backgroundColor: '#ffffff',
@@ -918,6 +1025,7 @@ const styles = StyleSheet.create({
   },
   subTabItem: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -933,6 +1041,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#64748b',
+    flexShrink: 1,
   },
   subTabTextActive: {
     color: '#0d9488',
@@ -1100,6 +1209,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  presetRowCompact: {
+    flexWrap: 'wrap',
+  },
   presetChip: {
     flex: 1,
     paddingVertical: 7,
@@ -1108,6 +1220,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
+  },
+  presetChipCompact: {
+    flexBasis: '47%',
+    flexGrow: 1,
   },
   presetChipActive: {
     backgroundColor: '#0d9488',
@@ -1159,6 +1275,7 @@ const styles = StyleSheet.create({
   batchButton: {
     backgroundColor: '#0d9488',
     paddingHorizontal: 14,
+    minHeight: 36,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1221,6 +1338,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 4,
   },
+  sessionInputGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sessionInputGroupSpacing: {
+    marginRight: 8,
+  },
+  sessionNoteGroup: {
+    flex: 1.4,
+    minWidth: 0,
+  },
+  stackOnCompact: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  fullWidthGroup: {
+    flex: 0,
+    width: '100%',
+  },
   inputSubLabel: {
     fontSize: 11,
     color: '#64748b',
@@ -1260,6 +1396,72 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 13,
     color: '#64748b',
+  },
+  loadErrorCard: {
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 18,
+  },
+  emptyAssignmentState: {
+    margin: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  emptyAssignmentTitle: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  emptyAssignmentText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  loadErrorTitle: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#9a3412',
+    textAlign: 'center',
+  },
+  loadErrorText: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#7c2d12',
+    textAlign: 'center',
+  },
+  loadErrorHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#9a3412',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 14,
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: '#0d9488',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   historyHeaderRow: {
     flexDirection: 'row',
@@ -1373,6 +1575,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     maxWidth: 240,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 16,
+  },
+  pageButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pageButtonDisabled: {
+    opacity: 0.4,
+  },
+  pageButtonText: {
+    fontSize: 12,
+    color: '#0f766e',
+    fontWeight: '700',
+  },
+  pageIndicator: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
   },
 });
 

@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   FlatList,
+  Platform,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -29,12 +30,14 @@ import {
   ArrowUpRight,
   X,
   Building2,
+  History,
+  Clock,
+  User,
 } from 'lucide-react-native';
-import { inventoryService, InventoryItem } from '../../services/inventoryService';
+import { inventoryService, InventoryItem, InventoryUsageLog } from '../../services/inventoryService';
 import { pondService, OverviewFarm } from '../../services/pondService';
 import { useAuth } from '../../context/AuthContext';
-import NotificationButton from '../../components/NotificationButton';
-import HeaderLogo from '../../components/HeaderLogo';
+import BusinessHeader from '../../components/BusinessHeader';
 
 type CategoryFilter = 'ALL' | 'FEED' | 'MEDICINE' | 'CHEMICAL';
 
@@ -47,12 +50,17 @@ const USAGE_PURPOSES = [
   { id: 'OTHER', label: 'Mục đích khác', icon: '✏️' },
 ];
 
-export default function InventoryScreen() {
+export default function InventoryScreen({ route }: any) {
+  const isEmbedded = route?.params?.embedded === true;
   const { userRole } = useAuth();
   const canManageInventory = userRole === 'FARM_MANAGER';
-  const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(userRole || '');
+  const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN'].includes(userRole || '');
 
+  const [activeSubTab, setActiveSubTab] = useState<'STOCK' | 'HISTORY'>('STOCK');
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [usageLogs, setUsageLogs] = useState<InventoryUsageLog[]>([]);
+  const [historyPage, setHistoryPage] = useState<number>(0);
+  const HISTORY_PAGE_SIZE = 10;
   const [farms, setFarms] = useState<OverviewFarm[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,11 +93,14 @@ export default function InventoryScreen() {
   const loadData = useCallback(async () => {
     try {
       const categoryParam = selectedCategory === 'ALL' ? undefined : selectedCategory;
-      const [invData, overview] = await Promise.all([
+      const [invData, overview, logsData] = await Promise.all([
         inventoryService.getInventory(categoryParam, searchQuery),
         pondService.getOverview().catch(() => ({ farms: [], ponds: [], crops: [] })),
+        inventoryService.getUsageLogs({ category: categoryParam, take: 200 }).catch(() => []),
       ]);
       setItems(invData);
+      setUsageLogs(logsData || []);
+      setHistoryPage(0);
       setFarms(overview.farms || []);
       if (overview.farms?.length > 0 && !createFarmId) {
         setCreateFarmId(overview.farms[0].id);
@@ -301,9 +312,9 @@ export default function InventoryScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.nameBlock}>
             <Text style={styles.itemName}>{item.itemName}</Text>
-            {item.supplierName && (
+            {canManageInventory && item.supplierName ? (
               <Text style={styles.supplierText}>NCC: {item.supplierName}</Text>
-            )}
+            ) : null}
           </View>
           <View
             style={[
@@ -372,13 +383,15 @@ export default function InventoryScreen() {
         {/* Action Buttons for Card */}
         {canRecordUsage && (
           <View style={styles.cardActionRow}>
-            <TouchableOpacity
-              style={styles.importBtn}
-              onPress={() => openActionModal(item, 'IMPORT')}
-            >
-              <ArrowDownLeft size={14} color="#059669" />
-              <Text style={styles.importBtnText}>Nhập kho</Text>
-            </TouchableOpacity>
+            {canManageInventory && (
+              <TouchableOpacity
+                style={styles.importBtn}
+                onPress={() => openActionModal(item, 'IMPORT')}
+              >
+                <ArrowDownLeft size={14} color="#059669" />
+                <Text style={styles.importBtnText}>Nhập kho</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.exportBtn}
@@ -393,25 +406,109 @@ export default function InventoryScreen() {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+  const filteredUsageLogs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return usageLogs;
+    return usageLogs.filter((log) => {
+      const itemName = log.inventory?.itemName?.toLowerCase() || '';
+      const notes = log.notes?.toLowerCase() || '';
+      const userName = log.user?.fullName?.toLowerCase() || '';
+      return itemName.includes(q) || notes.includes(q) || userName.includes(q);
+    });
+  }, [usageLogs, searchQuery]);
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.headerIcon}>
-            <Package size={22} color="#4f46e5" />
+  const totalHistoryPages = Math.max(1, Math.ceil(filteredUsageLogs.length / HISTORY_PAGE_SIZE));
+  const paginatedUsageLogs = useMemo(() => {
+    const start = historyPage * HISTORY_PAGE_SIZE;
+    return filteredUsageLogs.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [filteredUsageLogs, historyPage]);
+
+  const renderUsageLogItem = ({ item: log }: { item: InventoryUsageLog }) => {
+    const isImport = log.type === 'IMPORT' || log.notes?.startsWith('[NHẬP KHO') || false;
+    const unit = log.inventory?.unit || 'kg';
+    const badge = getCategoryBadge(log.inventory?.category || '');
+    const dateStr = log.usageDate
+      ? new Date(log.usageDate).toLocaleDateString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        })
+      : '';
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.nameBlock}>
+            <Text style={styles.itemName}>{log.inventory?.itemName || 'Vật tư kho'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <Clock size={12} color="#64748b" />
+              <Text style={styles.supplierText}>{dateStr}</Text>
+              {log.user?.fullName ? (
+                <>
+                  <Text style={styles.supplierText}>•</Text>
+                  <User size={12} color="#64748b" />
+                  <Text style={styles.supplierText}>{log.user.fullName}</Text>
+                </>
+              ) : null}
+            </View>
           </View>
-          <View>
-            <Text style={styles.headerTitle}>Kho Thức Ăn & Vật Tư</Text>
-            <Text style={styles.headerSubtitle}>
-              Quản lý tồn kho phục vụ cho ăn và xử lý ao nuôi
+          <View
+            style={[
+              styles.categoryBadge,
+              {
+                backgroundColor: isImport ? '#ecfdf5' : '#fef2f2',
+                borderColor: isImport ? '#a7f3d0' : '#fecaca',
+              },
+            ]}
+          >
+            {isImport ? (
+              <ArrowDownLeft size={12} color="#059669" />
+            ) : (
+              <ArrowUpRight size={12} color="#dc2626" />
+            )}
+            <Text
+              style={[
+                styles.categoryBadgeText,
+                { color: isImport ? '#059669' : '#dc2626' },
+              ]}
+            >
+              {isImport ? `+${log.quantityUsed} ${unit}` : `-${log.quantityUsed} ${unit}`}
             </Text>
           </View>
         </View>
 
-        <View style={styles.headerRightActions}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <View
+            style={[
+              styles.categoryBadge,
+              { backgroundColor: badge.bg, borderColor: badge.border },
+            ]}
+          >
+            {badge.icon}
+            <Text style={[styles.categoryBadgeText, { color: badge.text }]}>{badge.label}</Text>
+          </View>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: isImport ? '#059669' : '#dc2626' }}>
+            {isImport ? 'Nhập bổ sung kho' : 'Xuất sử dụng'}
+          </Text>
+        </View>
+
+        {log.notes ? (
+          <View style={[styles.packageRow, { marginTop: 8 }]}>
+            <Text style={styles.packageText}>{log.notes}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+      {!isEmbedded && (
+        <>
+          <BusinessHeader title="Kho thức ăn & vật tư" />
+          <View style={styles.inventoryActions}>
           {canManageInventory && (
             <TouchableOpacity
               style={styles.addMaterialBtn}
@@ -429,8 +526,71 @@ export default function InventoryScreen() {
           >
             <RefreshCw size={17} color="#64748b" />
           </TouchableOpacity>
-          <NotificationButton color="#64748b" />
-        </View>
+          </View>
+        </>
+      )}
+
+      {/* Sub-Tab Switcher: Tồn kho hiện tại vs Lịch sử Nhập/Xuất */}
+      <View
+        style={{
+          flexDirection: 'row',
+          marginHorizontal: 16,
+          marginTop: 10,
+          marginBottom: 4,
+          backgroundColor: '#e2e8f0',
+          borderRadius: 12,
+          padding: 4,
+        }}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            paddingVertical: 8,
+            borderRadius: 9,
+            backgroundColor: activeSubTab === 'STOCK' ? '#ffffff' : 'transparent',
+          }}
+          onPress={() => setActiveSubTab('STOCK')}
+        >
+          <Package size={15} color={activeSubTab === 'STOCK' ? '#4f46e5' : '#64748b'} />
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '700',
+              color: activeSubTab === 'STOCK' ? '#4f46e5' : '#64748b',
+            }}
+          >
+            Tồn kho ({items.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            paddingVertical: 8,
+            borderRadius: 9,
+            backgroundColor: activeSubTab === 'HISTORY' ? '#ffffff' : 'transparent',
+          }}
+          onPress={() => setActiveSubTab('HISTORY')}
+        >
+          <History size={15} color={activeSubTab === 'HISTORY' ? '#4f46e5' : '#64748b'} />
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '700',
+              color: activeSubTab === 'HISTORY' ? '#4f46e5' : '#64748b',
+            }}
+          >
+            Lịch sử Nhập/Xuất ({filteredUsageLogs.length})
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Search Input */}
@@ -516,18 +676,24 @@ export default function InventoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Items List */}
+      {/* Items or History List */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4f46e5" />
-          <Text style={styles.loadingText}>Đang tải danh sách tồn kho...</Text>
+          <Text style={styles.loadingText}>
+            {activeSubTab === 'STOCK' ? 'Đang tải danh sách tồn kho...' : 'Đang tải lịch sử nhập/xuất kho...'}
+          </Text>
         </View>
-      ) : (
+      ) : activeSubTab === 'STOCK' ? (
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
           renderItem={renderInventoryItem}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
@@ -539,6 +705,79 @@ export default function InventoryScreen() {
                 Không tìm thấy vật tư phù hợp với bộ lọc danh mục đã chọn.
               </Text>
             </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={paginatedUsageLogs}
+          keyExtractor={(item) => item.id}
+          renderItem={renderUsageLogItem}
+          contentContainerStyle={styles.listContent}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <History size={48} color="#cbd5e1" />
+              <Text style={styles.emptyTitle}>Chưa có lịch sử Nhập / Xuất</Text>
+              <Text style={styles.emptySubtitle}>
+                Chưa có giao dịch biến động kho nào khớp với bộ lọc hiện tại.
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            totalHistoryPages > 1 ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 14,
+                  paddingVertical: 14,
+                }}
+              >
+                <TouchableOpacity
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: historyPage === 0 ? '#e2e8f0' : '#4f46e5',
+                  }}
+                  onPress={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                  disabled={historyPage === 0}
+                >
+                  <Text style={{ color: historyPage === 0 ? '#94a3b8' : '#ffffff', fontWeight: '700' }}>
+                    ◀
+                  </Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>
+                  Trang {historyPage + 1} / {totalHistoryPages}
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: historyPage === totalHistoryPages - 1 ? '#e2e8f0' : '#4f46e5',
+                  }}
+                  onPress={() => setHistoryPage((p) => Math.min(totalHistoryPages - 1, p + 1))}
+                  disabled={historyPage === totalHistoryPages - 1}
+                >
+                  <Text
+                    style={{
+                      color: historyPage === totalHistoryPages - 1 ? '#94a3b8' : '#ffffff',
+                      fontWeight: '700',
+                    }}
+                  >
+                    ▶
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
           }
         />
       )}
@@ -568,50 +807,52 @@ export default function InventoryScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Switch Action Type Tabs */}
-            <View style={styles.actionTabRow}>
-              <TouchableOpacity
-                style={[
-                  styles.actionTabBtn,
-                  actionType === 'EXPORT' && styles.actionTabBtnExportActive,
-                ]}
-                onPress={() => setActionType('EXPORT')}
-              >
-                <ArrowUpRight
-                  size={15}
-                  color={actionType === 'EXPORT' ? '#ffffff' : '#dc2626'}
-                />
-                <Text
+            {/* Switch Action Type Tabs (chỉ Manager mới có quyền chọn Nhập kho) */}
+            {canManageInventory && (
+              <View style={styles.actionTabRow}>
+                <TouchableOpacity
                   style={[
-                    styles.actionTabText,
-                    actionType === 'EXPORT' && styles.actionTabTextActive,
+                    styles.actionTabBtn,
+                    actionType === 'EXPORT' && styles.actionTabBtnExportActive,
                   ]}
+                  onPress={() => setActionType('EXPORT')}
                 >
-                  Xuất kho (Sử dụng)
-                </Text>
-              </TouchableOpacity>
+                  <ArrowUpRight
+                    size={15}
+                    color={actionType === 'EXPORT' ? '#ffffff' : '#dc2626'}
+                  />
+                  <Text
+                    style={[
+                      styles.actionTabText,
+                      actionType === 'EXPORT' && styles.actionTabTextActive,
+                    ]}
+                  >
+                    Xuất kho (Sử dụng)
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.actionTabBtn,
-                  actionType === 'IMPORT' && styles.actionTabBtnImportActive,
-                ]}
-                onPress={() => setActionType('IMPORT')}
-              >
-                <ArrowDownLeft
-                  size={15}
-                  color={actionType === 'IMPORT' ? '#ffffff' : '#059669'}
-                />
-                <Text
+                <TouchableOpacity
                   style={[
-                    styles.actionTabText,
-                    actionType === 'IMPORT' && styles.actionTabTextActive,
+                    styles.actionTabBtn,
+                    actionType === 'IMPORT' && styles.actionTabBtnImportActive,
                   ]}
+                  onPress={() => setActionType('IMPORT')}
                 >
-                  Nhập kho (Bổ sung)
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <ArrowDownLeft
+                    size={15}
+                    color={actionType === 'IMPORT' ? '#ffffff' : '#059669'}
+                  />
+                  <Text
+                    style={[
+                      styles.actionTabText,
+                      actionType === 'IMPORT' && styles.actionTabTextActive,
+                    ]}
+                  >
+                    Nhập kho (Bổ sung)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <ScrollView style={styles.modalBody}>
               {actionType === 'IMPORT' ? (
@@ -908,44 +1149,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  headerLeft: {
+  inventoryActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  headerIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#e0e7ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 1,
-  },
-  headerRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    backgroundColor: '#ffffff',
   },
   addMaterialBtn: {
     flexDirection: 'row',

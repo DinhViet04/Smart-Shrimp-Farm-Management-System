@@ -71,9 +71,13 @@ describe('PondsService overview', () => {
     const farmQuery = prisma.farm.findMany.mock.calls[0][0];
     const cropQuery = prisma.crop.findMany.mock.calls[0][0];
     const pondQuery = prisma.pond.findMany.mock.calls[0][0];
+    expect(farmAccess.getAccessibleFarmIds).toHaveBeenCalledWith({
+      userId: 'manager-id',
+      role: 'FARM_MANAGER',
+    });
     expect(farmQuery.where).toEqual({
       deletedAt: null,
-      ownerId: 'manager-id',
+      id: { in: ['farm-id'] },
     });
     expect(cropQuery.distinct).toEqual(['pondId']);
     expect(cropQuery.orderBy).toEqual([

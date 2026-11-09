@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -30,8 +31,7 @@ import {
   getWaterQualityHistory,
   WaterQualityHistoryRecord,
 } from '../services/waterQualityService';
-import HeaderLogo from '../components/HeaderLogo';
-import NotificationButton from '../components/NotificationButton';
+import BusinessHeader from '../components/BusinessHeader';
 
 export default function EnvironmentScreen({ navigation }: any) {
   const { userToken, userRole } = useAuth();
@@ -64,16 +64,19 @@ export default function EnvironmentScreen({ navigation }: any) {
     }
   }, [userToken]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
-  // Aggregate latest record per pond
+  // Aggregate latest record per pond (keyed by farmName + pondName so same-named ponds across farms don't collide)
   const latestByPond = useMemo(() => {
     const map = new Map<string, WaterQualityHistoryRecord>();
     historyRecords.forEach((record) => {
-      if (!map.has(record.pondName)) {
-        map.set(record.pondName, record);
+      const key = `${record.farmName || ''}__${record.pondName}`;
+      if (!map.has(key)) {
+        map.set(key, record);
       }
     });
     return map;
@@ -90,12 +93,7 @@ export default function EnvironmentScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Top Header Bar: Logo on Left, Title in Center, Notification on Right */}
-      <View style={styles.topHeader}>
-        <HeaderLogo size={32} showText={true} textColor="#0284c7" />
-        <Text style={styles.topHeaderTitle}>Môi trường nước</Text>
-        <NotificationButton color="#0284c7" size={22} />
-      </View>
+      <BusinessHeader title="Môi trường nước" />
 
       <ScrollView
         style={styles.container}
@@ -205,7 +203,7 @@ export default function EnvironmentScreen({ navigation }: any) {
             </View>
           ) : (
             <View style={styles.pondCardList}>
-              {Array.from(latestByPond.entries()).map(([pondName, record]) => {
+              {Array.from(latestByPond.values()).map((record) => {
                 const isOptimal = record.overallStatus === 'Optimal';
                 const isWarning = record.overallStatus === 'Warning';
                 const isDanger = record.overallStatus === 'Danger';
@@ -226,7 +224,10 @@ export default function EnvironmentScreen({ navigation }: any) {
                     {/* Header: Pond Name & Overall Status */}
                     <View style={styles.pondCardHeader}>
                       <View>
-                        <Text style={styles.pondNameText}>{pondName}</Text>
+                        <Text style={styles.pondNameText}>
+                          {record.pondName}
+                          {record.farmName ? ` • ${record.farmName}` : ''}
+                        </Text>
                         <Text style={styles.pondTimeText}>
                           {new Date(record.createdAt).toLocaleTimeString([], {
                             hour: '2-digit',
@@ -358,21 +359,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#ffffff',
-  },
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0f2fe',
-  },
-  topHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
   },
   container: {
     flex: 1,

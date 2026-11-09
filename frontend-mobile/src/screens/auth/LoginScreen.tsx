@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ImageBackground, KeyboardAvoidingView, Platform,
@@ -58,6 +58,15 @@ export default function LoginScreen() {
         const errorMsg = Array.isArray(data.message) ? data.message[0] : (data.message || 'Sai email hoặc mật khẩu');
         Alert.alert('Đăng nhập thất bại', errorMsg);
       } else {
+        const role = data.user?.role;
+        const allowedMobileRoles = ['FARM_MANAGER', 'TECHNICIAN', 'FARMER'];
+        if (!role || !allowedMobileRoles.includes(role)) {
+          Alert.alert(
+            'Không hỗ trợ trên Mobile',
+            'Tài khoản Quản trị viên (ADMIN) vui lòng truy cập trên hệ thống Web Dashboard. Ứng dụng Mobile chỉ dành cho Quản lý trang trại, Kỹ thuật viên và Nhân công.'
+          );
+          return;
+        }
         await login(data.accessToken, data.user, data.refreshToken);
       }
     } catch (error) {

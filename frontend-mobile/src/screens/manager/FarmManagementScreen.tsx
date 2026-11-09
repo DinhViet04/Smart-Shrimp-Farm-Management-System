@@ -29,7 +29,7 @@ import {
 import { farmService, Farm } from '../../services/farmService';
 import { pondService, OverviewPond, OverviewCrop } from '../../services/pondService';
 import { cropService, CreateCropPayload } from '../../services/cropService';
-import NotificationButton from '../../components/NotificationButton';
+import { toLocalDateString } from '../../utils/date';
 
 const DOC = (startDate: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000));
@@ -65,7 +65,7 @@ export default function FarmManagementScreen({ navigation }: any) {
   // Modal tạo vụ nuôi
   const [isCreateCropModal, setIsCreateCropModal] = useState(false);
   const [selectedPondForCrop, setSelectedPondForCrop] = useState<OverviewPond | null>(null);
-  const [cropStartDate, setCropStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [cropStartDate, setCropStartDate] = useState(toLocalDateString());
   const [cropShrimpCount, setCropShrimpCount] = useState('');
   const [cropStage, setCropStage] = useState<'NURSERY' | 'GROW_OUT'>('GROW_OUT');
   const [cropTargetSize, setCropTargetSize] = useState('');
@@ -127,7 +127,7 @@ export default function FarmManagementScreen({ navigation }: any) {
       return;
     }
     setSelectedPondForCrop(pond);
-    setCropStartDate(new Date().toISOString().slice(0, 10));
+    setCropStartDate(toLocalDateString());
     setCropShrimpCount('');
     setCropStage('GROW_OUT');
     setCropTargetSize('');
@@ -219,7 +219,7 @@ export default function FarmManagementScreen({ navigation }: any) {
           <View style={styles.emptyState}>
             <Building2 size={48} color="#cbd5e1" />
             <Text style={styles.emptyTitle}>Chưa có trang trại</Text>
-            <Text style={styles.emptySub}>Liên hệ quản trị viên để được thêm vào trang trại.</Text>
+            <Text style={styles.emptySub}>Vui lòng thiết lập trang trại và ao nuôi trên hệ thống Web Dashboard.</Text>
           </View>
         ) : (
           farms.map(farm => {
@@ -233,8 +233,8 @@ export default function FarmManagementScreen({ navigation }: any) {
                     <Building2 size={22} color="#2563eb" />
                   </View>
                   <View style={styles.farmInfo}>
-                    <Text style={styles.farmName}>{farm.name}</Text>
-                    <Text style={styles.farmMeta}>
+                    <Text style={styles.farmName} numberOfLines={2}>{farm.name}</Text>
+                    <Text style={styles.farmMeta} numberOfLines={2}>
                       {farm.address || 'Chưa cập nhật địa chỉ'} • {farm.area} ha
                     </Text>
                   </View>
@@ -330,14 +330,6 @@ export default function FarmManagementScreen({ navigation }: any) {
                                             </View>
                                           )}
                                         </View>
-                                        {crop.status === 'ACTIVE' && (
-                                          <TouchableOpacity
-                                            style={styles.createCropFromPond}
-                                            onPress={() => openCreateCropModal(pond)}
-                                          >
-                                            {/* already active so button is disabled via business logic */}
-                                          </TouchableOpacity>
-                                        )}
                                       </View>
                                     );
                                   })
@@ -506,11 +498,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
   loadingText: { marginTop: 12, color: '#64748b', fontSize: 14 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
+  scrollContent: { padding: 16, paddingBottom: 32, width: '100%' },
 
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 16, width: '100%' },
   summaryCard: {
-    flex: 1, backgroundColor: '#ffffff', borderRadius: 14, padding: 14,
+    flex: 1, minWidth: 0, backgroundColor: '#ffffff', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8,
     alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
@@ -527,17 +519,17 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
     overflow: 'hidden',
   },
-  farmHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  farmHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10, width: '100%' },
   farmIconBox: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: '#eff6ff',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  farmInfo: { flex: 1 },
-  farmName: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
-  farmMeta: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  farmInfo: { flex: 1, minWidth: 0 },
+  farmName: { fontSize: 16, fontWeight: '800', color: '#0f172a', flexShrink: 1 },
+  farmMeta: { fontSize: 12, color: '#64748b', marginTop: 2, flexShrink: 1 },
   farmBadge: {
     backgroundColor: '#eff6ff', paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 8, marginRight: 4,
+    borderRadius: 8, marginRight: 2, flexShrink: 0,
   },
   farmBadgeText: { fontSize: 12, fontWeight: '700', color: '#2563eb' },
 
@@ -577,7 +569,6 @@ const styles = StyleSheet.create({
   cropMeta: { gap: 4 },
   cropMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cropMetaText: { fontSize: 12, color: '#64748b' },
-  createCropFromPond: {},
   createCropBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 10, gap: 6, marginTop: 4,

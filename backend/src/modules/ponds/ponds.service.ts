@@ -82,18 +82,11 @@ export class PondsService {
   }
 
   async findOverview(user: AuthUser) {
-    const accessWhere =
-      user.role === 'ADMIN'
-        ? {}
-        : user.role === 'FARM_MANAGER'
-          ? { ownerId: user.userId }
-          : {
-              staff: {
-                some: { userId: user.userId, isActive: true },
-              },
-            };
-
-    const farmWhere = { deletedAt: null, ...accessWhere };
+    const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
+    const farmWhere = {
+      deletedAt: null,
+      ...(accessibleFarmIds ? { id: { in: accessibleFarmIds } } : {}),
+    };
     const [farms, ponds, crops] = await Promise.all([
       this.prisma.farm.findMany({
         where: farmWhere,

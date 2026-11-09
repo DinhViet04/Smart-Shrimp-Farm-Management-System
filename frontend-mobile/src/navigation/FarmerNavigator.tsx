@@ -24,8 +24,7 @@ import FeedingLogScreen from '../screens/feeding/FeedingLogScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import IncidentStackNavigator from './IncidentNavigator';
-import NotificationButton from '../components/NotificationButton';
-import HeaderLogo from '../components/HeaderLogo';
+import BusinessHeader from '../components/BusinessHeader';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -38,8 +37,7 @@ function FarmerTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerLeft: () => <HeaderLogo size={32} showText={true} textColor="#059669" />,
-        headerRight: () => <NotificationButton color="#059669" />,
+        header: () => <BusinessHeader title={route.name} />,
         tabBarIcon: ({ color }) => {
           const iconSize = 22;
           if (route.name === 'Cho ăn') return <Utensils color={color} size={iconSize} />;
@@ -52,7 +50,7 @@ function FarmerTabs() {
         tabBarActiveTintColor: '#059669',
         tabBarInactiveTintColor: '#94a3b8',
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '600',
         },
         tabBarStyle: {
@@ -69,18 +67,6 @@ function FarmerTabs() {
           shadowRadius: 4,
         },
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#ffffff',
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: '#e2e8f0',
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          color: '#059669',
-          fontSize: 16,
-        },
       })}
     >
       <Tab.Screen
@@ -111,7 +97,7 @@ function FarmerTabs() {
         name="Cài đặt"
         component={SettingsScreen}
         options={{
-          headerTitle: 'Tài khoản',
+          headerTitle: 'Cài đặt',
           tabBarLabel: 'Cài đặt',
         }}
       />

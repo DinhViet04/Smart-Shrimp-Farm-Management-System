@@ -78,20 +78,41 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 import { apiClient } from './apiClient';
+import { pondService } from './pondService';
 
 // ─── API Functions ────────────────────────────────────────────────────────────
 
 /**
- * Fetches all farms owned by the authenticated user.
+ * Fetches all farms accessible to the authenticated user (including workspace-assigned farms).
  */
 export async function getFarms(_token?: string): Promise<Farm[]> {
+  try {
+    const overview = await pondService.getOverview();
+    if (Array.isArray(overview?.farms) && overview.farms.length > 0) {
+      return overview.farms.map((f) => ({ id: f.id, name: f.name }));
+    }
+  } catch {
+    // fallback to /farms below
+  }
   return apiClient.get<Farm[]>('/farms');
 }
 
 /**
- * Fetches all ponds owned by the authenticated user (across all farms).
+ * Fetches all ponds accessible to the authenticated user (including workspace-assigned ponds).
  */
 export async function getPonds(_token?: string): Promise<Pond[]> {
+  try {
+    const overview = await pondService.getOverview();
+    if (Array.isArray(overview?.ponds) && overview.ponds.length > 0) {
+      return overview.ponds.map((p) => ({
+        id: p.id,
+        name: p.name,
+        farmId: p.farmId,
+      }));
+    }
+  } catch {
+    // fallback to /ponds below
+  }
   return apiClient.get<Pond[]>('/ponds');
 }
 

@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
+import { setOnUnauthorizedListener } from '../services/apiClient';
 
 type AuthContextType = {
   userToken: string | null;
@@ -73,6 +74,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadToken();
+    setOnUnauthorizedListener(async () => {
+      await AsyncStorage.multiRemove(['userToken', 'refreshToken', 'userRole', 'userId', 'user']).catch(() => {});
+      setUserToken(null);
+      setUserRole(null);
+      setUserId(null);
+      setCurrentUser(null);
+      setIsViewingHome(false);
+    });
+    return () => setOnUnauthorizedListener(null);
   }, []);
 
   const login = async (token: string, user: any, refreshToken?: string) => {

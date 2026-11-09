@@ -7,8 +7,8 @@
  *   - Tab 2: Tăng trưởng     — Ghi nhận theo dõi tăng trưởng
  *   - Tab 3: Sức khoẻ tôm    — Ghi nhận sức khoẻ tôm
  *   - Tab 4: Sự cố           — Báo cáo sự cố + xem list
- *   - Tab 5: Kho             — Xem kho vật tư
- *   - Tab 6: Cài đặt         — Hồ sơ, bảo mật, hỗ trợ
+ *   - Tab 5: Kho             — Xem tồn kho và ghi nhận sử dụng vật tư
+ *   - Tab 6: Cài đặt        — Hồ sơ, bảo mật và hỗ trợ
  */
 import React from 'react';
 import { Platform } from 'react-native';
@@ -28,13 +28,50 @@ import SettingsScreen from '../screens/SettingsScreen';
 import ShrimpHealthScreen from '../screens/shrimp-health/ShrimpHealthScreen';
 import GrowthTrackingScreen from '../screens/growth/GrowthTrackingScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
+import EnvironmentScreen from '../screens/EnvironmentScreen';
+import RecordWaterQualityScreen from '../screens/water-quality/RecordWaterQualityScreen';
+import RecordHistoryScreen from '../screens/water-quality/RecordHistoryScreen';
 import IncidentStackNavigator from './IncidentNavigator';
-import { EnvironmentStackNavigator } from './MainNavigator';
-import NotificationButton from '../components/NotificationButton';
-import HeaderLogo from '../components/HeaderLogo';
+import BusinessHeader from '../components/BusinessHeader';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
+const EnvironmentStack = createNativeStackNavigator();
+
+/**
+ * Technician's Environment Stack: includes RecordWaterQuality & RecordHistory
+ */
+function EnvironmentStackNavigator() {
+  return (
+    <EnvironmentStack.Navigator>
+      <EnvironmentStack.Screen
+        name="EnvironmentHome"
+        component={EnvironmentScreen}
+        options={{ headerShown: false }}
+      />
+      <EnvironmentStack.Screen
+        name="RecordWaterQuality"
+        component={RecordWaterQualityScreen}
+        options={{
+          title: 'Ghi nhận thông số',
+          headerStyle: { backgroundColor: '#ffffff' },
+          headerTitleStyle: { fontWeight: 'bold', color: '#0f172a' },
+          headerTintColor: '#2563eb',
+        }}
+      />
+      <EnvironmentStack.Screen
+        name="RecordHistory"
+        component={RecordHistoryScreen}
+        options={{
+          title: 'Lịch sử chất lượng nước',
+          headerStyle: { backgroundColor: '#ffffff' },
+          headerTitleStyle: { fontWeight: 'bold', color: '#0f172a' },
+          headerTintColor: '#2563eb',
+        }}
+      />
+    </EnvironmentStack.Navigator>
+  );
+}
 
 function TechnicianTabs() {
   const insets = useSafeAreaInsets();
@@ -44,8 +81,7 @@ function TechnicianTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerLeft: () => <HeaderLogo size={32} showText={true} textColor="#312e81" />,
-        headerRight: () => <NotificationButton color="#4f46e5" />,
+        header: () => <BusinessHeader title={route.name} />,
         tabBarIcon: ({ color }) => {
           const iconSize = 22;
           if (route.name === 'Môi trường nước') return <Droplets color={color} size={iconSize} />;
@@ -77,18 +113,6 @@ function TechnicianTabs() {
           shadowRadius: 4,
         },
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#ffffff',
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: '#e0e7ff',
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          color: '#312e81',
-          fontSize: 16,
-        },
       })}
     >
       <Tab.Screen
@@ -135,7 +159,7 @@ function TechnicianTabs() {
         name="Cài đặt"
         component={SettingsScreen}
         options={{
-          headerTitle: 'Cài đặt tài khoản',
+          headerTitle: 'Cài đặt',
           tabBarLabel: 'Cài đặt',
         }}
       />

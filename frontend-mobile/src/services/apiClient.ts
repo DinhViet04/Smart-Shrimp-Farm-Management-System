@@ -21,6 +21,11 @@ export class ApiError extends Error {
 
 // Singleton promise to prevent concurrent duplicate refresh requests
 let refreshRequestPromise: Promise<string | null> | null = null;
+let unauthorizedListener: (() => void) | null = null;
+
+export function setOnUnauthorizedListener(listener: (() => void) | null) {
+  unauthorizedListener = listener;
+}
 
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshRequestPromise) {
@@ -107,9 +112,10 @@ export async function apiRequest<T = any>(
         // Retry with refreshed token
         return apiRequest<T>(endpoint, options, true);
       } else {
-        // Clear expired auth data
+        // Clear expired auth data and notify AuthContext to return to Login screen
         await AsyncStorage.removeItem('userToken');
         await AsyncStorage.removeItem('refreshToken');
+        unauthorizedListener?.();
         throw new ApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
       }
     }

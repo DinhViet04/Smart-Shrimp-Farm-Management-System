@@ -24,6 +24,28 @@ export interface InventoryListResponse {
   totalPages?: number;
 }
 
+export interface InventoryUsageLog {
+  id: string;
+  inventoryId: string;
+  quantityUsed: number;
+  usageDate: string;
+  notes?: string;
+  type?: 'IMPORT' | 'EXPORT' | string;
+  inventory?: {
+    id: string;
+    itemName: string;
+    category: 'FEED' | 'MEDICINE' | 'CHEMICAL' | string;
+    unit: string;
+    packageType?: string;
+    weightPerPkg?: number;
+  };
+  user?: {
+    id?: string;
+    fullName?: string;
+    role?: string;
+  };
+}
+
 export const inventoryService = {
   /**
    * Get list of inventory items with optional category and search filters
@@ -64,6 +86,27 @@ export const inventoryService = {
     params.append('days', days.toString());
 
     return apiClient.get(`/inventory/consumption-summary?${params.toString()}`);
+  },
+
+  /**
+   * Get inventory usage & import logs (synced with Web InventoryUsageHistoryView)
+   */
+  async getUsageLogs(params?: {
+    farmId?: string;
+    category?: string;
+    take?: number;
+    type?: string;
+  }): Promise<InventoryUsageLog[]> {
+    const query = new URLSearchParams();
+    if (params?.farmId) query.append('farmId', params.farmId);
+    if (params?.category && params.category !== 'ALL') query.append('category', params.category);
+    query.append('take', String(params?.take || 200));
+    if (params?.type && params.type !== 'ALL') query.append('type', params.type);
+
+    const res = await apiClient.get<any>(`/inventory/usage-logs?${query.toString()}`);
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.data)) return res.data;
+    return [];
   },
 
   /**

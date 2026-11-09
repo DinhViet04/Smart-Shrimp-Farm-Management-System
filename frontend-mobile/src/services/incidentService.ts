@@ -54,6 +54,7 @@ export type IncidentTechnician = IncidentStaff;
 export interface IncidentFilters {
   status?: string;
   assignedToMe?: boolean;
+  reportedByMe?: boolean;
   activeOnly?: boolean;
   search?: string;
   size?: string;
@@ -74,6 +75,7 @@ export const incidentService = {
     if (arg1 && typeof arg1 === 'object') {
       const filters = arg1 as IncidentFilters;
       if (filters.assignedToMe) params.set('assignedToMe', 'true');
+      if (filters.reportedByMe) params.set('reportedByMe', 'true');
       if (filters.activeOnly) params.set('activeOnly', 'true');
       if (filters.status) params.set('status', filters.status);
       if (filters.search && filters.search.trim()) params.set('search', filters.search.trim());
@@ -112,7 +114,7 @@ export const incidentService = {
   },
 
   /**
-   * Lấy danh sách nhân sự của trang trại để phân công (cả TECHNICIAN và FARMER)
+   * Lấy danh sách Kỹ thuật viên của trang trại để phân công (khớp với Web & Backend)
    */
   getStaff: (farmId: string) =>
     apiClient
@@ -128,18 +130,15 @@ export const incidentService = {
         return staff
           .filter(
             (entry) =>
-              (entry.role === 'TECHNICIAN' ||
-                entry.role === 'FARMER' ||
-                entry.user?.role === 'TECHNICIAN' ||
-                entry.user?.role === 'FARMER') &&
+              (entry.role === 'TECHNICIAN' || entry.user?.role === 'TECHNICIAN') &&
               entry.isActive &&
               (entry.user?.isActive ?? true)
           )
           .map((entry) => ({
             id: entry.user?.id || (entry as any).userId,
-            fullName: entry.user?.fullName || 'Nhân sự',
+            fullName: entry.user?.fullName || 'Kỹ thuật viên',
             email: entry.user?.email || '',
-            role: entry.user?.role || entry.role,
+            role: 'TECHNICIAN',
           }));
       }),
 

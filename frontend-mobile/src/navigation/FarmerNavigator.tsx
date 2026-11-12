@@ -1,4 +1,4 @@
-﻿/**
+/**
  * FarmerNavigator.tsx
  *
  * Dedicated navigator for FARMER role.
@@ -18,11 +18,13 @@ import {
   Package,
   AlertTriangle,
   Settings,
+  MessageSquare,
 } from 'lucide-react-native';
 
 import FeedingLogScreen from '../screens/feeding/FeedingLogScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ChatGroupScreen from '../screens/ChatGroupScreen';
 import IncidentStackNavigator from './IncidentNavigator';
 import BusinessHeader from '../components/BusinessHeader';
 
@@ -43,6 +45,7 @@ function FarmerTabs() {
           if (route.name === 'Cho ăn') return <Utensils color={color} size={iconSize} />;
           if (route.name === 'Kho') return <Package color={color} size={iconSize} />;
           if (route.name === 'Sự cố') return <AlertTriangle color={color} size={iconSize} />;
+          if (route.name === 'Nhóm Chat') return <MessageSquare color={color} size={iconSize} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={iconSize} />;
           return <Utensils color={color} size={iconSize} />;
         },
@@ -91,6 +94,14 @@ function FarmerTabs() {
         options={{
           headerShown: false,
           tabBarLabel: 'Sự cố',
+        }}
+      />
+      <Tab.Screen
+        name="Nhóm Chat"
+        component={ChatGroupScreen}
+        options={{
+          headerTitle: 'Nhóm Chat Trang Trại',
+          tabBarLabel: 'Nhóm Chat',
         }}
       />
       <Tab.Screen

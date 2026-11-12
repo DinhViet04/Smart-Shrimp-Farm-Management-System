@@ -8,12 +8,14 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { UsersModule } from '../users/users.module.js';
 import { PrismaModule } from '../../prisma/prisma.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
+import { ChatGroupsModule } from '../chat-groups/chat-groups.module.js';
 
 @Module({
   imports: [
     UsersModule,
     PrismaModule,
     NotificationsModule,
+    ChatGroupsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService): JwtModuleOptions => ({

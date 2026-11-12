@@ -26,12 +26,11 @@ import {
   X,
   Lock,
   Users,
-  Sparkles,
+  MessageSquare,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { userService, UserProfile } from '../services/userService';
-import { requestOpenAIChat } from '../components/FloatingAIChatModal';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -295,15 +294,15 @@ export default function SettingsScreen() {
       <View style={styles.menuContainer}>
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={requestOpenAIChat}
+          onPress={() => navigation.navigate('Nhóm Chat')}
           activeOpacity={0.7}
         >
-          <View style={[styles.iconBox, { backgroundColor: '#fff7ed' }]}>
-            <Sparkles size={20} color="#ea580c" />
+          <View style={[styles.iconBox, { backgroundColor: '#eff6ff' }]}>
+            <MessageSquare size={20} color="#2563eb" />
           </View>
           <View style={styles.menuTextBox}>
-            <Text style={styles.menuTitle}>Trợ lý Tôm AI</Text>
-            <Text style={styles.menuSubtitle}>Mở tư vấn kỹ thuật & khôi phục nút nổi AI</Text>
+            <Text style={styles.menuTitle}>Nhóm Chat Trang Trại</Text>
+            <Text style={styles.menuSubtitle}>Trò chuyện và quản lý thành viên trang trại</Text>
           </View>
           <ChevronRight size={18} color="#94a3b8" />
         </TouchableOpacity>

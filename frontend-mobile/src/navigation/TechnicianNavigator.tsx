@@ -22,9 +22,11 @@ import {
   AlertTriangle,
   Package,
   Settings,
+  MessageSquare,
 } from 'lucide-react-native';
 
 import SettingsScreen from '../screens/SettingsScreen';
+import ChatGroupScreen from '../screens/ChatGroupScreen';
 import ShrimpHealthScreen from '../screens/shrimp-health/ShrimpHealthScreen';
 import GrowthTrackingScreen from '../screens/growth/GrowthTrackingScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
@@ -89,6 +91,7 @@ function TechnicianTabs() {
           if (route.name === 'Sức khoẻ') return <HeartPulse color={color} size={iconSize} />;
           if (route.name === 'Sự cố') return <AlertTriangle color={color} size={iconSize} />;
           if (route.name === 'Kho') return <Package color={color} size={iconSize} />;
+          if (route.name === 'Nhóm Chat') return <MessageSquare color={color} size={iconSize} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={iconSize} />;
           return <Droplets color={color} size={iconSize} />;
         },
@@ -153,6 +156,14 @@ function TechnicianTabs() {
         options={{
           headerShown: false,
           tabBarLabel: 'Kho',
+        }}
+      />
+      <Tab.Screen
+        name="Nhóm Chat"
+        component={ChatGroupScreen}
+        options={{
+          headerTitle: 'Nhóm Chat Trang Trại',
+          tabBarLabel: 'Nhóm Chat',
         }}
       />
       <Tab.Screen

@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   AlertTriangle,
+  MessageSquare,
 } from 'lucide-react';
 
 import NotificationDropdown from '../components/NotificationDropdown';
@@ -31,6 +32,7 @@ const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const InventoryManagement = lazy(() => import('../features/inventory/InventoryManagement'));
+const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
 
 interface CurrentUser {
   id?: string;
@@ -99,6 +101,7 @@ export default function TechnicianDashboard() {
     { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5" /> },
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
+    { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -481,6 +484,10 @@ export default function TechnicianDashboard() {
             </div>
           ) : activeTab === 'Kho thức ăn' ? (
             <InventoryManagement />
+          ) : activeTab === 'Nhóm Chat' ? (
+            <div className="w-full max-w-7xl mx-auto">
+              <FarmChatGroupView />
+            </div>
           ) : (
             <div className="min-h-[450px] flex items-center justify-center">
               <div className="text-center p-12 bg-white border border-indigo-100 rounded-3xl shadow-sm max-w-xl">

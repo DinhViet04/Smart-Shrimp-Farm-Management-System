@@ -1,106 +1,106 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Body,
-  Param,
-  UseGuards,
-  Request,
-} from '@nestjs/common';
-import { ChatbotService } from './chatbot.service';
-import { AskChatbotDto } from './dto/ask-chatbot.dto';
-import { CreateDocumentDto } from './dto/create-document.dto';
-import { ExecuteActionDto } from './dto/execute-action.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { Throttle } from '@nestjs/throttler';
-
-@Controller('chatbot')
-@UseGuards(JwtAuthGuard, RolesGuard)
-export class ChatbotController {
-  constructor(private readonly chatbotService: ChatbotService) {}
-
-  /**
-   * Hỏi đáp RAG với Trợ lý AI
-   * Endpoint: POST /api/chatbot/ask
-   */
-  @Post('ask')
-  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async askChatbot(@Body() dto: AskChatbotDto, @Request() req: any) {
-    return this.chatbotService.ask(dto, req.user);
-  }
-
-  /**
-   * Thực thi hành động tạo thực thể do AI đề xuất sau khi người dùng xác nhận
-   * Endpoint: POST /api/chatbot/execute-action
-   */
-  @Post('execute-action')
-  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
-  async executeAgentAction(@Body() dto: ExecuteActionDto, @Request() req: any) {
-    return this.chatbotService.executeAction(dto, req.user);
-  }
-
-  /**
-   * Lấy danh sách tài liệu trong kho tri thức
-   * Endpoint: GET /api/chatbot/documents
-   */
-  @Get('documents')
-  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
-  async getAllDocuments() {
-    return this.chatbotService.getAllDocuments();
-  }
-
-  /**
-   * Xem chi tiết tài liệu kèm các đoạn trích (chunks)
-   * Endpoint: GET /api/chatbot/documents/:id
-   */
-  @Get('documents/:id')
-  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
-  async getDocumentById(@Param('id') id: string) {
-    return this.chatbotService.getDocumentById(id);
-  }
-
-  /**
-   * Thêm tài liệu mới vào kho tri thức RAG
-   * Endpoint: POST /api/chatbot/documents
-   */
-  @Post('documents')
-  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
-  async createDocument(@Body() dto: CreateDocumentDto, @Request() req: any) {
-    return this.chatbotService.createDocument(dto, req.user?.id);
-  }
-
-  /**
-   * Xóa tài liệu khỏi kho tri thức
-   * Endpoint: DELETE /api/chatbot/documents/:id
-   */
-  @Delete('documents/:id')
-  @Roles('ADMIN', 'FARM_MANAGER')
-  async deleteDocument(@Param('id') id: string) {
-    return this.chatbotService.deleteDocument(id);
-  }
-
-  /**
-   * Kiểm tra cấu hình và kết nối Google Drive Knowledge Store
-   * Endpoint: GET /api/chatbot/documents/drive/status
-   */
-  @Get('documents/drive/status')
-  @Roles('ADMIN', 'FARM_MANAGER')
-  async getDriveStatus() {
-    return this.chatbotService.getDriveStatus();
-  }
-
-  /**
-   * Kích hoạt đồng bộ tài liệu từ Google Drive vào RAG Vector Store
-   * Endpoint: POST /api/chatbot/documents/drive/sync
-   */
-  @Post('documents/drive/sync')
-  @Roles('ADMIN', 'FARM_MANAGER')
-  async syncDriveDocuments(@Body() body: any) {
-    return this.chatbotService.syncDriveDocuments(body);
-  }
-}
-
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
+import { ChatbotService } from './chatbot.service';
+import { AskChatbotDto } from './dto/ask-chatbot.dto';
+import { CreateDocumentDto } from './dto/create-document.dto';
+import { ExecuteActionDto } from './dto/execute-action.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Throttle } from '@nestjs/throttler';
+
+@Controller('chatbot')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class ChatbotController {
+  constructor(private readonly chatbotService: ChatbotService) {}
+
+  /**
+   * Hỏi đáp RAG với Trợ lý AI
+   * Endpoint: POST /api/chatbot/ask
+   */
+  @Post('ask')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async askChatbot(@Body() dto: AskChatbotDto, @Request() req: any) {
+    return this.chatbotService.ask(dto, req.user);
+  }
+
+  /**
+   * Thực thi hành động tạo thực thể do AI đề xuất sau khi người dùng xác nhận
+   * Endpoint: POST /api/chatbot/execute-action
+   */
+  @Post('execute-action')
+  @Roles('FARM_MANAGER', 'FARMER')
+  async executeAgentAction(@Body() dto: ExecuteActionDto, @Request() req: any) {
+    return this.chatbotService.executeAction(dto, req.user);
+  }
+
+  /**
+   * Lấy danh sách tài liệu trong kho tri thức
+   * Endpoint: GET /api/chatbot/documents
+   */
+  @Get('documents')
+  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
+  async getAllDocuments() {
+    return this.chatbotService.getAllDocuments();
+  }
+
+  /**
+   * Xem chi tiết tài liệu kèm các đoạn trích (chunks)
+   * Endpoint: GET /api/chatbot/documents/:id
+   */
+  @Get('documents/:id')
+  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
+  async getDocumentById(@Param('id') id: string) {
+    return this.chatbotService.getDocumentById(id);
+  }
+
+  /**
+   * Thêm tài liệu mới vào kho tri thức RAG
+   * Endpoint: POST /api/chatbot/documents
+   */
+  @Post('documents')
+  @Roles('ADMIN', 'FARM_MANAGER', 'TECHNICIAN')
+  async createDocument(@Body() dto: CreateDocumentDto, @Request() req: any) {
+    return this.chatbotService.createDocument(dto, req.user?.id);
+  }
+
+  /**
+   * Xóa tài liệu khỏi kho tri thức
+   * Endpoint: DELETE /api/chatbot/documents/:id
+   */
+  @Delete('documents/:id')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async deleteDocument(@Param('id') id: string) {
+    return this.chatbotService.deleteDocument(id);
+  }
+
+  /**
+   * Kiểm tra cấu hình và kết nối Google Drive Knowledge Store
+   * Endpoint: GET /api/chatbot/documents/drive/status
+   */
+  @Get('documents/drive/status')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async getDriveStatus() {
+    return this.chatbotService.getDriveStatus();
+  }
+
+  /**
+   * Kích hoạt đồng bộ tài liệu từ Google Drive vào RAG Vector Store
+   * Endpoint: POST /api/chatbot/documents/drive/sync
+   */
+  @Post('documents/drive/sync')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async syncDriveDocuments(@Body() body: any) {
+    return this.chatbotService.syncDriveDocuments(body);
+  }
+}
+

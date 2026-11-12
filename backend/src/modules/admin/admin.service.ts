@@ -190,6 +190,9 @@ export class AdminService {
     } catch {
       database = 'DOWN';
     }
+
+    const aiStatus = await this.checkAiServiceHealth();
+
     return {
       status: database === 'UP' ? 'HEALTHY' : 'DEGRADED',
       checkedAt,
@@ -219,14 +222,46 @@ export class AdminService {
             ? 'Đã cấu hình SMTP'
             : 'Chưa cấu hình SMTP',
         },
-        {
-          name: 'Chatbot AI',
-          status: process.env.OPENAI_API_KEY ? 'UP' : 'FALLBACK',
-          detail: process.env.OPENAI_API_KEY
-            ? 'Đã cấu hình OpenAI'
-            : 'Đang dùng đối sánh cục bộ',
-        },
+        aiStatus,
       ],
+    };
+  }
+
+  private async checkAiServiceHealth(): Promise<{
+    name: string;
+    status: string;
+    detail: string;
+  }> {
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const started = Date.now();
+    try {
+      const response = await fetch(`${aiServiceUrl}/api/v1/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (response.ok) {
+        const latencyMs = Date.now() - started;
+        const body = (await response.json().catch(() => ({}))) as {
+          openaiConnected?: boolean;
+        };
+        const mode =
+          body.openaiConnected || process.env.OPENAI_API_KEY
+            ? 'OpenAI RAG'
+            : 'RAG cục bộ';
+        return {
+          name: 'Chatbot AI',
+          status: 'UP',
+          detail: `AI Service trực tuyến (${mode} · ${latencyMs} ms)`,
+        };
+      }
+    } catch {
+      // Fallback to Backend built-in chatbot check
+    }
+    return {
+      name: 'Chatbot AI',
+      status: process.env.OPENAI_API_KEY ? 'UP' : 'FALLBACK',
+      detail: process.env.OPENAI_API_KEY
+        ? 'Đã cấu hình OpenAI (Backend RAG)'
+        : 'Đang dùng đối sánh cục bộ (AI Microservice tắt)',
     };
   }
 
@@ -250,7 +285,7 @@ export class AdminService {
       }),
       this.prisma.workspaceMember.count({ where: { isActive: true } }),
       this.prisma.farm.count({
-        where: { deletedAt: null },
+        where: { deletedAt: null, workspace: { status: 'ACTIVE' } },
       }),
       this.prisma.supportTicket.count({
         where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },

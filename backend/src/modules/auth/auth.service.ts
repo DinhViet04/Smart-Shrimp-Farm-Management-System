@@ -5,6 +5,7 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { LoginDto } from './dto/login.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service.js';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +34,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly chatGroupsService?: ChatGroupsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -133,6 +136,15 @@ export class AuthService {
             update: { isActive: true, role: user.role },
           });
           await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
+
+          if (this.chatGroupsService) {
+            await this.chatGroupsService.addMemberToFarmChatGroup(
+              farm.id,
+              user.id,
+              user.role as 'FARMER' | 'TECHNICIAN',
+              user.fullName || user.email,
+            );
+          }
 
           if (isNewlyJoined) {
             await this.notificationsService.createFarmJoinNotification(
@@ -261,6 +273,15 @@ export class AuthService {
               update: { isActive: true, role: invitePayload.role as Role },
             });
             await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
+
+            if (this.chatGroupsService) {
+              await this.chatGroupsService.addMemberToFarmChatGroup(
+                farm.id,
+                user.id,
+                invitePayload.role as 'FARMER' | 'TECHNICIAN',
+                user.fullName || user.email,
+              );
+            }
 
             if (isNewlyJoined) {
               await this.notificationsService.createFarmJoinNotification(
@@ -416,6 +437,15 @@ export class AuthService {
               update: { isActive: true, role: invitePayload.role as Role },
             });
             await this.ensureWorkspaceMembership(farm.workspaceId, user.id);
+
+            if (this.chatGroupsService) {
+              await this.chatGroupsService.addMemberToFarmChatGroup(
+                farm.id,
+                user.id,
+                invitePayload.role as 'FARMER' | 'TECHNICIAN',
+                user.fullName || user.email,
+              );
+            }
 
             if (isNewlyJoined) {
               await this.notificationsService.createFarmJoinNotification(
@@ -800,6 +830,15 @@ export class AuthService {
       },
     });
     await this.ensureWorkspaceMembership(farm.workspaceId, activeUser.id);
+
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.addMemberToFarmChatGroup(
+        farm.id,
+        activeUser.id,
+        payload.role as 'FARMER' | 'TECHNICIAN',
+        activeUser.fullName || activeUser.email,
+      );
+    }
 
     if (isNewlyJoined) {
       await this.notificationsService.createFarmJoinNotification(

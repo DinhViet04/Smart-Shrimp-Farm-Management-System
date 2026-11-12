@@ -738,7 +738,7 @@ export default function TreatmentWorkspace({
   const canUpdateTreatment =
     currentUserRole === 'TECHNICIAN'
       ? incidentDetail.assignedToId === currentUserId
-      : currentUserRole === 'FARM_MANAGER' || currentUserRole === 'ADMIN';
+      : currentUserRole === 'FARM_MANAGER';
 
   // Modal xác nhận áp dụng phác đồ AI vào điều trị
   const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -1667,7 +1667,7 @@ Hãy thực hiện các nội dung sau:
                   </div>
                 </div>
 
-                {(currentUserRole === 'FARM_MANAGER' || currentUserRole === 'ADMIN' || canUpdateTreatment) && (
+                {(currentUserRole === 'FARM_MANAGER' || canUpdateTreatment) && (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
                     <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4 text-amber-600" /> Mở lại sự cố nếu tái phát

@@ -91,4 +91,20 @@ export class NotificationsGateway
       .to(`user_${requesterId}`)
       .emit('supportTicketUpdated', ticket);
   }
+
+  sendChatMessageToUsers(userIds: string[], message: unknown) {
+    if (!this.server || !userIds?.length) return;
+    const uniqueIds = Array.from(new Set(userIds));
+    for (const userId of uniqueIds) {
+      this.server.to(`user_${userId}`).emit('newChatMessage', message);
+    }
+  }
+
+  sendChatGroupUpdatedToUsers(userIds: string[], group: unknown) {
+    if (!this.server || !userIds?.length) return;
+    const uniqueIds = Array.from(new Set(userIds));
+    for (const userId of uniqueIds) {
+      this.server.to(`user_${userId}`).emit('chatGroupUpdated', group);
+    }
+  }
 }

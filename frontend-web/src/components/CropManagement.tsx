@@ -172,6 +172,15 @@ export default function CropManagement({
   const [splitCropTarget, setSplitCropTarget] = useState<Crop | null>(null);
   const [cropToDelete, setCropToDelete] = useState<Crop | null>(null);
   const [isDeletingCrop, setIsDeletingCrop] = useState(false);
+  const [currentUserRole] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? (JSON.parse(raw)?.role || '') : '';
+    } catch {
+      return '';
+    }
+  });
+  const canManageCrop = currentUserRole === 'FARM_MANAGER' || currentUserRole === 'FARMER';
 
   const canSplitCrop = useCallback(
     (crop: Crop) => {
@@ -639,11 +648,15 @@ export default function CropManagement({
   useEffect(() => {
     if (initialEditCrop) {
       queueMicrotask(() => {
-        openEditModal(initialEditCrop);
+        if (canManageCrop) {
+          openEditModal(initialEditCrop);
+        } else {
+          setHarvestDetailCrop(initialEditCrop);
+        }
         onClearEditCrop?.();
       });
     }
-  }, [initialEditCrop]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialEditCrop, canManageCrop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (initialCreateCropConfig && ponds.length > 0) {
@@ -946,12 +959,14 @@ export default function CropManagement({
               className="w-full pl-9 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-inner"
             />
           </div>
-          <button
-            onClick={() => openAddModal()}
-            className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 whitespace-nowrap cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Thêm vụ mới
-          </button>
+          {canManageCrop && (
+            <button
+              onClick={() => openAddModal()}
+              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-bold rounded-xl flex items-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 whitespace-nowrap cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Thêm vụ mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -1428,26 +1443,30 @@ export default function CropManagement({
                               >
                                 <Eye className="w-3.5 h-3.5" /> Báo cáo
                               </button>
-                              <button
-                                onClick={() => {
-                                  if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
-                                    setHarvestCrop(crop);
-                                  } else {
-                                    openEditModal(crop);
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                                title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa'}
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={(e) => handleDelete(e, crop)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                                title="Xóa"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canManageCrop && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
+                                        setHarvestCrop(crop);
+                                      } else {
+                                        openEditModal(crop);
+                                      }
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                    title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa'}
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDelete(e, crop)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                    title="Xóa"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1534,12 +1553,14 @@ export default function CropManagement({
                     <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/60 shadow-inner">
                       🌾 <strong>{farmGroup.crops.length}</strong> vụ ({activeView === 'active' ? 'đang nuôi' : 'lịch sử'})
                     </span>
-                    <button
-                      onClick={() => openAddModal(farmGroup.id)}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 whitespace-nowrap cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" /> Thêm vụ cho trại này
-                    </button>
+                    {canManageCrop && (
+                      <button
+                        onClick={() => openAddModal(farmGroup.id)}
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 whitespace-nowrap cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Thêm vụ cho trại này
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1559,7 +1580,7 @@ export default function CropManagement({
                         ? 'Bắt đầu khởi tạo vụ nuôi để kiểm soát mật độ giống, FCR và theo dõi tăng trưởng.'
                         : 'Các vụ nuôi sau khi thu hoạch hoặc đóng lại sẽ được lưu trữ tại đây.'}
                     </p>
-                    {activeView === 'active' && (
+                    {activeView === 'active' && canManageCrop && (
                       <button
                         onClick={() => openAddModal(farmGroup.id)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
@@ -1919,23 +1940,25 @@ export default function CropManagement({
 
                                   {crop.status === 'ACTIVE' && (
                                     <>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onNavigateToGrowth?.({
-                                            farmId: farmGroup.id,
-                                            pondId: crop.pondId || crop.pond?.id,
-                                            cropId: crop.id,
-                                          });
-                                        }}
-                                        className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
-                                        title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
-                                      >
-                                        <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
-                                      </button>
+                                      {onNavigateToGrowth && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onNavigateToGrowth({
+                                              farmId: farmGroup.id,
+                                              pondId: crop.pondId || crop.pond?.id,
+                                              cropId: crop.id,
+                                            });
+                                          }}
+                                          className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
+                                          title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
+                                        >
+                                          <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
+                                        </button>
+                                      )}
 
-                                      {canSplitCrop(crop) && (
+                                      {canManageCrop && canSplitCrop(crop) && (
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -1948,39 +1971,43 @@ export default function CropManagement({
                                         </button>
                                       )}
 
-                                      <button
-                                        onClick={(e) => handleHarvest(e, crop)}
-                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/60"
-                                        title="Mở bảng thu hoạch và tổng kết vụ nuôi"
-                                      >
-                                        <CheckCircle2 className="w-3.5 h-3.5" /> Thu hoạch
-                                      </button>
+                                      {canManageCrop && (
+                                        <button
+                                          onClick={(e) => handleHarvest(e, crop)}
+                                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/60"
+                                          title="Mở bảng thu hoạch và tổng kết vụ nuôi"
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5" /> Thu hoạch
+                                        </button>
+                                      )}
                                     </>
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => {
-                                      if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
-                                        setHarvestCrop(crop);
-                                      } else {
-                                        openEditModal(crop);
-                                      }
-                                    }}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                                    title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa / Cập nhật mục tiêu'}
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={(e) => handleDelete(e, crop)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                                    title="Xóa vụ nuôi"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
+                                {canManageCrop && (
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => {
+                                        if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
+                                          setHarvestCrop(crop);
+                                        } else {
+                                          openEditModal(crop);
+                                        }
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                      title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa / Cập nhật mục tiêu'}
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => handleDelete(e, crop)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                      title="Xóa vụ nuôi"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

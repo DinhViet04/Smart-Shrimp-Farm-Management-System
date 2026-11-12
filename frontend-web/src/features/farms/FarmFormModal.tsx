@@ -196,27 +196,33 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       setFarmerSearchError('Email không đúng định dạng. Vui lòng nhập email hợp lệ (VD: user@example.com).');
       return;
     }
+    if (user?.email && user.email.toLowerCase() === email.toLowerCase()) {
+      setFarmerSearchError('Không thể thêm chính email của Chủ trang trại vào danh sách nhân sự.');
+      return;
+    }
     const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())
-      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase() && p.role === 'FARMER');
+      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase());
     if (alreadyInList) {
-      setFarmerSearchError('Email này đã có trong danh sách.');
+      setFarmerSearchError('Email này đã có trong danh sách thành viên trang trại.');
       return;
     }
     setIsSearchingFarmer(true);
     try {
       if (initialData?.id) {
-        // Đang edit farm → gọi API invite ngay
+        // Đang edit farm → gọi API thêm và tự động đồng bộ vào nhóm chat
         const result = await farmService.inviteByEmail(initialData.id, email, 'FARMER');
         await loadCurrentStaff();
-        setFarmerSearchSuccess(`📧 Đã gửi email mời tới ${result.email}`);
+        setFarmerSearchSuccess(
+          result.message || `✅ Đã thêm ${result.email} vào trang trại và nhóm chat.`,
+        );
       } else {
-        // Đang tạo farm mới → queue lại, sẽ gửi sau khi farm được tạo
+        // Đang tạo farm mới → queue lại, sẽ tự động thêm vào farm và nhóm chat sau khi farm được tạo
         setPendingInvites(prev => [...prev, { email, role: 'FARMER' }]);
         setAssignedStaff(prev => [
           ...prev,
           { email, role: 'FARMER', status: 'invited' },
         ]);
-        setFarmerSearchSuccess(`📧 Đã thêm vào danh sách — email mời sẽ được gửi sau khi tạo trang trại.`);
+        setFarmerSearchSuccess(`✅ Đã thêm vào danh sách — sẽ tự động thêm vào trang trại & nhóm chat ngay khi tạo trang trại.`);
       }
       setFarmerEmailInput('');
     } catch (err: any) {
@@ -239,19 +245,25 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       setTechSearchError('Email không đúng định dạng. Vui lòng nhập email hợp lệ (VD: user@example.com).');
       return;
     }
+    if (user?.email && user.email.toLowerCase() === email.toLowerCase()) {
+      setTechSearchError('Không thể thêm chính email của Chủ trang trại vào danh sách nhân sự.');
+      return;
+    }
     const alreadyInList = assignedStaff.some(s => s.email.toLowerCase() === email.toLowerCase())
-      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase() && p.role === 'TECHNICIAN');
+      || pendingInvites.some(p => p.email.toLowerCase() === email.toLowerCase());
     if (alreadyInList) {
-      setTechSearchError('Email này đã có trong danh sách.');
+      setTechSearchError('Email này đã có trong danh sách thành viên trang trại.');
       return;
     }
     setIsSearchingTech(true);
     try {
       if (initialData?.id) {
-        // Đang edit farm → gọi API invite ngay
+        // Đang edit farm → gọi API thêm và tự động đồng bộ vào nhóm chat
         const result = await farmService.inviteByEmail(initialData.id, email, 'TECHNICIAN');
         await loadCurrentStaff();
-        setTechSearchSuccess(`📧 Đã gửi email mời tới ${result.email}`);
+        setTechSearchSuccess(
+          result.message || `✅ Đã thêm ${result.email} vào trang trại và nhóm chat.`,
+        );
       } else {
         // Đang tạo farm mới → queue lại
         setPendingInvites(prev => [...prev, { email, role: 'TECHNICIAN' }]);
@@ -259,7 +271,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
           ...prev,
           { email, role: 'TECHNICIAN', status: 'invited' },
         ]);
-        setTechSearchSuccess(`📧 Đã thêm vào danh sách — email mời sẽ được gửi sau khi tạo trang trại.`);
+        setTechSearchSuccess(`✅ Đã thêm vào danh sách — sẽ tự động thêm vào trang trại & nhóm chat ngay khi tạo trang trại.`);
       }
       setTechEmailInput('');
     } catch (err: any) {
@@ -301,6 +313,18 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     e.preventDefault();
     setError(null);
 
+    const trimmedName = formData.name.trim();
+    if (trimmedName.length < 2) {
+      setError('Tên trang trại phải có ít nhất 2 ký tự.');
+      return;
+    }
+
+    const trimmedAddress = formData.address.trim();
+    if (!trimmedAddress) {
+      setError('Vui lòng chọn Tỉnh/Thành phố cho trang trại.');
+      return;
+    }
+
     const parsedArea = parseFloat(String(formData.area));
     if (isNaN(parsedArea) || parsedArea <= 0) {
       setError('Vui lòng nhập diện tích trang trại hợp lệ (lớn hơn 0 m²).');
@@ -312,6 +336,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     try {
       const submitData = {
         ...formData,
+        name: trimmedName,
+        address: trimmedAddress,
         area: parsedArea,
       };
 
@@ -321,10 +347,10 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         await farmService.update(initialData.id, updateData);
         onSuccess('Cập nhật trang trại thành công!');
       } else {
-        // Tạo farm trước
+        // Tạo farm trước (Backend tự động khởi tạo Nhóm Chat cho trang trại)
         const ownerId = user?.id || user?.userId || user?.sub;
         const newFarm = await farmService.create({ ...submitData, ...(ownerId && { ownerId }) });
-        // Gửi invite cho tất cả pending sau khi có farmId
+        // Thêm/mời tất cả thành viên đã chọn và tự động đưa vào nhóm chat
         if (pendingInvites.length > 0 && newFarm?.id) {
           await Promise.allSettled(
             pendingInvites.map(invite =>
@@ -332,7 +358,12 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
             )
           );
         }
-        onSuccess('Thêm trang trại mới thành công!', newFarm?.id);
+        onSuccess(
+          pendingInvites.length > 0
+            ? 'Tạo trang trại, khởi tạo Nhóm Chat và thêm thành viên thành công!'
+            : 'Tạo trang trại và khởi tạo Nhóm Chat thành công!',
+          newFarm?.id,
+        );
       }
       onClose();
     } catch (err: any) {

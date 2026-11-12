@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package,
+  LayoutDashboard, Waves, Droplets, MessageSquare, LogOut, Settings, Building2, Package,
   TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen, AlertTriangle
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
@@ -22,6 +22,7 @@ const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/Survi
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 const FarmIncidentDashboard = lazy(() => import('../features/incidents/FarmIncidentDashboard'));
+const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
 
 interface CurrentUser {
   id?: string;
@@ -152,7 +153,7 @@ export default function Dashboard() {
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
-    { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
+    { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -553,6 +554,10 @@ export default function Dashboard() {
           ) : activeTab === 'Sự cố trang trại' || activeTab === 'Báo cáo sự cố' ? (
             <div className="w-full max-w-7xl mx-auto">
               <FarmIncidentDashboard role="FARM_MANAGER" />
+            </div>
+          ) : activeTab === 'Nhóm Chat' || activeTab === 'Trợ lý AI' ? (
+            <div className="w-full max-w-7xl mx-auto">
+              <FarmChatGroupView />
             </div>
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">

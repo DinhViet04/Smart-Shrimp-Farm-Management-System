@@ -233,6 +233,28 @@ describe('IncidentsService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('rejects admin creating or reopening an incident (read-only supervision)', async () => {
+    await expect(
+      service.create(
+        { userId: 'admin-id', role: 'ADMIN' },
+        { cropId: 'crop-id', title: 'Sự cố', description: 'Mô tả' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    prisma.incident.findUnique.mockResolvedValue({
+      ...incident,
+      status: 'RESOLVED',
+    });
+
+    await expect(
+      service.reopen(
+        { userId: 'admin-id', role: 'ADMIN' },
+        incident.id,
+        { reason: 'Mở lại' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('rejects reassignment after an incident is resolved', async () => {
     prisma.incident.findUnique.mockResolvedValue({
       ...incident,

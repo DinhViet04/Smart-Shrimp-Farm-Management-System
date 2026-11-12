@@ -31,6 +31,8 @@ import {
 
   AlertTriangle,
 
+  MessageSquare,
+
 } from 'lucide-react';
 
 
@@ -70,6 +72,8 @@ const BiomassDashboard = lazy(() => import('../features/biomass/BiomassDashboard
 const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/SurvivalRateDashboard'));
 
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
+
+const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
 
 
 
@@ -222,6 +226,8 @@ export default function FarmerDashboard() {
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
 
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
+
+    { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
 
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
 
@@ -1004,6 +1010,12 @@ export default function FarmerDashboard() {
           ) : activeTab === 'Nhật ký Chăm sóc' ? (
 
              <FeedingLogDashboard />
+
+          ) : activeTab === 'Nhóm Chat' ? (
+
+             <div className="w-full max-w-7xl mx-auto">
+               <FarmChatGroupView />
+             </div>
 
           ) : activeTab !== 'Dashboard' ? (
 

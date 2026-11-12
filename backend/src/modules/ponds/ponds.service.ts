@@ -70,6 +70,7 @@ export class PondsService {
 
     return this.prisma.pond.findMany({
       where: {
+        farm: { deletedAt: null },
         ...(accessibleFarmIds ? { farmId: { in: accessibleFarmIds } } : {}),
       },
       include: {
@@ -134,7 +135,7 @@ export class PondsService {
       this.prisma.crop.findMany({
         where: { pond: { farm: farmWhere } },
         distinct: ['pondId'],
-        orderBy: [{ pondId: 'asc' }, { startDate: 'desc' }],
+        orderBy: [{ pondId: 'asc' }, { status: 'asc' }, { startDate: 'desc' }],
         select: {
           id: true,
           pondId: true,

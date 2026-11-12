@@ -10,19 +10,20 @@ import {
 } from 'class-validator';
 
 export class CreateFarmDto {
+  @IsOptional()
   @IsUUID('4', { message: 'Workspace không hợp lệ' })
-  workspaceId: string;
+  workspaceId?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Vui lòng nhập tên trang trại' })
   name: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Vui lòng chọn Tỉnh/Thành phố cho trang trại' })
   address: string;
 
   @IsNumber()
-  @Min(0)
+  @Min(1, { message: 'Diện tích trang trại phải lớn hơn 0 m²' })
   area: number;
 
   @IsOptional()

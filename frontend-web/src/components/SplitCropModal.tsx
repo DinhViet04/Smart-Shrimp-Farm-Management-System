@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -11,12 +11,14 @@ import {
   Gauge,
   ShieldCheck,
   Waves,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   cropService,
   type Crop,
   type SplitCropPayload,
 } from '../services/crop.service';
+import { scrollToTop } from '../utils/scrollHelper';
 
 interface Pond {
   id: string;
@@ -42,6 +44,7 @@ interface SplitCropModalProps {
   activeCrops: Crop[];
   onClose: () => void;
   onSuccess: (message: string) => void;
+  asPage?: boolean;
 }
 
 export default function SplitCropModal({
@@ -50,7 +53,14 @@ export default function SplitCropModal({
   activeCrops,
   onClose,
   onSuccess,
+  asPage = false,
 }: SplitCropModalProps) {
+  useEffect(() => {
+    if (asPage) {
+      scrollToTop();
+    }
+  }, [asPage]);
+
   const farmId = crop.pond?.farmId;
 
   // Danh sách tất cả ao thuộc trang trại
@@ -292,9 +302,8 @@ export default function SplitCropModal({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-4xl lg:max-w-5xl max-h-[90vh] flex flex-col overflow-hidden relative">
+  const modalContent = (
+    <div className={`bg-white rounded-3xl border border-slate-100 w-full flex flex-col overflow-hidden relative ${asPage ? 'shadow-sm' : 'max-w-4xl lg:max-w-5xl max-h-[90vh] shadow-2xl'}`}>
         {/* Header */}
         <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-3">
@@ -315,16 +324,27 @@ export default function SplitCropModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {asPage ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-5">
+        <form onSubmit={handleSubmit} className={`p-5 space-y-5 ${asPage ? '' : 'flex-1 overflow-y-auto'}`}>
           {/* Error Banner */}
           {errorMessage && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-rose-800 text-xs font-medium">
@@ -702,7 +722,7 @@ export default function SplitCropModal({
               onClick={onClose}
               className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
             >
-              Hủy
+              {asPage ? 'Quay lại danh sách vụ nuôi' : 'Hủy'}
             </button>
             <button
               type="button"
@@ -715,6 +735,19 @@ export default function SplitCropModal({
           </div>
         </div>
       </div>
+  );
+
+  if (asPage) {
+    return (
+      <div className="w-full space-y-4 animate-in fade-in duration-200 pb-12">
+        {modalContent}
+      </div>
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
+      {modalContent}
     </div>,
     document.body
   );

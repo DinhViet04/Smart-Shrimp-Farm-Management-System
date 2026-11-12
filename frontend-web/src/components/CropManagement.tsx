@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Plus,
   Calendar,
@@ -27,10 +26,9 @@ import {
   Activity,
   CalendarDays,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   Filter,
-  TrendingDown,
-  DollarSign,
   LayoutGrid,
   Table as TableIcon,
   RotateCcw,
@@ -46,7 +44,12 @@ import { cropService, type Crop, type SeedMarketPrice } from '../services/crop.s
 import SplitCropModal from './SplitCropModal';
 import HarvestCropModal from './HarvestCropModal';
 import CropDetailReportModal from './CropDetailReportModal';
+import CropCycleCard from './CropCycleCard';
+import CropCycleDetailModal from './CropCycleDetailModal';
+import { groupCropsIntoCycles, type CropCycle } from '../utils/cropCycleGrouping';
+import { GitFork, Layers } from 'lucide-react';
 import { analyzeCropHistory, type HistoryMetricKey } from '../utils/cropHistoryAnalysis';
+import { scrollToTop } from '../utils/scrollHelper';
 
 const formatVND = (num: number | null | undefined): string => {
   if (num === null || num === undefined || isNaN(num)) return '0';
@@ -142,8 +145,10 @@ export default function CropManagement({
   const [filterQuarter, setFilterQuarter] = useState(initialFilterQuarter);
   const [filterFarmId, setFilterFarmId] = useState(initialFilterFarmId);
   const [filterPondId, setFilterPondId] = useState(initialFilterPondId);
-  const [historyDisplayMode, setHistoryDisplayMode] = useState<'grid' | 'table'>('grid');
+  const [historyDisplayMode, setHistoryDisplayMode] = useState<'cycle' | 'grid' | 'table'>('cycle');
   const [harvestDetailCrop, setHarvestDetailCrop] = useState<Crop | null>(null);
+  const [selectedCycleForDetail, setSelectedCycleForDetail] = useState<CropCycle | null>(null);
+  const [previousCycle, setPreviousCycle] = useState<CropCycle | null>(null);
 
   // ── Modal State ─────────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
@@ -172,6 +177,13 @@ export default function CropManagement({
   const [splitCropTarget, setSplitCropTarget] = useState<Crop | null>(null);
   const [cropToDelete, setCropToDelete] = useState<Crop | null>(null);
   const [isDeletingCrop, setIsDeletingCrop] = useState(false);
+
+  // Tự động cuộn lên đầu trang khi chuyển sang bất kỳ page view chức năng nào
+  useEffect(() => {
+    if (showModal || harvestCrop || splitCropTarget || harvestDetailCrop || selectedCycleForDetail) {
+      scrollToTop();
+    }
+  }, [showModal, harvestCrop, splitCropTarget, harvestDetailCrop, selectedCycleForDetail]);
 
   const canSplitCrop = useCallback(
     (crop: Crop) => {
@@ -436,6 +448,11 @@ export default function CropManagement({
     return ponds.filter((p) => p.farmId === filterFarmId);
   }, [ponds, filterFarmId]);
 
+  // ── Crop Cycles Calculation ───────────────────────────────────────────────
+  const allCropCycles = useMemo(() => {
+    return groupCropsIntoCycles(crops, farms, ponds);
+  }, [crops, farms, ponds]);
+
   // ── Grouped Farms Calculation ──────────────────────────────────────────────
   const groupedFarms = useMemo(() => {
     const searchLower = search.trim().toLowerCase();
@@ -495,9 +512,31 @@ export default function CropManagement({
         const farmArea = Number(farm.area) || 0;
         const usagePercentage = farmArea > 0 ? Math.min(100, Math.round((totalPondArea / farmArea) * 100)) : 0;
 
+        const farmCycles = allCropCycles.filter((cycle) => {
+          if (cycle.farmId !== farm.id) return false;
+          if (filterYear) {
+            const startYear = cycle.startDate ? new Date(cycle.startDate).getFullYear().toString() : '';
+            const harvestYear = cycle.endDate ? new Date(cycle.endDate).getFullYear().toString() : '';
+            if (startYear !== filterYear && harvestYear !== filterYear) return false;
+          }
+          if (filterQuarter) {
+            if (!cycle.endDate) return false;
+            const harvestQuarter = Math.floor(new Date(cycle.endDate).getMonth() / 3) + 1;
+            if (harvestQuarter.toString() !== filterQuarter) return false;
+          }
+          if (searchLower) {
+            const matchName = cycle.name.toLowerCase().includes(searchLower);
+            const matchCode = cycle.code.toLowerCase().includes(searchLower);
+            const matchPonds = cycle.allCrops.some((c) => c.pond?.name?.toLowerCase().includes(searchLower));
+            if (!matchName && !matchCode && !matchPonds) return false;
+          }
+          return true;
+        });
+
         return {
           ...farm,
           crops: farmCrops,
+          cycles: farmCycles,
           activeCropsCount: activeFarmCrops.length,
           totalFarmShrimp,
           farmPonds,
@@ -601,10 +640,12 @@ export default function CropManagement({
       expectedDurationDays: '95',
     });
     setFormErrors({});
+    scrollToTop();
     setShowModal(true);
   };
 
   const openEditModal = (crop: Crop) => {
+    scrollToTop();
     setEditingCropId(crop.id);
     const dateStr = crop.startDate ? new Date(crop.startDate).toISOString().slice(0, 10) : '';
     const harvestDateStr = crop.expectedHarvestDate ? new Date(crop.expectedHarvestDate).toISOString().slice(0, 10) : '';
@@ -738,6 +779,7 @@ export default function CropManagement({
 
   const handleHarvest = async (e: React.MouseEvent, crop: Crop) => {
     e.stopPropagation();
+    scrollToTop();
     setHarvestCrop(crop);
   };
 
@@ -900,6 +942,200 @@ export default function CropManagement({
     );
   }
 
+  // ── 1. Page View: Thu Hoạch Vụ Nuôi ──────────────────────────────
+  if (harvestCrop) {
+    return (
+      <div className="relative z-10 max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200 pb-12">
+        <div id="crop-page-top" className="h-0 w-0 pointer-events-none opacity-0" />
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${toast.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <p className="text-sm font-semibold">{toast.message}</p>
+          </div>
+        )}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setHarvestCrop(null)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại Quản lý Vụ Nuôi
+            </button>
+            <div className="h-4 w-px bg-slate-200" />
+            <span className="text-xs font-semibold text-slate-400">Quản lý Ao/Vụ</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-700">Thu hoạch vụ nuôi ({harvestCrop.pond?.name || 'Ao nuôi'})</span>
+          </div>
+        </div>
+        <HarvestCropModal
+          isOpen={true}
+          asPage={true}
+          crop={harvestCrop}
+          onClose={() => setHarvestCrop(null)}
+          onSuccess={(msg) => {
+            showToast(msg, 'success');
+            setHarvestCrop(null);
+            setActiveView('history');
+            fetchData();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── 2. Page View: Tách Ao Nuôi ────────────────────────────────────
+  if (splitCropTarget) {
+    return (
+      <div className="relative z-10 max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200 pb-12">
+        <div id="crop-page-top" className="h-0 w-0 pointer-events-none opacity-0" />
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${toast.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <p className="text-sm font-semibold">{toast.message}</p>
+          </div>
+        )}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSplitCropTarget(null)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại Quản lý Vụ Nuôi
+            </button>
+            <div className="h-4 w-px bg-slate-200" />
+            <span className="text-xs font-semibold text-slate-400">Quản lý Ao/Vụ</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-700">Tách ao ({splitCropTarget.pond?.name || 'Ao nuôi'})</span>
+          </div>
+        </div>
+        <SplitCropModal
+          crop={splitCropTarget}
+          allPonds={ponds}
+          activeCrops={crops}
+          asPage={true}
+          onClose={() => setSplitCropTarget(null)}
+          onSuccess={(msg) => {
+            showToast(msg, 'success');
+            setSplitCropTarget(null);
+            fetchData();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── 3. Page View: Báo Cáo Chi Tiết Ao ────────────────────────────
+  if (harvestDetailCrop) {
+    return (
+      <div className="relative z-10 max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200 pb-12">
+        <div id="crop-page-top" className="h-0 w-0 pointer-events-none opacity-0" />
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${toast.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <p className="text-sm font-semibold">{toast.message}</p>
+          </div>
+        )}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setHarvestDetailCrop(null);
+                if (previousCycle) {
+                  setSelectedCycleForDetail(previousCycle);
+                  setPreviousCycle(null);
+                }
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" />
+              {previousCycle ? `Quay lại vụ ${previousCycle.name}` : 'Quay lại Quản lý Vụ Nuôi'}
+            </button>
+            <div className="h-4 w-px bg-slate-200" />
+            <span className="text-xs font-semibold text-slate-400">Quản lý Ao/Vụ</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-700">Báo cáo chi tiết ao ({harvestDetailCrop.pond?.name || 'Ao nuôi'})</span>
+          </div>
+        </div>
+        <CropDetailReportModal
+          isOpen={true}
+          asPage={true}
+          crop={harvestDetailCrop}
+          onClose={() => {
+            setHarvestDetailCrop(null);
+            if (previousCycle) {
+              setSelectedCycleForDetail(previousCycle);
+              setPreviousCycle(null);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── 4. Page View: Xem Chi Tiết Vụ & Các Ao ───────────────────────
+  if (selectedCycleForDetail) {
+    return (
+      <div className="relative z-10 max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200 pb-12">
+        <div id="crop-page-top" className="h-0 w-0 pointer-events-none opacity-0" />
+        {toast && (
+          <div
+            className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${toast.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <p className="text-sm font-semibold">{toast.message}</p>
+          </div>
+        )}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedCycleForDetail(null)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại Quản lý Vụ Nuôi
+            </button>
+            <div className="h-4 w-px bg-slate-200" />
+            <span className="text-xs font-semibold text-slate-400">Quản lý Ao/Vụ</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-700">Chi tiết vụ: {selectedCycleForDetail.name}</span>
+          </div>
+        </div>
+        <CropCycleDetailModal
+          isOpen={true}
+          asPage={true}
+          cycle={selectedCycleForDetail}
+          onClose={() => setSelectedCycleForDetail(null)}
+          onOpenCropReport={(crop) => {
+            setPreviousCycle(selectedCycleForDetail);
+            setSelectedCycleForDetail(null);
+            setHarvestDetailCrop(crop);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative z-10 max-w-7xl mx-auto space-y-6">
       {/* Toast Notification */}
@@ -919,7 +1155,10 @@ export default function CropManagement({
         </div>
       )}
 
-      {/* Header Actions */}
+      {/* Main List View when not in Create/Edit mode */}
+      {!showModal && (
+        <>
+          {/* Header Actions */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner border border-blue-100/50">
@@ -1033,7 +1272,7 @@ export default function CropManagement({
               <History className="w-3.5 h-3.5" />
               Lịch sử vụ nuôi
               <span className="px-2 py-0.5 rounded-md bg-slate-200 text-[10px] text-slate-700 font-black">
-                {crops.filter((c) => c.status !== 'ACTIVE').length}
+                {allCropCycles.length} vụ
               </span>
             </button>
           </div>
@@ -1043,15 +1282,26 @@ export default function CropManagement({
             {activeView === 'history' && (
               <div className="flex items-center bg-slate-100/80 p-1 rounded-xl">
                 <button
+                  onClick={() => setHistoryDisplayMode('cycle')}
+                  className={`p-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    historyDisplayMode === 'cycle'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Gom theo vụ nuôi (Mô hình công nghệ cao, sơ đồ dòng đời)"
+                >
+                  <Layers className="w-3.5 h-3.5" /> Theo Vụ Nuôi
+                </button>
+                <button
                   onClick={() => setHistoryDisplayMode('grid')}
                   className={`p-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                     historyDisplayMode === 'grid'
                       ? 'bg-white text-blue-600 shadow-2xs'
                       : 'text-slate-500 hover:text-slate-700'
                   }`}
-                  title="Xem dạng thẻ"
+                  title="Xem từng ao dạng thẻ"
                 >
-                  <LayoutGrid className="w-3.5 h-3.5" /> Dạng Thẻ
+                  <LayoutGrid className="w-3.5 h-3.5" /> Từng Ao
                 </button>
                 <button
                   onClick={() => setHistoryDisplayMode('table')}
@@ -1422,25 +1672,30 @@ export default function CropManagement({
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => setHarvestDetailCrop(crop)}
+                                onClick={() => {
+                                  if (crop.status === 'HARVESTED') {
+                                    setHarvestDetailCrop(crop);
+                                  } else {
+                                    showToast(
+                                      `Ao ${crop.pond?.name || ''} đang nuôi. Cần các ao của vụ nuôi hoàn tất thu hoạch mới có thể xuất báo cáo!`,
+                                      'error'
+                                    );
+                                  }
+                                }}
                                 className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                                 title="Xem báo cáo chi tiết thu hoạch & so sánh chỉ tiêu"
                               >
                                 <Eye className="w-3.5 h-3.5" /> Báo cáo
                               </button>
-                              <button
-                                onClick={() => {
-                                  if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
-                                    setHarvestCrop(crop);
-                                  } else {
-                                    openEditModal(crop);
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                                title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa'}
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
+                              {crop.status !== 'HARVESTED' && (
+                                <button
+                                  onClick={() => openEditModal(crop)}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                  title="Chỉnh sửa vụ nuôi"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 onClick={(e) => handleDelete(e, crop)}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
@@ -1532,7 +1787,7 @@ export default function CropManagement({
                   {/* Right side controls */}
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/60 shadow-inner">
-                      🌾 <strong>{farmGroup.crops.length}</strong> vụ ({activeView === 'active' ? 'đang nuôi' : 'lịch sử'})
+                      🌾 <strong>{activeView === 'history' && historyDisplayMode === 'cycle' ? farmGroup.cycles.length : farmGroup.crops.length}</strong> {activeView === 'history' && historyDisplayMode === 'cycle' ? 'vụ nuôi' : `vụ (${activeView === 'active' ? 'đang nuôi' : 'lịch sử'})`}
                     </span>
                     <button
                       onClick={() => openAddModal(farmGroup.id)}
@@ -1543,8 +1798,33 @@ export default function CropManagement({
                   </div>
                 </div>
 
-                {/* Crops Grid for this farm */}
-                {farmGroup.crops.length === 0 ? (
+                {/* Crops / Cycles Grid for this farm */}
+                {activeView === 'history' && historyDisplayMode === 'cycle' ? (
+                  farmGroup.cycles.length === 0 ? (
+                    <div className="bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200/80 p-8 text-center">
+                      <div className="w-12 h-12 bg-white text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-slate-100 shadow-sm">
+                        <Layers className="w-6 h-6 text-indigo-400" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 mb-1">
+                        Chưa có lịch sử chu kỳ vụ nuôi nào tại trang trại này
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        Sau khi các ao hoàn tất vụ nuôi hoặc thu hoạch, toàn bộ dữ liệu ao ương và ao thương phẩm sẽ tự động được gom nhóm trực quan tại đây.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {farmGroup.cycles.map((cycle) => (
+                        <CropCycleCard
+                          key={cycle.id}
+                          cycle={cycle}
+                          onOpenDetail={(c) => setSelectedCycleForDetail(c)}
+                          onOpenPondReport={(crop) => setHarvestDetailCrop(crop)}
+                        />
+                      ))}
+                    </div>
+                  )
+                ) : farmGroup.crops.length === 0 ? (
                   <div className="bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200/80 p-8 text-center">
                     <div className="w-12 h-12 bg-white text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-slate-100 shadow-sm">
                       <CalendarDays className="w-6 h-6 text-blue-400" />
@@ -1597,43 +1877,46 @@ export default function CropManagement({
                       return (
                         <div
                           key={crop.id}
-                          className="bg-white rounded-3xl border border-slate-100 shadow-md shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/10 transition-all hover:-translate-y-1.5 duration-300 group flex flex-col overflow-hidden relative"
+                          className="bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-lg hover:shadow-blue-500/10 transition-all hover:-translate-y-1 duration-300 group flex flex-col overflow-hidden relative"
                         >
-                          {/* Card Gradient Top Cover */}
-                          <div className="h-20 bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-500 relative overflow-hidden">
-                            <div className="absolute inset-0 bg-white/15 backdrop-blur-xs pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                            <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+                          {/* Card Gradient Top Cover - Compact & Modern */}
+                          <div className="h-16 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 relative overflow-hidden">
+                            <div className="absolute inset-0 bg-white/15 backdrop-blur-xs pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                            <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-white/15 rounded-full blur-md" />
                           </div>
 
-                          <div className="p-5 relative flex-1 flex flex-col">
+                          <div className="p-5 pt-0 relative flex-1 flex flex-col">
                             {/* Floating Icon */}
-                            <div className="w-12 h-12 bg-white border border-white/80 rounded-2xl flex items-center justify-center absolute -top-8 shadow-xl shadow-blue-900/10 group-hover:scale-110 transition-all duration-300 z-20">
-                              <Waves className="w-6 h-6 text-blue-600" />
+                            <div className="w-11 h-11 bg-white border border-slate-100 rounded-2xl flex items-center justify-center absolute -top-6 left-5 shadow-lg shadow-blue-900/10 group-hover:scale-105 transition-all duration-300 z-10">
+                              <Waves className="w-5 h-5 text-blue-600" />
                             </div>
 
-                            <div className="mt-4 flex-1 flex flex-col justify-between space-y-4">
+                            <div className="mt-8 flex-1 flex flex-col justify-between space-y-3">
                               <div>
                                 <div className="flex items-start justify-between gap-2 mb-2">
                                   <div>
-                                    <h4 className="text-lg font-black text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors">
+                                    <h4 className="text-base font-bold text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">
                                       {crop.pond?.name || 'Ao nuôi'}
                                     </h4>
-                                    <p className="text-xs font-semibold text-slate-400">
+                                    <p className="text-xs font-medium text-slate-400">
                                       {cropArea > 0 ? `Diện tích: ${cropArea.toLocaleString()} m²` : 'Ao nuôi tôm'}
                                     </p>
                                   </div>
 
                                   <div className="flex flex-col items-end gap-1">
-                                    <span
-                                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full border ${statusBadge.bg}`}
-                                    >
-                                      <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
-                                      {CROP_STATUS_LABELS[crop.status] || crop.status}
-                                    </span>
+                                    {/* Chỉ hiện status badge nếu là trạng thái đặc biệt khác ACTIVE và HARVESTED */}
+                                    {crop.status !== 'ACTIVE' && crop.status !== 'HARVESTED' && (
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold rounded-full border ${statusBadge.bg}`}
+                                      >
+                                        <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
+                                        {CROP_STATUS_LABELS[crop.status] || crop.status}
+                                      </span>
+                                    )}
 
                                     {/* Stage Badge */}
                                     <span
-                                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border ${crop.stage === 'NURSERY'
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-bold rounded-md border ${crop.stage === 'NURSERY'
                                           ? 'bg-purple-50 text-purple-700 border-purple-200'
                                           : 'bg-blue-50 text-blue-700 border-blue-200'
                                         }`}
@@ -1645,7 +1928,7 @@ export default function CropManagement({
                                     {/* Lineage: Parent Crop */}
                                     {crop.parentCrop && (
                                       <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border bg-indigo-50 text-indigo-700 border-indigo-200"
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md border bg-indigo-50/80 text-indigo-700 border-indigo-200"
                                         title={`Tách từ ao: ${crop.parentCrop.pond?.name || 'Ao ương'}`}
                                       >
                                         <span>🌿</span> Tách từ {crop.parentCrop.pond?.name || 'ao ương'}
@@ -1655,7 +1938,7 @@ export default function CropManagement({
                                     {/* Lineage: Child Crops */}
                                     {crop.childCrops && crop.childCrops.length > 0 && (
                                       <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md border bg-emerald-50/80 text-emerald-700 border-emerald-200"
                                         title={`Đã tách sang ${crop.childCrops.length} ao thương phẩm`}
                                       >
                                         <span>✨</span> Đã tách ({crop.childCrops.length} ao)
@@ -1666,11 +1949,11 @@ export default function CropManagement({
 
                                 {/* Nursery Transfer Callout if applicable */}
                                 {crop.stage === 'NURSERY' && crop.expectedTransferDate && crop.status === 'ACTIVE' && (
-                                  <div className="mb-2 p-2 bg-purple-50/80 rounded-xl border border-purple-200/80 flex items-center justify-between text-xs">
+                                  <div className="mb-2 px-2.5 py-1.5 bg-purple-50/90 rounded-xl border border-purple-200/80 flex items-center justify-between text-xs">
                                     <span className="flex items-center gap-1 text-[11px] font-bold text-purple-900">
                                       <ArrowRight className="w-3.5 h-3.5 text-purple-600" /> Dự kiến tách ao:
                                     </span>
-                                    <span className="font-black text-purple-900 text-[11px] bg-white px-2 py-0.5 rounded-md border border-purple-100 shadow-2xs">
+                                    <span className="font-bold text-purple-900 text-[11px] bg-white px-2 py-0.5 rounded-md border border-purple-100 shadow-2xs">
                                       {new Date(crop.expectedTransferDate).toLocaleDateString('vi-VN')}
                                     </span>
                                   </div>
@@ -1678,7 +1961,7 @@ export default function CropManagement({
 
                                 {/* Nursery Harvested & Split Summary for Historical Cards */}
                                 {crop.stage === 'NURSERY' && crop.actualNurseryHarvest && (
-                                  <div className="mb-2 p-2 bg-purple-50/90 rounded-xl border border-purple-200 flex items-center justify-between text-[11px]">
+                                  <div className="mb-2 px-2.5 py-1.5 bg-purple-50/90 rounded-xl border border-purple-200 flex items-center justify-between text-[11px]">
                                     <span className="font-bold text-purple-900">
                                       Đã xuất ương: {crop.actualNurseryHarvest.toLocaleString()} con
                                     </span>
@@ -1689,22 +1972,17 @@ export default function CropManagement({
                                 )}
 
                                 {crop.status !== 'ACTIVE' ? (
-                                  /* CARD THEO ĐÚNG YÊU CẦU THẺ ẢNH SỐ 3 */
+                                  /* CARD CHO LỊCH SỬ VỤ NUÔI */
                                   (() => {
                                     const harvestDurationDays = crop.actualHarvestDate
                                       ? Math.max(1, Math.round((new Date(crop.actualHarvestDate).getTime() - new Date(crop.startDate).getTime()) / (1000 * 60 * 60 * 24)))
                                       : (crop.expectedDurationDays || 90);
                                     const tonsVal = crop.actualHarvestKg ? (crop.actualHarvestKg / 1000).toFixed(2) : '0';
-                                    const profitVal = crop.actualHarvestProfit !== null && crop.actualHarvestProfit !== undefined
-                                      ? crop.actualHarvestProfit
-                                      : ((crop.actualHarvestRevenue || 0) - (crop.actualHarvestCost || 0));
-                                    const isProfit = profitVal > 0;
-                                    const isLoss = profitVal < 0;
 
                                     return (
-                                      <div className="space-y-3 my-3">
-                                        {/* 4 thông số chính: Ngày thả, Thời gian nuôi, Số lượng tôm thu, Size */}
-                                        <div className="grid grid-cols-2 gap-2.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100 shadow-inner">
+                                      <div className="my-2.5">
+                                        {/* 4 thông số chính: Ngày thả giống, Thời gian nuôi, Số lượng tôm thu, Size */}
+                                        <div className="grid grid-cols-2 gap-2 bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90 shadow-2xs">
                                           {/* 1. Ngày thả giống */}
                                           <div className="flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -1732,7 +2010,7 @@ export default function CropManagement({
                                               {crop.actualHarvestKg ? (
                                                 <>
                                                   {crop.actualHarvestKg.toLocaleString()} kg{' '}
-                                                  <span className="text-[10.5px] font-bold text-slate-500">
+                                                  <span className="text-[10px] font-medium text-slate-500">
                                                     (~{tonsVal} tấn)
                                                   </span>
                                                 </>
@@ -1751,7 +2029,7 @@ export default function CropManagement({
                                               {crop.actualHarvestSize ? (
                                                 <>
                                                   {crop.actualHarvestSize}{' '}
-                                                  <span className="text-[10.5px] font-bold text-slate-400">con/kg</span>
+                                                  <span className="text-[10px] font-medium text-slate-400">con/kg</span>
                                                 </>
                                               ) : (
                                                 '--'
@@ -1759,68 +2037,13 @@ export default function CropManagement({
                                             </span>
                                           </div>
                                         </div>
-
-                                        {/* 5. Tổng tiền lời hay lỗ */}
-                                        <div
-                                          className={`p-3 rounded-2xl border flex items-center justify-between transition-all ${
-                                            isProfit
-                                              ? 'bg-gradient-to-r from-emerald-50 via-teal-50/70 to-emerald-50 border-emerald-200 text-emerald-900'
-                                              : isLoss
-                                              ? 'bg-gradient-to-r from-rose-50 via-red-50/70 to-rose-50 border-rose-200 text-rose-900'
-                                              : 'bg-slate-50 border-slate-200 text-slate-700'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2.5">
-                                            <div
-                                              className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
-                                                isProfit
-                                                  ? 'bg-emerald-100 text-emerald-700'
-                                                  : isLoss
-                                                  ? 'bg-rose-100 text-rose-700'
-                                                  : 'bg-slate-200 text-slate-600'
-                                              }`}
-                                            >
-                                              {isProfit ? (
-                                                <TrendingUp className="w-4 h-4" />
-                                              ) : isLoss ? (
-                                                <TrendingDown className="w-4 h-4" />
-                                              ) : (
-                                                <DollarSign className="w-4 h-4" />
-                                              )}
-                                            </div>
-                                            <div>
-                                              <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">
-                                                {isProfit ? 'Tổng tiền lời' : isLoss ? 'Tổng tiền lỗ' : 'Lợi nhuận vụ'}
-                                              </span>
-                                              <span className="text-sm font-black">
-                                                {isProfit
-                                                  ? `+${formatVND(profitVal)} đ`
-                                                  : isLoss
-                                                  ? `${formatVND(profitVal)} đ`
-                                                  : `${formatVND(profitVal)} đ`}
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setHarvestDetailCrop(crop);
-                                            }}
-                                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-white shadow-2xs border border-slate-200/80 hover:bg-slate-50 text-slate-700 flex items-center gap-1 cursor-pointer transition-all hover:scale-105"
-                                            title="Xem báo cáo chi tiết thu hoạch và đối chiếu chỉ tiêu ban đầu"
-                                          >
-                                            Xem thêm <ArrowRight className="w-3 h-3" />
-                                          </button>
-                                        </div>
                                       </div>
                                     );
                                   })()
                                 ) : (
                                   <>
                                     {/* Matrix stats (Cho vụ đang nuôi) */}
-                                    <div className="grid grid-cols-2 gap-2.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100/80 shadow-inner my-3">
+                                    <div className="grid grid-cols-2 gap-2 bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90 shadow-2xs my-2.5">
                                       <div className="flex flex-col gap-0.5">
                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                           <Calendar className="w-3 h-3 text-blue-500" /> Ngày thả giống
@@ -1843,7 +2066,7 @@ export default function CropManagement({
                                         </span>
                                         <span className="text-xs font-black text-slate-800">
                                           {crop.initialShrimpCount.toLocaleString()}{' '}
-                                          <span className="text-[10px] font-bold text-slate-400">con</span>
+                                          <span className="text-[10px] font-medium text-slate-400">con</span>
                                         </span>
                                       </div>
 
@@ -1865,9 +2088,9 @@ export default function CropManagement({
 
                                     {/* Target & Planning Snippet */}
                                     {(crop.targetHarvestSize || crop.targetSurvivalRate || crop.targetTotalFeedKg || crop.expectedHarvestDate) && (
-                                      <div className="p-3 bg-gradient-to-r from-blue-50/60 to-indigo-50/50 rounded-2xl border border-blue-100/80 space-y-1.5 text-xs">
+                                      <div className="p-2.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-blue-50/70 rounded-xl border border-blue-100/80 space-y-1.5 text-xs">
                                         <div className="flex items-center justify-between font-bold text-slate-700">
-                                          <span className="flex items-center gap-1 text-blue-700 text-xs font-bold">
+                                          <span className="flex items-center gap-1.5 text-blue-700 text-xs font-bold">
                                             <Target className="w-3.5 h-3.5 text-blue-600" /> Kế hoạch mục tiêu
                                           </span>
                                           {crop.expectedDurationDays && (
@@ -1903,21 +2126,40 @@ export default function CropManagement({
                               </div>
 
                               {/* Card Footer Actions */}
-                              <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setHarvestDetailCrop(crop);
-                                    }}
-                                    className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105"
-                                    title="Xem báo cáo chi tiết vụ nuôi, phân tích kỹ thuật và tài chính toàn diện"
-                                  >
-                                    <Target className="w-3.5 h-3.5 text-blue-600" /> Báo cáo chi tiết vụ nuôi
-                                  </button>
-
-                                  {crop.status === 'ACTIVE' && (
+                              <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {crop.status !== 'ACTIVE' ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setHarvestDetailCrop(crop);
+                                        }}
+                                        className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105"
+                                        title="Xem báo cáo chi tiết vụ nuôi, phân tích kỹ thuật và tài chính toàn diện"
+                                      >
+                                        <Target className="w-3.5 h-3.5 text-blue-600" /> Báo cáo chi tiết vụ nuôi
+                                      </button>
+                                      {(() => {
+                                        const parentCycle = allCropCycles.find((c) => c.allCrops.some((member) => member.id === crop.id));
+                                        if (!parentCycle) return null;
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedCycleForDetail(parentCycle);
+                                            }}
+                                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-indigo-200/80 shadow-2xs hover:scale-105"
+                                            title="Xem toàn bộ vụ nuôi gom tất cả các ao liên quan"
+                                          >
+                                            <GitFork className="w-3.5 h-3.5 text-indigo-600" /> Toàn vụ ({parentCycle.totals.totalPondsCount} ao)
+                                          </button>
+                                        );
+                                      })()}
+                                    </>
+                                  ) : (
                                     <>
                                       <button
                                         type="button"
@@ -1929,7 +2171,7 @@ export default function CropManagement({
                                             cropId: crop.id,
                                           });
                                         }}
-                                        className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-blue-200/90 shadow-2xs hover:scale-105 hover:shadow-blue-500/10"
+                                        className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200/80 shadow-2xs hover:scale-105"
                                         title="Chuyển nhanh sang màn hình theo dõi tăng trưởng, kích cỡ và sinh khối của vụ nuôi này"
                                       >
                                         <TrendingUp className="w-3.5 h-3.5 text-blue-600" /> Tăng trưởng
@@ -1941,7 +2183,7 @@ export default function CropManagement({
                                             e.stopPropagation();
                                             setSplitCropTarget(crop);
                                           }}
-                                          className="px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 rounded-xl transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer border border-purple-200/90 shadow-2xs hover:scale-105 hover:shadow-purple-500/10"
+                                          className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-purple-200/80 shadow-2xs hover:scale-105"
                                           title="Tách ao và chuyển sang các ao nuôi thương phẩm"
                                         >
                                           <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Tách ao
@@ -1950,32 +2192,28 @@ export default function CropManagement({
 
                                       <button
                                         onClick={(e) => handleHarvest(e, crop)}
-                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/60"
+                                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1 cursor-pointer border border-emerald-200/70 shadow-2xs hover:scale-105"
                                         title="Mở bảng thu hoạch và tổng kết vụ nuôi"
                                       >
-                                        <CheckCircle2 className="w-3.5 h-3.5" /> Thu hoạch
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Thu hoạch
                                       </button>
                                     </>
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => {
-                                      if (crop.status === 'HARVESTED' || crop.status !== 'ACTIVE') {
-                                        setHarvestCrop(crop);
-                                      } else {
-                                        openEditModal(crop);
-                                      }
-                                    }}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                                    title={crop.status === 'HARVESTED' || crop.status !== 'ACTIVE' ? 'Chỉnh sửa form thu hoạch' : 'Chỉnh sửa / Cập nhật mục tiêu'}
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {crop.status !== 'HARVESTED' && (
+                                    <button
+                                      onClick={() => openEditModal(crop)}
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Chỉnh sửa / Cập nhật mục tiêu"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => handleDelete(e, crop)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                     title="Xóa vụ nuôi"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -1994,11 +2232,33 @@ export default function CropManagement({
           ))}
         </div>
       )}
+        </>
+      )}
 
-      {/* Create / Edit Modal (Ultra-Professional Spacious Balanced 2-Column) */}
-      {showModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-8 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-5xl xl:max-w-6xl shadow-2xl overflow-hidden border border-slate-200/80 max-h-[90vh] flex flex-col relative">
+      {/* Create / Edit Page View (Toàn màn hình, không dùng pop-up) */}
+      {showModal && (
+        <div className="w-full space-y-4 animate-in fade-in duration-200 pb-12">
+          <div id="crop-page-top" className="h-0 w-0 pointer-events-none opacity-0" />
+          {/* Top Breadcrumb & Back */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại Quản lý Vụ Nuôi
+              </button>
+              <div className="h-4 w-px bg-slate-200" />
+              <span className="text-xs font-semibold text-slate-400">Quản lý Ao/Vụ</span>
+              <span className="text-xs text-slate-300">/</span>
+              <span className="text-xs font-bold text-slate-700">
+                {editingCropId ? 'Cập nhật vụ nuôi' : 'Tạo vụ nuôi mới'}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl w-full shadow-sm overflow-hidden border border-slate-200/80 flex flex-col relative">
 
             {/* ── Header ─────────────────────────────────────────── */}
             {(() => {
@@ -2008,7 +2268,7 @@ export default function CropManagement({
               return (
                 <>
                   <div className={`h-1.5 bg-gradient-to-r ${gradientClass}`} />
-                  <div className="px-6 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20 text-white flex items-center justify-center shadow-md flex-shrink-0">
                         {isTraditional ? <Sparkles className="w-5 h-5" /> : <Target className="w-5 h-5" />}
@@ -2030,10 +2290,10 @@ export default function CropManagement({
                     <button
                       type="button"
                       onClick={() => setShowModal(false)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer border border-transparent hover:border-slate-200"
-                      title="Đóng"
+                      className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105"
+                      title="Quay lại"
                     >
-                      <X className="w-5 h-5" />
+                      <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
                     </button>
                   </div>
                 </>
@@ -2041,7 +2301,7 @@ export default function CropManagement({
             })()}
 
             {/* ── Form Body (Spacious Perfectly Symmetrical 2-Column Grid) ──────── */}
-            <form id="cropForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50/40">
+            <form id="cropForm" onSubmit={handleSubmit} className="p-4 sm:p-6 bg-slate-50/40">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 
                 {/* ── CỘT TRÁI: Vị trí ao & Thả giống ────── */}
@@ -2591,7 +2851,7 @@ export default function CropManagement({
                     disabled={saving}
                     className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors cursor-pointer"
                   >
-                    Hủy
+                    Quay lại danh sách vụ nuôi
                   </button>
                   <button
                     type="submit"
@@ -2616,49 +2876,7 @@ export default function CropManagement({
             })()}
 
           </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Harvest Crop Modal (Form thu hoạch, tính toán FCR, doanh thu, kho & so sánh mục tiêu) */}
-      {harvestCrop && (
-        <HarvestCropModal
-          isOpen={!!harvestCrop}
-          crop={harvestCrop}
-          onClose={() => setHarvestCrop(null)}
-          onSuccess={(msg) => {
-            showToast(msg, 'success');
-            setHarvestCrop(null);
-            fetchData();
-          }}
-        />
-      )}
-
-      {/* Comprehensive Crop Detailed Report Modal */}
-      {harvestDetailCrop && (
-        <CropDetailReportModal
-          isOpen={!!harvestDetailCrop}
-          crop={harvestDetailCrop}
-          onClose={() => setHarvestDetailCrop(null)}
-          onEditHarvest={(cropToEdit) => {
-            setHarvestDetailCrop(null);
-            setHarvestCrop(cropToEdit);
-          }}
-        />
-      )}
-
-      {/* Split Crop Modal */}
-      {splitCropTarget && (
-        <SplitCropModal
-          crop={splitCropTarget}
-          allPonds={ponds}
-          activeCrops={crops}
-          onClose={() => setSplitCropTarget(null)}
-          onSuccess={(msg) => {
-            showToast(msg, 'success');
-            fetchData();
-          }}
-        />
+        </div>
       )}
 
       {/* Modal Xác nhận Xóa Vụ Nuôi (thay thế hộp thoại localhost của trình duyệt) */}

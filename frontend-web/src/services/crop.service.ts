@@ -211,9 +211,29 @@ export interface Crop {
     startDate: string;
     initialShrimpCount: number;
     stage?: string;
+    status?: string;
+    transferDate?: string | null;
+    actualNurseryHarvest?: number | null;
+    nurserySurvivalRate?: number | null;
+    transferSize?: number | null;
+    splitNote?: string | null;
+    actualHarvestDate?: string | null;
+    actualHarvestKg?: number | null;
+    actualHarvestSize?: number | null;
+    actualHarvestRevenue?: number | null;
+    actualHarvestCost?: number | null;
+    actualHarvestProfit?: number | null;
+    actualHarvestFcr?: number | null;
+    actualHarvestSurvivalRate?: number | null;
+    seedUnitPrice?: number | null;
+    seedCost?: number | null;
+    seedType?: string | null;
     pond?: {
       id: string;
       name: string;
+      areaSize?: number;
+      depth?: number;
+      farmId?: string;
     };
   } | null;
   childCrops?: Array<{
@@ -222,9 +242,26 @@ export interface Crop {
     initialShrimpCount: number;
     status: string;
     stage?: string;
+    actualHarvestDate?: string | null;
+    actualHarvestKg?: number | null;
+    actualHarvestCount?: number | null;
+    actualHarvestSize?: number | null;
+    actualHarvestRevenue?: number | null;
+    actualHarvestCost?: number | null;
+    actualHarvestProfit?: number | null;
+    actualHarvestFcr?: number | null;
+    actualHarvestSurvivalRate?: number | null;
+    expectedHarvestDate?: string | null;
+    expectedDurationDays?: number | null;
+    targetHarvestSize?: number | null;
+    targetSurvivalRate?: number | null;
+    targetTotalFeedKg?: number | null;
     pond?: {
       id: string;
       name: string;
+      areaSize?: number;
+      depth?: number;
+      farmId?: string;
     };
   }> | null;
   createdAt?: string;

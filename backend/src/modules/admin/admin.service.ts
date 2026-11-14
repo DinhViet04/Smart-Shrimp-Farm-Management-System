@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsGateway } from '../notifications/notifications.gateway.js';
 import { GetAuditLogsQueryDto } from './dto/get-audit-logs-query.dto.js';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly notificationsGateway?: NotificationsGateway,
+  ) {}
 
   async getDashboardStats(days: 7 | 30 = 7) {
     const now = new Date();
@@ -191,10 +196,32 @@ export class AdminService {
       database = 'DOWN';
     }
 
-    const aiStatus = await this.checkAiServiceHealth();
+    const [aiStatus, storageStatus] = await Promise.all([
+      this.checkAiServiceHealth(),
+      this.checkSupabaseStorageHealth(),
+    ]);
+    const realtimeStats = this.notificationsGateway?.getRealtimeStats();
+    const socketStatus = realtimeStats?.isReady
+      ? {
+          name: 'Socket.IO (Realtime)',
+          status: 'UP',
+          detail: `${realtimeStats.onlineUsers} người dùng trực tuyến · ${realtimeStats.totalConnections} kết nối`,
+        }
+      : {
+          name: 'Socket.IO (Realtime)',
+          status: realtimeStats ? 'DOWN' : 'NOT_CONFIGURED',
+          detail: realtimeStats
+            ? 'WebSocket server chưa sẵn sàng'
+            : 'Chưa gắn NotificationsGateway',
+        };
+
+    const isHealthy =
+      database === 'UP' &&
+      storageStatus.status !== 'DOWN' &&
+      socketStatus.status !== 'DOWN';
 
     return {
-      status: database === 'UP' ? 'HEALTHY' : 'DEGRADED',
+      status: isHealthy ? 'HEALTHY' : 'DEGRADED',
       checkedAt,
       uptimeSeconds: Math.floor(process.uptime()),
       memory: {
@@ -215,6 +242,8 @@ export class AdminService {
               ? 'Không thể kết nối'
               : `${databaseLatencyMs} ms`,
         },
+        socketStatus,
+        storageStatus,
         {
           name: 'Email',
           status: process.env.SMTP_HOST ? 'UP' : 'NOT_CONFIGURED',
@@ -225,6 +254,77 @@ export class AdminService {
         aiStatus,
       ],
     };
+  }
+
+  private async checkSupabaseStorageHealth(): Promise<{
+    name: string;
+    status: string;
+    detail: string;
+  }> {
+    const rawSupabaseUrl = process.env.SUPABASE_URL?.trim();
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const bucket =
+      process.env.SUPABASE_STORAGE_BUCKET?.trim() || 'chat-attachments';
+
+    if (!rawSupabaseUrl || !serviceKey) {
+      return {
+        name: 'Supabase Storage',
+        status: 'NOT_CONFIGURED',
+        detail: 'Chưa cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY',
+      };
+    }
+
+    let supabaseUrl: string;
+    try {
+      const normalizedInput = /^https?:\/\//i.test(rawSupabaseUrl)
+        ? rawSupabaseUrl
+        : `https://${rawSupabaseUrl}`;
+      const parsed = new URL(normalizedInput);
+      const dashboardMatch = parsed.pathname.match(/\/project\/([a-z0-9]+)/i);
+      supabaseUrl =
+        parsed.hostname === 'supabase.com' && dashboardMatch?.[1]
+          ? `https://${dashboardMatch[1]}.supabase.co`
+          : parsed.origin.replace('.storage.supabase.co', '.supabase.co');
+    } catch {
+      return {
+        name: 'Supabase Storage',
+        status: 'DOWN',
+        detail: 'SUPABASE_URL không hợp lệ',
+      };
+    }
+
+    const started = Date.now();
+    try {
+      const response = await fetch(
+        `${supabaseUrl}/storage/v1/bucket/${encodeURIComponent(bucket)}`,
+        {
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          signal: AbortSignal.timeout(2500),
+        },
+      );
+      const latencyMs = Date.now() - started;
+      if (response.ok) {
+        return {
+          name: 'Supabase Storage',
+          status: 'UP',
+          detail: `Bucket "${bucket}" sẵn sàng · ${latencyMs} ms`,
+        };
+      }
+      return {
+        name: 'Supabase Storage',
+        status: 'DOWN',
+        detail: `Lỗi HTTP ${response.status} khi kiểm tra bucket "${bucket}"`,
+      };
+    } catch {
+      return {
+        name: 'Supabase Storage',
+        status: 'DOWN',
+        detail: 'Không thể kết nối tới Supabase Storage',
+      };
+    }
   }
 
   private async checkAiServiceHealth(): Promise<{

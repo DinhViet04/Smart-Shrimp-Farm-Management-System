@@ -3,6 +3,9 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
@@ -13,7 +16,16 @@ const allowedOrigins = getAllowedOrigins(process.env);
 
 @WebSocketGateway({
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        (process.env.NODE_ENV !== 'production' &&
+          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(
+            origin,
+          ));
+      return callback(null, isAllowed);
+    },
     credentials: true,
   },
   namespace: '/notifications',
@@ -26,6 +38,115 @@ export class NotificationsGateway
 
   // Map of userId to their active socket IDs
   private userSockets: Map<string, Set<string>> = new Map();
+  private chatMessageHandler?: (payload: {
+    groupId: string;
+    content: string;
+    attachmentUrl?: string;
+    attachmentName?: string;
+    attachmentType?: string;
+    attachmentSize?: number;
+    replyToId?: string;
+    user: { userId: string; role: any };
+  }) => Promise<any>;
+
+  private chatReceiptHandler?: (payload: {
+    groupId: string;
+    type: 'DELIVERED' | 'READ';
+    user: { userId: string; role: any };
+  }) => Promise<any>;
+
+  registerChatMessageHandler(
+    handler: (payload: {
+      groupId: string;
+      content: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+      attachmentType?: string;
+      attachmentSize?: number;
+      replyToId?: string;
+      user: { userId: string; role: any };
+    }) => Promise<any>,
+  ) {
+    this.chatMessageHandler = handler;
+  }
+
+  registerChatReceiptHandler(
+    handler: (payload: {
+      groupId: string;
+      type: 'DELIVERED' | 'READ';
+      user: { userId: string; role: any };
+    }) => Promise<any>,
+  ) {
+    this.chatReceiptHandler = handler;
+  }
+
+  @SubscribeMessage('sendChatMessage')
+  async handleSendChatMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      groupId?: string;
+      content?: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+      attachmentType?: string;
+      attachmentSize?: number;
+      replyToId?: string;
+    },
+  ) {
+    const user = client.data?.user;
+    const userId = user?.sub || user?.userId || user?.id;
+    if (!userId) {
+      return { ok: false, error: 'Chưa xác thực kết nối' };
+    }
+    if (!this.chatMessageHandler) {
+      return { ok: false, error: 'Dịch vụ chat chưa sẵn sàng' };
+    }
+    try {
+      const message = await this.chatMessageHandler({
+        groupId: payload?.groupId || '',
+        content: payload?.content || '',
+        attachmentUrl: payload?.attachmentUrl,
+        attachmentName: payload?.attachmentName,
+        attachmentType: payload?.attachmentType,
+        attachmentSize: payload?.attachmentSize,
+        replyToId: payload?.replyToId,
+        user: { userId, role: user.role },
+      });
+      return { ok: true, message };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Không thể gửi tin nhắn',
+      };
+    }
+  }
+
+  @SubscribeMessage('markChatReceipt')
+  async handleMarkChatReceipt(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      groupId?: string;
+      type?: 'DELIVERED' | 'READ';
+    },
+  ) {
+    const user = client.data?.user;
+    const userId = user?.sub || user?.userId || user?.id;
+    if (!userId || !this.chatReceiptHandler || !payload?.groupId) {
+      return { ok: false };
+    }
+    try {
+      await this.chatReceiptHandler({
+        groupId: payload.groupId,
+        type: payload.type === 'READ' ? 'READ' : 'DELIVERED',
+        user: { userId, role: user.role },
+      });
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
 
   constructor(
     private readonly jwtService: JwtService,
@@ -94,17 +215,31 @@ export class NotificationsGateway
 
   sendChatMessageToUsers(userIds: string[], message: unknown) {
     if (!this.server || !userIds?.length) return;
-    const uniqueIds = Array.from(new Set(userIds));
-    for (const userId of uniqueIds) {
-      this.server.to(`user_${userId}`).emit('newChatMessage', message);
-    }
+    const rooms = Array.from(new Set(userIds)).map((id) => `user_${id}`);
+    this.server.to(rooms).emit('newChatMessage', message);
+  }
+
+  sendChatReceiptToUsers(userIds: string[], receipt: unknown) {
+    if (!this.server || !userIds?.length) return;
+    const rooms = Array.from(new Set(userIds)).map((id) => `user_${id}`);
+    this.server.to(rooms).emit('chatReceiptUpdated', receipt);
   }
 
   sendChatGroupUpdatedToUsers(userIds: string[], group: unknown) {
     if (!this.server || !userIds?.length) return;
-    const uniqueIds = Array.from(new Set(userIds));
-    for (const userId of uniqueIds) {
-      this.server.to(`user_${userId}`).emit('chatGroupUpdated', group);
-    }
+    const rooms = Array.from(new Set(userIds)).map((id) => `user_${id}`);
+    this.server.to(rooms).emit('chatGroupUpdated', group);
+  }
+
+  getRealtimeStats() {
+    let totalConnections = 0;
+    this.userSockets.forEach((sockets) => {
+      totalConnections += sockets.size;
+    });
+    return {
+      isReady: Boolean(this.server),
+      onlineUsers: this.userSockets.size,
+      totalConnections,
+    };
   }
 }

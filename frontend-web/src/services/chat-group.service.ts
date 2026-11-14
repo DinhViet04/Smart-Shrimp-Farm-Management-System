@@ -7,6 +7,8 @@ export interface ChatMemberItem {
   userId: string;
   role: 'FARM_MANAGER' | 'FARMER' | 'TECHNICIAN';
   joinedAt: string;
+  lastDeliveredAt?: string | null;
+  lastReadAt?: string | null;
   user?: {
     id: string;
     fullName: string;
@@ -17,11 +19,36 @@ export interface ChatMemberItem {
   };
 }
 
+export interface ChatAttachment {
+  attachmentUrl: string;
+  attachmentName: string;
+  attachmentType: string;
+  attachmentSize: number;
+}
+
+export interface ChatReplyPreview {
+  id: string;
+  content: string;
+  attachmentName?: string | null;
+  attachmentType?: string | null;
+  senderId?: string | null;
+  sender?: {
+    id: string;
+    fullName: string;
+  } | null;
+}
+
 export interface ChatMessageItem {
   id: string;
   groupId: string;
   senderId: string;
   content: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentType?: string | null;
+  attachmentSize?: number | null;
+  replyToId?: string | null;
+  replyTo?: ChatReplyPreview | null;
   isSystem: boolean;
   createdAt: string;
   sender?: {
@@ -35,7 +62,9 @@ export interface ChatMessageItem {
 
 export interface ChatGroupItem {
   id: string;
-  farmId: string;
+  type?: 'FARM_GROUP' | 'DIRECT';
+  farmId: string | null;
+  directKey?: string | null;
   name: string;
   createdAt: string;
   updatedAt: string;
@@ -45,7 +74,7 @@ export interface ChatGroupItem {
     address: string;
     status: string;
     ownerId: string;
-  };
+  } | null;
   members?: ChatMemberItem[];
   messages?: ChatMessageItem[];
   _count?: {
@@ -78,17 +107,55 @@ export const chatGroupService = {
   sendMessage: async (
     groupId: string,
     content: string,
+    attachment?: ChatAttachment,
+    replyToId?: string,
   ): Promise<ChatMessageItem> => {
     const response = await apiFetch(
       `${apiUrl}/api/chat-groups/${groupId}/messages`,
       {
         method: 'POST',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(attachment || {}),
+          ...(replyToId ? { replyToId } : {}),
+        }),
       },
     );
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.message || 'Không thể gửi tin nhắn');
+    }
+    return data;
+  },
+
+  uploadAttachment: async (
+    groupId: string,
+    file: File,
+  ): Promise<ChatAttachment> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiFetch(
+      `${apiUrl}/api/chat-groups/${groupId}/attachments`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Không thể tải tệp đính kèm');
+    }
+    return data;
+  },
+
+  startDirectChat: async (targetUserId: string): Promise<ChatGroupItem> => {
+    const response = await apiFetch(`${apiUrl}/api/chat-groups/direct`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Không thể mở cuộc trò chuyện riêng');
     }
     return data;
   },

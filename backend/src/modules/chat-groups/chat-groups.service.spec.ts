@@ -148,4 +148,106 @@ describe('ChatGroupsService', () => {
       }),
     ).rejects.toThrow('Nội dung tin nhắn không được để trống');
   });
+
+  it('creates a 1-on-1 direct chat group between users sharing a farm', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'owner-1',
+            role: Role.FARM_MANAGER,
+            isActive: true,
+          })
+          .mockResolvedValueOnce({
+            id: 'tech-1',
+            fullName: 'Kỹ thuật viên A',
+            role: Role.TECHNICIAN,
+            isActive: true,
+          }),
+      },
+      farm: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'farm-1' }),
+      },
+      chatGroup: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'dm-1',
+          type: 'DIRECT',
+          farmId: null,
+          directKey: 'owner-1:tech-1',
+          name: 'Kỹ thuật viên A',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          farm: null,
+          members: [
+            { id: 'm1', userId: 'owner-1', role: Role.FARM_MANAGER, joinedAt: new Date(), user: { id: 'owner-1' } },
+            { id: 'm2', userId: 'tech-1', role: Role.TECHNICIAN, joinedAt: new Date(), user: { id: 'tech-1' } },
+          ],
+          messages: [],
+        }),
+      },
+    };
+    const gateway = {
+      sendChatGroupUpdatedToUsers: jest.fn(),
+    };
+    const service = new ChatGroupsService(
+      prisma as any,
+      {} as any,
+      gateway as any,
+    );
+
+    const dm = await service.createOrGetDirectGroup('tech-1', {
+      userId: 'owner-1',
+      role: Role.FARM_MANAGER,
+    });
+
+    expect(dm).toMatchObject({
+      id: 'dm-1',
+      type: 'DIRECT',
+      directKey: 'owner-1:tech-1',
+    });
+    expect(gateway.sendChatGroupUpdatedToUsers).toHaveBeenCalledWith(
+      ['owner-1', 'tech-1'],
+      { groupId: 'dm-1', farmId: null },
+    );
+  });
+
+  it('rejects self-DM or DM with users not sharing any farm', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'owner-1',
+            role: Role.FARM_MANAGER,
+            isActive: true,
+          })
+          .mockResolvedValueOnce({
+            id: 'stranger-1',
+            fullName: 'Người ngoài',
+            role: Role.FARMER,
+            isActive: true,
+          }),
+      },
+      farm: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const service = new ChatGroupsService(prisma as any, {} as any, {} as any);
+
+    await expect(
+      service.createOrGetDirectGroup('owner-1', {
+        userId: 'owner-1',
+        role: Role.FARM_MANAGER,
+      }),
+    ).rejects.toThrow('Không thể tự nhắn tin riêng cho chính mình');
+
+    await expect(
+      service.createOrGetDirectGroup('stranger-1', {
+        userId: 'owner-1',
+        role: Role.FARM_MANAGER,
+      }),
+    ).rejects.toThrow('Chỉ có thể nhắn riêng với thành viên cùng trang trại');
+  });
 });

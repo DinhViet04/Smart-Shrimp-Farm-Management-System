@@ -2700,24 +2700,84 @@ function ReportsView() {
       cancelled = true;
     };
   }, [year, revision]);
+  const buildReportRows = (report: AdminReport): Array<[string, string | number]> => {
+    const rows: Array<[string, string | number]> = [
+      ["Hạng mục / Chỉ số", "Giá trị"],
+      ["Năm báo cáo", report.year],
+      ["Ngày xuất báo cáo", new Date(report.generatedAt).toLocaleString("vi-VN")],
+      ["--- TỔNG HỢP THU HOẠCH ---", ""],
+      ["Số vụ thu hoạch", report.harvest.count],
+      ["Sản lượng (kg)", report.harvest.actualHarvestKg || 0],
+      ["Doanh thu (VNĐ)", report.harvest.actualHarvestRevenue || 0],
+      ["Chi phí (VNĐ)", report.harvest.actualHarvestCost || 0],
+      ["Lợi nhuận (VNĐ)", report.harvest.actualHarvestProfit || 0],
+      ["--- NGƯỜI DÙNG THEO VAI TRÒ ---", ""],
+      ...report.users.map((u): [string, number] => [
+        u.role || "Không xác định",
+        u._count,
+      ]),
+      ["--- TRANG TRẠI THEO TRẠNG THÁI ---", ""],
+      ...report.farms.map((f): [string, number] => [
+        f.status || "Không xác định",
+        f._count,
+      ]),
+      ["--- MÙA VỤ THEO TRẠNG THÁI ---", ""],
+      ...report.crops.map((c): [string, number] => [
+        c.status || "Không xác định",
+        c._count,
+      ]),
+      ["--- SỰ CỐ THEO TRẠNG THÁI ---", ""],
+      ...report.incidents.map((i): [string, number] => [
+        i.status || "Không xác định",
+        i._count,
+      ]),
+    ];
+    return rows;
+  };
   const exportCsv = () => {
     if (!data) return;
-    const rows = [
-      ["Chỉ số", "Giá trị"],
-      ["Năm", data.year],
-      ["Số vụ thu hoạch", data.harvest.count],
-      ["Sản lượng (kg)", data.harvest.actualHarvestKg || 0],
-      ["Doanh thu", data.harvest.actualHarvestRevenue || 0],
-      ["Chi phí", data.harvest.actualHarvestCost || 0],
-      ["Lợi nhuận", data.harvest.actualHarvestProfit || 0],
-    ];
+    const rows = buildReportRows(data);
+    const escapeCell = (val: string | number) => {
+      const str = String(val ?? "");
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
     const blob = new Blob(
-      ["\uFEFF" + rows.map((row) => row.join(",")).join("\n")],
+      ["\uFEFF" + rows.map((row) => row.map(escapeCell).join(",")).join("\n")],
       { type: "text/csv;charset=utf-8" },
     );
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `ssfm-admin-report-${year}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+  const exportExcel = () => {
+    if (!data) return;
+    const rows = buildReportRows(data);
+    const escapeHtml = (val: string | number) =>
+      String(val ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    const tableRows = rows
+      .map(([label, value], idx) => {
+        const isHeader = idx === 0;
+        const isSection = String(label).startsWith("---");
+        const bg = isHeader
+          ? "background:#6d28d9;color:#ffffff;font-weight:bold;"
+          : isSection
+            ? "background:#ede9fe;color:#4c1d95;font-weight:bold;"
+            : "";
+        return `<tr><td style="border:1px solid #cbd5e1;padding:6px 10px;${bg}">${escapeHtml(label)}</td><td style="border:1px solid #cbd5e1;padding:6px 10px;${bg}">${escapeHtml(value)}</td></tr>`;
+      })
+      .join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /></head><body><table>${tableRows}</table></body></html>`;
+    const blob = new Blob(["\uFEFF" + html], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ssfm-admin-report-${year}.xls`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -2787,10 +2847,17 @@ function ReportsView() {
           </button>
           <button
             onClick={exportCsv}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-purple-500/20 transition hover:from-purple-700 hover:to-violet-600 cursor-pointer"
+            className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs font-bold text-purple-700 transition hover:bg-purple-100 cursor-pointer"
           >
             <Download className="h-4 w-4" />
             Xuất CSV
+          </button>
+          <button
+            onClick={exportExcel}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-purple-500/20 transition hover:from-purple-700 hover:to-violet-600 cursor-pointer"
+          >
+            <FileText className="h-4 w-4" />
+            Xuất Excel
           </button>
         </div>
       </div>

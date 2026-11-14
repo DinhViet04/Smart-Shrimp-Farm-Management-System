@@ -25,6 +25,7 @@ import FeedingLogScreen from '../screens/feeding/FeedingLogScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatGroupScreen from '../screens/ChatGroupScreen';
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
 import IncidentStackNavigator from './IncidentNavigator';
 import BusinessHeader from '../components/BusinessHeader';
 
@@ -32,6 +33,7 @@ const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
 
 function FarmerTabs() {
+  const { unreadConversationCount, setChatOpen } = useUnreadChatConversations();
   const insets = useSafeAreaInsets();
   const bottomInset = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   const tabHeight = 58 + bottomInset;
@@ -102,6 +104,11 @@ function FarmerTabs() {
         options={{
           headerTitle: 'Nhóm Chat Trang Trại',
           tabBarLabel: 'Nhóm Chat',
+          tabBarBadge: unreadConversationCount > 0 ? unreadConversationCount : undefined,
+        }}
+        listeners={{
+          focus: () => setChatOpen(true),
+          blur: () => setChatOpen(false),
         }}
       />
       <Tab.Screen

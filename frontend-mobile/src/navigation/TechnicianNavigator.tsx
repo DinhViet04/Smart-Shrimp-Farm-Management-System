@@ -27,6 +27,7 @@ import {
 
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatGroupScreen from '../screens/ChatGroupScreen';
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
 import ShrimpHealthScreen from '../screens/shrimp-health/ShrimpHealthScreen';
 import GrowthTrackingScreen from '../screens/growth/GrowthTrackingScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
@@ -76,6 +77,7 @@ function EnvironmentStackNavigator() {
 }
 
 function TechnicianTabs() {
+  const { unreadConversationCount, setChatOpen } = useUnreadChatConversations();
   const insets = useSafeAreaInsets();
   const bottomInset = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   const tabHeight = 58 + bottomInset;
@@ -164,6 +166,11 @@ function TechnicianTabs() {
         options={{
           headerTitle: 'Nhóm Chat Trang Trại',
           tabBarLabel: 'Nhóm Chat',
+          tabBarBadge: unreadConversationCount > 0 ? unreadConversationCount : undefined,
+        }}
+        listeners={{
+          focus: () => setChatOpen(true),
+          blur: () => setChatOpen(false),
         }}
       />
       <Tab.Screen

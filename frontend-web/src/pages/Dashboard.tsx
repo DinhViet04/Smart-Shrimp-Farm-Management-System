@@ -10,6 +10,7 @@ import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 import LoadingMotion from '../components/LoadingMotion';
 import { logoutSession } from '../utils/api';
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -36,6 +37,7 @@ interface CurrentUser {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const unreadChatCount = useUnreadChatConversations(activeTab === 'Nhóm Chat');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
@@ -233,6 +235,7 @@ export default function Dashboard() {
           <nav className={isSidebarCollapsed ? 'space-y-1.5 flex flex-col items-center w-full' : 'space-y-1.5 w-full'}>
             {navItems.map((item) => {
               const isActive = activeTab === item.name;
+              const badgeCount = item.name === 'Nhóm Chat' ? unreadChatCount : 0;
 
               if (isSidebarCollapsed) {
                 return (
@@ -258,6 +261,11 @@ export default function Dashboard() {
                     <div className="transition-transform duration-200 group-hover:scale-110">
                       {item.icon}
                     </div>
+                    {badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
+                    )}
                   </button>
                 );
               }
@@ -276,7 +284,12 @@ export default function Dashboard() {
                   <div className={isActive ? 'text-blue-600' : 'text-slate-400'}>
                     {item.icon}
                   </div>
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate flex-1 text-left">{item.name}</span>
+                  {badgeCount > 0 && (
+                    <span className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-xs">
+                      {badgeCount > 99 ? '99+' : badgeCount}
+                    </span>
+                  )}
                 </button>
               );
             })}

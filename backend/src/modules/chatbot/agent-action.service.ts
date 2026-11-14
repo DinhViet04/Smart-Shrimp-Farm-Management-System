@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
 } from '@nestjs/common';
@@ -218,6 +219,15 @@ export class AgentActionService {
 
     if (!isExplicitCreate && !isContinuingPending) {
       return null;
+    }
+
+    if (currentUser.role === 'ADMIN') {
+      return {
+        isAgentAction: true,
+        answer:
+          'Tài khoản Quản trị viên hệ thống (ADMIN) chỉ thực hiện giám sát vận hành và quản trị nền tảng, không trực tiếp tạo trang trại, ao nuôi hoặc vụ nuôi.',
+        actionDraft: undefined,
+      };
     }
 
     // 3. Thu thập ngữ cảnh cơ sở dữ liệu thực tế của người dùng
@@ -838,6 +848,24 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
   async executeAgentAction(dto: ExecuteActionDto, currentUser: AuthUser) {
     const { intent, data } = dto;
     const uid = currentUser.userId || (currentUser as any).id;
+
+    if (currentUser.role === 'ADMIN') {
+      throw new ForbiddenException(
+        'Tài khoản Quản trị viên hệ thống chỉ dùng để giám sát, không thể tạo trang trại, ao nuôi hoặc vụ nuôi',
+      );
+    }
+
+    if ((intent === 'CREATE_FARM' || intent === 'CREATE_POND') && currentUser.role !== 'FARM_MANAGER') {
+      throw new ForbiddenException(
+        'Chỉ Quản lý trang trại (FARM_MANAGER) mới có quyền khởi tạo trang trại và ao nuôi',
+      );
+    }
+
+    if (intent === 'CREATE_CROP' && currentUser.role !== 'FARM_MANAGER' && currentUser.role !== 'FARMER') {
+      throw new ForbiddenException(
+        'Chỉ Quản lý trang trại hoặc Nhân viên chăm sóc mới có quyền khởi tạo vụ nuôi',
+      );
+    }
 
     if (intent === 'CREATE_FARM') {
       const userMember = await this.prisma.workspaceMember.findFirst({

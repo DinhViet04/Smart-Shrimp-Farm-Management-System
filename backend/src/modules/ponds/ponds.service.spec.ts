@@ -82,6 +82,7 @@ describe('PondsService overview', () => {
     expect(cropQuery.distinct).toEqual(['pondId']);
     expect(cropQuery.orderBy).toEqual([
       { pondId: 'asc' },
+      { status: 'asc' },
       { startDate: 'desc' },
     ]);
     expect(pondQuery.select.sizeSamples.take).toBe(1);
@@ -103,5 +104,31 @@ describe('PondsService overview', () => {
         farm: { id: 'farm-id', name: 'Farm A' },
       },
     });
+  });
+
+  it('excludes ponds belonging to soft-deleted farms in findAll', async () => {
+    const prisma = {
+      pond: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const farmAccess = {
+      getAccessibleFarmIds: jest.fn().mockResolvedValue(null),
+    };
+    const service = new PondsService(
+      prisma as any,
+      farmAccess as any,
+      {} as any,
+    );
+
+    await service.findAll({ userId: 'admin-id', role: 'ADMIN' });
+
+    expect(prisma.pond.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          farm: { deletedAt: null },
+        },
+      }),
+    );
   });
 });

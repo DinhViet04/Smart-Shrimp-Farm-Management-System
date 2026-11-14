@@ -25,11 +25,16 @@ import {
   AlertCircle,
   X,
   Leaf,
+  Users,
+  UserPlus,
+  MessageSquare,
+  Trash2,
 } from 'lucide-react-native';
 import { farmService, Farm } from '../../services/farmService';
 import { pondService, OverviewPond, OverviewCrop } from '../../services/pondService';
 import { cropService, CreateCropPayload } from '../../services/cropService';
 import { toLocalDateString } from '../../utils/date';
+import { useAuth } from '../../context/AuthContext';
 
 const DOC = (startDate: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000));
@@ -54,6 +59,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }>
 };
 
 export default function FarmManagementScreen({ navigation }: any) {
+  const { currentUser } = useAuth();
   const [farms, setFarms] = useState<Farm[]>([]);
   const [ponds, setPonds] = useState<OverviewPond[]>([]);
   const [crops, setCrops] = useState<OverviewCrop[]>([]);
@@ -61,6 +67,32 @@ export default function FarmManagementScreen({ navigation }: any) {
   const [expandedPonds, setExpandedPonds] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Modal tạo trang trại mới (kèm tự động tạo Nhóm Chat + thêm thành viên)
+  const [isCreateFarmModal, setIsCreateFarmModal] = useState(false);
+  const [farmName, setFarmName] = useState('');
+  const [farmAddress, setFarmAddress] = useState('');
+  const [farmArea, setFarmArea] = useState('');
+  const [farmDescription, setFarmDescription] = useState('');
+  const [farmModel, setFarmModel] = useState<'HIGH_TECH' | 'TRADITIONAL'>('HIGH_TECH');
+  const [pendingStaffInvites, setPendingStaffInvites] = useState<
+    Array<{ email: string; role: 'FARMER' | 'TECHNICIAN' }>
+  >([]);
+  const [pendingEmailInput, setPendingEmailInput] = useState('');
+  const [pendingRoleInput, setPendingRoleInput] = useState<'FARMER' | 'TECHNICIAN'>('FARMER');
+  const [farmErrors, setFarmErrors] = useState<Record<string, string>>({});
+  const [isSubmittingFarm, setIsSubmittingFarm] = useState(false);
+
+  // Modal quản lý & thêm thành viên trang trại (tự động đồng bộ vào Nhóm Chat)
+  const [isStaffModal, setIsStaffModal] = useState(false);
+  const [selectedFarmForStaff, setSelectedFarmForStaff] = useState<Farm | null>(null);
+  const [farmStaffList, setFarmStaffList] = useState<any[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [staffEmailInput, setStaffEmailInput] = useState('');
+  const [staffRoleInput, setStaffRoleInput] = useState<'FARMER' | 'TECHNICIAN'>('FARMER');
+  const [staffActionError, setStaffActionError] = useState<string | null>(null);
+  const [staffActionSuccess, setStaffActionSuccess] = useState<string | null>(null);
+  const [isInvitingStaff, setIsInvitingStaff] = useState(false);
 
   // Modal tạo vụ nuôi
   const [isCreateCropModal, setIsCreateCropModal] = useState(false);
@@ -180,6 +212,187 @@ export default function FarmManagementScreen({ navigation }: any) {
     }
   };
 
+  // ── Quản lý Tạo Trang Trại & Tự động khởi tạo Nhóm Chat ──
+  const openCreateFarmModal = () => {
+    setFarmName('');
+    setFarmAddress('');
+    setFarmArea('');
+    setFarmDescription('');
+    setFarmModel('HIGH_TECH');
+    setPendingStaffInvites([]);
+    setPendingEmailInput('');
+    setPendingRoleInput('FARMER');
+    setFarmErrors({});
+    setIsCreateFarmModal(true);
+  };
+
+  const handleAddPendingStaff = () => {
+    const email = pendingEmailInput.trim().toLowerCase();
+    if (!email) {
+      setFarmErrors(p => ({ ...p, staffEmail: 'Vui lòng nhập địa chỉ email nhân sự.' }));
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setFarmErrors(p => ({ ...p, staffEmail: 'Email không đúng định dạng (VD: user@example.com).' }));
+      return;
+    }
+    if (currentUser?.email && currentUser.email.toLowerCase() === email) {
+      setFarmErrors(p => ({ ...p, staffEmail: 'Không thể thêm chính email của Chủ trang trại.' }));
+      return;
+    }
+    if (pendingStaffInvites.some(item => item.email.toLowerCase() === email)) {
+      setFarmErrors(p => ({ ...p, staffEmail: 'Email này đã có trong danh sách chờ thêm.' }));
+      return;
+    }
+    setPendingStaffInvites(prev => [...prev, { email, role: pendingRoleInput }]);
+    setPendingEmailInput('');
+    setFarmErrors(p => ({ ...p, staffEmail: '' }));
+  };
+
+  const validateCreateFarm = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!farmName.trim() || farmName.trim().length < 2) {
+      errs.name = 'Tên trang trại phải có ít nhất 2 ký tự';
+    }
+    if (!farmAddress.trim()) {
+      errs.address = 'Vui lòng nhập địa chỉ / Tỉnh thành của trang trại';
+    }
+    const numericArea = Number(farmArea);
+    if (!farmArea || isNaN(numericArea) || numericArea <= 0) {
+      errs.area = 'Diện tích trang trại phải lớn hơn 0 m²';
+    }
+    setFarmErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleCreateFarm = async () => {
+    if (!validateCreateFarm()) return;
+    setIsSubmittingFarm(true);
+    try {
+      const created = await farmService.create({
+        name: farmName.trim(),
+        address: farmAddress.trim(),
+        area: Number(farmArea),
+        description: farmDescription.trim() || undefined,
+        farmingModel: farmModel,
+        status: 'ACTIVE',
+      });
+
+      if (pendingStaffInvites.length > 0 && created?.id) {
+        await Promise.allSettled(
+          pendingStaffInvites.map(inv =>
+            farmService.inviteByEmail(created.id, inv.email, inv.role),
+          ),
+        );
+      }
+
+      setIsCreateFarmModal(false);
+      Alert.alert(
+        'Tạo trang trại thành công',
+        pendingStaffInvites.length > 0
+          ? `Đã tạo trang trại "${created.name}", tự động khởi tạo Nhóm Chat và thêm ${pendingStaffInvites.length} thành viên vào nhóm!`
+          : `Đã tạo trang trại "${created.name}" và tự động khởi tạo Nhóm Chat cho trang trại!`,
+        [
+          { text: 'Đóng', style: 'cancel' },
+          {
+            text: 'Mở Nhóm Chat',
+            onPress: () => navigation.navigate('Nhóm Chat'),
+          },
+        ],
+      );
+      setIsLoading(true);
+      void loadData();
+    } catch (err: any) {
+      Alert.alert('Lỗi tạo trang trại', err?.message || 'Không thể tạo trang trại.');
+    } finally {
+      setIsSubmittingFarm(false);
+    }
+  };
+
+  // ── Quản lý Thành viên Trang Trại & Tự động thêm vào Nhóm Chat ──
+  const loadFarmStaff = async (farmId: string) => {
+    setLoadingStaff(true);
+    try {
+      const data = await farmService.getStaff(farmId);
+      setFarmStaffList(data || []);
+    } catch {
+      setFarmStaffList([]);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
+  const openStaffModal = (farm: Farm) => {
+    setSelectedFarmForStaff(farm);
+    setStaffEmailInput('');
+    setStaffRoleInput('FARMER');
+    setStaffActionError(null);
+    setStaffActionSuccess(null);
+    setIsStaffModal(true);
+    void loadFarmStaff(farm.id);
+  };
+
+  const handleInviteStaffToFarm = async () => {
+    if (!selectedFarmForStaff) return;
+    setStaffActionError(null);
+    setStaffActionSuccess(null);
+
+    const email = staffEmailInput.trim().toLowerCase();
+    if (!email) {
+      setStaffActionError('Vui lòng nhập địa chỉ email nhân sự.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setStaffActionError('Định dạng email không hợp lệ (VD: user@example.com).');
+      return;
+    }
+    if (currentUser?.email && currentUser.email.toLowerCase() === email) {
+      setStaffActionError('Không thể thêm chính email của Chủ trang trại.');
+      return;
+    }
+    const alreadyInFarm = farmStaffList.some(
+      (s: any) => s.user?.email?.toLowerCase() === email,
+    );
+    if (alreadyInFarm) {
+      setStaffActionError('Thành viên này đã có trong trang trại và nhóm chat.');
+      return;
+    }
+
+    setIsInvitingStaff(true);
+    try {
+      const res = await farmService.inviteByEmail(
+        selectedFarmForStaff.id,
+        email,
+        staffRoleInput,
+      );
+      setStaffEmailInput('');
+      setStaffActionSuccess(
+        res.message ||
+          `Đã thêm ${email} vào trang trại và tự động thêm vào Nhóm Chat!`,
+      );
+      await loadFarmStaff(selectedFarmForStaff.id);
+    } catch (err: any) {
+      setStaffActionError(err?.message || 'Không thể thêm thành viên.');
+    } finally {
+      setIsInvitingStaff(false);
+    }
+  };
+
+  const handleUnassignStaffFromFarm = async (userIdToRemove: string, memberName: string) => {
+    if (!selectedFarmForStaff) return;
+    setStaffActionError(null);
+    setStaffActionSuccess(null);
+    try {
+      await farmService.unassignStaff(selectedFarmForStaff.id, userIdToRemove);
+      setStaffActionSuccess(`Đã gỡ ${memberName} khỏi trang trại và nhóm chat.`);
+      await loadFarmStaff(selectedFarmForStaff.id);
+    } catch (err: any) {
+      setStaffActionError(err?.message || 'Không thể gỡ thành viên.');
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -215,11 +428,31 @@ export default function FarmManagementScreen({ navigation }: any) {
           </View>
         </View>
 
+        {/* Action Bar: Tạo trang trại mới & Mở Nhóm Chat */}
+        <View style={styles.topActionRow}>
+          <TouchableOpacity
+            style={styles.createFarmButton}
+            onPress={openCreateFarmModal}
+            activeOpacity={0.85}
+          >
+            <Plus size={17} color="#ffffff" />
+            <Text style={styles.createFarmButtonText}>Tạo trang trại mới</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.openChatGroupButton}
+            onPress={() => navigation.navigate('Nhóm Chat')}
+            activeOpacity={0.85}
+          >
+            <MessageSquare size={17} color="#2563eb" />
+            <Text style={styles.openChatGroupButtonText}>Nhóm Chat</Text>
+          </TouchableOpacity>
+        </View>
+
         {farms.length === 0 ? (
           <View style={styles.emptyState}>
             <Building2 size={48} color="#cbd5e1" />
             <Text style={styles.emptyTitle}>Chưa có trang trại</Text>
-            <Text style={styles.emptySub}>Vui lòng thiết lập trang trại và ao nuôi trên hệ thống Web Dashboard.</Text>
+            <Text style={styles.emptySub}>Nhấn "Tạo trang trại mới" để khởi tạo trang trại và Nhóm Chat tự động.</Text>
           </View>
         ) : (
           farms.map(farm => {
@@ -235,7 +468,7 @@ export default function FarmManagementScreen({ navigation }: any) {
                   <View style={styles.farmInfo}>
                     <Text style={styles.farmName} numberOfLines={2}>{farm.name}</Text>
                     <Text style={styles.farmMeta} numberOfLines={2}>
-                      {farm.address || 'Chưa cập nhật địa chỉ'} • {farm.area} ha
+                      {farm.address || 'Chưa cập nhật địa chỉ'} • {farm.area} m²
                     </Text>
                   </View>
                   <View style={styles.farmBadge}>
@@ -243,6 +476,28 @@ export default function FarmManagementScreen({ navigation }: any) {
                   </View>
                   {isExpanded ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                 </TouchableOpacity>
+
+                {/* Quick Actions: Thành viên & Nhóm Chat */}
+                <View style={styles.farmActionRow}>
+                  <TouchableOpacity
+                    style={styles.farmActionBtn}
+                    onPress={() => openStaffModal(farm)}
+                    activeOpacity={0.8}
+                  >
+                    <UserPlus size={14} color="#059669" />
+                    <Text style={styles.farmActionBtnTextGreen}>
+                      Thêm / Quản lý thành viên
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.farmActionBtnBlue}
+                    onPress={() => navigation.navigate('Nhóm Chat')}
+                    activeOpacity={0.8}
+                  >
+                    <MessageSquare size={14} color="#2563eb" />
+                    <Text style={styles.farmActionBtnTextBlue}>Nhóm Chat</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {/* Pond List */}
                 {isExpanded && (
@@ -490,6 +745,311 @@ export default function FarmManagementScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal Tạo Trang Trại Mới (kèm tự động tạo Nhóm Chat & thêm thành viên) */}
+      <Modal visible={isCreateFarmModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Building2 size={20} color="#2563eb" />
+                <Text style={styles.modalTitle}>Tạo trang trại mới</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsCreateFarmModal(false)}>
+                <X size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pondInfoBox}>
+              <MessageSquare size={14} color="#2563eb" />
+              <Text style={styles.pondInfoText}>
+                Hệ thống sẽ tự động tạo <Text style={{ fontWeight: '700' }}>Nhóm Chat Trang Trại</Text> và thêm các thành viên vào nhóm.
+              </Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>TÊN TRANG TRẠI *</Text>
+                <TextInput
+                  style={[styles.modalInput, farmErrors.name && styles.inputError]}
+                  value={farmName}
+                  onChangeText={t => {
+                    setFarmName(t);
+                    setFarmErrors(p => ({ ...p, name: '' }));
+                  }}
+                  placeholder="VD: Trang trại Tôm Bạc Liêu 1"
+                  placeholderTextColor="#94a3b8"
+                />
+                {farmErrors.name ? <Text style={styles.errText}>{farmErrors.name}</Text> : null}
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>ĐỊA CHỈ / TỈNH THÀNH *</Text>
+                <TextInput
+                  style={[styles.modalInput, farmErrors.address && styles.inputError]}
+                  value={farmAddress}
+                  onChangeText={t => {
+                    setFarmAddress(t);
+                    setFarmErrors(p => ({ ...p, address: '' }));
+                  }}
+                  placeholder="VD: Bạc Liêu / Sóc Trăng / Cà Mau"
+                  placeholderTextColor="#94a3b8"
+                />
+                {farmErrors.address ? <Text style={styles.errText}>{farmErrors.address}</Text> : null}
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>DIỆN TÍCH (m²) *</Text>
+                <TextInput
+                  style={[styles.modalInput, farmErrors.area && styles.inputError]}
+                  value={farmArea}
+                  onChangeText={t => {
+                    setFarmArea(t);
+                    setFarmErrors(p => ({ ...p, area: '' }));
+                  }}
+                  keyboardType="numeric"
+                  placeholder="VD: 5000"
+                  placeholderTextColor="#94a3b8"
+                />
+                {farmErrors.area ? <Text style={styles.errText}>{farmErrors.area}</Text> : null}
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>MÔ HÌNH NUÔI</Text>
+                <View style={styles.stageRow}>
+                  {(['HIGH_TECH', 'TRADITIONAL'] as const).map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.stageBtn, farmModel === m && styles.stageBtnActive]}
+                      onPress={() => setFarmModel(m)}
+                    >
+                      <Text style={[styles.stageBtnText, farmModel === m && styles.stageBtnTextActive]}>
+                        {m === 'HIGH_TECH' ? 'Công nghệ cao' : 'Truyền thống'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Thêm thành viên ban đầu (Tự động thêm vào Nhóm Chat) */}
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>
+                  THÊM THÀNH VIÊN VÀO TRẠI & NHÓM CHAT (TÙY CHỌN)
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, farmErrors.staffEmail && styles.inputError]}
+                  value={pendingEmailInput}
+                  onChangeText={t => {
+                    setPendingEmailInput(t);
+                    setFarmErrors(p => ({ ...p, staffEmail: '' }));
+                  }}
+                  placeholder="Nhập email Nông dân / Kỹ thuật viên..."
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {farmErrors.staffEmail ? (
+                  <Text style={styles.errText}>{farmErrors.staffEmail}</Text>
+                ) : null}
+
+                <View style={[styles.stageRow, { marginTop: 8 }]}>
+                  {(['FARMER', 'TECHNICIAN'] as const).map(r => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.stageBtn, pendingRoleInput === r && styles.stageBtnActive]}
+                      onPress={() => setPendingRoleInput(r)}
+                    >
+                      <Text style={[styles.stageBtnText, pendingRoleInput === r && styles.stageBtnTextActive]}>
+                        {r === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={styles.inlineAddStaffBtn}
+                    onPress={handleAddPendingStaff}
+                  >
+                    <UserPlus size={15} color="#ffffff" />
+                    <Text style={styles.inlineAddStaffBtnText}>Thêm</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {pendingStaffInvites.length > 0 && (
+                  <View style={styles.pendingStaffList}>
+                    {pendingStaffInvites.map(item => (
+                      <View key={item.email} style={styles.pendingStaffItem}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.pendingStaffEmail}>{item.email}</Text>
+                          <Text style={styles.pendingStaffRole}>
+                            {item.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'} • Tự động vào nhóm chat
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setPendingStaffInvites(prev =>
+                              prev.filter(p => p.email !== item.email),
+                            )
+                          }
+                        >
+                          <Trash2 size={15} color="#dc2626" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsCreateFarmModal(false)}>
+                <Text style={styles.cancelBtnText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: '#2563eb' }, isSubmittingFarm && styles.submitBtnDisabled]}
+                onPress={handleCreateFarm}
+                disabled={isSubmittingFarm}
+              >
+                {isSubmittingFarm ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Tạo trang trại</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Quản Lý & Thêm Thành Viên Trang Trại (tự động thêm vào Nhóm Chat) */}
+      <Modal visible={isStaffModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Users size={20} color="#059669" />
+                <Text style={styles.modalTitle}>
+                  Thành viên: {selectedFarmForStaff?.name}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsStaffModal(false)}>
+                <X size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pondInfoBox}>
+              <CheckCircle2 size={14} color="#059669" />
+              <Text style={styles.pondInfoText}>
+                Thêm thành viên tại đây sẽ tự động thêm vào <Text style={{ fontWeight: '700' }}>Nhóm Chat Trang Trại</Text>.
+              </Text>
+            </View>
+
+            {staffActionError ? (
+              <View style={styles.staffAlertError}>
+                <AlertCircle size={14} color="#dc2626" />
+                <Text style={styles.staffAlertErrorText}>{staffActionError}</Text>
+              </View>
+            ) : null}
+
+            {staffActionSuccess ? (
+              <View style={styles.staffAlertSuccess}>
+                <CheckCircle2 size={14} color="#059669" />
+                <Text style={styles.staffAlertSuccessText}>{staffActionSuccess}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.formGroup}>
+              <Text style={styles.inputLabel}>EMAIL THÀNH VIÊN MỚI *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={staffEmailInput}
+                onChangeText={t => {
+                  setStaffEmailInput(t);
+                  if (staffActionError) setStaffActionError(null);
+                }}
+                placeholder="Nhập email Nông dân / Kỹ thuật viên..."
+                placeholderTextColor="#94a3b8"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <View style={[styles.stageRow, { marginTop: 8 }]}>
+                {(['FARMER', 'TECHNICIAN'] as const).map(r => (
+                  <TouchableOpacity
+                    key={r}
+                    style={[styles.stageBtn, staffRoleInput === r && styles.stageBtnActive]}
+                    onPress={() => setStaffRoleInput(r)}
+                  >
+                    <Text style={[styles.stageBtnText, staffRoleInput === r && styles.stageBtnTextActive]}>
+                      {r === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[styles.inlineAddStaffBtn, isInvitingStaff && styles.submitBtnDisabled]}
+                  onPress={handleInviteStaffToFarm}
+                  disabled={isInvitingStaff}
+                >
+                  {isInvitingStaff ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <>
+                      <UserPlus size={15} color="#ffffff" />
+                      <Text style={styles.inlineAddStaffBtnText}>Thêm</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={styles.inputLabel}>
+              DANH SÁCH NHÂN SỰ TRONG TRẠI ({farmStaffList.length})
+            </Text>
+            <ScrollView style={{ maxHeight: 240, marginTop: 4 }}>
+              {loadingStaff ? (
+                <ActivityIndicator size="small" color="#2563eb" style={{ marginVertical: 20 }} />
+              ) : farmStaffList.length === 0 ? (
+                <Text style={styles.noCropText}>Chưa có nhân sự nào được phân công.</Text>
+              ) : (
+                farmStaffList.map((staff: any) => {
+                  const name = staff.user?.fullName || staff.user?.email || 'Thành viên';
+                  const uid = staff.user?.id || staff.userId;
+                  return (
+                    <View key={staff.id || uid} style={styles.pendingStaffItem}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pendingStaffEmail}>{name}</Text>
+                        <Text style={styles.pendingStaffRole}>
+                          {staff.user?.email} •{' '}
+                          {staff.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => void handleUnassignStaffFromFarm(uid, name)}
+                        style={{ padding: 6 }}
+                      >
+                        <Trash2 size={16} color="#dc2626" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.openChatGroupButton}
+                onPress={() => {
+                  setIsStaffModal(false);
+                  navigation.navigate('Nhóm Chat');
+                }}
+              >
+                <MessageSquare size={15} color="#2563eb" />
+                <Text style={styles.openChatGroupButtonText}>Mở Nhóm Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsStaffModal(false)}>
+                <Text style={styles.cancelBtnText}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -615,5 +1175,116 @@ const styles = StyleSheet.create({
   submitBtn: { paddingHorizontal: 22, paddingVertical: 11, borderRadius: 10, backgroundColor: '#059669', minWidth: 110, alignItems: 'center' },
   submitBtnDisabled: { backgroundColor: '#6ee7b7' },
   submitBtnText: { fontSize: 14, fontWeight: '800', color: '#ffffff' },
+
+  topActionRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  createFarmButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  createFarmButtonText: { fontSize: 13, fontWeight: '800', color: '#ffffff' },
+  openChatGroupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  openChatGroupButtonText: { fontSize: 13, fontWeight: '800', color: '#2563eb' },
+
+  farmActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  farmActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#ecfdf5',
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  farmActionBtnTextGreen: { fontSize: 12, fontWeight: '700', color: '#059669' },
+  farmActionBtnBlue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  farmActionBtnTextBlue: { fontSize: 12, fontWeight: '700', color: '#2563eb' },
+
+  inlineAddStaffBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#059669',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  inlineAddStaffBtnText: { fontSize: 12, fontWeight: '800', color: '#ffffff' },
+  pendingStaffList: { marginTop: 10, gap: 6 },
+  pendingStaffItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  pendingStaffEmail: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  pendingStaffRole: { fontSize: 11, color: '#64748b', marginTop: 1 },
+  staffAlertError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    padding: 9,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  staffAlertErrorText: { fontSize: 12, fontWeight: '600', color: '#dc2626', flex: 1 },
+  staffAlertSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    padding: 9,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  staffAlertSuccessText: { fontSize: 12, fontWeight: '600', color: '#059669', flex: 1 },
 });
 

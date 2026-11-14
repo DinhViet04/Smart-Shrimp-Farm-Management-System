@@ -159,6 +159,11 @@ export class IncidentsService {
   }
 
   async create(user: AuthUser, dto: CreateIncidentDto) {
+    if (user.role === 'ADMIN') {
+      throw new ForbiddenException(
+        'Admin chỉ được giám sát, không được tạo hoặc can thiệp xử lý sự cố',
+      );
+    }
     let targetCropId = dto.cropId;
 
     if (!targetCropId) {
@@ -211,8 +216,8 @@ export class IncidentsService {
     }
 
     // Role FARMER và TECHNICIAN chỉ có quyền báo cáo sự cố lên Quản lý (không tự phân công).
-    // Chỉ FARM_MANAGER hoặc ADMIN mới có thể tự tiếp nhận ngay khi tạo sự cố nếu muốn.
-    const canSelfAssign = (user.role === 'FARM_MANAGER' || user.role === 'ADMIN') && Boolean(dto.selfAssign);
+    // Chỉ FARM_MANAGER mới có thể tự tiếp nhận ngay khi tạo sự cố nếu muốn.
+    const canSelfAssign = user.role === 'FARM_MANAGER' && Boolean(dto.selfAssign);
 
     const incident = await this.prisma.$transaction(async (tx) => {
       const created = await tx.incident.create({
@@ -297,9 +302,9 @@ export class IncidentsService {
     const incident = await this.getIncident(id);
     const farmId = incident.crop.pond.farmId;
     await this.farmAccess.assertCanManageFarm(user, farmId);
-    if (user.role !== 'FARM_MANAGER' && user.role !== 'ADMIN') {
+    if (user.role !== 'FARM_MANAGER') {
       throw new ForbiddenException(
-        'Chỉ quản lý trang trại hoặc quản trị viên mới được phân công nhân sự',
+        'Chỉ quản lý trang trại mới được phân công nhân sự xử lý sự cố',
       );
     }
     if (incident.status === 'RESOLVED') {

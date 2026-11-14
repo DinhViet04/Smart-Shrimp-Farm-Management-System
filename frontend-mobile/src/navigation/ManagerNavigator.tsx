@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Package,
   Settings,
+  MessageSquare,
 } from 'lucide-react-native';
 
 import FarmManagementScreen from '../screens/manager/FarmManagementScreen';
@@ -31,6 +32,8 @@ import EnvironmentScreen from '../screens/EnvironmentScreen';
 import RecordHistoryScreen from '../screens/water-quality/RecordHistoryScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ChatGroupScreen from '../screens/ChatGroupScreen';
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
 import IncidentStackNavigator from './IncidentNavigator';
 import BusinessHeader from '../components/BusinessHeader';
 
@@ -64,6 +67,7 @@ function ManagerEnvironmentStack() {
 }
 
 function ManagerTabs() {
+  const { unreadConversationCount, setChatOpen } = useUnreadChatConversations();
   const insets = useSafeAreaInsets();
   const bottomInset = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   const tabHeight = 58 + bottomInset;
@@ -79,6 +83,7 @@ function ManagerTabs() {
           if (route.name === 'Tình trạng tôm') return <HeartPulse color={color} size={iconSize} />;
           if (route.name === 'Sự cố') return <ShieldAlert color={color} size={iconSize} />;
           if (route.name === 'Kho') return <Package color={color} size={iconSize} />;
+          if (route.name === 'Nhóm Chat') return <MessageSquare color={color} size={iconSize} />;
           if (route.name === 'Cài đặt') return <Settings color={color} size={iconSize} />;
           return <Building2 color={color} size={iconSize} />;
         },
@@ -143,6 +148,19 @@ function ManagerTabs() {
         options={{
           headerShown: false,
           tabBarLabel: 'Kho',
+        }}
+      />
+      <Tab.Screen
+        name="Nhóm Chat"
+        component={ChatGroupScreen}
+        options={{
+          headerTitle: 'Nhóm Chat Trang Trại',
+          tabBarLabel: 'Nhóm Chat',
+          tabBarBadge: unreadConversationCount > 0 ? unreadConversationCount : undefined,
+        }}
+        listeners={{
+          focus: () => setChatOpen(true),
+          blur: () => setChatOpen(false),
         }}
       />
       <Tab.Screen

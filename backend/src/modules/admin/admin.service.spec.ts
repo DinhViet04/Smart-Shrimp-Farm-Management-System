@@ -111,4 +111,30 @@ describe('AdminService', () => {
       expect.objectContaining({ count: 1, actualHarvestRevenue: 1_000_000 }),
     );
   });
+
+  it('counts only active workspace farms in SaaS metrics', async () => {
+    const prisma = {
+      workspace: {
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(5)
+          .mockResolvedValueOnce(4)
+          .mockResolvedValueOnce(1)
+          .mockResolvedValueOnce(2),
+      },
+      workspaceMember: { count: jest.fn().mockResolvedValue(12) },
+      farm: { count: jest.fn().mockResolvedValue(6) },
+      supportTicket: {
+        count: jest.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(1),
+      },
+    };
+    const service = new AdminService(prisma as any);
+
+    const metrics = await service.getSaasMetrics();
+
+    expect(prisma.farm.count).toHaveBeenCalledWith({
+      where: { deletedAt: null, workspace: { status: 'ACTIVE' } },
+    });
+    expect(metrics.workspaceFarms).toBe(6);
+  });
 });

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,7 @@ import { UpdateFarmDto } from './dto/update-farm.dto.js';
 import { FarmAccessService } from '../farm-access/farm-access.service.js';
 import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service.js';
 
 @Injectable()
 export class FarmsService {
@@ -23,6 +25,7 @@ export class FarmsService {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly chatGroupsService?: ChatGroupsService,
   ) {}
 
   async create(data: CreateFarmDto) {
@@ -37,9 +40,28 @@ export class FarmsService {
       );
     }
 
+    const trimmedName = data.name?.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      throw new BadRequestException('Tên trang trại phải có ít nhất 2 ký tự');
+    }
+
+    const trimmedAddress = data.address?.trim();
+    if (!trimmedAddress) {
+      throw new BadRequestException(
+        'Vui lòng chọn Tỉnh/Thành phố cho trang trại',
+      );
+    }
+
+    const numericArea = Number(data.area);
+    if (Number.isNaN(numericArea) || numericArea <= 0) {
+      throw new BadRequestException(
+        'Diện tích trang trại phải lớn hơn 0 m²',
+      );
+    }
+
     const membership = await this.prisma.workspaceMember.findFirst({
       where: {
-        workspaceId: data.workspaceId,
+        ...(data.workspaceId ? { workspaceId: data.workspaceId } : {}),
         userId: data.ownerId,
         isActive: true,
         role: { in: [WorkspaceRole.OWNER, WorkspaceRole.ADMIN] },
@@ -52,33 +74,46 @@ export class FarmsService {
         'Bạn không có quyền tạo trang trại trong workspace đã chọn',
       );
     const exists = await this.prisma.farm.findFirst({
-      where: { workspaceId: membership.workspaceId, name: data.name },
+      where: {
+        workspaceId: membership.workspaceId,
+        name: { equals: trimmedName, mode: 'insensitive' },
+        deletedAt: null,
+      },
     });
     if (exists)
       throw new BadRequestException(
         'Tên trang trại đã tồn tại trong workspace',
       );
 
-    const { ponds_count, staffIds, workspaceId, ...farmData } = data;
+    const { ponds_count, staffIds, workspaceId: _wsId, ...farmData } = data;
     void ponds_count;
+    void _wsId;
 
     const farm = await this.prisma.farm.create({
       data: {
         ...farmData,
+        name: trimmedName,
+        address: trimmedAddress,
+        area: numericArea,
         ownerId: data.ownerId,
-        workspaceId,
+        workspaceId: membership.workspaceId,
       },
     });
 
     void staffIds;
 
+    // Tự động khởi tạo nhóm chat trang trại và thêm chủ trại làm chủ nhóm
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.ensureFarmChatGroup(farm.id);
+    }
+
     // Thông báo realtime cho Manager
-    if (farm.ownerId) {
+    if (farm.ownerId && this.prisma.user?.findUnique) {
       const owner = await this.prisma.user.findUnique({
         where: { id: farm.ownerId },
         select: { role: true },
       });
-      if (owner?.role === 'FARM_MANAGER') {
+      if (owner?.role === 'FARM_MANAGER' && this.notificationsService?.createFarmCreatedNotification) {
         await this.notificationsService.createFarmCreatedNotification(
           farm.ownerId,
           farm.id,
@@ -213,10 +248,17 @@ export class FarmsService {
       );
     }
 
-    if (data.name) {
+    if (data.name !== undefined) {
+      const trimmedName = data.name.trim();
+      if (trimmedName.length < 2) {
+        throw new BadRequestException(
+          'Tên trang trại phải có ít nhất 2 ký tự',
+        );
+      }
+      data.name = trimmedName;
       const exists = await this.prisma.farm.findFirst({
         where: {
-          name: data.name,
+          name: { equals: trimmedName, mode: 'insensitive' },
           workspaceId: farm.workspaceId,
           id: { not: id },
         },
@@ -248,6 +290,10 @@ export class FarmsService {
 
     void staffIds;
 
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.ensureFarmChatGroup(updatedFarm.id);
+    }
+
     return updatedFarm;
   }
 
@@ -265,7 +311,7 @@ export class FarmsService {
   }
 
   async transferOwnership(farmId: string, newOwnerId: string, adminId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const farm = await tx.farm.findFirst({
         where: { id: farmId, deletedAt: null },
         select: {
@@ -300,7 +346,7 @@ export class FarmsService {
         throw new BadRequestException(
           'Quản lý mới phải là thành viên đang hoạt động của cùng workspace',
         );
-      const updated = await tx.farm.update({
+      const updatedFarm = await tx.farm.update({
         where: { id: farmId },
         data: { ownerId: newOwnerId },
         include: {
@@ -322,8 +368,14 @@ export class FarmsService {
           },
         },
       });
-      return updated;
+      return updatedFarm;
     });
+
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.ensureFarmChatGroup(farmId);
+    }
+
+    return updated;
   }
 
   async getStaff(farmId: string, userId: string, role: string) {
@@ -390,7 +442,7 @@ export class FarmsService {
       );
     }
 
-    return this.prisma.farmStaff.delete({
+    const removed = await this.prisma.farmStaff.delete({
       where: {
         farmId_userId: {
           farmId,
@@ -398,9 +450,18 @@ export class FarmsService {
         },
       },
     });
+
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.removeMemberFromFarmChatGroup(
+        farmId,
+        userIdToUnassign,
+      );
+    }
+
+    return removed;
   }
 
-  /** Mời nhân sự qua email; tài khoản chỉ được thêm sau khi tự chấp nhận. */
+  /** Thêm hoặc mời nhân sự qua email và tự động đồng bộ vào nhóm chat của trang trại. */
   async inviteStaffByEmail(
     farmId: string,
     email: string,
@@ -408,7 +469,8 @@ export class FarmsService {
     requesterId: string,
     requesterRole: string,
   ): Promise<{
-    status: 'invited';
+    status: 'invited' | 'assigned';
+    addedToChatGroup?: boolean;
     message: string;
     email: string;
   }> {
@@ -436,13 +498,18 @@ export class FarmsService {
     });
     if (!farm) throw new NotFoundException('Không tìm thấy trang trại');
 
+    if (farm.owner?.email?.toLowerCase() === normalizedEmail) {
+      throw new BadRequestException(
+        'Không thể thêm chính chủ trang trại vào danh sách nhân sự',
+      );
+    }
+
     const managerName = farm.owner?.fullName ?? 'Quản lý trang trại';
 
     // 3. Tìm user theo email
     const existingUser = await this.prisma.user.findFirst({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
-        isActive: true,
       },
     });
 
@@ -461,6 +528,97 @@ export class FarmsService {
 
     // ── NHÁNH A: User đã tồn tại ──
     if (existingUser) {
+      if (existingUser.isActive === false) {
+        throw new BadRequestException('Tài khoản nhân sự này đang bị khóa');
+      }
+      if (existingUser.id === farm.ownerId) {
+        throw new BadRequestException(
+          'Không thể thêm chính chủ trang trại vào danh sách nhân sự',
+        );
+      }
+      if (
+        existingUser.role === Role.ADMIN ||
+        existingUser.role === Role.FARM_MANAGER
+      ) {
+        throw new BadRequestException(
+          'Chỉ có thể thêm tài khoản Nông dân hoặc Kỹ thuật viên vào trang trại',
+        );
+      }
+
+      if (this.prisma.farmStaff?.findUnique) {
+        const existingStaff = await this.prisma.farmStaff.findUnique({
+          where: {
+            farmId_userId: { farmId: farm.id, userId: existingUser.id },
+          },
+        });
+        if (existingStaff?.isActive) {
+          throw new BadRequestException(
+            'Thành viên này đã có trong trang trại và nhóm chat',
+          );
+        }
+      }
+
+      if (existingUser.role !== role && this.prisma.user?.update) {
+        await this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: { role },
+        });
+      }
+
+      if (this.prisma.farmStaff?.upsert) {
+        await this.prisma.farmStaff.upsert({
+          where: {
+            farmId_userId: { farmId: farm.id, userId: existingUser.id },
+          },
+          create: {
+            farmId: farm.id,
+            userId: existingUser.id,
+            role,
+            isActive: true,
+          },
+          update: {
+            role,
+            isActive: true,
+          },
+        });
+      }
+
+      if (farm.workspaceId && this.prisma.workspaceMember?.upsert) {
+        await this.prisma.workspaceMember.upsert({
+          where: {
+            workspaceId_userId: {
+              workspaceId: farm.workspaceId,
+              userId: existingUser.id,
+            },
+          },
+          create: {
+            workspaceId: farm.workspaceId,
+            userId: existingUser.id,
+            role: WorkspaceRole.MEMBER,
+            isActive: true,
+          },
+          update: { isActive: true },
+        });
+      }
+
+      if (this.chatGroupsService) {
+        await this.chatGroupsService.addMemberToFarmChatGroup(
+          farm.id,
+          existingUser.id,
+          role,
+          existingUser.fullName || existingUser.email,
+        );
+      }
+
+      if (this.notificationsService?.createFarmJoinNotification) {
+        await this.notificationsService.createFarmJoinNotification(
+          existingUser.id,
+          farm.id,
+          farm.name,
+          role,
+        );
+      }
+
       const inviteLink = `${frontendUrl}/login?inviteToken=${inviteToken}`;
 
       // Gửi email thông báo (fire & forget)
@@ -474,13 +632,18 @@ export class FarmsService {
       });
 
       return {
-        status: 'invited',
+        status: 'assigned',
+        addedToChatGroup: true,
         email: existingUser.email,
-        message: `Đã gửi lời mời tới ${existingUser.email}. Người nhận cần đăng nhập và chấp nhận để tham gia.`,
+        message: `Đã thêm ${existingUser.fullName || existingUser.email} vào trang trại "${farm.name}" và tự động thêm vào nhóm chat.`,
       };
     }
 
     // ── NHÁNH B: User chưa tồn tại ──
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.ensureFarmChatGroup(farm.id);
+    }
+
     const inviteLink = `${frontendUrl}/register?inviteToken=${inviteToken}`;
 
     // Gửi email mời (fire & forget)
@@ -495,8 +658,9 @@ export class FarmsService {
 
     return {
       status: 'invited',
+      addedToChatGroup: false,
       email: normalizedEmail,
-      message: `Đã gửi email mời tới ${normalizedEmail}. Người nhận cần đăng ký tài khoản để tham gia.`,
+      message: `Đã gửi email mời tới ${normalizedEmail}. Khi đăng ký thành công, hệ thống sẽ tự động thêm vào trang trại và nhóm chat.`,
     };
   }
 }

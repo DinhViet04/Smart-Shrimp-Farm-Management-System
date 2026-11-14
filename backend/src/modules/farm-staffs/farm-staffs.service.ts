@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -12,6 +13,7 @@ import {
 import { CreateFarmStaffDto } from './dto/create-farm-staff.dto.js';
 import { UpdateFarmStaffDto } from './dto/update-farm-staff.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ChatGroupsService } from '../chat-groups/chat-groups.service.js';
 
 @Injectable()
 export class FarmStaffsService {
@@ -19,6 +21,7 @@ export class FarmStaffsService {
     private readonly prisma: PrismaService,
     private readonly farmAccess: FarmAccessService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly chatGroupsService?: ChatGroupsService,
   ) {}
 
   async findAll(user: AuthUser, farmId?: string) {
@@ -79,6 +82,14 @@ export class FarmStaffsService {
     const farm = await this.prisma.farm.findUnique({
       where: { id: data.farmId },
     });
+    if (!farm) {
+      throw new NotFoundException('Không tìm thấy trang trại');
+    }
+    if (farm.ownerId === staffUser.id) {
+      throw new BadRequestException(
+        'Không thể thêm chính chủ trang trại vào danh sách nhân sự',
+      );
+    }
 
     const existingStaff = await this.prisma.farmStaff.findUnique({
       where: { farmId_userId: { farmId: data.farmId, userId: data.userId } },
@@ -97,6 +108,15 @@ export class FarmStaffsService {
         isActive: data.isActive ?? true,
       },
     });
+
+    if ((data.isActive ?? true) && this.chatGroupsService) {
+      await this.chatGroupsService.addMemberToFarmChatGroup(
+        data.farmId,
+        data.userId,
+        data.role as 'FARMER' | 'TECHNICIAN',
+        staffUser.fullName || staffUser.email,
+      );
+    }
 
     // Notify if they are newly added
     if (!existingStaff && farm) {
@@ -122,10 +142,27 @@ export class FarmStaffsService {
       await this.farmAccess.assertCanManageFarm(user, data.farmId);
     if (data.role) this.assertAssignableRole(data.role);
 
-    return this.prisma.farmStaff.update({
+    const updated = await this.prisma.farmStaff.update({
       where: { id },
       data,
     });
+
+    if (this.chatGroupsService) {
+      if (updated.isActive === false) {
+        await this.chatGroupsService.removeMemberFromFarmChatGroup(
+          updated.farmId,
+          updated.userId,
+        );
+      } else {
+        await this.chatGroupsService.addMemberToFarmChatGroup(
+          updated.farmId,
+          updated.userId,
+          updated.role as 'FARMER' | 'TECHNICIAN',
+        );
+      }
+    }
+
+    return updated;
   }
 
   async remove(id: string, user: AuthUser) {
@@ -135,7 +172,14 @@ export class FarmStaffsService {
     }
 
     await this.farmAccess.assertCanManageFarm(user, current.farmId);
-    return this.prisma.farmStaff.delete({ where: { id } });
+    const removed = await this.prisma.farmStaff.delete({ where: { id } });
+    if (this.chatGroupsService) {
+      await this.chatGroupsService.removeMemberFromFarmChatGroup(
+        current.farmId,
+        current.userId,
+      );
+    }
+    return removed;
   }
 
   private assertAssignableRole(role: Role) {

@@ -27,7 +27,7 @@ describe('FarmsService list query', () => {
   });
 
   it.each(['FARMER', 'TECHNICIAN'] as const)(
-    'sends an invitation for an existing %s without assigning the account',
+    'validates and automatically assigns an existing %s to the farm and its chat group',
     async (role) => {
       const prisma = {
         farm: {
@@ -53,8 +53,11 @@ describe('FarmsService list query', () => {
           }),
           update: jest.fn(),
         },
-        farmStaff: { upsert: jest.fn() },
-        workspaceMember: { upsert: jest.fn() },
+        farmStaff: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({}),
+        },
+        workspaceMember: { upsert: jest.fn().mockResolvedValue({}) },
       };
       const farmAccess = {
         assertCanManageFarm: jest.fn().mockResolvedValue(undefined),
@@ -71,8 +74,11 @@ describe('FarmsService list query', () => {
         sendFarmInvitationExistingUser: jest.fn().mockResolvedValue(undefined),
       };
       const notificationsService = {
-        createFarmJoinNotification: jest.fn(),
+        createFarmJoinNotification: jest.fn().mockResolvedValue(undefined),
         createStaffJoinedNotification: jest.fn(),
+      };
+      const chatGroupsService = {
+        addMemberToFarmChatGroup: jest.fn().mockResolvedValue(undefined),
       };
       const service = new FarmsService(
         prisma as any,
@@ -81,6 +87,7 @@ describe('FarmsService list query', () => {
         configService as any,
         emailService as any,
         notificationsService as any,
+        chatGroupsService as any,
       );
 
       await expect(
@@ -91,8 +98,26 @@ describe('FarmsService list query', () => {
           'manager-id',
           'FARM_MANAGER',
         ),
-      ).resolves.toMatchObject({ status: 'invited' });
+      ).resolves.toMatchObject({
+        status: 'assigned',
+        addedToChatGroup: true,
+        email: 'employee@example.com',
+      });
 
+      expect(prisma.farmStaff.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            farmId_userId: { farmId: 'farm-id', userId: 'employee-id' },
+          },
+        }),
+      );
+      expect(prisma.workspaceMember.upsert).toHaveBeenCalled();
+      expect(chatGroupsService.addMemberToFarmChatGroup).toHaveBeenCalledWith(
+        'farm-id',
+        'employee-id',
+        role,
+        'Employee',
+      );
       expect(emailService.sendFarmInvitationExistingUser).toHaveBeenCalledWith(
         expect.objectContaining({
           toEmail: 'employee@example.com',
@@ -100,17 +125,72 @@ describe('FarmsService list query', () => {
           inviteLink: 'http://localhost:5173/login?inviteToken=invite-token',
         }),
       );
-      expect(prisma.user.update).not.toHaveBeenCalled();
-      expect(prisma.farmStaff.upsert).not.toHaveBeenCalled();
-      expect(prisma.workspaceMember.upsert).not.toHaveBeenCalled();
-      expect(
-        notificationsService.createFarmJoinNotification,
-      ).not.toHaveBeenCalled();
-      expect(
-        notificationsService.createStaffJoinedNotification,
-      ).not.toHaveBeenCalled();
     },
   );
+
+  it('validates farm creation inputs and automatically initializes the farm chat group', async () => {
+    const prisma = {
+      workspaceMember: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'membership-1' }),
+      },
+      farm: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'new-farm-id',
+          name: 'Trại Tôm Bạc Liêu',
+          ownerId: 'manager-id',
+          workspaceId: 'workspace-id',
+        }),
+      },
+    };
+    const chatGroupsService = {
+      ensureFarmChatGroup: jest
+        .fn()
+        .mockResolvedValue({ id: 'group-id', farmId: 'new-farm-id' }),
+    };
+    const service = new FarmsService(
+      prisma as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      chatGroupsService as any,
+    );
+
+    await expect(
+      service.create({
+        workspaceId: 'workspace-id',
+        ownerId: 'manager-id',
+        name: 'A',
+        address: 'Bạc Liêu',
+        area: 1000,
+      } as any),
+    ).rejects.toThrow('Tên trang trại phải có ít nhất 2 ký tự');
+
+    await expect(
+      service.create({
+        workspaceId: 'workspace-id',
+        ownerId: 'manager-id',
+        name: 'Trại Tôm Bạc Liêu',
+        address: 'Bạc Liêu',
+        area: 0,
+      } as any),
+    ).rejects.toThrow('Diện tích trang trại phải lớn hơn 0 m²');
+
+    const created = await service.create({
+      workspaceId: 'workspace-id',
+      ownerId: 'manager-id',
+      name: '  Trại Tôm Bạc Liêu  ',
+      address: '  Bạc Liêu  ',
+      area: 1500,
+    } as any);
+
+    expect(created.id).toBe('new-farm-id');
+    expect(chatGroupsService.ensureFarmChatGroup).toHaveBeenCalledWith(
+      'new-farm-id',
+    );
+  });
 
   it('rejects farm creation outside a workspace the manager administers', async () => {
     const prisma = {

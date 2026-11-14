@@ -1,9 +1,35 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from './users.service';
 
 describe('UsersService account settings', () => {
+  it('blocks demoting a farm manager who still owns an active workspace', async () => {
+    const transactionClient = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          role: Role.FARM_MANAGER,
+          isActive: true,
+          _count: { farms: 0 },
+        }),
+      },
+      workspaceMember: {
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(transactionClient)),
+    };
+    const service = new UsersService(prisma as any, { get: jest.fn() } as any);
+
+    await expect(
+      service.updateRole('manager-1', Role.FARMER, 'admin-id'),
+    ).rejects.toThrow(BadRequestException);
+    expect(transactionClient.workspaceMember.count).toHaveBeenCalledWith({
+      where: { userId: 'manager-1', role: 'OWNER', isActive: true },
+    });
+  });
+
   it('synchronizes farm assignments when an account becomes a technician', async () => {
     const transactionClient = {
       user: {

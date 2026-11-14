@@ -109,6 +109,28 @@ export default function PondDetailPanel({ pond, isOpen, initialCrops = [], onClo
                 </div>
               </div>
 
+              {pond.latestSizeSample?.sizePerKg && (
+                <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Cỡ tôm mẫu gần nhất</p>
+                    <p className="text-lg font-black text-slate-800 mt-0.5">
+                      ~{Math.round(pond.latestSizeSample.sizePerKg)} con/kg{' '}
+                      <span className="text-sm font-bold text-slate-500">
+                        ({pond.latestSizeSample.abwGram} g/con)
+                      </span>
+                    </p>
+                  </div>
+                  {pond.latestSizeSample.estimatedBiomassKg != null && (
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-slate-400">Sinh khối ước tính</p>
+                      <p className="text-sm font-black text-indigo-700">
+                        {Number(pond.latestSizeSample.estimatedBiomassKg).toLocaleString('vi-VN')} kg
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* List Info */}
               <div className="space-y-4 pt-4 border-t border-slate-100/50">
                 <div className="flex items-start gap-4">

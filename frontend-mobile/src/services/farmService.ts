@@ -48,4 +48,25 @@ export const farmService = {
   async delete(id: string): Promise<any> {
     return apiClient.delete(`/farms/${id}`);
   },
+
+  async getStaff(farmId: string): Promise<any[]> {
+    return apiClient.get<any[]>(`/farms/${farmId}/staff`);
+  },
+
+  async inviteByEmail(
+    farmId: string,
+    email: string,
+    role: 'FARMER' | 'TECHNICIAN',
+  ): Promise<{
+    status: 'invited' | 'assigned';
+    addedToChatGroup?: boolean;
+    message: string;
+    email: string;
+  }> {
+    return apiClient.post(`/farms/${farmId}/invite-by-email`, { email, role });
+  },
+
+  async unassignStaff(farmId: string, userId: string): Promise<any> {
+    return apiClient.delete(`/farms/${farmId}/staff/${userId}`);
+  },
 };

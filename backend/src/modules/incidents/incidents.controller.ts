@@ -40,7 +40,7 @@ export class IncidentsController {
   }
 
   @Post()
-  @Roles('FARMER', 'TECHNICIAN', 'FARM_MANAGER', 'ADMIN')
+  @Roles('FARMER', 'TECHNICIAN', 'FARM_MANAGER')
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateIncidentDto) {
     return this.incidentsService.create(req.user, dto);
@@ -84,7 +84,7 @@ export class IncidentsController {
   }
 
   @Patch(':id/reopen')
-  @Roles('TECHNICIAN', 'FARM_MANAGER', 'ADMIN')
+  @Roles('TECHNICIAN', 'FARM_MANAGER')
   reopen(
     @Request() req: any,
     @Param('id') id: string,

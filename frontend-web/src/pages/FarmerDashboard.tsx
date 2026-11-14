@@ -2,6 +2,8 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 
 import { useNavigate } from 'react-router-dom';
 
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
+
 import { 
 
   LayoutDashboard, 
@@ -30,6 +32,8 @@ import {
   PanelLeftOpen,
 
   AlertTriangle,
+
+  MessageSquare,
 
 } from 'lucide-react';
 
@@ -71,6 +75,8 @@ const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/Survi
 
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 
+const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
+
 
 
 interface CurrentUser {
@@ -96,6 +102,8 @@ export default function FarmerDashboard() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('Dashboard');
+
+  const unreadChatCount = useUnreadChatConversations(activeTab === 'Nhóm Chat');
 
   const [growthSubTab, setGrowthSubTab] = useState<GrowthTabType>('Theo dõi kích cỡ');
 
@@ -222,6 +230,8 @@ export default function FarmerDashboard() {
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
 
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
+
+    { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
 
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
 
@@ -375,6 +385,8 @@ export default function FarmerDashboard() {
 
               const isActive = activeTab === item.name;
 
+              const badgeCount = item.name === 'Nhóm Chat' ? unreadChatCount : 0;
+
 
 
               if (isSidebarCollapsed) {
@@ -425,6 +437,16 @@ export default function FarmerDashboard() {
 
                     </div>
 
+                    {badgeCount > 0 && (
+
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
+
+                        {badgeCount > 99 ? '99+' : badgeCount}
+
+                      </span>
+
+                    )}
+
                   </button>
 
                 );
@@ -459,7 +481,17 @@ export default function FarmerDashboard() {
 
                   </div>
 
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate flex-1 text-left">{item.name}</span>
+
+                  {badgeCount > 0 && (
+
+                    <span className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-xs">
+
+                      {badgeCount > 99 ? '99+' : badgeCount}
+
+                    </span>
+
+                  )}
 
                 </button>
 
@@ -1004,6 +1036,12 @@ export default function FarmerDashboard() {
           ) : activeTab === 'Nhật ký Chăm sóc' ? (
 
              <FeedingLogDashboard />
+
+          ) : activeTab === 'Nhóm Chat' ? (
+
+             <div className="w-full max-w-7xl mx-auto">
+               <FarmChatGroupView />
+             </div>
 
           ) : activeTab !== 'Dashboard' ? (
 

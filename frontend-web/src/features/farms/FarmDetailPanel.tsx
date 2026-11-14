@@ -48,7 +48,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   }, [isOpen, farm?.id]);
 
-  const isOwner = currentUser?.id === farm?.ownerId || currentUser?.role === 'ADMIN';
+  const isOwner = currentUser?.id === farm?.ownerId;
 
   const fetchStaff = async () => {
     setLoadingStaff(true);
@@ -81,6 +81,22 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
       setErrorMessage(`Vui lòng nhập địa chỉ email của ${role === 'FARMER' ? 'Nông dân' : 'Kỹ thuật viên'}`);
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErrorMessage('Email không đúng định dạng. Vui lòng nhập email hợp lệ (VD: user@example.com).');
+      return;
+    }
+    if (currentUser?.email && currentUser.email.toLowerCase() === email.toLowerCase()) {
+      setErrorMessage('Không thể thêm chính email của Chủ trang trại vào danh sách nhân sự.');
+      return;
+    }
+    const alreadyAssigned = staffList.some(
+      (s: any) => s.user?.email?.toLowerCase() === email.toLowerCase(),
+    );
+    if (alreadyAssigned) {
+      setErrorMessage('Thành viên này đã có trong trang trại và nhóm chat.');
+      return;
+    }
     setAssigningRole(role);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -89,7 +105,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
       if (role === 'FARMER') setFarmerEmailToAssign('');
       else setTechEmailToAssign('');
 
-      setSuccessMessage(`📧 Đã gửi email mời tới ${res.email}`);
+      setSuccessMessage(res.message || `✅ Đã thêm ${res.email} vào trang trại và nhóm chat.`);
       fetchStaff();
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi phân công nhân sự');

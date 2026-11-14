@@ -240,14 +240,19 @@ export class UsersService {
         },
       });
       if (!target) throw new NotFoundException('Người dùng không tồn tại');
-      if (
-        target.role === Role.FARM_MANAGER &&
-        role !== Role.FARM_MANAGER &&
-        target._count.farms > 0
-      )
-        throw new BadRequestException(
-          'Hãy chuyển quyền sở hữu trang trại trước khi đổi vai trò quản lý',
-        );
+      if (target.role === Role.FARM_MANAGER && role !== Role.FARM_MANAGER) {
+        if (target._count.farms > 0)
+          throw new BadRequestException(
+            'Hãy chuyển quyền sở hữu trang trại trước khi đổi vai trò quản lý',
+          );
+        const ownedWorkspaces = await tx.workspaceMember.count({
+          where: { userId: id, role: 'OWNER', isActive: true },
+        });
+        if (ownedWorkspaces > 0)
+          throw new BadRequestException(
+            'Hãy chuyển quyền sở hữu workspace trước khi đổi vai trò quản lý',
+          );
+      }
       if (
         target.role === Role.ADMIN &&
         role !== Role.ADMIN &&

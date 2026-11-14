@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Waves, Droplets, Bot, LogOut, Settings, Building2, Package,
+  LayoutDashboard, Waves, Droplets, MessageSquare, Bot, LogOut, Settings, Building2, Package,
   TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen, AlertTriangle, FileDown
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
@@ -10,6 +10,7 @@ import ManagerDashboardHome from '../features/manager/ManagerDashboardHome';
 import { type GrowthTabType } from '../features/growth/GrowthHeaderTabs';
 import LoadingMotion from '../components/LoadingMotion';
 import { logoutSession } from '../utils/api';
+import { useUnreadChatConversations } from '../hooks/useUnreadChatConversations';
 
 const AccountSettings = lazy(() => import('../components/AccountSettings'));
 const FarmList = lazy(() => import('../features/farms/FarmList'));
@@ -22,6 +23,7 @@ const SurvivalRateDashboard = lazy(() => import('../features/survival-rate/Survi
 const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 const FarmIncidentDashboard = lazy(() => import('../features/incidents/FarmIncidentDashboard'));
+const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
 const CropReportsDashboard = lazy(() => import('../features/reports/CropReportsDashboard'));
 
 interface CurrentUser {
@@ -36,6 +38,7 @@ interface CurrentUser {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const unreadChatCount = useUnreadChatConversations(activeTab === 'Nhóm Chat');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
@@ -153,6 +156,7 @@ export default function Dashboard() {
     { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
+    { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'Báo cáo vụ nuôi', icon: <FileDown className="w-5 h-5 text-indigo-500" /> },
     { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
@@ -234,6 +238,7 @@ export default function Dashboard() {
           <nav className={isSidebarCollapsed ? 'space-y-1.5 flex flex-col items-center w-full' : 'space-y-1.5 w-full'}>
             {navItems.map((item) => {
               const isActive = activeTab === item.name;
+              const badgeCount = item.name === 'Nhóm Chat' ? unreadChatCount : 0;
 
               if (isSidebarCollapsed) {
                 return (
@@ -259,6 +264,11 @@ export default function Dashboard() {
                     <div className="transition-transform duration-200 group-hover:scale-110">
                       {item.icon}
                     </div>
+                    {badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
+                    )}
                   </button>
                 );
               }
@@ -277,7 +287,12 @@ export default function Dashboard() {
                   <div className={isActive ? 'text-blue-600' : 'text-slate-400'}>
                     {item.icon}
                   </div>
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate flex-1 text-left">{item.name}</span>
+                  {badgeCount > 0 && (
+                    <span className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-xs">
+                      {badgeCount > 99 ? '99+' : badgeCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -557,6 +572,10 @@ export default function Dashboard() {
           ) : activeTab === 'Sự cố trang trại' || activeTab === 'Báo cáo sự cố' ? (
             <div className="w-full max-w-7xl mx-auto">
               <FarmIncidentDashboard role="FARM_MANAGER" />
+            </div>
+          ) : activeTab === 'Nhóm Chat' || activeTab === 'Trợ lý AI' ? (
+            <div className="w-full max-w-7xl mx-auto">
+              <FarmChatGroupView />
             </div>
           ) : activeTab !== 'Dashboard' ? (
             <div className="h-full flex items-center justify-center relative z-10">

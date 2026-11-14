@@ -126,6 +126,8 @@ model User {
   createdWorkspaces    Workspace[]               @relation("WorkspaceCreator")
   requestedTickets     SupportTicket[]           @relation("SupportRequester")
   assignedTickets      SupportTicket[]           @relation("SupportAssignee")
+  chatGroupMemberships ChatGroupMember[]
+  chatMessages         ChatMessage[]
 
   @@map("users")
 }
@@ -150,6 +152,7 @@ model Farm {
   shrimpHealthRecords ShrimpHealthRecord[]
   notifications       Notification[]
   feedingLogs         FeedingLog[]
+  chatGroup           ChatGroup?
   deletedAt           DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -716,4 +719,62 @@ model MarketPrice {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("market_prices")
+}
+
+enum ChatGroupType {
+  FARM_GROUP
+  DIRECT
+}
+
+model ChatGroup {
+  id        String            @id @default(uuid())
+  type      ChatGroupType     @default(FARM_GROUP)
+  farmId    String?           @unique @map("farm_id")
+  farm      Farm?             @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  directKey String?           @unique @map("direct_key")
+  name      String
+  members   ChatGroupMember[]
+  messages  ChatMessage[]
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@map("chat_groups")
+}
+
+model ChatGroupMember {
+  id              String    @id @default(uuid())
+  groupId         String    @map("group_id")
+  group           ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role      @default(FARMER)
+  joinedAt        DateTime  @default(now()) @map("joined_at")
+  lastDeliveredAt DateTime? @map("last_delivered_at")
+  lastReadAt      DateTime? @map("last_read_at")
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("chat_group_members")
+}
+
+model ChatMessage {
+  id             String        @id @default(uuid())
+  groupId        String        @map("group_id")
+  group          ChatGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId       String?       @map("sender_id")
+  sender         User?         @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  content        String        @db.Text
+  attachmentUrl  String?       @map("attachment_url")
+  attachmentName String?       @map("attachment_name")
+  attachmentType String?       @map("attachment_type")
+  attachmentSize Int?          @map("attachment_size")
+  replyToId      String?       @map("reply_to_id")
+  replyTo        ChatMessage?  @relation("ChatMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        ChatMessage[] @relation("ChatMessageReplies")
+  isSystem       Boolean       @default(false) @map("is_system")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([groupId, createdAt])
+  @@map("chat_messages")
 }

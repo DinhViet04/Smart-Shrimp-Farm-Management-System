@@ -21,7 +21,11 @@ import {
   Award,
   ExternalLink,
   RefreshCw,
+  ArrowLeft,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
   cropService,
   type Crop,
@@ -32,12 +36,14 @@ import {
   DEFAULT_COMMERCIAL_SIZES,
   interpolateShrimpPrice,
 } from '../services/crop.service';
+import { scrollToTop } from '../utils/scrollHelper';
 
 interface HarvestCropModalProps {
   isOpen: boolean;
   crop: Crop;
   onClose: () => void;
   onSuccess: (message: string) => void;
+  asPage?: boolean;
 }
 
 const formatVND = (num: number | null | undefined): string => {
@@ -50,10 +56,18 @@ export default function HarvestCropModal({
   crop,
   onClose,
   onSuccess,
+  asPage = false,
 }: HarvestCropModalProps) {
   const [activeTab, setActiveTab] = useState<'inputs' | 'inventory' | 'comparison'>('inputs');
+
+  useEffect(() => {
+    if (isOpen && asPage) {
+      scrollToTop();
+    }
+  }, [isOpen, asPage]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Form Inputs
@@ -404,19 +418,32 @@ export default function HarvestCropModal({
     }
   };
 
-  // Handle submit harvest
-  const handleSubmitHarvest = async () => {
+  // Khi bấm "Xác Nhận Thu Hoạch", kiểm tra các trường bắt buộc và mở popup cảnh báo xác nhận
+  const handleInitiateHarvest = () => {
     if (numKg <= 0) {
       setErrorMsg('Vui lòng nhập sản lượng thu hoạch lớn hơn 0 kg');
       setActiveTab('inputs');
+      toast.error('Vui lòng nhập sản lượng thu hoạch lớn hơn 0 kg');
       return;
     }
     if (numSize <= 0) {
       setErrorMsg('Vui lòng nhập kích cỡ tôm thu hoạch lớn hơn 0 con/kg');
       setActiveTab('inputs');
+      toast.error('Vui lòng nhập kích cỡ tôm thu hoạch lớn hơn 0 con/kg');
+      return;
+    }
+    if (numPrice <= 0) {
+      setErrorMsg('Vui lòng nhập giá bán thương phẩm lớn hơn 0 đ/kg');
+      setActiveTab('inputs');
+      toast.error('Vui lòng nhập giá bán thương phẩm lớn hơn 0 đ/kg');
       return;
     }
 
+    setShowConfirmPopup(true);
+  };
+
+  // Handle submit harvest sau khi người dùng đã xác nhận trong popup cảnh báo
+  const handleSubmitHarvest = async () => {
     setSubmitting(true);
     setErrorMsg('');
 
@@ -439,6 +466,7 @@ export default function HarvestCropModal({
 
       await cropService.harvest(crop.id, payload);
       const isEditing = crop.status === 'HARVESTED' || !!crop.actualHarvestKg;
+      setShowConfirmPopup(false);
       onSuccess(
         isEditing
           ? 'Cập nhật số liệu thu hoạch thành công!'
@@ -447,6 +475,7 @@ export default function HarvestCropModal({
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
+      toast.error(err.message || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
     } finally {
       setSubmitting(false);
     }
@@ -454,9 +483,8 @@ export default function HarvestCropModal({
 
   if (!isOpen) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-5xl shadow-2xl border border-slate-200/90 overflow-hidden max-h-[92vh] flex flex-col relative">
+  const modalContent = (
+    <div className={`bg-white rounded-3xl w-full border border-slate-200/90 overflow-hidden flex flex-col relative ${asPage ? 'shadow-sm' : 'max-w-5xl shadow-2xl max-h-[92vh]'}`}>
         {/* Top Gradient Stripe */}
         <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 shrink-0" />
 
@@ -488,12 +516,22 @@ export default function HarvestCropModal({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {asPage ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation Tabs */}
@@ -531,7 +569,7 @@ export default function HarvestCropModal({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+        <div className={`p-4 sm:p-6 space-y-6 ${asPage ? '' : 'overflow-y-auto flex-1'}`}>
           {loading && (
             <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-700 text-xs font-semibold flex items-center gap-2.5">
               <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -1598,11 +1636,11 @@ export default function HarvestCropModal({
               disabled={submitting}
               className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
             >
-              Hủy bỏ
+              {asPage ? 'Quay lại danh sách vụ nuôi' : 'Hủy bỏ'}
             </button>
             <button
               type="button"
-              onClick={handleSubmitHarvest}
+              onClick={handleInitiateHarvest}
               disabled={submitting || numKg <= 0 || numSize <= 0 || numPrice <= 0}
               title={
                 numKg <= 0 || numSize <= 0 || numPrice <= 0
@@ -1613,23 +1651,153 @@ export default function HarvestCropModal({
               }
               className="flex-1 sm:flex-initial px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all hover:-translate-y-0.5 cursor-pointer"
             >
+              <CheckCircle2 className="w-4 h-4" />
+              {crop.status === 'HARVESTED' || !!crop.actualHarvestKg
+                ? 'Cập Nhật Thu Hoạch'
+                : 'Xác Nhận Thu Hoạch'}
+            </button>
+          </div>
+        </div>
+      </div>
+  );
+
+  const confirmModal = showConfirmPopup ? (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={() => !submitting && setShowConfirmPopup(false)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+      >
+        {/* Top Accent Bar */}
+        <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-500" />
+
+        <div className="p-6">
+          {/* Header with Icon */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shadow-inner">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <button
+              type="button"
+              onClick={() => !submitting && setShowConfirmPopup(false)}
+              disabled={submitting}
+              className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
+              title="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Title & Info */}
+          <h3 className="text-xl font-black text-slate-800 tracking-tight">
+            Xác nhận thu hoạch vụ nuôi?
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Vụ nuôi sẽ hoàn tất chu kỳ và chuyển toàn bộ dữ liệu vào lịch sử nuôi.
+          </p>
+
+          {/* Crop badge details */}
+          <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Ao nuôi:</span>
+              <span className="font-black text-slate-800">{crop.pond?.name || 'Không xác định'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Ngày bắt đầu:</span>
+              <span className="font-bold text-slate-700">
+                {crop.startDate ? new Date(crop.startDate).toLocaleDateString('vi-VN') : '--'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Ngày thu hoạch:</span>
+              <span className="font-bold text-slate-700">
+                {harvestDate ? new Date(harvestDate).toLocaleDateString('vi-VN') : '--'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Sản lượng thu hoạch:</span>
+              <span className="font-black text-emerald-600">
+                {numKg.toLocaleString()} kg (~{(numKg / 1000).toFixed(2)} tấn)
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Kích cỡ tôm thu:</span>
+              <span className="font-bold text-slate-700">{numSize} con/kg</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-400">Doanh thu dự kiến:</span>
+              <span className="font-black text-blue-600">{formatVND(numKg * numPrice)} đ</span>
+            </div>
+          </div>
+
+          {/* Detailed Warning Box */}
+          <div className="mt-4 p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left space-y-2">
+            <div className="flex items-center gap-2 text-amber-800 font-bold text-xs uppercase tracking-wider">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              Cảnh báo dữ liệu quan trọng
+            </div>
+            <p className="text-xs text-amber-900 leading-relaxed font-medium">
+              Hành động này sẽ <strong className="font-black text-amber-900 underline">CHỐT TOÀN BỘ SỐ LIỆU VỤ NUÔI</strong> và chuyển sang lưu trữ:
+            </p>
+            <ul className="text-xs text-amber-800/90 list-disc list-inside space-y-1 font-medium pl-1">
+              <li>Vụ nuôi sẽ chính thức hoàn thành và chuyển vào Lịch sử nuôi</li>
+              <li>Các ao thuộc vụ nuôi đã thu hoạch sẽ <strong className="font-bold">KHÔNG ĐƯỢC CHỈNH SỬA</strong> thông tin</li>
+              <li>Toàn bộ số liệu sản lượng, chi phí, FCR và doanh thu sẽ được cố định để đối soát báo cáo</li>
+            </ul>
+            <p className="text-[11px] font-bold text-amber-700 pt-1 border-t border-amber-200/60">
+              ⚠️ Thao tác này không thể hoàn tác sau khi xác nhận!
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="mt-6 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowConfirmPopup(false)}
+              disabled={submitting}
+              className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Hủy bỏ
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitHarvest}
+              disabled={submitting}
+              className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/25 hover:shadow-emerald-600/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
               {submitting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Đang ghi nhận...
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Đang thu hoạch...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  {crop.status === 'HARVESTED' || !!crop.actualHarvestKg
-                    ? 'Cập Nhật Thu Hoạch'
-                    : 'Xác Nhận Thu Hoạch'}
+                  <span>Xác nhận thu hoạch</span>
                 </>
               )}
             </button>
           </div>
         </div>
       </div>
+    </div>
+  ) : null;
+
+  if (asPage) {
+    return (
+      <div className="w-full space-y-4 animate-in fade-in duration-200 pb-12">
+        {modalContent}
+        {confirmModal && createPortal(confirmModal, document.body)}
+      </div>
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 md:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+      {modalContent}
+      {confirmModal}
     </div>,
     document.body
   );

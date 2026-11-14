@@ -1,8 +1,8 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Waves, Droplets, MessageSquare, LogOut, Settings, Building2, Package,
-  TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen, AlertTriangle
+  LayoutDashboard, Waves, Droplets, MessageSquare, Bot, LogOut, Settings, Building2, Package,
+  TrendingUp, HeartPulse, PanelLeftClose, PanelLeftOpen, AlertTriangle, FileDown
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher';
@@ -24,6 +24,7 @@ const FcrDashboard = lazy(() => import('../features/fcr/FcrDashboard'));
 const ShrimpHealthDashboard = lazy(() => import('../features/shrimp-health/ShrimpHealthDashboard'));
 const FarmIncidentDashboard = lazy(() => import('../features/incidents/FarmIncidentDashboard'));
 const FarmChatGroupView = lazy(() => import('../features/chat-groups/FarmChatGroupView'));
+const CropReportsDashboard = lazy(() => import('../features/reports/CropReportsDashboard'));
 
 interface CurrentUser {
   id?: string;
@@ -156,6 +157,8 @@ export default function Dashboard() {
     { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
     { name: 'Báo cáo sự cố', icon: <AlertTriangle className="w-5 h-5 text-amber-500" /> },
     { name: 'Nhóm Chat', icon: <MessageSquare className="w-5 h-5" /> },
+    { name: 'Báo cáo vụ nuôi', icon: <FileDown className="w-5 h-5 text-indigo-500" /> },
+    { name: 'Trợ lý AI', icon: <Bot className="w-5 h-5" /> },
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -441,7 +444,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="flex-1 p-8 overflow-y-auto bg-slate-50 relative">
+        <div id="dashboard-main-content" className="flex-1 p-8 overflow-y-auto bg-slate-50 relative">
           {/* Decorative background glow */}
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-400/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
@@ -484,6 +487,8 @@ export default function Dashboard() {
               initialCropConfig={pondCropConfig?.initialCropConfig}
               onNavigateToGrowth={handleNavigateToGrowth}
             />
+          ) : activeTab === 'Báo cáo vụ nuôi' ? (
+            <CropReportsDashboard />
           ) : activeTab === 'Theo dõi tăng trưởng' ? (
             <div className="w-full h-full flex flex-col justify-start overflow-y-auto">
               {growthSubTab === 'Theo dõi kích cỡ' ? (

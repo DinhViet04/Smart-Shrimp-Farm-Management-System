@@ -6,20 +6,20 @@ import {
   DollarSign,
   Target,
   Sparkles,
-  Edit2,
   TrendingUp,
   AlertTriangle,
   HeartPulse,
   Utensils,
   Droplets,
   ShieldCheck,
-  Printer,
   Info,
   AlertCircle,
   FileText,
   GitBranch,
   RefreshCw,
+  ArrowLeft,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
   LineChart,
   Line,
@@ -31,12 +31,14 @@ import {
   Legend,
 } from 'recharts';
 import { cropService, type Crop, type CropDetailedReportResponse } from '../services/crop.service';
+import { scrollToTop } from '../utils/scrollHelper';
 
 interface CropDetailReportModalProps {
   isOpen: boolean;
   crop: Crop;
   onClose: () => void;
   onEditHarvest?: (crop: Crop) => void;
+  asPage?: boolean;
 }
 
 const formatVND = (num: number | null | undefined): string => {
@@ -81,13 +83,19 @@ export default function CropDetailReportModal({
   isOpen,
   crop,
   onClose,
-  onEditHarvest,
+  asPage = false,
 }: CropDetailReportModalProps) {
   const [activeTab, setActiveTab] = useState<ReportTab>('overview');
   const [report, setReport] = useState<CropDetailedReportResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [prevCropId, setPrevCropId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && asPage) {
+      scrollToTop();
+    }
+  }, [isOpen, asPage]);
 
   if (crop && crop.id !== prevCropId) {
     setPrevCropId(crop.id);
@@ -96,7 +104,17 @@ export default function CropDetailReportModal({
   }
 
   useEffect(() => {
-    if (!isOpen || !crop) return;
+    if (isOpen && crop && crop.status !== 'HARVESTED') {
+      toast.error(
+        `Ao ${crop.pond?.name || ''} đang trong quá trình nuôi. Cần các ao của vụ nuôi hoàn tất thu hoạch mới có thể xuất báo cáo!`,
+        { id: 'status-check-toast', duration: 4000 }
+      );
+      onClose();
+    }
+  }, [isOpen, crop, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || !crop || crop.status !== 'HARVESTED') return;
     let isMounted = true;
 
     cropService
@@ -116,11 +134,7 @@ export default function CropDetailReportModal({
     };
   }, [isOpen, crop]);
 
-  if (!isOpen) return null;
-
-  const handlePrint = () => {
-    window.print();
-  };
+  if (!isOpen || (crop && crop.status !== 'HARVESTED')) return null;
 
   const currentCrop = report?.crop || crop;
   const isHarvested = currentCrop.status === 'HARVESTED';
@@ -160,9 +174,8 @@ export default function CropDetailReportModal({
     biomass: s.estimatedBiomassKg ? Number(s.estimatedBiomassKg) : null,
   }));
 
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-6xl shadow-2xl border border-slate-200/90 overflow-hidden max-h-[94vh] flex flex-col relative print:max-h-none print:shadow-none print:border-none print:w-full">
+  const reportBody = (
+    <div className={`bg-white rounded-3xl w-full border border-slate-200/90 overflow-hidden flex flex-col relative print:max-h-none print:shadow-none print:border-none print:w-full ${asPage ? 'shadow-sm' : 'max-w-6xl shadow-2xl max-h-[94vh]'}`}>
         {/* Top Gradient Banner */}
         <div className="h-2 bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 shrink-0" />
 
@@ -211,30 +224,19 @@ export default function CropDetailReportModal({
           <div className="flex items-center gap-2 self-end sm:self-center print:hidden">
             <button
               type="button"
-              onClick={handlePrint}
-              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105"
-              title="In bản báo cáo hoặc xuất file PDF"
+              onClick={onClose}
+              className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-105"
             >
-              <Printer className="w-4 h-4 text-slate-500" /> In / PDF
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
             </button>
-
-            {isHarvested && onEditHarvest && (
+            {!asPage && (
               <button
-                type="button"
-                onClick={() => onEditHarvest(currentCrop)}
-                className="px-3 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/20 hover:scale-105"
-                title="Mở form chỉnh sửa thông tin thu hoạch"
+                onClick={onClose}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
               >
-                <Edit2 className="w-3.5 h-3.5" /> Chỉnh sửa thu hoạch
+                <X className="w-5 h-5" />
               </button>
             )}
-
-            <button
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -405,7 +407,7 @@ export default function CropDetailReportModal({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/40">
+        <div className={`p-4 sm:p-6 space-y-6 bg-slate-50/40 ${asPage ? '' : 'overflow-y-auto flex-1'}`}>
           {loading && (
             <div className="flex flex-col items-center justify-center p-12 text-slate-400">
               <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mb-3" />
@@ -1268,10 +1270,23 @@ export default function CropDetailReportModal({
             onClick={onClose}
             className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
           >
-            Đóng Báo Cáo
+            {asPage ? 'Quay lại danh sách vụ nuôi' : 'Đóng Báo Cáo'}
           </button>
         </div>
       </div>
+  );
+
+  if (asPage) {
+    return (
+      <div className="w-full space-y-4 animate-in fade-in duration-200 pb-12">
+        {reportBody}
+      </div>
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+      {reportBody}
     </div>,
     document.body
   );

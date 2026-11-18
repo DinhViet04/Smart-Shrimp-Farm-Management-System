@@ -1,0 +1,44 @@
+@startuml
+' Report 4: 3.3.2.2
+title FE-11 - Manage Farm Profile and Farming Model Configuration
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager" as U
+participant "SSFM Interface" as UI
+U -> UI : 1. Choose an action
+activate UI
+UI -->> U : 2. Show the selected form or view
+deactivate UI
+alt 2.1 Create farm
+' ref-target: FE-11-CREATE
+ref over U,UI : 2.1.1. Create farm\n(FE-11-CREATE)
+else 2.2 Edit farm
+' ref-target: FE-11-UPDATE
+ref over U,UI : 2.2.1. Update farm profile\n(FE-11-UPDATE)
+else 2.3 Delete farm
+' ref-target: FE-11-DELETE
+ref over U,UI : 2.3.1. Delete farm\n(FE-11-DELETE)
+end
+' Source references:
+
+@enduml

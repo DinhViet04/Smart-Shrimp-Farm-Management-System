@@ -1,0 +1,104 @@
+@startuml
+' Report 4: 3.6.2.1
+title FE-21 - Record Daily Feed Consumption
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farmer / Farm Manager / Admin" as U
+participant "SSFM Interface" as UI
+participant "FeedingLogsController" as C
+participant "FeedingLogsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Submit daily feeding sessions
+activate UI
+UI -> C : 2. Submit daily feeding sessions
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Submit daily feeding sessions
+activate S
+S -> FA : 5. Check farm access
+activate FA
+FA -->> S : 6. Allowed or denied
+deactivate FA
+alt 6.1 Access denied
+S -->> C : 6.1.1. Access denied
+else else
+S -> P : 7. Load pond and selected crop
+activate P
+P -> DB : 8. Load pond and selected crop
+activate DB
+DB -->> P : 9. Pond and crop
+deactivate DB
+P -->> S : 10. Pond and crop
+deactivate P
+alt 10.1 Pond or crop does not match the farm
+S -->> C : 10.1.1. Invalid farming context
+else else
+S -> P : 11. Load existing feeding sessions
+activate P
+P -> DB : 12. Load existing feeding sessions
+activate DB
+DB -->> P : 13. Previous daily sessions
+deactivate DB
+P -->> S : 14. Previous daily sessions
+deactivate P
+S -> P : 15. Load selected feed and stock
+activate P
+P -> DB : 16. Load selected feed and stock
+activate DB
+DB -->> P : 17. Feed item and available stock
+deactivate DB
+P -->> S : 18. Feed item and available stock
+deactivate P
+alt 18.1 Feed item invalid or stock insufficient
+S -->> C : 18.1.1. Feeding entry rejected
+else else
+S -> P : 19. Save feeding sessions and adjust stock together
+activate P
+P -> DB : 20. Save feeding sessions and adjust stock together
+activate DB
+DB -->> P : 21. Daily sessions and synchronized usage
+deactivate DB
+P -->> S : 22. Daily sessions and synchronized usage
+deactivate P
+S -->> C : 23. Saved feeding sessions
+end
+end
+end
+deactivate S
+C -->> UI : 24. Return result or error
+end
+deactivate C
+UI -->> U : 25. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/feeding-logs/feeding-logs.controller.ts:21 FeedingLogsController
+' backend/src/modules/feeding-logs/feeding-logs.service.ts:25 createOrUpdateDailyLog
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

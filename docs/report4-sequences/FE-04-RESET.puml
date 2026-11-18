@@ -1,0 +1,92 @@
+@startuml
+' Report 4: supporting interaction
+title FE-04-RESET - Verify reset code and change password
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "User" as U
+participant "SSFM Interface" as UI
+participant "AuthController" as C
+participant "AuthService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Submit reset code and new password
+activate UI
+UI -> C : 2. Submit reset code and new password
+activate C
+' ref-target: PUBLIC-CHECKS
+ref over C : 3. Validate request\n(PUBLIC-CHECKS)
+alt 3.1 Invalid request
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Submit reset code and new password
+activate S
+S -> P : 5. Load reset request
+activate P
+P -> DB : 6. Load reset request
+activate DB
+DB -->> P : 7. Reset code and validity
+deactivate DB
+P -->> S : 8. Reset code and validity
+deactivate P
+alt 8.1 Code missing, expired or already used
+S -->> C : 8.1.1. Reset code rejected
+else else
+opt 8.2 Code incorrect
+S -> P : 8.2.1. Record failed reset attempt
+activate P
+P -> DB : 8.2.2. Record failed reset attempt
+activate DB
+DB -->> P : 8.2.3. Failed attempt recorded
+deactivate DB
+P -->> S : 8.2.4. Failed attempt recorded
+deactivate P
+end
+alt 8.3 Code incorrect or passwords do not match
+S -->> C : 8.3.1. Password reset rejected
+else else
+S -> P : 9. Claim code, save password and revoke sessions atomically
+activate P
+P -> DB : 10. Claim code, save password and revoke sessions atomically
+activate DB
+DB -->> P : 11. Reset accepted or code unavailable
+deactivate DB
+P -->> S : 12. Reset accepted or code unavailable
+deactivate P
+alt 12.1 Code was claimed by another request
+S -->> C : 12.1.1. Reset code unavailable
+else else
+S -->> C : 13. Password reset confirmation
+end
+end
+end
+deactivate S
+C -->> UI : 14. Return result or error
+end
+deactivate C
+UI -->> U : 15. Show confirmation and request sign-in
+deactivate UI
+' Source references:
+' backend/src/modules/auth/auth.controller.ts:28 AuthController
+' backend/src/modules/auth/auth.service.ts:520 resetPassword
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

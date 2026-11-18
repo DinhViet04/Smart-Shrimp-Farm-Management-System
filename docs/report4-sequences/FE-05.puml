@@ -1,0 +1,68 @@
+@startuml
+' Report 4: 3.1.2.5
+title FE-05 - Role-Based Access Control for Admin, Farm Manager, Technician, and Farmer
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "User" as U
+participant "SSFM Interface" as UI
+participant "PondsController" as C
+participant "PondsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Open a role-restricted feature
+activate UI
+UI -> C : 2. Open a role-restricted feature
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Open a role-restricted feature
+activate S
+S -> FA : 5. Find accessible farms
+activate FA
+FA -->> S : 6. Accessible farms
+deactivate FA
+S -> P : 7. Load records in accessible farms
+activate P
+P -> DB : 8. Load records in accessible farms
+activate DB
+DB -->> P : 9. Authorized records
+deactivate DB
+P -->> S : 10. Authorized records
+deactivate P
+S -->> C : 11. Authorized view
+deactivate S
+C -->> UI : 12. Return result or error
+end
+deactivate C
+UI -->> U : 13. Show allowed content or access error
+deactivate UI
+' Source references:
+' backend/src/modules/ponds/ponds.controller.ts:21 PondsController
+' backend/src/modules/ponds/ponds.service.ts:68 findAll
+' backend/src/modules/farm-access/farm-access.service.ts:13 getAccessibleFarmIds
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

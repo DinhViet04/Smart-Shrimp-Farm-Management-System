@@ -1,0 +1,78 @@
+@startuml
+' Report 4: supporting interaction
+title FE-07-ADMIN-PROFILE - Admin views and edits another profile
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Admin" as U
+participant "SSFM Interface" as UI
+participant "UsersController" as C
+participant "UsersService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+caption Existing + proposed extension - target design, not a claim of complete implementation
+U -> UI : 1. View and update selected user profile
+activate UI
+UI -> C : 2. View and update selected user profile
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. View and update selected user profile
+activate S
+note over S
+Proposed extension: Admin profile editing.
+end note
+S -> P : 5. Load selected user
+activate P
+P -> DB : 6. Load selected user
+activate DB
+DB -->> P : 7. User or none
+deactivate DB
+P -->> S : 8. User or none
+deactivate P
+alt 8.1 Selected user not found
+S -->> C : 8.1.1. User not found
+else else
+S -> P : 9. Save permitted profile changes
+activate P
+P -> DB : 10. Save permitted profile changes
+activate DB
+DB -->> P : 11. Updated profile
+deactivate DB
+P -->> S : 12. Updated profile
+deactivate P
+S -->> C : 13. Updated profile
+end
+deactivate S
+C -->> UI : 14. Return result or error
+end
+deactivate C
+UI -->> U : 15. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/users/users.controller.ts:22 UsersController
+' backend/src/modules/users/users.service.ts:14 UsersService
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

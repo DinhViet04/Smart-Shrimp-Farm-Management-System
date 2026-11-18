@@ -1,0 +1,49 @@
+@startuml
+' Report 4: supporting interaction
+title MOBILE-PUSH - Planned notification delivery while disconnected
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "User" as U
+participant "SSFM Interface" as UI
+participant "NotificationsService" as N
+participant "Expo Push Service\n(proposed)" as EX
+participant "FCM / APNs\n(proposed)" as FCM
+caption Proposed design - target design, not a claim of complete implementation
+activate N
+N -> EX : 1. Request push delivery
+activate EX
+EX -->> N : 2. Request accepted or rejected
+deactivate EX
+deactivate N
+opt 2.1 Push request accepted
+EX ->> FCM : 2.1.1. Forward notification
+activate FCM
+FCM ->> UI : 2.1.2. Deliver device notification
+activate UI
+deactivate FCM
+UI ->> U : 2.1.3. Show device alert
+deactivate UI
+end
+' Source references:
+' backend/src/modules/notifications/notifications.service.ts:7 NotificationsService
+@enduml

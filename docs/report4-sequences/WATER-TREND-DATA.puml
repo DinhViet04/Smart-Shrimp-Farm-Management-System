@@ -1,0 +1,65 @@
+@startuml
+' Report 4: supporting interaction
+title WATER-TREND-DATA - Load water trend data for a dashboard
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "SSFM Interface" as UI
+participant "WaterQualityController" as C
+participant "WaterQualityService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+activate UI
+UI -> C : 1. Load water trends
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 2. Verify user, role and input\n(REQUEST-CHECKS)
+alt 2.1 Request not allowed
+C -->> UI : 2.1.1. Request rejected
+else else
+C -> S : 3. Load water trends
+activate S
+' ref-target: WATER-TREND-FILTERS
+ref over S : 4. Resolve water trend scope\n(WATER-TREND-FILTERS)
+alt 4.1 Pond missing or access denied
+S -->> C : 4.1.1. Trend scope rejected
+else else
+S -> P : 5. Load time-ordered measurements
+activate P
+P -> DB : 6. Load time-ordered measurements
+activate DB
+DB -->> P : 7. Water trend series
+deactivate DB
+P -->> S : 8. Water trend series
+deactivate P
+S -->> C : 9. Water trend data
+end
+deactivate S
+C -->> UI : 10. Return result or error
+end
+deactivate C
+deactivate UI
+' Source references:
+' backend/src/modules/water-quality/water-quality.controller.ts:23 WaterQualityController
+' backend/src/modules/water-quality/water-quality.service.ts:406 findTrends
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

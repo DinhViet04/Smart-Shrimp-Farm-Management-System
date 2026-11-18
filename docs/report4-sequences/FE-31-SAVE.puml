@@ -1,0 +1,151 @@
+@startuml
+' Report 4: supporting interaction
+title FE-31-SAVE - Create or update supplier
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager" as U
+participant "SSFM Interface" as UI
+participant "SuppliersController" as C
+participant "SuppliersService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Submit new supplier
+activate UI
+UI -> C : 2. Submit new supplier
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Submit new supplier
+activate S
+S -> FA : 5. Check farm management rights
+activate FA
+FA -->> S : 6. Allowed or denied
+deactivate FA
+alt 6.1 Access denied
+S -->> C : 6.1.1. Access denied
+else else
+S -> P : 7. Check supplier name in farm
+activate P
+P -> DB : 8. Check supplier name in farm
+activate DB
+DB -->> P : 9. Existing supplier or none
+deactivate DB
+P -->> S : 10. Existing supplier or none
+deactivate P
+alt 10.1 Supplier name already used
+S -->> C : 10.1.1. Supplier rejected
+else else
+S -> P : 11. Save supplier
+activate P
+P -> DB : 12. Save supplier
+activate DB
+DB -->> P : 13. New supplier
+deactivate DB
+P -->> S : 14. New supplier
+deactivate P
+S -->> C : 15. New supplier
+end
+end
+deactivate S
+C -->> UI : 16. Return result or error
+end
+deactivate C
+UI -->> U : 17. Show result or error
+deactivate UI
+U -> UI : 18. Submit supplier changes
+activate UI
+UI -> C : 19. Submit supplier changes
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 20. Verify user, role and input\n(REQUEST-CHECKS)
+alt 20.1 Request not allowed
+C -->> UI : 20.1.1. Request rejected
+else else
+C -> S : 21. Submit supplier changes
+activate S
+S -> P : 22. Load supplier
+activate P
+P -> DB : 23. Load supplier
+activate DB
+DB -->> P : 24. Supplier or none
+deactivate DB
+P -->> S : 25. Supplier or none
+deactivate P
+alt 25.1 Supplier not found
+S -->> C : 25.1.1. Supplier not found
+else else
+S -> FA : 26. Check farm management rights
+activate FA
+FA -->> S : 27. Allowed or denied
+deactivate FA
+alt 27.1 Access denied
+S -->> C : 27.1.1. Access denied
+else else
+opt 27.2 Destination farm differs
+' ref-target: MANAGE-SCOPE-CHECK
+ref over S : 27.2.1. Check destination farm rights\n(MANAGE-SCOPE-CHECK)
+end
+alt 27.3 Destination farm access denied
+S -->> C : 27.3.1. Access denied
+else else
+S -> P : 28. Check name uniqueness
+activate P
+P -> DB : 29. Check name uniqueness
+activate DB
+DB -->> P : 30. Duplicate or none
+deactivate DB
+P -->> S : 31. Duplicate or none
+deactivate P
+alt 31.1 Supplier name already used
+S -->> C : 31.1.1. Supplier rejected
+else else
+S -> P : 32. Save supplier changes
+activate P
+P -> DB : 33. Save supplier changes
+activate DB
+DB -->> P : 34. Updated supplier
+deactivate DB
+P -->> S : 35. Updated supplier
+deactivate P
+S -->> C : 36. Updated supplier
+end
+end
+end
+end
+deactivate S
+C -->> UI : 37. Return result or error
+end
+deactivate C
+UI -->> U : 38. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/suppliers/suppliers.controller.ts:22 SuppliersController
+' backend/src/modules/suppliers/suppliers.service.ts:21 create
+' backend/src/modules/farm-access/farm-access.service.ts:54 assertCanManageFarm
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/suppliers/suppliers.service.ts:68 update
+@enduml

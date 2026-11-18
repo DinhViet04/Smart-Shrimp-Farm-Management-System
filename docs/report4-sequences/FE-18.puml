@@ -1,0 +1,100 @@
+@startuml
+' Report 4: 3.5.2.3
+title FE-18 - Split and Transfer Nursery Crop to Commercial Ponds
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager / Farmer" as U
+participant "SSFM Interface" as UI
+participant "CropsController" as C
+participant "CropsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Submit nursery transfer plan
+activate UI
+UI -> C : 2. Submit nursery transfer plan
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Submit nursery transfer plan
+activate S
+S -> P : 5. Load crop and pond
+activate P
+P -> DB : 6. Load crop and pond
+activate DB
+DB -->> P : 7. Crop or not found
+deactivate DB
+P -->> S : 8. Crop or not found
+deactivate P
+alt 8.1 Crop not found
+S -->> C : 8.1.1. Crop not found
+else else
+S -> FA : 9. Check farm access
+activate FA
+FA -->> S : 10. Allowed or denied
+deactivate FA
+alt 10.1 Access denied
+S -->> C : 10.1.1. Access denied
+else else
+alt 10.2 Source not an active high-tech nursery crop or allocations invalid
+S -->> C : 10.2.1. Transfer rejected
+else else
+S -> P : 11. Load destination ponds and active crops
+activate P
+P -> DB : 12. Load destination ponds and active crops
+activate DB
+DB -->> P : 13. Destination availability
+deactivate DB
+P -->> S : 14. Destination availability
+deactivate P
+alt 14.1 Destination unavailable, wrong farm, excessive density or invalid date
+S -->> C : 14.1.1. Destination plan rejected
+else else
+S -> P : 15. Close nursery crop and create linked commercial crops atomically
+activate P
+P -> DB : 16. Close nursery crop and create linked commercial crops atomically
+activate DB
+DB -->> P : 17. Source crop and child crops
+deactivate DB
+P -->> S : 18. Source crop and child crops
+deactivate P
+S -->> C : 19. Transfer confirmation
+end
+end
+end
+end
+deactivate S
+C -->> UI : 20. Return result or error
+end
+deactivate C
+UI -->> U : 21. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/crops/crops.controller.ts:27 CropsController
+' backend/src/modules/crops/crops.service.ts:1527 splitCrop
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+@enduml

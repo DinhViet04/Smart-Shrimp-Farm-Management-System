@@ -927,7 +927,7 @@ export default function TreatmentWorkspace({
       const altMatch = text.match(/(?:^|\n)(?:#{1,4}\s*)?(?:Hướng dẫn các bước điều trị|Phác đồ điều trị|Các bước điều trị|Hướng dẫn điều trị)[^\n]*/i);
       if (altMatch && altMatch.index !== undefined) {
         const altStartIndex = altMatch.index + altMatch[0].length;
-        let altContent = text.slice(altStartIndex).trim();
+        const altContent = text.slice(altStartIndex).trim();
         extractedNote = cleanTreatmentNoteForHumans(altContent);
       }
     }

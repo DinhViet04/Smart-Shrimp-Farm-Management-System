@@ -1,0 +1,93 @@
+@startuml
+' Report 4: 3.10.2.3
+title FE-40 - Generate Weather-Induced Risk Warnings
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm User" as U
+participant "SSFM Interface" as UI
+participant "WeatherController" as C
+participant "WeatherService" as S
+participant "NotificationsService" as N
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+participant "Open-Meteo" as W
+U -> UI : 1. Check weather risks for the farm
+activate UI
+UI -> C : 2. Check weather risks for the farm
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Check weather risks for the farm
+activate S
+S -> P : 5. Load farm and active recipients
+activate P
+P -> DB : 6. Load farm and active recipients
+activate DB
+DB -->> P : 7. Farm and recipients
+deactivate DB
+P -->> S : 8. Farm and recipients
+deactivate P
+opt 8.1 Farm and active recipients exist
+S -> W : 8.1.1. Load location and 14-day forecast
+activate W
+W -->> S : 8.1.2. Forecast or error
+deactivate W
+alt 8.1.2.1 Forecast available
+group 8.1.2.1.1. Evaluate conditions
+loop 8.1.2.1.1.1 Forecast days; first alert of each risk type
+group 8.1.2.1.1.1.1. Evaluate conditions
+opt 8.1.2.1.1.1.1.1 Storm, heavy rain or high heat detected
+group 8.1.2.1.1.1.1.1.1. Evaluate conditions
+loop 8.1.2.1.1.1.1.1.1.1 Each active recipient
+S -> N : 8.1.2.1.1.1.1.1.1.1.1. Create a non-duplicate weather alert
+activate N
+N -->> S : 8.1.2.1.1.1.1.1.1.1.2. Notification result
+deactivate N
+end
+end
+end
+end
+end
+end
+else 8.1.2.2 Forecast unavailable
+note over S
+Log the failure; no new forecast alert is created.
+end note
+end
+end
+S -->> C : 9. Risk synchronization result
+deactivate S
+C -->> UI : 10. Return result or error
+end
+deactivate C
+UI -->> U : 11. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/weather/weather.controller.ts:9 WeatherController
+' backend/src/modules/weather/weather.service.ts:312 syncDisasterAlerts
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/notifications/notifications.service.ts:62 createDisasterNotification
+@enduml

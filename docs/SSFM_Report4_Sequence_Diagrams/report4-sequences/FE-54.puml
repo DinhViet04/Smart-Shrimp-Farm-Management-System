@@ -1,0 +1,44 @@
+@startuml
+' Report 4: 3.15.2.3
+title FE-54 - View Farmer Daily Task Dashboard on the Web
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farmer" as U
+participant "SSFM Interface" as UI
+U -> UI : 1. Open daily farming dashboard
+activate UI
+' ref-target: OVERVIEW-DATA
+ref over UI : 2. Load farm and pond overview\n(OVERVIEW-DATA)
+' ref-target: WATER-HISTORY-DATA
+ref over UI : 3. Load water observations\n(WATER-HISTORY-DATA)
+' ref-target: FEEDING-LIST
+ref over UI : 4. Load grouped daily feeding records\n(FEEDING-LIST)
+' ref-target: INCIDENT-LIST
+ref over UI : 5. Load active incidents\n(INCIDENT-LIST)
+' ref-target: HEALTH-LIST
+ref over UI : 6. Load shrimp health observations\n(HEALTH-LIST)
+UI -->> U : 7. Show daily pond cards and farming work
+deactivate UI
+' Source references:
+' frontend-web/src/features/farmer/FarmerDashboardHome.tsx:81 fetchAllData
+@enduml

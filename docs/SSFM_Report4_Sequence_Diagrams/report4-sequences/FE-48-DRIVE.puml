@@ -1,0 +1,63 @@
+@startuml
+' Report 4: supporting interaction
+title FE-48-DRIVE - Synchronize knowledge from Drive
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Admin / Farm Manager" as U
+participant "SSFM Interface" as UI
+participant "ChatbotController" as C
+participant "ChatbotService" as S
+participant "FastAPI AI Service" as AI
+caption Existing + proposed extension - target design, not a claim of complete implementation
+U -> UI : 1. Synchronize knowledge folder
+activate UI
+UI -> C : 2. Synchronize knowledge folder
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Synchronize knowledge folder
+activate S
+S -> AI : 5. Synchronize Drive documents
+activate AI
+' ref-target: DRIVE-IMPORT
+ref over AI : 6. Read and ingest changed folder documents\n(DRIVE-IMPORT)
+AI -->> S : 7. Sync summary or error
+deactivate AI
+alt 7.1 AI synchronization request fails
+S -->> C : 7.1.1. Synchronization failed
+else else
+S -->> C : 8. Synchronization summary
+end
+deactivate S
+C -->> UI : 9. Return result or error
+end
+deactivate C
+UI -->> U : 10. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/chatbot/chatbot.controller.ts:21 ChatbotController
+' backend/src/modules/chatbot/chatbot.service.ts:246 syncDriveDocuments
+@enduml

@@ -1,0 +1,55 @@
+@startuml
+' Report 4: supporting interaction
+title KNOWLEDGE-INDEX - Build the planned knowledge index
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "FastAPI AI Service" as AI
+participant "VectorStoreService" as VS
+participant "ChunkingService" as CHUNK
+participant "EmbeddingService" as E
+database "ChromaDB\n(proposed)" as CH
+caption Proposed design - target design, not a claim of complete implementation
+activate AI
+AI -> VS : 1. Index document text
+activate VS
+VS -> CHUNK : 2. Divide document into passages
+activate CHUNK
+CHUNK -->> VS : 3. Text passages
+deactivate CHUNK
+loop 3.1 Each passage
+VS -> E : 3.1.1. Create passage embedding
+activate E
+E -->> VS : 3.1.2. Passage embedding
+deactivate E
+end
+VS -> CH : 4. Save searchable passages and document links
+activate CH
+CH -->> VS : 5. Saved index
+deactivate CH
+VS -->> AI : 6. Indexed document
+deactivate VS
+deactivate AI
+' Source references:
+' ai-service/app/services/vector_store.py:49 add_document
+' ai-service/app/services/embedding_service.py:28 get_embedding
+@enduml

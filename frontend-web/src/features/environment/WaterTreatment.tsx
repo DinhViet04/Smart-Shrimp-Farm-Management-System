@@ -752,7 +752,7 @@ export default function WaterTreatment({
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {item.triggeredParams.slice(0, 3).map((pKey) => {
                         let label = pKey;
-                        let val = (item.parameters as any)[pKey] || '';
+                        const val = (item.parameters as any)[pKey] || '';
                         let unit = '';
                         if (pKey === 'nh3') {
                           label = 'NH3';

@@ -1,0 +1,96 @@
+@startuml
+' Report 4: 3.9.2.6
+title FE-37 - Generate Adaptive Daily Feeding Recommendations
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager / Farmer" as U
+participant "SSFM Interface" as UI
+participant "FeedingRecommendationController\n(proposed)" as C
+participant "FeedingRecommendationService\n(proposed)" as S
+participant "FarmAccessService" as FA
+participant "WeatherService" as W
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+caption Proposed design - target design, not a claim of complete implementation
+U -> UI : 1. Request daily feeding recommendation
+activate UI
+UI -> C : 2. Request daily feeding recommendation
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Request daily feeding recommendation
+activate S
+note over S
+Proposed extension: Adaptive ration calculation.
+end note
+S -> FA : 5. Check farm access
+activate FA
+FA -->> S : 6. Allowed or denied
+deactivate FA
+alt 6.1 Access denied
+S -->> C : 6.1.1. Access denied
+else else
+S -> P : 7. Load active crop, growth and feeding history
+activate P
+P -> DB : 8. Load active crop, growth and feeding history
+activate DB
+DB -->> P : 9. Farming data
+deactivate DB
+P -->> S : 10. Farming data
+deactivate P
+alt 10.1 No active crop or required data missing
+S -->> C : 10.1.1. Recommendation unavailable
+else else
+S -> W : 11. Load relevant weather
+activate W
+W -->> S : 12. Weather context or fallback
+deactivate W
+S -> P : 13. Load approved feeding rules and targets
+activate P
+P -> DB : 14. Load approved feeding rules and targets
+activate DB
+DB -->> P : 15. Approved ration rules
+deactivate DB
+P -->> S : 16. Approved ration rules
+deactivate P
+note over S
+Calculate the daily ration using approved rules.
+The formula and safe adjustment limits still need specification.
+end note
+S -->> C : 17. Recommended daily ration and explanation
+end
+end
+deactivate S
+C -->> UI : 18. Return result or error
+end
+deactivate C
+UI -->> U : 19. Show result or error
+deactivate UI
+' Source references:
+' frontend-web/src/features/environment/EnvironmentAIAssessment.tsx:223 const aiEvaluation
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import HeaderLogo from './HeaderLogo';
-import NotificationButton from './NotificationButton';
+import NotificationBadge from './NotificationBadge';
 
 interface BusinessHeaderProps {
   title: string;
@@ -19,7 +19,7 @@ export default function BusinessHeader({ title }: BusinessHeaderProps) {
           {title}
         </Text>
         <View style={[styles.side, styles.rightSide]}>
-          <NotificationButton color="#475569" size={22} />
+          <NotificationBadge color="#475569" size={22} />
         </View>
       </View>
     </SafeAreaView>

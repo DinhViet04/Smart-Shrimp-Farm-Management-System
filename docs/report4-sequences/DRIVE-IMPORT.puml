@@ -1,0 +1,57 @@
+@startuml
+' Report 4: supporting interaction
+title DRIVE-IMPORT - Import changed knowledge documents from Drive
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "FastAPI AI Service" as AI
+participant "DriveSyncService" as D
+participant "VectorStoreService" as VS
+participant "Google Drive API" as G
+caption Existing + proposed extension - target design, not a claim of complete implementation
+activate AI
+AI -> D : 1. Synchronize selected folder
+activate D
+D -> G : 2. List folder documents
+activate G
+G -->> D : 3. Document metadata
+deactivate G
+loop 3.1 Supported document is new, changed or forced
+D -> G : 3.1.1. Download document contents
+activate G
+G -->> D : 3.1.2. Document text
+deactivate G
+' ref-target: KNOWLEDGE-INDEX
+ref over D : 3.1.3. Create searchable document passages\n(KNOWLEDGE-INDEX)
+end
+opt 3.2 Prune deleted documents requested
+D -> VS : 3.2.1. Remove documents deleted from Drive
+activate VS
+VS -->> D : 3.2.2. Pruning result
+deactivate VS
+end
+D -->> AI : 4. Synchronization summary
+deactivate D
+deactivate AI
+' Source references:
+' ai-service/app/services/drive_sync_service.py:182 sync_folder
+@enduml

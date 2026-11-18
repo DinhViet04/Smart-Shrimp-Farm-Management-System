@@ -1,0 +1,41 @@
+@startuml
+' Report 4: 3.1.2.2
+title FE-02 - Sign In with Email/Password and Google OAuth
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "User" as U
+participant "SSFM Interface" as UI
+U -> UI : 1. Choose an action
+activate UI
+UI -->> U : 2. Show the selected form or view
+deactivate UI
+alt 2.1 Email and password
+' ref-target: FE-02-EMAIL
+ref over U,UI : 2.1.1. Sign in with email and password\n(FE-02-EMAIL)
+else 2.2 Google sign-in
+' ref-target: FE-02-GOOGLE
+ref over U,UI : 2.2.1. Sign in with Google\n(FE-02-GOOGLE)
+end
+' Source references:
+
+@enduml

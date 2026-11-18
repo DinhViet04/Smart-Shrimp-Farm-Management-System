@@ -1,0 +1,44 @@
+@startuml
+' Report 4: supporting interaction
+title PUBLIC-CHECKS - Validate a public request
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "NestJS request pipeline" as A
+participant "ThrottlerGuard" as T
+participant "ValidationPipe" as V
+activate A
+A -> T : 1. Check request rate
+activate T
+T -->> A : 2. Allowed or rate limit exceeded
+deactivate T
+opt 2.1 Rate allowed
+A -> V : 2.1.1. Validate declared input rules
+activate V
+V -->> A : 2.1.2. Valid input or input error
+deactivate V
+end
+deactivate A
+' Source references:
+' backend/src/main.ts:2 ValidationPipe
+' backend/src/app.module.ts:28 ThrottlerGuard
+@enduml

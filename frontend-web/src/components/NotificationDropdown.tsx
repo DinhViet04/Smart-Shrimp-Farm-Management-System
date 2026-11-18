@@ -15,11 +15,15 @@ import {
   Utensils,
   Activity,
   Layers,
-  ExternalLink,
   X,
   Clock,
   HeartPulse,
   TrendingUp,
+  Wind,
+  Package,
+  ShieldAlert,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 export type NotificationLevel = 'INFO' | 'WARNING' | 'DANGER' | 'SUCCESS';
@@ -32,7 +36,10 @@ export type NotificationCategory =
   | 'FIVE_T'
   | 'INCIDENT'
   | 'INCIDENT_ASSIGNMENT'
+  | 'WEATHER'
+  | 'DISASTER'
   | 'SYSTEM'
+  | 'SUPPORT'
   | 'INVENTORY';
 
 export interface NotificationItem {
@@ -56,6 +63,40 @@ interface NotificationDropdownProps {
 }
 
 
+// Audio alert helper using Web Audio API
+const playNotificationChime = (level: NotificationLevel = 'INFO') => {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (level === 'DANGER') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(580, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+      osc.frequency.exponentialRampToValueAtTime(580, ctx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.38);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.38);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    }
+  } catch {
+    // Autoplay blocked by browser policy
+  }
+};
+
 const formatTimeAgo = (isoString: string) => {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const minutes = Math.floor(diffMs / (1000 * 60));
@@ -77,6 +118,18 @@ export default function NotificationDropdown({
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem('ssfm_notif_sound') !== 'false';
+  });
+
+  const toggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('ssfm_notif_sound', String(next));
+      if (next) playNotificationChime('INFO');
+      return next;
+    });
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -111,16 +164,21 @@ export default function NotificationDropdown({
     socket.on('newNotification', (notification: NotificationItem) => {
       const item = notification;
       setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
-      
+
+      // Play audio chime if sound is enabled
+      if (soundEnabled) {
+        playNotificationChime(notification.level);
+      }
+
       // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
       const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
       const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
       const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
       const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
-      const promptText = isGrowth 
-        ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này' 
-        : isShrimpHealth 
-          ? '👉 Nhấn để xem ngay sức khỏe tôm ao này' 
+      const promptText = isGrowth
+        ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này'
+        : isShrimpHealth
+          ? '👉 Nhấn để xem ngay sức khỏe tôm ao này'
           : '👉 Nhấn để xem ngay môi trường ao này';
       const iconEmoji = isGrowth ? '📈' : isShrimpHealth ? '🦐' : '🔔';
 
@@ -330,6 +388,18 @@ export default function NotificationDropdown({
     if (category === 'FIVE_T') {
       return <Layers className="w-4 h-4 text-indigo-600" />;
     }
+    if (category === 'INCIDENT' || category === 'INCIDENT_ASSIGNMENT') {
+      return <AlertTriangle className="w-4 h-4 text-rose-600" />;
+    }
+    if (category === 'WEATHER' || category === 'DISASTER') {
+      return <Wind className="w-4 h-4 text-blue-600" />;
+    }
+    if (category === 'INVENTORY') {
+      return <Package className="w-4 h-4 text-amber-600" />;
+    }
+    if (category === 'SUPPORT') {
+      return <ShieldAlert className="w-4 h-4 text-indigo-600" />;
+    }
 
     switch (level) {
       case 'DANGER':
@@ -379,9 +449,8 @@ export default function NotificationDropdown({
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="Thông báo"
-        className={`relative p-2.5 text-slate-500 rounded-full transition-all duration-200 focus:outline-none cursor-pointer ${
-          isOpen ? colorMap.activeBg : `bg-slate-100/90 ${colorMap.btnHover}`
-        }`}
+        className={`relative p-2.5 text-slate-500 rounded-full transition-all duration-200 focus:outline-none cursor-pointer ${isOpen ? colorMap.activeBg : `bg-slate-100/90 ${colorMap.btnHover}`
+          }`}
       >
         <Bell className={`w-5 h-5 transition-transform duration-200 ${isOpen ? 'scale-110' : ''}`} />
         {unreadCount > 0 && (
@@ -414,6 +483,15 @@ export default function NotificationDropdown({
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={toggleSound}
+                title={soundEnabled ? 'Âm thanh thông báo: Đang BẬT' : 'Âm thanh thông báo: Đang TẮT'}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${soundEnabled ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                  }`}
+              >
+                {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              </button>
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -453,17 +531,15 @@ export default function NotificationDropdown({
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveFilter(tab.key as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeFilter === tab.key
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFilter === tab.key
                     ? colorMap.tabActive
                     : 'text-slate-600 bg-slate-50 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 {tab.label}
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    activeFilter === tab.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                  }`}
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeFilter === tab.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}
                 >
                   {tab.count}
                 </span>
@@ -486,9 +562,8 @@ export default function NotificationDropdown({
                 <div
                   key={item.id}
                   onClick={() => handleItemClick(item)}
-                  className={`p-3.5 transition-all duration-150 hover:bg-slate-50/90 cursor-pointer flex items-start gap-3 relative group ${
-                    !item.isRead ? 'bg-blue-50/30' : 'bg-white'
-                  }`}
+                  className={`p-3.5 transition-all duration-150 hover:bg-slate-50/90 cursor-pointer flex items-start gap-3 relative group ${!item.isRead ? 'bg-blue-50/30' : 'bg-white'
+                    }`}
                 >
                   {/* Unread blue dot indicator */}
                   {!item.isRead && (
@@ -552,8 +627,7 @@ export default function NotificationDropdown({
                 }}
                 className="font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
               >
-                Chi tiết
-                <ExternalLink className="w-3 h-3" />
+
               </button>
             )}
           </div>
@@ -614,7 +688,7 @@ export default function NotificationDropdown({
                   Xóa thông báo
                 </button>
                 <div className="flex items-center gap-2">
-                  {selectedItem.pondId && onNavigateTab && (
+                  {(selectedItem.pondId || selectedItem.farmId || selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT') && onNavigateTab && (
                     <button
                       type="button"
                       onClick={() => {
@@ -623,22 +697,37 @@ export default function NotificationDropdown({
                         const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ');
                         const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
                         const isIncident = selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố');
-      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+                        const isInventory = selectedItem.category === 'INVENTORY' || selectedItem.title?.toLowerCase().includes('kho') || selectedItem.title?.toLowerCase().includes('vật tư');
+                        const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : isInventory ? 'Quản Lý Kho' : 'Môi trường nước';
                         setSelectedItem(null);
                         setIsOpen(false);
                         onNavigateTab(targetTab, { farmId, pondId });
                       }}
-                      className={`px-4 py-2 rounded-xl text-white font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
-                        selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ')
+                      className={`px-4 py-2 rounded-xl text-white font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ')
                           ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
                           : selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm')
                             ? 'bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500'
-                            : 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500'
-                      }`}
+                            : selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố')
+                              ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500'
+                              : selectedItem.category === 'INVENTORY'
+                                ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500'
+                                : 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500'
+                        }`}
                     >
                       {(() => {
+                        const isIncident = selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố');
                         const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ') || selectedItem.title?.toLowerCase().includes('fcr');
                         const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
+                        const isInventory = selectedItem.category === 'INVENTORY' || selectedItem.title?.toLowerCase().includes('kho');
+
+                        if (isIncident) {
+                          return (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Đến xử lý sự cố này
+                            </>
+                          );
+                        }
                         if (isGrowth) {
                           return (
                             <>
@@ -652,6 +741,14 @@ export default function NotificationDropdown({
                             <>
                               <HeartPulse className="w-3.5 h-3.5" />
                               Đến quản lý sức khỏe tôm ao này
+                            </>
+                          );
+                        }
+                        if (isInventory) {
+                          return (
+                            <>
+                              <Package className="w-3.5 h-3.5" />
+                              Đến quản lý kho vật tư
                             </>
                           );
                         }

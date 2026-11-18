@@ -11,6 +11,7 @@ coverage/
 Thumbs.db
 !.env.example
 .codegraph/
+/docs/
 run_notebook_query.js
 test_mcp.js
 AGENTS.md

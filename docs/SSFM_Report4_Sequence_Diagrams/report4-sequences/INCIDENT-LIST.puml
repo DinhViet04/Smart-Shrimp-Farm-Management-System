@@ -1,0 +1,73 @@
+@startuml
+' Report 4: supporting interaction
+title INCIDENT-LIST - Load incidents visible to the user
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "SSFM Interface" as UI
+participant "IncidentsController" as C
+participant "IncidentsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+activate UI
+UI -> C : 1. Load incidents
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 2. Verify user, role and input\n(REQUEST-CHECKS)
+alt 2.1 Request not allowed
+C -->> UI : 2.1.1. Request rejected
+else else
+C -> S : 3. Load incidents
+activate S
+S -> FA : 4. Find accessible farms
+activate FA
+FA -->> S : 5. Accessible farms
+deactivate FA
+opt 5.1 Farm, pond or crop selected
+' ref-target: INCIDENT-FILTERS
+ref over S : 5.1.1. Check selected incident scope\n(INCIDENT-FILTERS)
+end
+alt 5.2 Selected scope invalid or inaccessible
+S -->> C : 5.2.1. Incident scope rejected
+else else
+S -> P : 6. Load matching incidents and total
+activate P
+P -> DB : 7. Load matching incidents and total
+activate DB
+DB -->> P : 8. Incidents
+deactivate DB
+P -->> S : 9. Incidents
+deactivate P
+S -->> C : 10. Incident list
+end
+deactivate S
+C -->> UI : 11. Return result or error
+end
+deactivate C
+deactivate UI
+' Source references:
+' backend/src/modules/incidents/incidents.controller.ts:27 IncidentsController
+' backend/src/modules/incidents/incidents.service.ts:26 findAll
+' backend/src/modules/farm-access/farm-access.service.ts:13 getAccessibleFarmIds
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

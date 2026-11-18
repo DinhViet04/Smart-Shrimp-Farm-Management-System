@@ -1,0 +1,78 @@
+@startuml
+' Report 4: supporting interaction
+title REQUEST-CHECKS - Check a protected request
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "NestJS request pipeline" as A
+participant "ThrottlerGuard" as T
+participant "JwtAuthGuard" as G
+participant "JwtStrategy" as J
+participant "UsersService" as US
+participant "RolesGuard" as R
+participant "ValidationPipe" as V
+activate A
+A -> T : 1. Check request rate
+activate T
+T -->> A : 2. Allowed or limit exceeded
+deactivate T
+opt 2.1 Rate allowed
+A -> G : 2.1.1. Authenticate request
+activate G
+alt 2.1.1.1 Session credentials invalid
+note over G
+Reject the request before identity loading.
+end note
+else 2.1.1.2 Session credentials valid
+G -> J : 2.1.1.2.1. Load current user identity
+activate J
+J -> US : 2.1.1.2.2. Find user and account status
+activate US
+US -->> J : 2.1.1.2.3. Current user or none
+deactivate US
+J -->> G : 2.1.1.2.4. Active identity or authentication error
+deactivate J
+end
+G -->> A : 2.1.2. Current user or authentication error
+deactivate G
+opt 2.1.2.1 Authenticated active user
+A -> R : 2.1.2.1.1. Check endpoint role restriction
+activate R
+R -->> A : 2.1.2.1.2. Role allowed or access denied
+deactivate R
+opt 2.1.2.1.2.1 Role allowed or no role restriction
+A -> V : 2.1.2.1.2.1.1. Validate declared input rules
+activate V
+V -->> A : 2.1.2.1.2.1.2. Valid request or input error
+deactivate V
+end
+end
+end
+deactivate A
+' Source references:
+' backend/src/modules/auth/guards/jwt-auth.guard.ts:5 JwtAuthGuard
+' backend/src/modules/auth/strategies/jwt.strategy.ts:31 validate
+' backend/src/modules/users/users.service.ts:113 findById
+' backend/src/modules/auth/guards/roles.guard.ts:9 canActivate
+' backend/src/main.ts:2 ValidationPipe
+' backend/src/app.module.ts:28 ThrottlerGuard
+@enduml

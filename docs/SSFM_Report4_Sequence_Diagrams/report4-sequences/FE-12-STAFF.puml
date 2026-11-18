@@ -1,0 +1,191 @@
+@startuml
+' Report 4: supporting interaction
+title FE-12-STAFF - View and manage existing staff assignments
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager / Admin" as U
+participant "SSFM Interface" as UI
+participant "FarmsController" as C
+participant "FarmsService" as S
+participant "FarmAccessService" as FA
+participant "NotificationsService" as N
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. View farm staff
+activate UI
+UI -> C : 2. View farm staff
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. View farm staff
+activate S
+S -> P : 5. Load farm
+activate P
+P -> DB : 6. Load farm
+activate DB
+DB -->> P : 7. Farm
+deactivate DB
+P -->> S : 8. Farm
+deactivate P
+S -> FA : 9. Check farm access
+activate FA
+FA -->> S : 10. Allowed or denied
+deactivate FA
+alt 10.1 Access denied
+S -->> C : 10.1.1. Access denied
+else else
+S -> FA : 11. Check farm management rights
+activate FA
+FA -->> S : 12. Allowed or denied
+deactivate FA
+alt 12.1 Access denied
+S -->> C : 12.1.1. Access denied
+else else
+S -> P : 13. Load staff and user details
+activate P
+P -> DB : 14. Load staff and user details
+activate DB
+DB -->> P : 15. Staff list
+deactivate DB
+P -->> S : 16. Staff list
+deactivate P
+S -->> C : 17. Staff list
+end
+end
+deactivate S
+C -->> UI : 18. Return result or error
+end
+deactivate C
+UI -->> U : 19. Show result or error
+deactivate UI
+U -> UI : 20. Assign an existing user
+activate UI
+UI -> C : 21. Assign an existing user
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 22. Verify user, role and input\n(REQUEST-CHECKS)
+alt 22.1 Request not allowed
+C -->> UI : 22.1.1. Request rejected
+else else
+C -> S : 23. Assign an existing user
+activate S
+S -> FA : 24. Check farm management rights
+activate FA
+FA -->> S : 25. Allowed or denied
+deactivate FA
+alt 25.1 Access denied
+S -->> C : 25.1.1. Access denied
+else else
+S -> P : 26. Load user and existing assignment
+activate P
+P -> DB : 27. Load user and existing assignment
+activate DB
+DB -->> P : 28. User and assignment
+deactivate DB
+P -->> S : 29. User and assignment
+deactivate P
+alt 29.1 User missing, role invalid or already assigned
+S -->> C : 29.1.1. Assignment rejected
+else else
+S -> P : 30. Save staff assignment and load farm
+activate P
+P -> DB : 31. Save staff assignment and load farm
+activate DB
+DB -->> P : 32. Assignment and farm
+deactivate DB
+P -->> S : 33. Assignment and farm
+deactivate P
+opt 33.1 Farm found
+S -> N : 33.1.1. Notify farm membership
+activate N
+N -->> S : 33.1.2. Notification result
+deactivate N
+end
+S -->> C : 34. Assignment result
+end
+end
+deactivate S
+C -->> UI : 35. Return result or error
+end
+deactivate C
+UI -->> U : 36. Show result or error
+deactivate UI
+U -> UI : 37. Remove selected assignment
+activate UI
+UI -> C : 38. Remove selected assignment
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 39. Verify user, role and input\n(REQUEST-CHECKS)
+alt 39.1 Request not allowed
+C -->> UI : 39.1.1. Request rejected
+else else
+C -> S : 40. Remove selected assignment
+activate S
+S -> FA : 41. Check farm management rights
+activate FA
+FA -->> S : 42. Allowed or denied
+deactivate FA
+alt 42.1 Access denied
+S -->> C : 42.1.1. Access denied
+else else
+S -> P : 43. Load assignment
+activate P
+P -> DB : 44. Load assignment
+activate DB
+DB -->> P : 45. Assignment or none
+deactivate DB
+P -->> S : 46. Assignment or none
+deactivate P
+alt 46.1 Assignment not found
+S -->> C : 46.1.1. Assignment not found
+else else
+S -> P : 47. Remove assignment
+activate P
+P -> DB : 48. Remove assignment
+activate DB
+DB -->> P : 49. Assignment removed
+deactivate DB
+P -->> S : 50. Assignment removed
+deactivate P
+S -->> C : 51. Removal confirmation
+end
+end
+deactivate S
+C -->> UI : 52. Return result or error
+end
+deactivate C
+UI -->> U : 53. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/farms/farms.controller.ts:24 FarmsController
+' backend/src/modules/farms/farms.service.ts:223 getStaff
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+' backend/src/modules/farm-access/farm-access.service.ts:54 assertCanManageFarm
+' backend/src/modules/farms/farms.service.ts:246 assignStaff
+' backend/src/modules/notifications/notifications.service.ts:31 createFarmJoinNotification
+' backend/src/modules/farms/farms.service.ts:317 unassignStaff
+@enduml

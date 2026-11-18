@@ -87,7 +87,7 @@ export default function EnvironmentTrendDashboard({
       setCrops(cropsData || []);
 
       let targetFarm = initialFarmId;
-      let targetPond = initialPondId;
+      const targetPond = initialPondId;
 
       if (targetPond) {
         const found = p.find((item: any) => item.id === targetPond);

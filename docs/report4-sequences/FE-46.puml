@@ -1,0 +1,106 @@
+@startuml
+' Report 4: 3.12.2.3
+title FE-46 - Generate Crop Harvest Review and Next-Crop Recommendations
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager / Admin" as U
+participant "SSFM Interface" as UI
+participant "CropsController" as C
+participant "CropsService" as S
+participant "FarmAccessService" as FA
+participant "crop-review.generator.ts" as REV
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Confirm harvest and request review
+activate UI
+UI -> C : 2. Confirm harvest and request review
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Confirm harvest and request review
+activate S
+S -> P : 5. Load crop and pond
+activate P
+P -> DB : 6. Load crop and pond
+activate DB
+DB -->> P : 7. Crop or not found
+deactivate DB
+P -->> S : 8. Crop or not found
+deactivate P
+alt 8.1 Crop not found
+S -->> C : 8.1.1. Crop not found
+else else
+S -> FA : 9. Check farm access
+activate FA
+FA -->> S : 10. Allowed or denied
+deactivate FA
+alt 10.1 Access denied
+S -->> C : 10.1.1. Access denied
+else else
+alt 10.2 Crop status or harvest date invalid
+S -->> C : 10.2.1. Harvest rejected
+else else
+alt 10.3 Harvested count exceeds stocking
+S -->> C : 10.3.1. Harvest quantity rejected
+else else
+S -> P : 11. Load previous harvest for comparison
+activate P
+P -> DB : 12. Load previous harvest for comparison
+activate DB
+DB -->> P : 13. Previous harvest or none
+deactivate DB
+P -->> S : 14. Previous harvest or none
+deactivate P
+S -> REV : 15. Prepare harvest evaluation and next-crop advice
+activate REV
+REV -->> S : 16. Evaluation and advice
+deactivate REV
+S -> P : 17. Save harvest quantities, finances and review
+activate P
+P -> DB : 18. Save harvest quantities, finances and review
+activate DB
+DB -->> P : 19. Harvest summary
+deactivate DB
+P -->> S : 20. Harvest summary
+deactivate P
+S -->> C : 21. Evaluation, lessons and next-crop recommendations
+end
+end
+end
+end
+deactivate S
+C -->> UI : 22. Return result or error
+end
+deactivate C
+UI -->> U : 23. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/crops/crops.controller.ts:27 CropsController
+' backend/src/modules/crops/crops.service.ts:1387 harvest
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+' backend/src/modules/crops/crop-review.generator.ts:36 generateHarvestReview
+@enduml

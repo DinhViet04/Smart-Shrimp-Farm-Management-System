@@ -1,0 +1,67 @@
+@startuml
+' Report 4: supporting interaction
+title CHAT-FALLBACK - Prepare advice when the Python service fails
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "ChatbotService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+participant "OpenAI API" as OA
+activate S
+group 1. Evaluate conditions
+opt 1.1 Question is not a greeting
+S -> P : 1.1.1. Load backend knowledge passages
+activate P
+P -> DB : 1.1.2. Load backend knowledge passages
+activate DB
+DB -->> P : 1.1.3. Stored passages
+deactivate DB
+P -->> S : 1.1.4. Stored passages
+deactivate P
+note over S
+Rank the relevant passages for the question.
+end note
+end
+end
+alt 1.2 OpenAI available
+S -> OA : 1.2.1. Generate answer from available context
+activate OA
+OA -->> S : 1.2.2. Answer or service error
+deactivate OA
+opt 1.2.2.1 Completion request fails
+note over S
+Build a local fallback answer.
+end note
+end
+else 1.3 OpenAI unavailable
+note over S
+Build a local fallback answer.
+end note
+end
+deactivate S
+' Source references:
+' backend/src/modules/chatbot/chatbot.service.ts:327 ask
+' backend/src/modules/chatbot/chatbot.service.ts:64 getEmbedding
+' backend/src/modules/chatbot/chatbot.service.ts:688 buildFallbackResponse
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

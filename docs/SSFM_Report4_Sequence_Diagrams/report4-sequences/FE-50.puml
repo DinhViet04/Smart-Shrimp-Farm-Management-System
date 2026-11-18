@@ -1,0 +1,52 @@
+@startuml
+' Report 4: 3.14.2.1
+title FE-50 - Dispatch Real-Time Alerts and In-App Push Notifications
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "User" as U
+participant "SSFM Interface" as UI
+participant "NotificationsGateway" as GW
+caption Existing + proposed extension - target design, not a claim of complete implementation
+U -> UI : 1. Open notifications
+activate UI
+UI -> GW : 2. Connect for live notifications
+activate GW
+alt 2.1 Session invalid
+GW -->> UI : 2.1.1. Connection refused
+else 2.2 Session valid
+GW -->> UI : 2.2.1. Connected to own notification channel
+end
+deactivate GW
+UI -->> U : 3. Show notification center
+deactivate UI
+' ref-target: NOTIFICATION-DELIVERY
+ref over UI,GW : 4. Deliver notifications created by business events\n(NOTIFICATION-DELIVERY)
+note over UI
+Proposed extension: Delivery while disconnected.
+end note
+' ref-target: MOBILE-PUSH
+ref over U,UI : 5. Deliver an alert through the planned push channel\n(MOBILE-PUSH)
+' Source references:
+' backend/src/modules/notifications/notifications.gateway.ts:41 handleConnection
+' backend/src/modules/notifications/notifications.service.ts:234 notifyWaterQualityUpdate
+@enduml

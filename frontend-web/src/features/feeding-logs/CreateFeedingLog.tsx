@@ -455,7 +455,7 @@ export default function CreateFeedingLog() {
 
     // Auto-distribute if user entered total feed kg in the batch input box but hasn't clicked "Chia"
     const parsedBatchTotal = parseFloat(batchTotalFeedKg);
-    let workingSessionData = { ...sessionData };
+    const workingSessionData = { ...sessionData };
     if (!isNaN(parsedBatchTotal) && parsedBatchTotal > 0 && summary.totalFeedKg === 0) {
       const activeKeys = DEFAULT_FEEDING_SESSIONS.filter((it) => activeSessions[it.session]).map((it) => it.session);
       if (activeKeys.length > 0) {

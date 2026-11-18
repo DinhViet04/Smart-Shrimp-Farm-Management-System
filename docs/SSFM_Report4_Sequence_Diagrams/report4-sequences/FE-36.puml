@@ -1,0 +1,78 @@
+@startuml
+' Report 4: 3.9.2.5
+title FE-36 - Compare Actual Growth Curve
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm User" as U
+participant "SSFM Interface" as UI
+participant "CropsController" as C
+participant "CropsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Compare actual shrimp growth
+activate UI
+UI -> C : 2. Compare actual shrimp growth
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Compare actual shrimp growth
+activate S
+S -> FA : 5. Find accessible farms
+activate FA
+FA -->> S : 6. Accessible farms
+deactivate FA
+' ref-target: GROWTH-SCOPE
+ref over S : 7. Resolve selected farm, pond and crop\n(GROWTH-SCOPE)
+alt 7.1 Farm access denied
+S -->> C : 7.1.1. Growth view rejected
+else else
+S -> P : 8. Load actual shrimp samples
+activate P
+P -> DB : 9. Load actual shrimp samples
+activate DB
+DB -->> P : 10. Actual growth series
+deactivate DB
+P -->> S : 11. Actual growth series
+deactivate P
+S -->> C : 12. Actual growth trajectory
+end
+deactivate S
+C -->> UI : 13. Return result or error
+end
+deactivate C
+UI -->> U : 14. Show result or error
+deactivate UI
+note over UI
+Compare actual points with the fixed reference curves.
+end note
+' Source references:
+' backend/src/modules/crops/crops.controller.ts:27 CropsController
+' backend/src/modules/crops/crops.service.ts:1730 getGrowthTrajectory90d
+' backend/src/modules/farm-access/farm-access.service.ts:13 getAccessibleFarmIds
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' frontend-web/src/features/growth/TechnicianOverviewDashboard.tsx:286 fetchGrowthData
+@enduml

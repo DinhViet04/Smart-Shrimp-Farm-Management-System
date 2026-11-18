@@ -1,0 +1,95 @@
+@startuml
+' Report 4: 3.10.2.1
+title FE-38 - Trigger Rule-Based Water Quality Alerts
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Technician / Admin" as U
+participant "SSFM Interface" as UI
+participant "WaterQualityController" as C
+participant "WaterQualityService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Record water quality for alert checks
+activate UI
+UI -> C : 2. Record water quality for alert checks
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Record water quality for alert checks
+activate S
+S -> P : 5. Load pond, farm and recorder
+activate P
+P -> DB : 6. Load pond, farm and recorder
+activate DB
+DB -->> P : 7. Pond and recorder
+deactivate DB
+P -->> S : 8. Pond and recorder
+deactivate P
+alt 8.1 Pond not found
+S -->> C : 8.1.1. Pond not found
+else else
+S -> FA : 9. Check farm access
+activate FA
+FA -->> S : 10. Allowed or denied
+deactivate FA
+alt 10.1 Access denied
+S -->> C : 10.1.1. Access denied
+else else
+S -> P : 11. Save water measurements
+activate P
+P -> DB : 12. Save water measurements
+activate DB
+DB -->> P : 13. Water record
+deactivate DB
+P -->> S : 14. Water record
+deactivate P
+S -> S : 15. Start water notification task
+activate S
+S -->> S : 16. Task started; completion not awaited
+deactivate S
+note over S
+Background details: WATER-NOTIFICATION
+Completion is independent of the request response.
+end note
+S -->> C : 17. Water record confirmation
+end
+end
+deactivate S
+C -->> UI : 18. Return result or error
+end
+deactivate C
+UI -->> U : 19. Show result or error
+deactivate UI
+' ref-target: WATER-NOTIFICATION
+ref over S : 20. Evaluate water status and notify recipients\n(WATER-NOTIFICATION)
+' Source references:
+' backend/src/modules/water-quality/water-quality.controller.ts:23 WaterQualityController
+' backend/src/modules/water-quality/water-quality.service.ts:21 create
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/farm-access/farm-access.service.ts:43 assertCanAccessFarm
+' backend/src/modules/water-quality/water-quality.service.ts:96 dispatchWaterQualityNotification
+@enduml

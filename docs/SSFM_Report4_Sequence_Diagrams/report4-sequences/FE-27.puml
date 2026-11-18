@@ -1,0 +1,68 @@
+@startuml
+' Report 4: 3.7.2.3
+title FE-27 - Monitor Water Quality Trends and Fluctuation Analytics
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm User" as U
+participant "SSFM Interface" as UI
+participant "WaterQualityController" as C
+participant "WaterQualityService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. View water quality trends
+activate UI
+UI -> C : 2. View water quality trends
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. View water quality trends
+activate S
+' ref-target: WATER-TREND-FILTERS
+ref over S : 5. Apply pond, crop or farm scope\n(WATER-TREND-FILTERS)
+alt 5.1 Selected pond missing or access denied
+S -->> C : 5.1.1. Trend scope rejected
+else else
+S -> P : 6. Load measurements in time order
+activate P
+P -> DB : 7. Load measurements in time order
+activate DB
+DB -->> P : 8. Water trend series
+deactivate DB
+P -->> S : 9. Water trend series
+deactivate P
+S -->> C : 10. Trend series and status
+end
+deactivate S
+C -->> UI : 11. Return result or error
+end
+deactivate C
+UI -->> U : 12. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/water-quality/water-quality.controller.ts:23 WaterQualityController
+' backend/src/modules/water-quality/water-quality.service.ts:406 findTrends
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

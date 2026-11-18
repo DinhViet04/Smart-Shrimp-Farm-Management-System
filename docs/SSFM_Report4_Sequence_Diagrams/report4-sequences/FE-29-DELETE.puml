@@ -1,0 +1,96 @@
+@startuml
+' Report 4: supporting interaction
+title FE-29-DELETE - Delete inventory item
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm Manager" as U
+participant "SSFM Interface" as UI
+participant "InventoryController" as C
+participant "InventoryService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. Confirm inventory deletion
+activate UI
+UI -> C : 2. Confirm inventory deletion
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. Confirm inventory deletion
+activate S
+S -> P : 5. Load inventory item
+activate P
+P -> DB : 6. Load inventory item
+activate DB
+DB -->> P : 7. Item or none
+deactivate DB
+P -->> S : 8. Item or none
+deactivate P
+alt 8.1 Item not found
+S -->> C : 8.1.1. Item not found
+else else
+S -> FA : 9. Check farm management rights
+activate FA
+FA -->> S : 10. Allowed or denied
+deactivate FA
+alt 10.1 Access denied
+S -->> C : 10.1.1. Access denied
+else else
+S -> P : 11. Count linked usage records
+activate P
+P -> DB : 12. Count linked usage records
+activate DB
+DB -->> P : 13. Usage count
+deactivate DB
+P -->> S : 14. Usage count
+deactivate P
+alt 14.1 Usage records exist
+S -->> C : 14.1.1. Item cannot be deleted
+else else
+S -> P : 15. Mark item as deleted
+activate P
+P -> DB : 16. Mark item as deleted
+activate DB
+DB -->> P : 17. Item removed from active inventory
+deactivate DB
+P -->> S : 18. Item removed from active inventory
+deactivate P
+S -->> C : 19. Deletion confirmation
+end
+end
+end
+deactivate S
+C -->> UI : 20. Return result or error
+end
+deactivate C
+UI -->> U : 21. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/inventory/inventory.controller.ts:25 InventoryController
+' backend/src/modules/inventory/inventory.service.ts:602 remove
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/farm-access/farm-access.service.ts:54 assertCanManageFarm
+@enduml

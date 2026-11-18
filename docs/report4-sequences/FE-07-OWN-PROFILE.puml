@@ -1,0 +1,101 @@
+@startuml
+' Report 4: supporting interaction
+title FE-07-OWN-PROFILE - View and update own profile
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Signed-in User" as U
+participant "SSFM Interface" as UI
+participant "UsersController" as C
+participant "UsersService" as S
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. View own profile
+activate UI
+UI -> C : 2. View own profile
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. View own profile
+activate S
+S -> P : 5. Load own profile
+activate P
+P -> DB : 6. Load own profile
+activate DB
+DB -->> P : 7. Profile
+deactivate DB
+P -->> S : 8. Profile
+deactivate P
+S -->> C : 9. Profile
+deactivate S
+C -->> UI : 10. Return result or error
+end
+deactivate C
+UI -->> U : 11. Show result or error
+deactivate UI
+U -> UI : 12. Submit profile changes
+activate UI
+UI -> C : 13. Submit profile changes
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 14. Verify user, role and input\n(REQUEST-CHECKS)
+alt 14.1 Request not allowed
+C -->> UI : 14.1.1. Request rejected
+else else
+C -> S : 15. Submit profile changes
+activate S
+S -> P : 16. Load own account
+activate P
+P -> DB : 17. Load own account
+activate DB
+DB -->> P : 18. Account
+deactivate DB
+P -->> S : 19. Account
+deactivate P
+alt 19.1 Account not found
+S -->> C : 19.1.1. Profile update rejected
+else else
+S -> P : 20. Save profile changes
+activate P
+P -> DB : 21. Save profile changes
+activate DB
+DB -->> P : 22. Updated profile
+deactivate DB
+P -->> S : 23. Updated profile
+deactivate P
+S -->> C : 24. Updated profile
+end
+deactivate S
+C -->> UI : 25. Return result or error
+end
+deactivate C
+UI -->> U : 26. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/users/users.controller.ts:22 UsersController
+' backend/src/modules/users/users.service.ts:113 findById
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+' backend/src/modules/users/users.service.ts:198 updateProfile
+@enduml

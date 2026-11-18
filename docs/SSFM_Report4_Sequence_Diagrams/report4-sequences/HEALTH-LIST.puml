@@ -1,0 +1,71 @@
+@startuml
+' Report 4: supporting interaction
+title HEALTH-LIST - Load shrimp health observations
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "SSFM Interface" as UI
+participant "ShrimpHealthController" as C
+participant "ShrimpHealthService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+activate UI
+UI -> C : 1. Load health observations
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 2. Verify user, role and input\n(REQUEST-CHECKS)
+alt 2.1 Request not allowed
+C -->> UI : 2.1.1. Request rejected
+else else
+C -> S : 3. Load health observations
+activate S
+S -> FA : 4. Find accessible farms
+activate FA
+FA -->> S : 5. Accessible farms
+deactivate FA
+' ref-target: HEALTH-FILTERS
+ref over S : 6. Apply selected pond or farm\n(HEALTH-FILTERS)
+alt 6.1 Scope missing or access denied
+S -->> C : 6.1.1. Health scope rejected
+else else
+S -> P : 7. Load matching observations and total
+activate P
+P -> DB : 8. Load matching observations and total
+activate DB
+DB -->> P : 9. Health history
+deactivate DB
+P -->> S : 10. Health history
+deactivate P
+S -->> C : 11. Health observations
+end
+deactivate S
+C -->> UI : 12. Return result or error
+end
+deactivate C
+deactivate UI
+' Source references:
+' backend/src/modules/shrimp-health/shrimp-health.controller.ts:22 ShrimpHealthController
+' backend/src/modules/shrimp-health/shrimp-health.service.ts:211 findHistory
+' backend/src/modules/farm-access/farm-access.service.ts:13 getAccessibleFarmIds
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

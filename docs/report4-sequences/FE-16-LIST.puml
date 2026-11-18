@@ -1,0 +1,68 @@
+@startuml
+' Report 4: supporting interaction
+title FE-16-LIST - View crops
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+actor "Farm User" as U
+participant "SSFM Interface" as UI
+participant "CropsController" as C
+participant "CropsService" as S
+participant "FarmAccessService" as FA
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+U -> UI : 1. View crops
+activate UI
+UI -> C : 2. View crops
+activate C
+' ref-target: REQUEST-CHECKS
+ref over C : 3. Verify user, role and input\n(REQUEST-CHECKS)
+alt 3.1 Request not allowed
+C -->> UI : 3.1.1. Request rejected
+else else
+C -> S : 4. View crops
+activate S
+S -> FA : 5. Find accessible farms
+activate FA
+FA -->> S : 6. Accessible farms
+deactivate FA
+S -> P : 7. Load crops matching accessible farms and filters
+activate P
+P -> DB : 8. Load crops matching accessible farms and filters
+activate DB
+DB -->> P : 9. Crop list
+deactivate DB
+P -->> S : 10. Crop list
+deactivate P
+S -->> C : 11. Crop list
+deactivate S
+C -->> UI : 12. Return result or error
+end
+deactivate C
+UI -->> U : 13. Show result or error
+deactivate UI
+' Source references:
+' backend/src/modules/crops/crops.controller.ts:27 CropsController
+' backend/src/modules/crops/crops.service.ts:40 findAll
+' backend/src/modules/farm-access/farm-access.service.ts:13 getAccessibleFarmIds
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

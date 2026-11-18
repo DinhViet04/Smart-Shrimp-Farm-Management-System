@@ -1,0 +1,77 @@
+@startuml
+' Report 4: supporting interaction
+title HEALTH-NOTIFICATION - Background health notification
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "ShrimpHealthService" as S
+participant "NotificationsService" as N
+participant "PrismaService" as P
+database "PostgreSQL" as DB
+activate S
+note over S
+Continuation of a task already started by the request.
+It does not delay the user confirmation.
+end note
+S -> P : 1. Load active recipient assignments
+activate P
+P -> DB : 2. Load active recipient assignments
+activate DB
+DB -->> P : 3. Staff recipients; owner supplied by caller
+deactivate DB
+P -->> S : 4. Staff recipients; owner supplied by caller
+deactivate P
+opt 4.1 Recipients exist
+note over S
+Classify health observations by severity.
+end note
+S -> N : 4.1.1. Create and deliver observation notification
+activate N
+' ref-target: NOTIFICATION-DELIVERY
+ref over N : 4.1.2. Save and deliver notifications\n(NOTIFICATION-DELIVERY)
+N -->> S : 4.1.3. Created notifications
+deactivate N
+opt 4.1.3.1 Current health observation is dangerous
+S -> P : 4.1.3.1.1. Load three most recent health observations
+activate P
+P -> DB : 4.1.3.1.2. Load three most recent health observations
+activate DB
+DB -->> P : 4.1.3.1.3. Recent health observations
+deactivate DB
+P -->> S : 4.1.3.1.4. Recent health observations
+deactivate P
+opt 4.1.3.1.4.1 Three consecutive critical observations
+S -> N : 4.1.3.1.4.1.1. Send repeated critical health warning
+activate N
+' ref-target: NOTIFICATION-DELIVERY
+ref over N : 4.1.3.1.4.1.2. Save and deliver warning\n(NOTIFICATION-DELIVERY)
+N -->> S : 4.1.3.1.4.1.3. Created warning
+deactivate N
+end
+end
+end
+deactivate S
+' Source references:
+' backend/src/modules/shrimp-health/shrimp-health.service.ts:113 dispatchShrimpHealthNotification
+' backend/src/modules/notifications/notifications.service.ts:318 notifyShrimpHealthUpdate
+' backend/src/prisma/prisma.service.ts:11 PrismaService
+@enduml

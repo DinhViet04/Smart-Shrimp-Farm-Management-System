@@ -1,0 +1,66 @@
+@startuml
+' Report 4: supporting interaction
+title RAG-ANSWER - Prepare an answer with retrieved knowledge
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 16
+skinparam sequence {
+ ArrowColor #202020
+ LifeLineBorderColor #777777
+ ParticipantBackgroundColor white
+ ParticipantBorderColor #202020
+ ActorBackgroundColor white
+ ActorBorderColor #202020
+ ActivationBackgroundColor white
+ GroupBackgroundColor white
+ GroupBorderColor #444444
+ ReferenceBackgroundColor white
+}
+skinparam NoteBackgroundColor #FFFFF0
+skinparam NoteBorderColor #777777
+participant "RAGService" as AI
+participant "VectorStoreService" as VS
+database "ChromaDB\n(proposed)" as CH
+participant "OpenAI API" as OA
+caption Existing + proposed extension - target design, not a claim of complete implementation
+activate AI
+group 1. Evaluate conditions
+opt 1.1 Question is not a greeting
+note over AI
+Proposed extension: Planned ChromaDB retrieval.
+end note
+AI -> VS : 1.1.1. Find relevant knowledge passages
+activate VS
+VS -> CH : 1.1.2. Search indexed passages
+activate CH
+CH -->> VS : 1.1.3. Matching passages
+deactivate CH
+VS -->> AI : 1.1.4. Matching passages
+deactivate VS
+end
+end
+alt 1.2 OpenAI configured and usable
+AI -> OA : 1.2.1. Generate answer using question and context
+activate OA
+OA -->> AI : 1.2.2. Answer or service error
+deactivate OA
+opt 1.2.2.1 Completion request fails
+note over AI
+Prepare the source-defined fallback answer.
+end note
+end
+else 1.3 OpenAI unavailable
+note over AI
+Prepare the source-defined fallback answer.
+end note
+end
+deactivate AI
+' Source references:
+' ai-service/app/services/rag_service.py:108 def ask
+' ai-service/app/services/vector_store.py:143 similarity_search
+@enduml

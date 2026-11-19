@@ -34,6 +34,7 @@ import type {
   ShrimpHealthStatusType,
   ShrimpSeverityType,
 } from '../../services/shrimp-health.service';
+import { getErrorMessage } from '../../utils/errors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,6 +160,16 @@ export default function CreateShrimpHealth({
     ? ponds.filter((p) => p.farmId === selectedFarmId)
     : ponds;
 
+  const showToast = (
+    message: string,
+    type: 'success' | 'error',
+    actionLabel?: string,
+    onAction?: () => void
+  ) => {
+    setToast({ message, type, actionLabel, onAction });
+    setTimeout(() => setToast(null), 5000);
+  };
+
   // ── Load farms & ponds ───────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -227,16 +238,6 @@ export default function CreateShrimpHealth({
     setSelectedSymptoms(updated);
     updateIncidentTitleAndDesc(updated, customSymptom);
     setErrors((prev) => ({ ...prev, symptoms: '', incidentTitle: '' }));
-  };
-
-  const showToast = (
-    message: string,
-    type: 'success' | 'error',
-    actionLabel?: string,
-    onAction?: () => void
-  ) => {
-    setToast({ message, type, actionLabel, onAction });
-    setTimeout(() => setToast(null), 5000);
   };
 
   // ── Validation ───────────────────────────────────────────────────────────────
@@ -365,8 +366,8 @@ export default function CreateShrimpHealth({
           onNavigateToIncident?.(newIncident?.id, 'treatment');
         }, 500);
       }
-    } catch (err: any) {
-      showToast(err.message || 'Không thể lưu bản ghi. Vui lòng kiểm tra lại.', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể lưu bản ghi. Vui lòng kiểm tra lại.', 'error');
     } finally {
       setSaving(false);
     }

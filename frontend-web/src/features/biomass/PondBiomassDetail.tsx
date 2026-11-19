@@ -13,6 +13,7 @@ import { shrimpSizeService } from '../../services/shrimpSizeService';
 import { cropService, type Crop } from '../../services/crop.service';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface Pond {
   id: string;
@@ -74,6 +75,9 @@ export default function PondBiomassDetail({
 
   const pondId = pond.id;
 
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  useRealtimeRefresh(['shrimp-size', 'crops'], () => setRealtimeTick((v) => v + 1));
   useEffect(() => {
     let isMounted = true;
 
@@ -110,7 +114,7 @@ export default function PondBiomassDetail({
     return () => {
       isMounted = false;
     };
-  }, [pondId]);
+  }, [pondId, realtimeTick]);
 
   // Lọc ra các mẫu có đo sinh khối (có netAreaSqM)
   const safeSamples = Array.isArray(samples) ? samples : [];

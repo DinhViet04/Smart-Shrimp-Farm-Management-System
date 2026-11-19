@@ -32,6 +32,7 @@ import {
   WaterQualityHistoryRecord,
 } from '../services/waterQualityService';
 import BusinessHeader from '../components/BusinessHeader';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 export default function EnvironmentScreen({ navigation }: any) {
   const { userToken, userRole } = useAuth();
@@ -63,6 +64,11 @@ export default function EnvironmentScreen({ navigation }: any) {
       setIsRefreshing(false);
     }
   }, [userToken]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['water-quality', 'environment', 'ponds', 'crops'], () => {
+    void loadData(true);
+  });
 
   useFocusEffect(
     useCallback(() => {

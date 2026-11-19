@@ -1,5 +1,12 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 
 export interface SeedMarketPriceResult {
   code: string;
@@ -38,7 +45,12 @@ export interface ShrimpPriceCalculation {
   updatedAt: Date;
 }
 
-export const DEFAULT_SHRIMP_SIZES: Array<{ code: string; size: number; price: number; name: string }> = [
+export const DEFAULT_SHRIMP_SIZES: Array<{
+  code: string;
+  size: number;
+  price: number;
+  name: string;
+}> = [
   { code: 'THE20', size: 20, price: 200000, name: 'Tôm thẻ 20 con/kg tại ao' },
   { code: 'THE30', size: 30, price: 155000, name: 'Tôm thẻ 30 con/kg tại ao' },
   { code: 'THE40', size: 40, price: 132000, name: 'Tôm thẻ 40 con/kg tại ao' },
@@ -47,8 +59,18 @@ export const DEFAULT_SHRIMP_SIZES: Array<{ code: string; size: number; price: nu
   { code: 'THE70', size: 70, price: 110000, name: 'Tôm thẻ 70 con/kg tại ao' },
   { code: 'THE80', size: 80, price: 107000, name: 'Tôm thẻ 80 con/kg tại ao' },
   { code: 'THE90', size: 90, price: 104000, name: 'Tôm thẻ 90 con/kg tại ao' },
-  { code: 'THE100', size: 100, price: 100000, name: 'Tôm thẻ 100 con/kg tại ao' },
-  { code: 'THE150', size: 150, price: 64000, name: 'Tôm thẻ 150 con/kg tại ao' },
+  {
+    code: 'THE100',
+    size: 100,
+    price: 100000,
+    name: 'Tôm thẻ 100 con/kg tại ao',
+  },
+  {
+    code: 'THE150',
+    size: 150,
+    price: 64000,
+    name: 'Tôm thẻ 150 con/kg tại ao',
+  },
 ];
 
 @Injectable()
@@ -64,28 +86,52 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
   private readonly SEED_UNIT = 'đ/CON';
   private readonly COMMERCIAL_UNIT = 'đ/KG';
   private readonly SOURCE_NAME = 'tepbac.com';
-  private readonly SEED_URL = 'https://tepbac.com/gia-thuy-san/giong-tom-the-chan-trang-p10';
-  private readonly COMMERCIAL_URL = 'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27';
+  private readonly SEED_URL =
+    'https://tepbac.com/gia-thuy-san/giong-tom-the-chan-trang-p10';
+  private readonly COMMERCIAL_URL =
+    'https://tepbac.com/gia-thuy-san/gia/tom#subcat-27';
 
   // Cache duration: 4 giờ
   private readonly CACHE_TTL_MS = 4 * 60 * 60 * 1000;
   private syncTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly realtime?: RealtimeService,
+  ) {}
+
+  /** Báo cho mọi client đang mở biết giá thị trường vừa được cập nhật. */
+  private notifyPricesUpdated() {
+    void this.realtime?.publish({
+      resource: 'market-prices',
+      action: 'updated',
+      audience: { kind: 'all' },
+    });
+  }
 
   async onModuleInit() {
     // Chạy đồng bộ giá thị trường khi khởi động server
-    this.syncAllPricesFromTepbac().catch((err) => {
-      this.logger.warn(`Initial sync of shrimp market prices failed: ${err.message}`);
-    });
+    this.syncAllPricesFromTepbac()
+      .then(() => this.notifyPricesUpdated())
+      .catch((err) => {
+        this.logger.warn(
+          `Initial sync of shrimp market prices failed: ${err.message}`,
+        );
+      });
 
     // Tự động cập nhật mỗi 6 tiếng
     this.syncTimer = setInterval(
       () => {
-        this.logger.log('Triggering periodic market price update from tepbac.com...');
-        this.syncAllPricesFromTepbac().catch((err) => {
-          this.logger.warn(`Periodic market price update failed: ${err.message}`);
-        });
+        this.logger.log(
+          'Triggering periodic market price update from tepbac.com...',
+        );
+        this.syncAllPricesFromTepbac()
+          .then(() => this.notifyPricesUpdated())
+          .catch((err) => {
+            this.logger.warn(
+              `Periodic market price update failed: ${err.message}`,
+            );
+          });
       },
       6 * 60 * 60 * 1000,
     );
@@ -129,7 +175,9 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
         };
       }
     } catch (err: any) {
-      this.logger.warn(`Failed reading seed market price from DB: ${err.message}`);
+      this.logger.warn(
+        `Failed reading seed market price from DB: ${err.message}`,
+      );
     }
 
     await this.syncAllPricesFromTepbac();
@@ -176,7 +224,9 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
   /**
    * Lấy danh sách giá tôm thương phẩm theo các mốc size chuẩn (20, 30, 40, ...)
    */
-  async getCommercialPrices(forceRefresh = false): Promise<CommercialShrimpSize[]> {
+  async getCommercialPrices(
+    forceRefresh = false,
+  ): Promise<CommercialShrimpSize[]> {
     try {
       const records = await this.prisma.marketPrice.findMany({
         where: { category: 'SHRIMP_COMMERCIAL' },
@@ -206,7 +256,9 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
         });
       }
     } catch (err: any) {
-      this.logger.warn(`Failed reading commercial shrimp prices from DB: ${err.message}`);
+      this.logger.warn(
+        `Failed reading commercial shrimp prices from DB: ${err.message}`,
+      );
     }
 
     if (forceRefresh) {
@@ -229,7 +281,9 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
   /**
    * Tính giá tiền 1kg tôm dựa trên size thu hoạch (hỗ trợ cả size lẻ 32, 48,... bằng nội suy tuyến tính)
    */
-  async calculatePriceForSize(targetSize: number): Promise<ShrimpPriceCalculation> {
+  async calculatePriceForSize(
+    targetSize: number,
+  ): Promise<ShrimpPriceCalculation> {
     const size = Math.max(1, targetSize);
     const standardSizes = await this.getCommercialPrices(false);
 
@@ -253,8 +307,10 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
       // 2. Tôm siêu to (size nhỏ hơn mốc nhỏ nhất, ví dụ < 20 con/kg)
       const s1 = mapped[0];
       const s2 = mapped[1] || s1;
-      const slope = s2.size !== s1.size ? (s2.price - s1.price) / (s2.size - s1.size) : 0;
-      calculatedPrice = Math.round((s1.price + (size - s1.size) * slope) / 100) * 100;
+      const slope =
+        s2.size !== s1.size ? (s2.price - s1.price) / (s2.size - s1.size) : 0;
+      calculatedPrice =
+        Math.round((s1.price + (size - s1.size) * slope) / 100) * 100;
       calculatedPrice = Math.max(calculatedPrice, s1.price);
       isInterpolated = true;
       lowerBound = s1;
@@ -263,8 +319,12 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
       // 3. Tôm nhỏ hơn mốc lớn nhất (size > 150 con/kg)
       const last = mapped[mapped.length - 1];
       const prev = mapped[mapped.length - 2] || last;
-      const slope = last.size !== prev.size ? (last.price - prev.price) / (last.size - prev.size) : 0;
-      calculatedPrice = Math.round((last.price + (size - last.size) * slope) / 100) * 100;
+      const slope =
+        last.size !== prev.size
+          ? (last.price - prev.price) / (last.size - prev.size)
+          : 0;
+      calculatedPrice =
+        Math.round((last.price + (size - last.size) * slope) / 100) * 100;
       calculatedPrice = Math.max(calculatedPrice, 40000); // Giá sàn
       isInterpolated = true;
       lowerBound = prev;
@@ -311,7 +371,10 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Crawling shrimp market prices from tepbac.com...');
     try {
       // Crawl trang danh sách tôm
-      const html = await this.fetchWithTimeout('https://tepbac.com/gia-thuy-san/gia/tom', 6000);
+      const html = await this.fetchWithTimeout(
+        'https://tepbac.com/gia-thuy-san/gia/tom',
+        6000,
+      );
       if (!html) return;
 
       // 1. Crawl giá giống THEP10
@@ -361,13 +424,20 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      this.logger.log('Successfully synced all shrimp prices from Tepbac to database.');
+      this.logger.log(
+        'Successfully synced all shrimp prices from Tepbac to database.',
+      );
     } catch (err: any) {
-      this.logger.warn(`Failed to crawl shrimp prices from Tepbac: ${err.message}`);
+      this.logger.warn(
+        `Failed to crawl shrimp prices from Tepbac: ${err.message}`,
+      );
     }
   }
 
-  private async fetchWithTimeout(url: string, timeoutMs: number): Promise<string | null> {
+  private async fetchWithTimeout(
+    url: string,
+    timeoutMs: number,
+  ): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -377,7 +447,8 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'vi,en;q=0.9',
         },
       });
@@ -392,7 +463,9 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
 
   private parseSeedPrice(html: string): number | null {
     try {
-      const m = html.match(/(?:THEP10|Post\s*10)[\s\S]{1,500}?(\d{2,3})\s*(?:đ|d)\s*\/\s*(?:CON|con)/i);
+      const m = html.match(
+        /(?:THEP10|Post\s*10)[\s\S]{1,500}?(\d{2,3})\s*(?:đ|d)\s*\/\s*(?:CON|con)/i,
+      );
       if (m) {
         const p = parseFloat(m[1]);
         if (!isNaN(p) && p >= 30 && p <= 200) return p;
@@ -401,7 +474,11 @@ export class MarketPricesService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private parseCommercialPrice(html: string, code: string, size: number): number | null {
+  private parseCommercialPrice(
+    html: string,
+    code: string,
+    size: number,
+  ): number | null {
     try {
       // Regex tìm theo mã loài (e.g. THE20, THE30,...) hoặc tên tôm thẻ + size
       const codeRegex = new RegExp(

@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
 import { setOnUnauthorizedListener } from '../services/apiClient';
+import { disconnectRealtime } from '../services/realtime';
 
 type AuthContextType = {
   userToken: string | null;
@@ -139,6 +140,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.log('Logout API call failed:', err));
       }
 
+      disconnectRealtime();
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('userRole');

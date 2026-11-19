@@ -13,6 +13,7 @@ import { pondService } from '../../services/pond.service';
 import { cropService } from '../../services/crop.service';
 import { growthService, type TrajectoryPoint } from '../../services/growthService';
 import { waterQualityService } from '../../services/water-quality.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface Farm {
   id: string;
@@ -118,6 +119,21 @@ interface TechnicianOverviewDashboardProps {
   initialCropId?: string;
 }
 
+type WQTimeRange = '24h' | '7d' | '30d';
+type ParamKey = 'temperature' | 'ph' | 'dissolvedOxygen' | 'salinity' | 'alkalinity' | 'nh3' | 'h2s' | 'transparency';
+
+// Cấu hình cố định -> đặt ngoài component để không tạo lại mỗi lần render
+const ENV_PARAM_CONFIG: Record<ParamKey, { name: string; unit: string; color: string; icon: React.ReactNode; optimal: number[]; warningHigh?: number[]; warningLow?: number[]; domain: number[] }> = {
+  temperature: { name: 'Nhiệt độ', unit: '°C', color: '#f43f5e', icon: <Thermometer className="w-3.5 h-3.5" />, optimal: [25, 30], warningHigh: [30, 33], warningLow: [20, 25], domain: [15, 40] },
+  ph: { name: 'pH', unit: '', color: '#8b5cf6', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [8.2, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.5, 8.2], domain: [5.0, 10.0] },
+  dissolvedOxygen: { name: 'DO (Oxy)', unit: 'mg/L', color: '#0ea5e9', icon: <Wind className="w-3.5 h-3.5" />, optimal: [4, 10], warningLow: [3, 4], domain: [0, 15] },
+  salinity: { name: 'Độ mặn', unit: '‰', color: '#10b981', icon: <Waves className="w-3.5 h-3.5" />, optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
+  alkalinity: { name: 'Độ kiềm', unit: 'mg/L', color: '#f59e0b', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [100, 160], warningHigh: [160, 200], warningLow: [80, 100], domain: [50, 250] },
+  nh3: { name: 'NH3', unit: 'mg/L', color: '#d946ef', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.30], warningHigh: [0.30, 0.50], domain: [0, 1.0] },
+  h2s: { name: 'H2S', unit: 'mg/L', color: '#f97316', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.03], warningHigh: [0.03, 0.05], domain: [0, 0.2] },
+  transparency: { name: 'Độ trong', unit: 'cm', color: '#06b6d4', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [25, 40], warningHigh: [40, 50], warningLow: [20, 25], domain: [0, 70] },
+};
+
 export default function TechnicianOverviewDashboard({
   initialFarmId,
   initialPondId,
@@ -154,26 +170,15 @@ export default function TechnicianOverviewDashboard({
   };
 
   // ── Environment / Water Quality state (dùng chung selectedPondId) ──
-  type WQTimeRange = '24h' | '7d' | '30d';
-  type ParamKey = 'temperature' | 'ph' | 'dissolvedOxygen' | 'salinity' | 'alkalinity' | 'nh3' | 'h2s' | 'transparency';
-
-  const ENV_PARAM_CONFIG: Record<ParamKey, { name: string; unit: string; color: string; icon: React.ReactNode; optimal: number[]; warningHigh?: number[]; warningLow?: number[]; domain: number[] }> = {
-    temperature: { name: 'Nhiệt độ', unit: '°C', color: '#f43f5e', icon: <Thermometer className="w-3.5 h-3.5" />, optimal: [25, 30], warningHigh: [30, 33], warningLow: [20, 25], domain: [15, 40] },
-    ph: { name: 'pH', unit: '', color: '#8b5cf6', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [8.2, 8.5], warningHigh: [8.5, 9.0], warningLow: [7.5, 8.2], domain: [5.0, 10.0] },
-    dissolvedOxygen: { name: 'DO (Oxy)', unit: 'mg/L', color: '#0ea5e9', icon: <Wind className="w-3.5 h-3.5" />, optimal: [4, 10], warningLow: [3, 4], domain: [0, 15] },
-    salinity: { name: 'Độ mặn', unit: '‰', color: '#10b981', icon: <Waves className="w-3.5 h-3.5" />, optimal: [10, 25], warningHigh: [25, 30], warningLow: [5, 10], domain: [0, 40] },
-    alkalinity: { name: 'Độ kiềm', unit: 'mg/L', color: '#f59e0b', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [100, 160], warningHigh: [160, 200], warningLow: [80, 100], domain: [50, 250] },
-    nh3: { name: 'NH3', unit: 'mg/L', color: '#d946ef', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.30], warningHigh: [0.30, 0.50], domain: [0, 1.0] },
-    h2s: { name: 'H2S', unit: 'mg/L', color: '#f97316', icon: <FlaskConical className="w-3.5 h-3.5" />, optimal: [0, 0.03], warningHigh: [0.03, 0.05], domain: [0, 0.2] },
-    transparency: { name: 'Độ trong', unit: 'cm', color: '#06b6d4', icon: <Droplets className="w-3.5 h-3.5" />, optimal: [25, 40], warningHigh: [40, 50], warningLow: [20, 25], domain: [0, 70] },
-  };
-
   const [envTimeRange, setEnvTimeRange] = useState<WQTimeRange>('7d');
   const [activeEnvParam, setActiveEnvParam] = useState<ParamKey>('temperature');
   const [envData, setEnvData] = useState<any[]>([]);
   const [isEnvLoading, setIsEnvLoading] = useState<boolean>(false);
 
   // Fetch môi trường khi ao hoặc time range thay đổi
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [envRealtimeTick, setEnvRealtimeTick] = useState(0);
+  useRealtimeRefresh(['water-quality', 'environment'], () => setEnvRealtimeTick((v) => v + 1));
   useEffect(() => {
     const pondId = selectedPondId !== 'ALL' ? selectedPondId : null;
     if (!pondId) {
@@ -197,7 +202,7 @@ export default function TechnicianOverviewDashboard({
       }
     };
     fetchEnv();
-  }, [selectedPondId, envTimeRange]);
+  }, [selectedPondId, envTimeRange, envRealtimeTick]);
 
   // Stats cho từng thông số môi trường
   const envStats = useMemo(() => {
@@ -235,8 +240,8 @@ export default function TechnicianOverviewDashboard({
         if (data.length > 0) {
           if (initialFarmId && data.some((f: Farm) => f.id === initialFarmId)) {
             setSelectedFarmId(initialFarmId);
-          } else if (!selectedFarmId || !data.some((f: Farm) => f.id === selectedFarmId)) {
-            setSelectedFarmId(data[0].id);
+          } else {
+            setSelectedFarmId((prev) => (!prev || !data.some((f: Farm) => f.id === prev) ? data[0].id : prev));
           }
         }
       } catch (err) {
@@ -247,6 +252,9 @@ export default function TechnicianOverviewDashboard({
   }, [initialFarmId]);
 
   // 2. Tải danh sách Ao và Vụ theo Farm được chọn
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [pondsRealtimeTick, setPondsRealtimeTick] = useState(0);
+  useRealtimeRefresh(['ponds', 'crops'], () => setPondsRealtimeTick((v) => v + 1));
   useEffect(() => {
     if (!selectedFarmId) return;
 
@@ -257,14 +265,14 @@ export default function TechnicianOverviewDashboard({
         setPonds(farmPonds);
 
         const allCrops = await cropService.getAll();
-        const farmCrops = allCrops.filter((c: any) => c.pond?.farmId === selectedFarmId || farmPonds.some((p: Pond) => p.id === c.pondId));
+        const farmCrops = allCrops.filter((c) => c.pond?.farmId === selectedFarmId || farmPonds.some((p: Pond) => p.id === c.pondId));
         setCrops(farmCrops);
       } catch (err) {
         console.error('Lỗi tải danh sách ao/vụ:', err);
       }
     };
     loadPondsAndCrops();
-  }, [selectedFarmId]);
+  }, [selectedFarmId, pondsRealtimeTick]);
 
   // Danh sách các năm nuôi có trong hệ thống
   const availableYears = useMemo(() => {
@@ -314,6 +322,11 @@ export default function TechnicianOverviewDashboard({
       setIsRefreshing(false);
     }
   }, [selectedFarmId, selectedPondId, selectedCropId, timeRange, selectedYear]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['shrimp-size', 'crops', 'survival-rate', 'feeding-logs'], () => {
+    void fetchGrowthData(true);
+  });
 
   useEffect(() => {
     fetchGrowthData();

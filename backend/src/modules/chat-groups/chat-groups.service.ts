@@ -272,7 +272,7 @@ export class ChatGroupsService implements OnModuleInit {
       },
     });
 
-    // 1. Đảm bảo Quản lý trang trại (Owner) và toàn bộ nhân sự đang hoạt động có mặt trong nhóm (1 query)
+    // 1. Đảm bảo Quản lý trang trại (Owner) và toàn bộ nhân sự đang hoạt động có mặt trong nhóm (upsert từng người để cập nhật lại vai trò)
     const membersToEnsure: Array<{
       groupId: string;
       userId: string;
@@ -293,10 +293,15 @@ export class ChatGroupsService implements OnModuleInit {
         });
       }
     }
-    await this.prisma.chatGroupMember.createMany({
-      data: membersToEnsure,
-      skipDuplicates: true,
-    });
+    await Promise.all(
+      membersToEnsure.map((m) =>
+        this.prisma.chatGroupMember.upsert({
+          where: { groupId_userId: { groupId: m.groupId, userId: m.userId } },
+          create: m,
+          update: { role: m.role },
+        }),
+      ),
+    );
 
     // 3. Nếu nhóm mới được tạo lần đầu, tạo tin nhắn hệ thống chào mừng và thông báo realtime
     if (!existingGroup) {

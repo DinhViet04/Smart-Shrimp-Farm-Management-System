@@ -1,0 +1,85 @@
+ts-jest[config] (WARN) 
+    The "ts-jest" config option "isolatedModules" is deprecated and will be removed in v30.0.0. Please use "isolatedModules: true" in D:/ĐỒ ÁN/Smart-Shrimp-Farm-Management-System(1)/backend/tsconfig.json instead, see https://www.typescriptlang.org/tsconfig/#isolatedModules
+  
+FAIL test/fe-api/fe-api.e2e-spec.ts (5.889 s)
+  ● SSFM feature API cases › FE-48#5 [Not found] Return not found for a knowledge document that does not exist
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 4
+
+    - ObjectContaining {
+    -   "passed": true,
+    + Object {
+    +   "note": "Actual 200: ",
+    +   "passed": false,
+    +   "status": 200,
+      }
+
+      109 |         note,
+      110 |       });
+    > 111 |       expect({ status: res.status, passed, note }).toEqual(expect.objectContaining({ passed: true }));
+          |                                                    ^
+      112 |     });
+      113 |   }
+      114 | });
+
+      at Object.<anonymous> (D:\ĐỒ ÁN\Smart-Shrimp-Farm-Management-System(1)../../../../backend/test/fe-api/fe-api.e2e-spec.ts:111:52)
+
+  ● SSFM feature API cases › FE-51#2 [Not found] Return not found for marking a notification that does not exist as read
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 4
+
+    - ObjectContaining {
+    -   "passed": true,
+    + Object {
+    +   "note": "Actual 200: ",
+    +   "passed": false,
+    +   "status": 200,
+      }
+
+      109 |         note,
+      110 |       });
+    > 111 |       expect({ status: res.status, passed, note }).toEqual(expect.objectContaining({ passed: true }));
+          |                                                    ^
+      112 |     });
+      113 |   }
+      114 | });
+
+      at Object.<anonymous> (D:\ĐỒ ÁN\Smart-Shrimp-Farm-Management-System(1)../../../../backend/test/fe-api/fe-api.e2e-spec.ts:111:52)
+
+  ● SSFM feature API cases › FE-51#3 [Not found] Return not found for deleting a notification that does not exist
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 4
+
+    - ObjectContaining {
+    -   "passed": true,
+    + Object {
+    +   "note": "Actual 200: ",
+    +   "passed": false,
+    +   "status": 200,
+      }
+
+      109 |         note,
+      110 |       });
+    > 111 |       expect({ status: res.status, passed, note }).toEqual(expect.objectContaining({ passed: true }));
+          |                                                    ^
+      112 |     });
+      113 |   }
+      114 | });
+
+      at Object.<anonymous> (D:\ĐỒ ÁN\Smart-Shrimp-Farm-Management-System(1)../../../../backend/test/fe-api/fe-api.e2e-spec.ts:111:52)
+
+Test Suites: 1 failed, 1 total
+Tests:       3 failed, 217 passed, 220 total
+Snapshots:   0 total
+Time:        6.217 s
+Ran all test suites.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

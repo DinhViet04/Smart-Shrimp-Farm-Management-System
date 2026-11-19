@@ -35,6 +35,7 @@ import {
   ShrimpHealthRecord,
   MortalityRecord,
 } from '../../services/shrimpHealthService';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface ShrimpHealthScreenProps {
   navigation?: any;
@@ -98,9 +99,9 @@ export default function ShrimpHealthScreen({ route, embedded = false }: ShrimpHe
   const [historyPage, setHistoryPage] = useState<number>(0);
   const HISTORY_PAGE_SIZE = 10;
 
-  const loadInitialData = useCallback(async () => {
+  const loadInitialData = useCallback(async (silent?: unknown) => {
     try {
-      setIsLoading(true);
+      if (silent !== true) setIsLoading(true);
       const overview = await pondService.getOverview();
       setPonds(overview.ponds || []);
       setCrops(overview.crops || []);
@@ -118,6 +119,11 @@ export default function ShrimpHealthScreen({ route, embedded = false }: ShrimpHe
     }
   }, [route?.params?.pondId]);
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops'], () => {
+    void loadInitialData(true);
+  });
+
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
@@ -133,10 +139,10 @@ export default function ShrimpHealthScreen({ route, embedded = false }: ShrimpHe
     (c) => c.pondId === selectedPondId && c.status === 'ACTIVE'
   );
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (silent?: unknown) => {
     if (!selectedPondId) return;
     try {
-      setLoadingHistory(true);
+      if (silent !== true) setLoadingHistory(true);
       const records = await shrimpHealthService.getHistory(selectedPondId);
       setHealthRecords(records || []);
       setHistoryPage(0);
@@ -154,6 +160,11 @@ export default function ShrimpHealthScreen({ route, embedded = false }: ShrimpHe
       setLoadingHistory(false);
     }
   }, [selectedPondId, activeCrop]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['shrimp-health'], () => {
+    void loadHistory(true);
+  });
 
   const totalHistoryPages = Math.max(1, Math.ceil(healthRecords.length / HISTORY_PAGE_SIZE));
   const paginatedHealthRecords = useMemo(() => {

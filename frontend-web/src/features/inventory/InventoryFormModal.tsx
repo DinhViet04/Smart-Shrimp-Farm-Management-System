@@ -18,8 +18,9 @@ import {
   Box,
   CircleDollarSign,
 } from 'lucide-react';
-import { inventoryService } from '../../services/inventory.service';
-import { supplierService } from '../../services/supplier.service';
+import { inventoryService, type InventoryItem } from '../../services/inventory.service';
+import { supplierService, type Supplier } from '../../services/supplier.service';
+import { getErrorMessage } from '../../utils/errors';
 
 const formatVND = (val: number | string) => {
   const num = Number(val) || 0;
@@ -37,7 +38,7 @@ const sanitizeNumericInput = (val: string): string => {
 
 interface InventoryFormModalProps {
   isOpen: boolean;
-  initialData?: any;
+  initialData?: InventoryItem | null;
   selectedFarmId: string;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -237,7 +238,7 @@ export default function InventoryFormModal({
     imageUrl?: string;
     description?: string;
   }>({});
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
@@ -292,7 +293,7 @@ export default function InventoryFormModal({
       try {
         const data = await supplierService.getAll(selectedFarmId);
         setSuppliers(data || []);
-      } catch (err) {
+      } catch {
         setSuppliers([]);
       }
     };
@@ -305,7 +306,7 @@ export default function InventoryFormModal({
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    const { name, value, type } = e.target as any;
+    const { name, value, type } = e.target;
     let cleanVal = value;
     if (type === 'number') {
       cleanVal = sanitizeNumericInput(value);
@@ -389,7 +390,7 @@ export default function InventoryFormModal({
     setError('');
 
     try {
-      if (isEditMode) {
+      if (isEditMode && initialData) {
         if (!validateEditForm()) {
           setIsLoading(false);
           return;
@@ -433,8 +434,8 @@ export default function InventoryFormModal({
         onSuccess('Thêm sản phẩm mới thành công!');
       }
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Đã có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }

@@ -37,6 +37,7 @@ import {
   parseIncidentMetadata,
   formatDate,
 } from '../../constants/farmIncidentConstants';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 type StaffRoleFilter = 'ALL' | 'TECHNICIAN' | 'FARMER';
 
@@ -74,8 +75,8 @@ export default function IncidentDetailScreen({
   const [showReopenBox, setShowReopenBox] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
 
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
+  const loadDetail = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     setError('');
     try {
       const data = await incidentService.getById(incidentId);
@@ -87,6 +88,11 @@ export default function IncidentDetailScreen({
       setLoading(false);
     }
   }, [incidentId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents'], () => {
+    void loadDetail(true);
+  });
 
   useEffect(() => {
     loadDetail();

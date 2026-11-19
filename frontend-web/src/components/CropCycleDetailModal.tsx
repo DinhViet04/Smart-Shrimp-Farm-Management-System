@@ -877,17 +877,20 @@ export default function CropCycleDetailModal({
   );
 
   if (asPage) {
+    if (showExportModal) {
+      return (
+        <CropReportExportModal
+          asPage
+          isOpen
+          cycle={cycle}
+          crop={cycle.allCrops[0] || null}
+          onClose={() => setShowExportModal(false)}
+        />
+      );
+    }
     return (
       <div className="w-full space-y-4 animate-in fade-in duration-200 pb-12">
         {modalContent}
-        {showExportModal && (
-          <CropReportExportModal
-            isOpen={showExportModal}
-            cycle={cycle}
-            crop={cycle.allCrops[0] || null}
-            onClose={() => setShowExportModal(false)}
-          />
-        )}
       </div>
     );
   }

@@ -2,6 +2,48 @@ import { apiFetch } from '../utils/api';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+export type InventoryCategory = 'FEED' | 'MEDICINE' | 'CHEMICAL' | 'EQUIPMENT' | 'OTHER' | (string & {});
+
+/** Một mặt hàng trong kho (khớp model Prisma `Inventory`). */
+export interface InventoryItem {
+  id: string;
+  itemName: string;
+  category: InventoryCategory;
+  quantity: number;
+  unit: string;
+  packageType?: string;
+  packageQty?: number;
+  weightPerPkg?: number;
+  minThreshold: number;
+  supplierName?: string;
+  description?: string;
+  imageUrl?: string;
+  shape?: string;
+  sizeSpec?: string;
+  pricePerPackage?: number;
+  farmId: string;
+  supplierId?: string;
+  supplier?: { id: string; name: string } | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Nhật ký nhập / xuất kho (khớp model Prisma `InventoryUsageLog`). */
+export interface InventoryUsageLog {
+  id: string;
+  inventoryId: string;
+  quantityUsed: number;
+  usageDate: string;
+  notes?: string;
+  pondId?: string;
+  cropId?: string;
+  createdBy?: string;
+  type?: string;
+  inventory?: InventoryItem | null;
+  creator?: { fullName?: string; role?: string } | null;
+  createdAt?: string;
+}
+
 export const inventoryService = {
   getAll: async (search?: string, category?: string, farmId?: string) => {
     const params = new URLSearchParams();
@@ -64,7 +106,7 @@ export const inventoryService = {
     return response.json();
   },
 
-  create: async (data: any) => {
+  create: async (data: object) => {
     const response = await apiFetch(`${apiUrl}/api/inventory`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -74,7 +116,7 @@ export const inventoryService = {
     return resData;
   },
 
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/inventory/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -87,7 +129,7 @@ export const inventoryService = {
     return resData;
   },
 
-  recordUsage: async (id: string, data: any) => {
+  recordUsage: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/inventory/${id}/usage`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -100,7 +142,7 @@ export const inventoryService = {
     return resData;
   },
 
-  recordImport: async (id: string, data: any) => {
+  recordImport: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/inventory/${id}/import`, {
       method: 'POST',
       body: JSON.stringify(data),

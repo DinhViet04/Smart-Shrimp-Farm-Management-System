@@ -1,4 +1,5 @@
 import { apiFetch } from '../utils/api';
+import type { StoredUser } from '../types/user';
 import { invalidatePondOverviewCache } from './pond.service';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -34,7 +35,7 @@ export const farmService = {
     return response.json();
   },
 
-  create: async (data: any) => {
+  create: async (data: object) => {
     const response = await apiFetch(`${apiUrl}/api/farms`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -45,7 +46,7 @@ export const farmService = {
     return resData;
   },
 
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/farms/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -183,7 +184,7 @@ export const acceptInviteToken = async (token: string) => {
     success: boolean;
     farm: { id: string; name: string };
     role: string;
-    user: any;
+    user: StoredUser;
     message: string;
   };
 };

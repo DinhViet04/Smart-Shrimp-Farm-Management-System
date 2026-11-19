@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { X, MapPin, Maximize, Calendar, Activity, Building2, Waves, Eye, Users, UserPlus, Trash2, Cpu, UserCheck, FlaskConical, AlertCircle, CheckCircle } from 'lucide-react';
 import PondDetailPanel from '../../components/PondDetailPanel';
 import { farmService } from '../../services/farm.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
+import type { StoredUser } from '../../types/user';
 
 interface FarmDetailPanelProps {
   farm: any | null;
@@ -20,7 +23,7 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
   const [staffToUnassign, setStaffToUnassign] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   // Get currently logged in user info
   useEffect(() => {
@@ -34,10 +37,27 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   }, []);
 
+  const isOwner = currentUser?.id === farm?.ownerId;
+
+  const fetchStaff = async (silent?: unknown) => {
+    if (silent !== true) setLoadingStaff(true);
+    try {
+      const data = await farmService.getStaff(farm.id);
+      setStaffList(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
   // Fetch staff list when farm details open
+  const loadStaff = useEffectEvent(() => {
+    void fetchStaff();
+  });
   useEffect(() => {
     if (isOpen && farm?.id) {
-      fetchStaff();
+      loadStaff();
     } else {
       setStaffList([]);
       setFarmerEmailToAssign('');
@@ -48,19 +68,10 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     }
   }, [isOpen, farm?.id]);
 
-  const isOwner = currentUser?.id === farm?.ownerId;
-
-  const fetchStaff = async () => {
-    setLoadingStaff(true);
-    try {
-      const data = await farmService.getStaff(farm.id);
-      setStaffList(data);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoadingStaff(false);
-    }
-  };
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farm-staffs', 'farms'], () => {
+    void fetchStaff(true);
+  }, { enabled: Boolean(isOpen && farm?.id) });
 
   const getStaffRole = (staff: any): 'TECHNICIAN' | 'FARMER' => {
     const farmRole = (staff.role || '').toUpperCase();
@@ -71,8 +82,8 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
     return 'FARMER';
   };
 
-  const farmers = staffList.filter((s: any) => getStaffRole(s) === 'FARMER');
-  const technicians = staffList.filter((s: any) => getStaffRole(s) === 'TECHNICIAN');
+  const farmers = staffList.filter((s) => getStaffRole(s) === 'FARMER');
+  const technicians = staffList.filter((s) => getStaffRole(s) === 'TECHNICIAN');
 
   const handleAssignByRole = async (e: React.FormEvent, role: 'FARMER' | 'TECHNICIAN') => {
     e.preventDefault();
@@ -107,8 +118,8 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
 
       setSuccessMessage(res.message || `✅ Đã thêm ${res.email} vào trang trại và nhóm chat.`);
       fetchStaff();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi khi phân công nhân sự');
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err) || 'Lỗi khi phân công nhân sự');
     } finally {
       setAssigningRole(null);
     }
@@ -126,8 +137,8 @@ export default function FarmDetailPanel({ farm, isOpen, onClose }: FarmDetailPan
       setSuccessMessage(`Đã gỡ ${name} khỏi trang trại thành công.`);
       setStaffToUnassign(null);
       fetchStaff();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi khi gỡ phân công');
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err) || 'Lỗi khi gỡ phân công');
     } finally {
       setUnassigningId(null);
     }

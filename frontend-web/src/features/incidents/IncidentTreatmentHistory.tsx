@@ -30,6 +30,9 @@ import {
   findSeasonByCropId,
 } from '../../utils/cropGrouping';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
+import type { StoredUser } from '../../types/user';
 
 interface Farm {
   id: string;
@@ -69,7 +72,7 @@ export default function IncidentTreatmentHistory({
   currentUserId: _currentUserId,
   onOpenWorkspace,
 }: IncidentTreatmentHistoryProps) {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -173,7 +176,7 @@ export default function IncidentTreatmentHistory({
         setCrops(cropsData || []);
 
         if (initialPondId) {
-          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
+          const found = (pondsData || []).find((p) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);
@@ -211,20 +214,25 @@ export default function IncidentTreatmentHistory({
 
   // Fetch Incidents History safely
   // Fetch Incidents History safely (chỉ lấy các sự cố ĐÃ XỬ LÝ)
-  const fetchIncidentsHistory = useCallback(async () => {
-    setIsLoading(true);
+  const fetchIncidentsHistory = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     setErrorMsg(null);
     try {
       const res = await incidentService.getAll();
       const allIncidents: Incident[] = res.content || [];
       const resolvedOnly = allIncidents.filter((inc) => inc.status === 'RESOLVED');
       setRawIncidents(resolvedOnly);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi khi tải lịch sử điều trị sự cố');
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err) || 'Lỗi khi tải lịch sử điều trị sự cố');
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents'], () => {
+    void fetchIncidentsHistory(true);
+  });
 
   useEffect(() => {
     fetchIncidentsHistory();

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react-native';
 import { apiClient } from '../../services/apiClient';
 import { UserProfile } from '../../services/userService';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; Icon: any }> = {
   FARM_MANAGER: { label: 'Quản lý trang trại', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', Icon: UserCheck },
@@ -84,6 +85,11 @@ export default function WorkspaceScreen() {
       setIsRefreshing(false);
     }
   }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['workspaces', 'users', 'farm-staffs'], () => {
+    void loadMembers();
+  });
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 

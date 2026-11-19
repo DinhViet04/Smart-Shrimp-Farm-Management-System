@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import { ChevronDown, Waves, AlertCircle, ArrowRight } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
+import { getErrorMessage } from '../../utils/errors';
 import PondSizeDetail from './PondSizeDetail';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface Farm {
   id: string;
@@ -47,13 +49,9 @@ export default function ShrimpSizeDashboard({
     [selectedFarmId, allPonds],
   );
 
-  useEffect(() => {
-    fetchOverview();
-  }, []);
-
-  const fetchOverview = async () => {
+  const fetchOverview = async (silent?: unknown) => {
     try {
-      setIsLoading(true);
+      if (silent !== true) setIsLoading(true);
       const overview = await pondService.getOverview();
       setFarms(overview.farms);
       setAllPonds(overview.ponds);
@@ -68,18 +66,35 @@ export default function ShrimpSizeDashboard({
           return chosen;
         });
       }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi tải danh sách trang trại');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Lỗi tải danh sách trang trại'));
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Tải dữ liệu 1 lần khi mở màn hình
+  const loadOnMount = useEffectEvent(() => {
+    void fetchOverview();
+  });
   useEffect(() => {
-    if (initialFarmId && initialFarmId !== selectedFarmId) {
-      setSelectedFarmId(initialFarmId);
-      onSelectFarm?.(initialFarmId);
+    loadOnMount();
+  }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops', 'shrimp-size'], () => {
+    void fetchOverview(true);
+  });
+
+  // Đồng bộ trang trại khi prop initialFarmId thay đổi
+  const syncFarmFromProp = useEffectEvent((farmId: string) => {
+    if (farmId !== selectedFarmId) {
+      setSelectedFarmId(farmId);
+      onSelectFarm?.(farmId);
     }
+  });
+  useEffect(() => {
+    if (initialFarmId) syncFarmFromProp(initialFarmId);
   }, [initialFarmId]);
 
   useEffect(() => {
@@ -105,6 +120,8 @@ export default function ShrimpSizeDashboard({
         viewOnly={viewOnly}
         onBack={() => {
           setSelectedPond(null);
+          // Xóa ao đã chọn ở component cha, nếu không effect initialPondId sẽ mở lại ao ngay lập tức
+          onSelectPond?.('');
         }}
         onNavigateTab={onNavigateTab}
       />

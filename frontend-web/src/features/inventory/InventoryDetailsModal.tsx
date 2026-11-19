@@ -1,4 +1,5 @@
 import { X, Package, Pill, FlaskConical, Box, AlertTriangle, Building2, Tag, Layers, Droplets, CircleDollarSign } from 'lucide-react';
+import type { InventoryItem } from '../../services/inventory.service';
 
 const formatVND = (val: number | string) => {
   const num = Number(val) || 0;
@@ -21,7 +22,7 @@ const getCategoryDetails = (category: string) => {
 
 interface InventoryDetailsModalProps {
   isOpen: boolean;
-  item: any;
+  item: InventoryItem | null;
   canViewSupplier?: boolean;
   canViewPrice?: boolean;
   onClose: () => void;
@@ -99,7 +100,7 @@ export default function InventoryDetailsModal({ isOpen, item, canViewSupplier, c
                   <Layers className="w-4 h-4" /> Tồn kho hiện tại
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-800">{Math.ceil(item.packageQty)}</span>
+                  <span className="text-3xl font-black text-slate-800">{Math.ceil(item.packageQty ?? 0)}</span>
                   <span className="text-slate-500 font-medium">{item.packageType}</span>
                 </div>
                 <div className="text-sm text-slate-500 mt-2 font-medium">

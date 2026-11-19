@@ -24,6 +24,8 @@ import {
   type FeedingStatus,
   type FeedingSession,
 } from '../../services/feeding-log.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
 
 interface Farm { id: string; name: string; }
 
@@ -67,9 +69,9 @@ export default function FeedingLogList() {
     farmService.getAll().then(setFarms).catch(console.error);
   }, []);
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (silent?: unknown) => {
     try {
-      setLoading(true);
+      if (silent !== true) setLoading(true);
       const res = await feedingLogService.getAllGrouped({
         farmId: selectedFarmId || undefined,
         search: search || undefined,
@@ -84,6 +86,11 @@ export default function FeedingLogList() {
       setLoading(false);
     }
   }, [selectedFarmId, search, page, size]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['feeding-logs'], () => {
+    void fetchLogs(true);
+  });
 
   useEffect(() => {
     fetchLogs();
@@ -163,8 +170,8 @@ export default function FeedingLogList() {
       setSelectedGroup(null);
       showToast('Cập nhật lịch sử cho ăn thành công!', 'success');
       fetchLogs();
-    } catch (err: any) {
-      showToast(err.message || 'Không thể cập nhật lịch sử cho ăn', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể cập nhật lịch sử cho ăn', 'error');
     } finally {
       setIsSavingModal(false);
     }
@@ -183,8 +190,8 @@ export default function FeedingLogList() {
       setGroupToDelete(null);
       showToast('Xoá nhật ký cho ăn thành công!', 'success');
       fetchLogs();
-    } catch (err: any) {
-      showToast(err.message || 'Không thể xoá nhật ký cho ăn', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể xoá nhật ký cho ăn', 'error');
     } finally {
       setIsDeleting(false);
     }

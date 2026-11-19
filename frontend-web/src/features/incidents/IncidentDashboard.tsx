@@ -25,6 +25,7 @@ import { pondService, type OverviewPond } from '../../services/pond.service';
 import LoadingMotion from '../../components/LoadingMotion';
 import TreatmentWorkspace from './TreatmentWorkspace';
 import IncidentTreatmentHistory from './IncidentTreatmentHistory';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const STATUS_LABELS: Record<IncidentStatus, string> = {
   OPEN: 'Sự cố mới (Chờ xử lý)',
@@ -40,7 +41,7 @@ const STATUS_STYLES: Record<IncidentStatus, string> = {
 
 export type IncidentSubTab = 'incident' | 'treatment' | 'history';
 
-export const INCIDENT_CATEGORIES = [
+const INCIDENT_CATEGORIES = [
   { id: 'Sức khỏe & Dịch bệnh', label: 'Bệnh tôm / Sức khỏe', icon: '🦐', placeholder: 'Ví dụ: Tôm nổi đầu tấp mé bờ lúc sáng sớm' },
   { id: 'Môi trường nước', label: 'Môi trường & Nước ao', icon: '💧', placeholder: 'Ví dụ: Khí độc NO2 vượt ngưỡng 5.0mg/l, oxy hòa tan giảm mạnh' },
   { id: 'Thiết bị & Máy móc', label: 'Thiết bị & Quạt nước', icon: '⚙️', placeholder: 'Ví dụ: Dàn quạt nước số 2 bị kẹt trục, máy sục khí ngưng hoạt động' },
@@ -50,14 +51,14 @@ export const INCIDENT_CATEGORIES = [
   { id: 'Sự cố khác / An ninh', label: 'An ninh & Sự cố khác', icon: '🚨', placeholder: 'Ví dụ: Mưa dông bão làm rách lưới che, người lạ tiếp cận khu vực nuôi' },
 ];
 
-export const INCIDENT_SEVERITIES = [
+const INCIDENT_SEVERITIES = [
   { id: 'Thấp', label: 'Thấp', sublabel: 'Theo dõi thường kỳ', color: 'border-slate-200 bg-slate-50 text-slate-700' },
   { id: 'Trung bình', label: 'Trung bình', sublabel: 'Cần kiểm tra trong ca', color: 'border-blue-200 bg-blue-50 text-blue-700' },
   { id: 'Cao', label: 'Cao', sublabel: 'Cần xử lý sớm', color: 'border-amber-200 bg-amber-50 text-amber-800' },
   { id: 'Khẩn cấp', label: 'Khẩn cấp', sublabel: 'Nguy cơ thiệt hại tức thì', color: 'border-rose-300 bg-rose-50 text-rose-700 font-bold' },
 ];
 
-export function parseIncidentMetadata(title: string, description: string) {
+function parseIncidentMetadata(title: string, description: string) {
   let category = '';
   let cleanTitle = title;
   const catMatch = title.match(/^\[(.*?)\]/);
@@ -82,7 +83,7 @@ export function parseIncidentMetadata(title: string, description: string) {
   return { category, severity, location, cleanTitle, cleanDescription };
 }
 
-export function renderCategoryBadge(category: string) {
+function renderCategoryBadge(category: string) {
   if (!category) return null;
   const catUpper = category.toUpperCase();
   if (catUpper.includes('BỆNH') || catUpper.includes('TÔM') || catUpper.includes('SỨC KHỎE')) {
@@ -134,7 +135,7 @@ export function renderCategoryBadge(category: string) {
   );
 }
 
-export function renderSeverityBadge(severity: string) {
+function renderSeverityBadge(severity: string) {
   if (!severity) return null;
   const sevUpper = severity.toUpperCase();
   if (sevUpper.includes('KHẨN CẤP') || sevUpper.includes('CRITICAL')) {
@@ -273,6 +274,9 @@ export default function IncidentDashboard({
     : 'from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-500/25';
 
   // Load danh sách ao nuôi và vụ nuôi cho bộ lọc
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [filtersRealtimeTick, setFiltersRealtimeTick] = useState(0);
+  useRealtimeRefresh(['ponds', 'crops'], () => setFiltersRealtimeTick((v) => v + 1));
   useEffect(() => {
     let isMounted = true;
     async function loadFilterMetadata() {
@@ -300,7 +304,7 @@ export default function IncidentDashboard({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [filtersRealtimeTick]);
 
   // Vụ nuôi được lọc theo Ao nuôi đã chọn
   const filteredCrops = useMemo(() => {
@@ -320,8 +324,8 @@ export default function IncidentDashboard({
     }
   };
 
-  const loadIncidents = useCallback(async () => {
-    setLoading(true);
+  const loadIncidents = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     setError('');
     try {
       const response = await incidentService.getAll({
@@ -336,6 +340,11 @@ export default function IncidentDashboard({
       setLoading(false);
     }
   }, [selectedCropId, selectedPondId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents'], () => {
+    void loadIncidents(true);
+  });
 
   useEffect(() => {
     const timeout = window.setTimeout(loadIncidents, 250);
@@ -391,9 +400,9 @@ export default function IncidentDashboard({
     setCategoryPage(1);
   }, [selectedPondId, selectedCropId, searchQuery, subTab]);
 
-  const loadActiveCrops = useCallback(async () => {
+  const loadActiveCrops = useCallback(async (silent?: unknown) => {
     if (!canCreate) return;
-    setLoadingCrops(true);
+    if (silent !== true) setLoadingCrops(true);
     try {
       const overview = await pondService.getOverview();
       const crops = overview.crops.filter((crop) => crop.status === 'ACTIVE');
@@ -410,6 +419,11 @@ export default function IncidentDashboard({
       setLoadingCrops(false);
     }
   }, [canCreate]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['crops', 'ponds'], () => {
+    void loadActiveCrops(true);
+  });
 
   useEffect(() => {
     if (!error && !notice) return;

@@ -30,6 +30,8 @@ import {
 import { incidentService, type Incident, type IncidentUpdate } from '../../services/incident.service';
 import { inventoryService } from '../../services/inventory.service';
 import { chatbotService } from '../../services/chatbot.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { createId } from '../../utils/id';
 
 interface InventoryItem {
   id: string;
@@ -222,7 +224,7 @@ function ClinicalReportRenderer({ content, isExpanded = false }: { content: stri
   }, [content]);
 
   const parsed = useMemo(() => {
-    let section1Raw = '';
+    let section1Raw: string;
     let section2Raw = '';
     let section3Raw = '';
 
@@ -767,9 +769,9 @@ export default function TreatmentWorkspace({
   };
 
   // Trích xuất định lượng chuẩn xác từ phân tích AI dựa trên thể tích ao nuôi
-  const extractDosageForInventoryItem = (inv: InventoryItem, fullText: string, vol: number): string => {
+  const extractDosageForInventoryItem = useCallback((inv: InventoryItem, fullText: string, vol: number): string => {
     const fullName = inv.itemName.toLowerCase();
-    const mainKeyword = inv.itemName.split(/[&\-\/(]/)[0].trim().toLowerCase();
+    const mainKeyword = inv.itemName.split(/[&\-/(]/)[0].trim().toLowerCase();
     const lowerText = fullText.toLowerCase();
 
     let searchWord = '';
@@ -831,10 +833,10 @@ export default function TreatmentWorkspace({
     }
 
     return '';
-  };
+  }, []);
 
   // Phân tích và bóc tách thông minh phác đồ AI
-  const parseAIPlan = (text: string) => {
+  const parseAIPlan = useCallback((text: string) => {
     const detected: DetectedMedicine[] = [];
     const outOfStock: OutOfStockItem[] = [];
 
@@ -845,7 +847,7 @@ export default function TreatmentWorkspace({
         const fullName = inv.itemName.toLowerCase();
         // Lấy từ khóa chính (trước các ký tự &, -, /, dấu ngoặc)
         const mainKeyword = inv.itemName
-          .split(/[&\-\/(]/)[0]
+          .split(/[&\-/(]/)[0]
           .trim()
           .toLowerCase();
 
@@ -945,7 +947,7 @@ export default function TreatmentWorkspace({
     }
 
     return { detected, outOfStock, extractedNote };
-  };
+  }, [inventories, waterVolume, docDays, pondName, extractDosageForInventoryItem]);
 
   // Trích xuất danh sách thuốc/hóa chất thực sự được Bác sĩ AI đề xuất từ tin nhắn AI mới nhất
   const latestAiPlan = useMemo(() => {
@@ -955,7 +957,7 @@ export default function TreatmentWorkspace({
     }
     const { detected, outOfStock } = parseAIPlan(lastAIMessage);
     return { detected, outOfStock };
-  }, [chatHistory, inventories, waterVolume]);
+  }, [chatHistory, parseAIPlan]);
 
   const handleOpenApplyModal = (aiText: string) => {
     const { detected, outOfStock, extractedNote } = parseAIPlan(aiText);
@@ -1036,9 +1038,9 @@ export default function TreatmentWorkspace({
   };
 
   // 1. Tải chi tiết sự cố và danh mục kho thuốc/hóa chất
-  const loadData = useCallback(async () => {
-    setLoadingDetail(true);
-    setLoadingInventory(true);
+  const loadData = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoadingDetail(true);
+    if (silent !== true) setLoadingInventory(true);
     let targetFarmId = incidentDetail.crop?.pond?.farm?.id || incident.crop?.pond?.farm?.id;
     try {
       const detail = await incidentService.getById(incident.id);
@@ -1068,6 +1070,11 @@ export default function TreatmentWorkspace({
       setLoadingInventory(false);
     }
   }, [incident.id, incident.crop?.pond?.farm?.id, incidentDetail.crop?.pond?.farm?.id]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents', 'inventory'], () => {
+    void loadData(true);
+  });
 
   useEffect(() => {
     loadData();
@@ -1143,7 +1150,7 @@ Hãy thực hiện các nội dung sau:
     if (!customQuestion) setAiChatInput('');
 
     const userMsg: AIChatMessage = {
-      id: Date.now().toString(),
+      id: createId(),
       sender: 'user',
       text: q.trim(),
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
@@ -1157,7 +1164,7 @@ Hãy thực hiện các nội dung sau:
 (Lưu ý: Đối chiếu trực tiếp với kho thuốc/hóa chất trang trại, tính toán liều lượng chính xác và hướng dẫn cách dùng an toàn).`;
       const res = await chatbotService.ask(prompt, pondId);
       const aiMsg: AIChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: createId(),
         sender: 'ai',
         text: res.answer,
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),

@@ -97,7 +97,7 @@ export const pondService = {
     return response.json();
   },
 
-  create: async (data: any) => {
+  create: async (data: object) => {
     const response = await apiFetch(`${apiUrl}/api/ponds`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -108,7 +108,7 @@ export const pondService = {
     return resData;
   },
 
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/ponds/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

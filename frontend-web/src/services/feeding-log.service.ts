@@ -185,6 +185,27 @@ export const feedingLogService = {
     return res.json();
   },
 
+  /** Các cử đã ghi nhận trong 1 ngày của ao (dùng để khôi phục trạng thái "Đã cho ăn") */
+  getDailyDetails: async (pondId: string, date: string) => {
+    const query = new URLSearchParams({ pondId, date });
+    const res = await apiFetch(`${apiUrl}/api/feeding-logs/details?${query.toString()}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Không thể tải nhật ký cho ăn trong ngày');
+    }
+    return (await res.json()) as {
+      id: string;
+      cropId: string;
+      feedingSession: FeedingSession;
+      feedingTime: string;
+      feedProductId: string;
+      feedAmount: number;
+      feedingMethod: FeedingMethod;
+      feedingStatus: FeedingStatus;
+      note?: string | null;
+    }[];
+  },
+
   getAllGrouped: async (params?: {
     farmId?: string;
     pondId?: string;
@@ -233,7 +254,7 @@ export const feedingLogService = {
     if (!fallbackRes.ok) return [];
     const fallbackData = await fallbackRes.json();
     const allList = Array.isArray(fallbackData) ? fallbackData : fallbackData.data || [];
-    return allList.filter((item: any) => !item.category || item.category === 'FEED');
+    return allList.filter((item: { category?: string }) => !item.category || item.category === 'FEED');
   },
 
   deleteDailyLog: async (farmId: string, pondId: string, cropId: string, date: string) => {

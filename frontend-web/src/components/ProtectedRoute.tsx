@@ -26,22 +26,23 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
+  let user: { role?: string };
   try {
-    const user = JSON.parse(userStr);
-    
-    // Check if route has restricted roles
-    if (allowedRoles && allowedRoles.length > 0) {
-      if (!allowedRoles.includes(user.role)) {
-        // Redirect unauthorized users to their default dashboard or home
-        return <Navigate to={getDashboardPath(user.role)} replace />;
-      }
-    }
-    
-    return <Outlet />;
-  } catch (e) {
+    user = JSON.parse(userStr);
+  } catch {
     // If parsing fails or corrupted, clear and redirect to login
     localStorage.removeItem('user');
     localStorage.removeItem('accessToken');
     return <Navigate to="/login" replace />;
   }
+
+  // Check if route has restricted roles
+  if (allowedRoles && allowedRoles.length > 0) {
+    if (!user.role || !allowedRoles.includes(user.role)) {
+      // Redirect unauthorized users to their default dashboard or home
+      return <Navigate to={getDashboardPath(user.role)} replace />;
+    }
+  }
+
+  return <Outlet />;
 }

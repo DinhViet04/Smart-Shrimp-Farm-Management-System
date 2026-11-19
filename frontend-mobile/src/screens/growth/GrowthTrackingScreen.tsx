@@ -37,6 +37,7 @@ import {
 import { pondService, OverviewPond, OverviewCrop } from '../../services/pondService';
 import BusinessHeader from '../../components/BusinessHeader';
 import { useAuth } from '../../context/AuthContext';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface GrowthTrackingScreenProps {
   embedded?: boolean;
@@ -91,6 +92,11 @@ export default function GrowthTrackingScreen({ embedded = false }: GrowthTrackin
     }
   };
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops'], () => {
+    void loadPonds();
+  });
+
   const activeCrop = useMemo(
     () => crops.find((c) => c.pondId === selectedPondId && c.status === 'ACTIVE') || null,
     [crops, selectedPondId]
@@ -126,6 +132,11 @@ export default function GrowthTrackingScreen({ embedded = false }: GrowthTrackin
       setIsRefreshing(false);
     }
   }, [activeCrop]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['shrimp-size', 'crops', 'feeding-logs', 'survival-rate'], () => {
+    if (selectedPondId) void loadPondGrowthData(selectedPondId);
+  });
 
   const totalSamplePages = Math.max(1, Math.ceil(samples.length / SAMPLE_PAGE_SIZE));
   const paginatedSamples = useMemo(() => {

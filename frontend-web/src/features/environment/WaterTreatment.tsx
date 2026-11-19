@@ -20,6 +20,8 @@ import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
 import LoadingMotion from '../../components/LoadingMotion';
 import WaterTreatmentWorkspace from './WaterTreatmentWorkspace';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import type { StoredUser } from '../../types/user';
 
 // ─── Types & Data Interfaces ───────────────────────────────────────────────────
 
@@ -198,7 +200,7 @@ export default function WaterTreatment({
   onOpenWorkspace,
 }: WaterTreatmentProps = {}) {
   // ── User Role & Theme Sync ──────────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -236,6 +238,9 @@ export default function WaterTreatment({
   }, [ponds, selectedFarmId]);
 
   // Load farms and ponds
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [farmsRealtimeTick, setFarmsRealtimeTick] = useState(0);
+  useRealtimeRefresh(['farms', 'ponds'], () => setFarmsRealtimeTick((v) => v + 1));
   useEffect(() => {
     async function loadFarmsAndPonds() {
       try {
@@ -258,11 +263,11 @@ export default function WaterTreatment({
       }
     }
     loadFarmsAndPonds();
-  }, []);
+  }, [farmsRealtimeTick]);
 
   // Fetch real warning records from water quality history
-  const fetchHistoryRecords = useCallback(async () => {
-    setIsLoading(true);
+  const fetchHistoryRecords = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     try {
       const savedMapStr = localStorage.getItem('water_treatments_map');
       const treatmentsMap: Record<string, TreatmentAction> = savedMapStr ? JSON.parse(savedMapStr) : {};
@@ -363,6 +368,11 @@ export default function WaterTreatment({
       setIsLoading(false);
     }
   }, [selectedFarmId, selectedPondId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['water-quality', 'environment'], () => {
+    void fetchHistoryRecords(true);
+  });
 
   useEffect(() => {
     fetchHistoryRecords();

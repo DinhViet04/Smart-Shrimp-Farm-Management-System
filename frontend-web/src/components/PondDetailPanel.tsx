@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, MapPin, Maximize, Calendar, Activity, Info, Droplets, Target } from 'lucide-react';
 import { cropService, type Crop } from '../services/crop.service';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 interface PondDetailPanelProps {
   pond: any | null;
@@ -13,6 +14,9 @@ interface PondDetailPanelProps {
 export default function PondDetailPanel({ pond, isOpen, initialCrops = [], onClose, onEditCrop }: PondDetailPanelProps) {
   const [loadedHistory, setLoadedHistory] = useState<{ pondId: string; crops: Crop[] } | null>(null);
 
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  useRealtimeRefresh(['crops'], () => setRealtimeTick((v) => v + 1));
   useEffect(() => {
     if (!isOpen || !pond?.id) return;
 
@@ -29,7 +33,7 @@ export default function PondDetailPanel({ pond, isOpen, initialCrops = [], onClo
     return () => {
       cancelled = true;
     };
-  }, [isOpen, pond?.id]);
+  }, [isOpen, pond?.id, realtimeTick]);
 
   if (!pond) return null;
 

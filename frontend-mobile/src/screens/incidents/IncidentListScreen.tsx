@@ -36,6 +36,7 @@ import {
   formatDate,
 } from '../../constants/farmIncidentConstants';
 import BusinessHeader from '../../components/BusinessHeader';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 type MainStatusTab = 'all' | 'open' | 'treating' | 'resolved';
 
@@ -63,8 +64,8 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
     'assigned_to_me'
   );
 
-  const loadIncidents = useCallback(async () => {
-    setLoading(true);
+  const loadIncidents = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     setError('');
     try {
       const res = await incidentService.getAll({
@@ -84,6 +85,11 @@ export default function IncidentListScreen({ navigation }: { navigation: any }) 
       setLoading(false);
     }
   }, [isFarmer]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents'], () => {
+    void loadIncidents(true);
+  });
 
   useFocusEffect(
     useCallback(() => {

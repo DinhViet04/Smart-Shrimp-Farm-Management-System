@@ -1,0 +1,2369 @@
+{
+  "round": "3",
+  "executedAt": "2026-11-18T06:58:23.052Z",
+  "results": [
+    {
+      "key": "FE-01#1",
+      "fe": "FE-01",
+      "type": "Invalid input",
+      "title": "Reject invalid email format \"abc\" on registration",
+      "request": "POST /api/auth/register",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-01#2",
+      "fe": "FE-01",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: password of 7 characters (minimum is 8)",
+      "request": "POST /api/auth/register",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-01#3",
+      "fe": "FE-01",
+      "type": "Invalid input",
+      "title": "Reject invalid phone number \"091234567\" (9 digits)",
+      "request": "POST /api/auth/register",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-01#4",
+      "fe": "FE-01",
+      "type": "Invalid input",
+      "title": "Reject invalid registration without full name",
+      "request": "POST /api/auth/register",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-01#5",
+      "fe": "FE-01",
+      "type": "Business rule",
+      "title": "Enforce business rule: FARMER self-registration without an invitation is rejected",
+      "request": "POST /api/auth/register",
+      "expected": 400,
+      "actual": 400,
+      "passed": true
+    },
+    {
+      "key": "FE-02#1",
+      "fe": "FE-02",
+      "type": "Invalid input",
+      "title": "Reject invalid email format on sign in",
+      "request": "POST /api/auth/login",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-02#2",
+      "fe": "FE-02",
+      "type": "Invalid input",
+      "title": "Reject invalid empty password on sign in",
+      "request": "POST /api/auth/login",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-02#3",
+      "fe": "FE-02",
+      "type": "Business rule",
+      "title": "Enforce business rule: sign in with an unregistered email is rejected",
+      "request": "POST /api/auth/login",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-02#4",
+      "fe": "FE-02",
+      "type": "Invalid input",
+      "title": "Reject invalid Google sign in without a credential",
+      "request": "POST /api/auth/google",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-03#1",
+      "fe": "FE-03",
+      "type": "Business rule",
+      "title": "Enforce business rule: sign out without the CSRF header is rejected",
+      "request": "POST /api/auth/logout",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-03#2",
+      "fe": "FE-03",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request signed with a forged token",
+      "request": "GET /api/auth/me",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-03#3",
+      "fe": "FE-03",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request with an expired access token",
+      "request": "GET /api/auth/me",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-03#4",
+      "fe": "FE-03",
+      "type": "Business rule",
+      "title": "Enforce business rule: refresh without a refresh token is rejected",
+      "request": "POST /api/auth/refresh",
+      "expected": [
+        400,
+        401,
+        403
+      ],
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-04#1",
+      "fe": "FE-04",
+      "type": "Invalid input",
+      "title": "Reject invalid email format on forgot password",
+      "request": "POST /api/auth/forgot-password",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-04#2",
+      "fe": "FE-04",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: OTP with 5 digits (exactly 6 required)",
+      "request": "POST /api/auth/reset-password",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 400,
+      "passed": true
+    },
+    {
+      "key": "FE-04#3",
+      "fe": "FE-04",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: OTP with 7 digits (exactly 6 required)",
+      "request": "POST /api/auth/reset-password",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 400,
+      "passed": true
+    },
+    {
+      "key": "FE-04#4",
+      "fe": "FE-04",
+      "type": "Invalid input",
+      "title": "Reject invalid new password without an uppercase letter",
+      "request": "POST /api/auth/reset-password",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 400,
+      "passed": true
+    },
+    {
+      "key": "FE-04#5",
+      "fe": "FE-04",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to change password",
+      "request": "PATCH /api/users/password",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-05#1",
+      "fe": "FE-05",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to the user list",
+      "request": "GET /api/users",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-05#2",
+      "fe": "FE-05",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to pond creation",
+      "request": "POST /api/ponds",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-05#3",
+      "fe": "FE-05",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to water quality recording",
+      "request": "POST /api/water-quality",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-05#4",
+      "fe": "FE-05",
+      "type": "Forbidden",
+      "title": "Reject request from ADMIN role to farm creation",
+      "request": "POST /api/farms",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-05#5",
+      "fe": "FE-05",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the current user profile",
+      "request": "GET /api/auth/me",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-06#1",
+      "fe": "FE-06",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the user list",
+      "request": "GET /api/users",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-06#2",
+      "fe": "FE-06",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to the user list",
+      "request": "GET /api/users",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-06#3",
+      "fe": "FE-06",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: page size 4 (minimum is 5)",
+      "request": "GET /api/users?pageSize=4",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-06#4",
+      "fe": "FE-06",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: page size 101 (maximum is 100)",
+      "request": "GET /api/users?pageSize=101",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-06#5",
+      "fe": "FE-06",
+      "type": "Invalid input",
+      "title": "Reject invalid role filter \"OWNER\"",
+      "request": "GET /api/users?role=OWNER",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-07#1",
+      "fe": "FE-07",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to profile update",
+      "request": "PATCH /api/users/profile",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-07#2",
+      "fe": "FE-07",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: full name of 2 characters (minimum is 3)",
+      "request": "PATCH /api/users/profile",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-07#3",
+      "fe": "FE-07",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: full name of 101 characters (maximum is 100)",
+      "request": "PATCH /api/users/profile",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-07#4",
+      "fe": "FE-07",
+      "type": "Invalid input",
+      "title": "Reject invalid phone number \"12345\"",
+      "request": "PATCH /api/users/profile",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-07#5",
+      "fe": "FE-07",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: address of 101 characters (maximum is 100)",
+      "request": "PATCH /api/users/profile",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-08#1",
+      "fe": "FE-08",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to user creation",
+      "request": "POST /api/users",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-08#2",
+      "fe": "FE-08",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to user creation",
+      "request": "POST /api/users",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-08#3",
+      "fe": "FE-08",
+      "type": "Invalid input",
+      "title": "Reject invalid role \"SUPERUSER\"",
+      "request": "POST /api/users",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-08#4",
+      "fe": "FE-08",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: password of 7 characters (minimum is 8)",
+      "request": "POST /api/users",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-08#5",
+      "fe": "FE-08",
+      "type": "Invalid input",
+      "title": "Reject invalid email format \"staff@\"",
+      "request": "POST /api/users",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-09#1",
+      "fe": "FE-09",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to account lock",
+      "request": "PATCH /api/users/99999999-9999-4999-8999-999999999999/status",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-09#2",
+      "fe": "FE-09",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to account lock",
+      "request": "PATCH /api/users/99999999-9999-4999-8999-999999999999/status",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-09#3",
+      "fe": "FE-09",
+      "type": "Invalid input",
+      "title": "Reject invalid lock status value \"yes\"",
+      "request": "PATCH /api/users/44444444-4444-4444-8444-444444444444/status",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-09#4",
+      "fe": "FE-09",
+      "type": "Not found",
+      "title": "Return not found for locking a user that does not exist",
+      "request": "PATCH /api/users/99999999-9999-4999-8999-999999999999/status",
+      "expected": 404,
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-10#1",
+      "fe": "FE-10",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the farm list",
+      "request": "GET /api/farms",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-10#2",
+      "fe": "FE-10",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to \"my farms\" list",
+      "request": "GET /api/farms/my",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-10#3",
+      "fe": "FE-10",
+      "type": "Not found",
+      "title": "Return not found for a farm id that does not exist",
+      "request": "GET /api/farms/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-11#1",
+      "fe": "FE-11",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to farm creation",
+      "request": "POST /api/farms",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-11#2",
+      "fe": "FE-11",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to farm creation",
+      "request": "POST /api/farms",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-11#3",
+      "fe": "FE-11",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: farm area 0 (minimum is 1 m²)",
+      "request": "POST /api/farms",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-11#4",
+      "fe": "FE-11",
+      "type": "Invalid input",
+      "title": "Reject invalid farm without a name",
+      "request": "POST /api/farms",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-11#5",
+      "fe": "FE-11",
+      "type": "Invalid input",
+      "title": "Reject invalid farm status \"CLOSED\"",
+      "request": "POST /api/farms",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-11#6",
+      "fe": "FE-11",
+      "type": "Not found",
+      "title": "Return not found for updating a farm that does not exist",
+      "request": "PUT /api/farms/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-12#1",
+      "fe": "FE-12",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to staff assignment",
+      "request": "POST /api/farms/99999999-9999-4999-8999-999999999999/staff",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-12#2",
+      "fe": "FE-12",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to staff assignment",
+      "request": "POST /api/farms/99999999-9999-4999-8999-999999999999/staff",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-12#3",
+      "fe": "FE-12",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to staff removal",
+      "request": "DELETE /api/farms/99999999-9999-4999-8999-999999999999/staff/44444444-4444-4444-8444-444444444444",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-12#4",
+      "fe": "FE-12",
+      "type": "Invalid input",
+      "title": "Reject invalid staff role \"OWNER\"",
+      "request": "POST /api/farm-staffs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-12#5",
+      "fe": "FE-12",
+      "type": "Not found",
+      "title": "Return not found for the staff list of a farm that does not exist",
+      "request": "GET /api/farms/99999999-9999-4999-8999-999999999999/staff",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-13#1",
+      "fe": "FE-13",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the pond list",
+      "request": "GET /api/ponds",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-13#2",
+      "fe": "FE-13",
+      "type": "Not found",
+      "title": "Return not found for a pond id that does not exist",
+      "request": "GET /api/ponds/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-14#1",
+      "fe": "FE-14",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to pond creation",
+      "request": "POST /api/ponds",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-14#2",
+      "fe": "FE-14",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to pond creation",
+      "request": "POST /api/ponds",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-14#3",
+      "fe": "FE-14",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: pond area 0.5 m² (minimum is 1)",
+      "request": "POST /api/ponds",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-14#4",
+      "fe": "FE-14",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: pond depth 0.05 m (minimum is 0.1)",
+      "request": "POST /api/ponds",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-14#5",
+      "fe": "FE-14",
+      "type": "Invalid input",
+      "title": "Reject invalid pond without a name",
+      "request": "POST /api/ponds",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-14#6",
+      "fe": "FE-14",
+      "type": "Not found",
+      "title": "Return not found for updating a pond that does not exist",
+      "request": "PUT /api/ponds/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-14#7",
+      "fe": "FE-14",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to pond deletion",
+      "request": "DELETE /api/ponds/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-15#1",
+      "fe": "FE-15",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the pond overview",
+      "request": "GET /api/ponds/overview",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-15#2",
+      "fe": "FE-15",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to crop assignment",
+      "request": "POST /api/crops",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-15#3",
+      "fe": "FE-15",
+      "type": "Invalid input",
+      "title": "Reject invalid stocking start date \"2026-13-45\"",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-16#1",
+      "fe": "FE-16",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the crop list",
+      "request": "GET /api/crops",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-16#2",
+      "fe": "FE-16",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: target survival rate 101% (maximum is 100)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-16#3",
+      "fe": "FE-16",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: target harvest size 0.5 pcs/kg (minimum is 1)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-16#4",
+      "fe": "FE-16",
+      "type": "Not found",
+      "title": "Return not found for a crop id that does not exist",
+      "request": "GET /api/crops/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-16#5",
+      "fe": "FE-16",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to crop deletion",
+      "request": "DELETE /api/crops/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-17#1",
+      "fe": "FE-17",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to crop update",
+      "request": "PUT /api/crops/99999999-9999-4999-8999-999999999999",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-17#2",
+      "fe": "FE-17",
+      "type": "Invalid input",
+      "title": "Reject invalid culture stage \"SEED\"",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-17#3",
+      "fe": "FE-17",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: expected duration 0 days (minimum is 1)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-17#4",
+      "fe": "FE-17",
+      "type": "Invalid input",
+      "title": "Reject invalid stocking count 1000.5 (must be an integer)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-17#5",
+      "fe": "FE-17",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: seed unit price -1 (minimum is 0)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-18#1",
+      "fe": "FE-18",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to crop split",
+      "request": "POST /api/crops/99999999-9999-4999-8999-999999999999/split",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-18#2",
+      "fe": "FE-18",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to crop split",
+      "request": "POST /api/crops/99999999-9999-4999-8999-999999999999/split",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-18#3",
+      "fe": "FE-18",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: split with no destination pond (minimum is 1)",
+      "request": "POST /api/crops/99999999-9999-4999-8999-999999999999/split",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-18#4",
+      "fe": "FE-18",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: nursery harvest count 0 (minimum is 1)",
+      "request": "POST /api/crops/99999999-9999-4999-8999-999999999999/split",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-18#5",
+      "fe": "FE-18",
+      "type": "Not found",
+      "title": "Return not found for splitting a crop that does not exist",
+      "request": "POST /api/crops/99999999-9999-4999-8999-999999999999/split",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-19#1",
+      "fe": "FE-19",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to crop harvest",
+      "request": "PATCH /api/crops/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-19#2",
+      "fe": "FE-19",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to crop harvest",
+      "request": "PATCH /api/crops/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-19#3",
+      "fe": "FE-19",
+      "type": "Not found",
+      "title": "Return not found for harvesting a crop that does not exist",
+      "request": "PATCH /api/crops/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-19#4",
+      "fe": "FE-19",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: harvest size 0.5 pcs/kg (minimum is 1)",
+      "request": "PATCH /api/crops/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-19#5",
+      "fe": "FE-19",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: harvest note of 1001 characters (maximum is 1000)",
+      "request": "PATCH /api/crops/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-20#1",
+      "fe": "FE-20",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the crop detailed report",
+      "request": "GET /api/crops/99999999-9999-4999-8999-999999999999/detailed-report",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-20#2",
+      "fe": "FE-20",
+      "type": "Not found",
+      "title": "Return not found for the detailed report of a crop that does not exist",
+      "request": "GET /api/crops/99999999-9999-4999-8999-999999999999/detailed-report",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-20#3",
+      "fe": "FE-20",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to the harvest summary",
+      "request": "GET /api/crops/99999999-9999-4999-8999-999999999999/harvest-summary",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-21#1",
+      "fe": "FE-21",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to feeding log submission",
+      "request": "POST /api/feeding-logs",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-21#2",
+      "fe": "FE-21",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to feeding log submission",
+      "request": "POST /api/feeding-logs",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-21#3",
+      "fe": "FE-21",
+      "type": "Invalid input",
+      "title": "Reject invalid feeding session \"SESSION_8\"",
+      "request": "POST /api/feeding-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-21#4",
+      "fe": "FE-21",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: daily log with no feeding session (minimum is 1)",
+      "request": "POST /api/feeding-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-21#5",
+      "fe": "FE-21",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: daily log with 8 feeding sessions (maximum is 7)",
+      "request": "POST /api/feeding-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-21#6",
+      "fe": "FE-21",
+      "type": "Invalid input",
+      "title": "Reject invalid feeding method \"HAND\"",
+      "request": "POST /api/feeding-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-22#1",
+      "fe": "FE-22",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to mortality logging",
+      "request": "POST /api/mortality-logs",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-22#2",
+      "fe": "FE-22",
+      "type": "Forbidden",
+      "title": "Reject request from ADMIN role to mortality logging",
+      "request": "POST /api/mortality-logs",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-22#3",
+      "fe": "FE-22",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: dead count 0 (minimum is 1)",
+      "request": "POST /api/mortality-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-22#4",
+      "fe": "FE-22",
+      "type": "Invalid input",
+      "title": "Reject invalid recorded date \"yesterday\"",
+      "request": "POST /api/mortality-logs",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-22#5",
+      "fe": "FE-22",
+      "type": "Not found",
+      "title": "Return not found for logging mortality for a crop that does not exist",
+      "request": "POST /api/mortality-logs",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-23#1",
+      "fe": "FE-23",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to shrimp health recording",
+      "request": "POST /api/shrimp-health",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-23#2",
+      "fe": "FE-23",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to shrimp health recording",
+      "request": "POST /api/shrimp-health",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-23#3",
+      "fe": "FE-23",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: affected percentage 101 (maximum is 100)",
+      "request": "POST /api/shrimp-health",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-23#4",
+      "fe": "FE-23",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: affected percentage -1 (minimum is 0)",
+      "request": "POST /api/shrimp-health",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-23#5",
+      "fe": "FE-23",
+      "type": "Invalid input",
+      "title": "Reject invalid health status \"SICK\"",
+      "request": "POST /api/shrimp-health",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-23#6",
+      "fe": "FE-23",
+      "type": "Not found",
+      "title": "Return not found for a health record that does not exist",
+      "request": "GET /api/shrimp-health/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-24#1",
+      "fe": "FE-24",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to environment observation records",
+      "request": "POST /api/environment",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-24#2",
+      "fe": "FE-24",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to environment observation records",
+      "request": "POST /api/environment",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-24#3",
+      "fe": "FE-24",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: health observation note of 501 characters (maximum is 500)",
+      "request": "POST /api/shrimp-health",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-25#1",
+      "fe": "FE-25",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to water quality recording",
+      "request": "POST /api/water-quality",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-25#2",
+      "fe": "FE-25",
+      "type": "Forbidden",
+      "title": "Reject request from ADMIN role to water quality recording",
+      "request": "POST /api/water-quality",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-25#3",
+      "fe": "FE-25",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: dissolved oxygen 21 mg/L (maximum is 20)",
+      "request": "POST /api/water-quality",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-25#4",
+      "fe": "FE-25",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: alkalinity 301 mg/L (maximum is 300)",
+      "request": "POST /api/water-quality",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-25#5",
+      "fe": "FE-25",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: NH3 -0.1 mg/L (minimum is 0)",
+      "request": "POST /api/water-quality",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-25#6",
+      "fe": "FE-25",
+      "type": "Invalid input",
+      "title": "Reject invalid record time \"now\"",
+      "request": "POST /api/water-quality",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-25#7",
+      "fe": "FE-25",
+      "type": "Not found",
+      "title": "Return not found for recording water quality for a pond that does not exist",
+      "request": "POST /api/water-quality",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-26#1",
+      "fe": "FE-26",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to water quality history",
+      "request": "GET /api/water-quality/history",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-26#2",
+      "fe": "FE-26",
+      "type": "Invalid input",
+      "title": "Reject invalid history start date \"abc\"",
+      "request": "GET /api/water-quality/history?fromDate=abc",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-26#3",
+      "fe": "FE-26",
+      "type": "Invalid input",
+      "title": "Reject invalid history sort order \"up\"",
+      "request": "GET /api/water-quality/history?sort=up",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-27#1",
+      "fe": "FE-27",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to water quality trends",
+      "request": "GET /api/water-quality/manager-trends",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-27#2",
+      "fe": "FE-27",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to farm-wide water trends",
+      "request": "GET /api/water-quality/manager-trends",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-27#3",
+      "fe": "FE-27",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: trend window 0 days (minimum is 1)",
+      "request": "GET /api/water-quality/manager-trends?days=0",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-27#4",
+      "fe": "FE-27",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: trend window 32 days (maximum is 31)",
+      "request": "GET /api/water-quality/manager-trends?days=32",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-27#5",
+      "fe": "FE-27",
+      "type": "Invalid input",
+      "title": "Reject invalid farm id \"abc\" (UUID required)",
+      "request": "GET /api/water-quality/manager-trends?farmId=abc",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-28#1",
+      "fe": "FE-28",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the inventory list",
+      "request": "GET /api/inventory",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-28#2",
+      "fe": "FE-28",
+      "type": "Not found",
+      "title": "Return not found for an inventory item that does not exist",
+      "request": "GET /api/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-29#1",
+      "fe": "FE-29",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to inventory item creation",
+      "request": "POST /api/inventory",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-29#2",
+      "fe": "FE-29",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to inventory item creation",
+      "request": "POST /api/inventory",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-29#3",
+      "fe": "FE-29",
+      "type": "Invalid input",
+      "title": "Reject invalid inventory category \"FOOD\"",
+      "request": "POST /api/inventory",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-29#4",
+      "fe": "FE-29",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: low-stock threshold -1 (minimum is 0)",
+      "request": "POST /api/inventory",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-29#5",
+      "fe": "FE-29",
+      "type": "Not found",
+      "title": "Return not found for updating an inventory item that does not exist",
+      "request": "PUT /api/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-29#6",
+      "fe": "FE-29",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to inventory item deletion",
+      "request": "DELETE /api/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-30#1",
+      "fe": "FE-30",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to inventory usage recording",
+      "request": "POST /api/inventory/99999999-9999-4999-8999-999999999999/usage",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-30#2",
+      "fe": "FE-30",
+      "type": "Forbidden",
+      "title": "Reject request from ADMIN role to inventory usage recording",
+      "request": "POST /api/inventory/99999999-9999-4999-8999-999999999999/usage",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-30#3",
+      "fe": "FE-30",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: usage quantity 0 (minimum is 0.01)",
+      "request": "POST /api/inventory/99999999-9999-4999-8999-999999999999/usage",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-30#4",
+      "fe": "FE-30",
+      "type": "Not found",
+      "title": "Return not found for recording usage of an item that does not exist",
+      "request": "POST /api/inventory/99999999-9999-4999-8999-999999999999/usage",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-30#5",
+      "fe": "FE-30",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to inventory usage history",
+      "request": "GET /api/inventory/usage-logs",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-31#1",
+      "fe": "FE-31",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to supplier creation",
+      "request": "POST /api/suppliers",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-31#2",
+      "fe": "FE-31",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to supplier creation",
+      "request": "POST /api/suppliers",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-31#3",
+      "fe": "FE-31",
+      "type": "Invalid input",
+      "title": "Reject invalid supplier email \"sales@\"",
+      "request": "POST /api/suppliers",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-31#4",
+      "fe": "FE-31",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: supplier phone of 11 digits (maximum is 10)",
+      "request": "POST /api/suppliers",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-31#5",
+      "fe": "FE-31",
+      "type": "Not found",
+      "title": "Return not found for updating a supplier that does not exist",
+      "request": "PUT /api/suppliers/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-32#1",
+      "fe": "FE-32",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to size sampling",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-32#2",
+      "fe": "FE-32",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to size sampling",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-32#3",
+      "fe": "FE-32",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: sample with 4 cast-net throws (exactly 5 required)",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-32#4",
+      "fe": "FE-32",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: sample with 6 cast-net throws (exactly 5 required)",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-32#5",
+      "fe": "FE-32",
+      "type": "Invalid input",
+      "title": "Reject invalid sample weight -150 g (must be positive)",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-32#6",
+      "fe": "FE-32",
+      "type": "Not found",
+      "title": "Return not found for sampling a pond that does not exist",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-33#1",
+      "fe": "FE-33",
+      "type": "Invalid input",
+      "title": "Reject invalid cast-net area 0 m² (must be positive)",
+      "request": "POST /api/ponds/99999999-9999-4999-8999-999999999999/size-samples",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-33#2",
+      "fe": "FE-33",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the latest biomass sample",
+      "request": "GET /api/ponds/99999999-9999-4999-8999-999999999999/size-samples/latest",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-33#3",
+      "fe": "FE-33",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to deleting a size sample",
+      "request": "DELETE /api/ponds/99999999-9999-4999-8999-999999999999/size-samples/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-33#4",
+      "fe": "FE-33",
+      "type": "Not found",
+      "title": "Return not found for the latest sample of a pond that does not exist",
+      "request": "GET /api/ponds/99999999-9999-4999-8999-999999999999/size-samples/latest",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-34#1",
+      "fe": "FE-34",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the survival rate",
+      "request": "GET /api/survival-rate/crop/99999999-9999-4999-8999-999999999999",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-34#2",
+      "fe": "FE-34",
+      "type": "Not found",
+      "title": "Return not found for the survival rate of a crop that does not exist",
+      "request": "GET /api/survival-rate/crop/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-34#3",
+      "fe": "FE-34",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to harvest count update",
+      "request": "PATCH /api/survival-rate/crop/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-34#4",
+      "fe": "FE-34",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: harvest size 0.05 pcs/kg (minimum is 0.1)",
+      "request": "PATCH /api/survival-rate/crop/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-34#5",
+      "fe": "FE-34",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: harvest count -1 (minimum is 0)",
+      "request": "PATCH /api/survival-rate/crop/99999999-9999-4999-8999-999999999999/harvest",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-35#1",
+      "fe": "FE-35",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to FCR analysis",
+      "request": "GET /api/ponds/99999999-9999-4999-8999-999999999999/size-samples/fcr",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-35#2",
+      "fe": "FE-35",
+      "type": "Not found",
+      "title": "Return not found for FCR analysis of a pond that does not exist",
+      "request": "GET /api/ponds/99999999-9999-4999-8999-999999999999/size-samples/fcr",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-36#1",
+      "fe": "FE-36",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the growth trajectory",
+      "request": "GET /api/crops/analytics/growth-trajectory",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-36#2",
+      "fe": "FE-36",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: growth milestone on day 0 (minimum is 1)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-36#3",
+      "fe": "FE-36",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: growth milestone weight 0 g (minimum is 0.01)",
+      "request": "POST /api/crops",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-38#1",
+      "fe": "FE-38",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to system alerts",
+      "request": "GET /api/admin/alerts",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-38#2",
+      "fe": "FE-38",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to system alerts",
+      "request": "GET /api/admin/alerts",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-38#3",
+      "fe": "FE-38",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: pH 4.9 (minimum is 5)",
+      "request": "POST /api/water-quality",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-39#1",
+      "fe": "FE-39",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to weather data",
+      "request": "GET /api/weather",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-40#1",
+      "fe": "FE-40",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to weather risk alert synchronisation",
+      "request": "GET /api/weather/sync-alerts",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-41#1",
+      "fe": "FE-41",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the notification history",
+      "request": "GET /api/notifications",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-41#2",
+      "fe": "FE-41",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the unread warning count",
+      "request": "GET /api/notifications/unread-count",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-42#1",
+      "fe": "FE-42",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to incident creation",
+      "request": "POST /api/incidents",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-42#2",
+      "fe": "FE-42",
+      "type": "Forbidden",
+      "title": "Reject request from ADMIN role to incident creation",
+      "request": "POST /api/incidents",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-42#3",
+      "fe": "FE-42",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: incident title of 201 characters (maximum is 200)",
+      "request": "POST /api/incidents",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-42#4",
+      "fe": "FE-42",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: incident description of 2001 characters (maximum is 2000)",
+      "request": "POST /api/incidents",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-42#5",
+      "fe": "FE-42",
+      "type": "Invalid input",
+      "title": "Reject invalid crop id \"abc\" (UUID required)",
+      "request": "POST /api/incidents",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-42#6",
+      "fe": "FE-42",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to technician assignment",
+      "request": "PATCH /api/incidents/99999999-9999-4999-8999-999999999999/assignment",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-42#7",
+      "fe": "FE-42",
+      "type": "Invalid input",
+      "title": "Reject invalid assignee id \"abc\" (UUID required)",
+      "request": "PATCH /api/incidents/99999999-9999-4999-8999-999999999999/assignment",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-42#8",
+      "fe": "FE-42",
+      "type": "Not found",
+      "title": "Return not found for assigning an incident that does not exist",
+      "request": "PATCH /api/incidents/99999999-9999-4999-8999-999999999999/assignment",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-43#1",
+      "fe": "FE-43",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to treatment updates",
+      "request": "POST /api/incidents/99999999-9999-4999-8999-999999999999/treatment-updates",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-43#2",
+      "fe": "FE-43",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to treatment updates",
+      "request": "POST /api/incidents/99999999-9999-4999-8999-999999999999/treatment-updates",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-43#3",
+      "fe": "FE-43",
+      "type": "Invalid input",
+      "title": "Reject invalid empty treatment description",
+      "request": "POST /api/incidents/99999999-9999-4999-8999-999999999999/treatment-updates",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-43#4",
+      "fe": "FE-43",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: treatment of 2001 characters (maximum is 2000)",
+      "request": "POST /api/incidents/99999999-9999-4999-8999-999999999999/treatment-updates",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-43#5",
+      "fe": "FE-43",
+      "type": "Not found",
+      "title": "Return not found for updating treatment of an incident that does not exist",
+      "request": "POST /api/incidents/99999999-9999-4999-8999-999999999999/treatment-updates",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-43#6",
+      "fe": "FE-43",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: reopen reason of 1001 characters (maximum is 1000)",
+      "request": "PATCH /api/incidents/99999999-9999-4999-8999-999999999999/reopen",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 404,
+      "passed": true
+    },
+    {
+      "key": "FE-43#7",
+      "fe": "FE-43",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to incident resolution",
+      "request": "PATCH /api/incidents/99999999-9999-4999-8999-999999999999/resolve",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-44#1",
+      "fe": "FE-44",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the AI assistant",
+      "request": "POST /api/chatbot/ask",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-44#2",
+      "fe": "FE-44",
+      "type": "Invalid input",
+      "title": "Reject invalid empty question to the AI assistant",
+      "request": "POST /api/chatbot/ask",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 201,
+      "passed": true
+    },
+    {
+      "key": "FE-45#1",
+      "fe": "FE-45",
+      "type": "Invalid input",
+      "title": "Reject invalid unknown field \"model\" in an advisory request",
+      "request": "POST /api/chatbot/ask",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 201,
+      "passed": true
+    },
+    {
+      "key": "FE-46#1",
+      "fe": "FE-46",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the manager crop summary",
+      "request": "GET /api/crops/analytics/manager-summary",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-46#2",
+      "fe": "FE-46",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to the manager crop summary",
+      "request": "GET /api/crops/analytics/manager-summary",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-47#1",
+      "fe": "FE-47",
+      "type": "Invalid input",
+      "title": "Reject invalid question missing from a Q&A request",
+      "request": "POST /api/chatbot/ask",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 201,
+      "passed": true
+    },
+    {
+      "key": "FE-47#2",
+      "fe": "FE-47",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to the knowledge document list",
+      "request": "GET /api/chatbot/documents",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-48#1",
+      "fe": "FE-48",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to knowledge document upload",
+      "request": "POST /api/chatbot/documents",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-48#2",
+      "fe": "FE-48",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to knowledge document upload",
+      "request": "POST /api/chatbot/documents",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-48#3",
+      "fe": "FE-48",
+      "type": "Invalid input",
+      "title": "Reject invalid document without content",
+      "request": "POST /api/chatbot/documents",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 500,
+      "passed": true
+    },
+    {
+      "key": "FE-48#4",
+      "fe": "FE-48",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to knowledge document deletion",
+      "request": "DELETE /api/chatbot/documents/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-48#5",
+      "fe": "FE-48",
+      "type": "Not found",
+      "title": "Return not found for a knowledge document that does not exist",
+      "request": "GET /api/chatbot/documents/99999999-9999-4999-8999-999999999999",
+      "expected": 404,
+      "actual": 200,
+      "passed": false,
+      "note": "Actual 200: "
+    },
+    {
+      "key": "FE-48#6",
+      "fe": "FE-48",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to Google Drive synchronisation",
+      "request": "POST /api/chatbot/documents/drive/sync",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-49#1",
+      "fe": "FE-49",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to AI agent actions",
+      "request": "POST /api/chatbot/execute-action",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-49#2",
+      "fe": "FE-49",
+      "type": "Invalid input",
+      "title": "Reject invalid AI agent action \"DELETE_FARM\"",
+      "request": "POST /api/chatbot/execute-action",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-49#3",
+      "fe": "FE-49",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to AI agent actions",
+      "request": "POST /api/chatbot/execute-action",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-50#1",
+      "fe": "FE-50",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the unread notification counter",
+      "request": "GET /api/notifications/unread-count",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-51#1",
+      "fe": "FE-51",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to mark all notifications as read",
+      "request": "PUT /api/notifications/read-all",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-51#2",
+      "fe": "FE-51",
+      "type": "Not found",
+      "title": "Return not found for marking a notification that does not exist as read",
+      "request": "PUT /api/notifications/99999999-9999-4999-8999-999999999999/read",
+      "expected": 404,
+      "actual": 200,
+      "passed": false,
+      "note": "Actual 200: "
+    },
+    {
+      "key": "FE-51#3",
+      "fe": "FE-51",
+      "type": "Not found",
+      "title": "Return not found for deleting a notification that does not exist",
+      "request": "DELETE /api/notifications/99999999-9999-4999-8999-999999999999",
+      "expected": 404,
+      "actual": 200,
+      "passed": false,
+      "note": "Actual 200: "
+    },
+    {
+      "key": "FE-52#1",
+      "fe": "FE-52",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the farm manager dashboard summary",
+      "request": "GET /api/crops/analytics/manager-summary",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-52#2",
+      "fe": "FE-52",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to the farm manager dashboard summary",
+      "request": "GET /api/crops/analytics/manager-summary",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-53#1",
+      "fe": "FE-53",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to shrimp health history",
+      "request": "GET /api/shrimp-health/history",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-54#1",
+      "fe": "FE-54",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the feeding log list",
+      "request": "GET /api/feeding-logs",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-55#1",
+      "fe": "FE-55",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to admin dashboard statistics",
+      "request": "GET /api/admin/dashboard-stats",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-55#2",
+      "fe": "FE-55",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to admin dashboard statistics",
+      "request": "GET /api/admin/dashboard-stats",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-55#3",
+      "fe": "FE-55",
+      "type": "Forbidden",
+      "title": "Reject request from TECHNICIAN role to system health metrics",
+      "request": "GET /api/admin/system-health",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-55#4",
+      "fe": "FE-55",
+      "type": "Max boundary",
+      "title": "Reject value above maximum: audit log page size 101 (maximum is 100)",
+      "request": "GET /api/admin/audit-logs?pageSize=101",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-55#5",
+      "fe": "FE-55",
+      "type": "Min boundary",
+      "title": "Reject value below minimum: audit log page 0 (minimum is 1)",
+      "request": "GET /api/admin/audit-logs?page=0",
+      "expected": 400,
+      "actual": 400,
+      "controlActual": 200,
+      "passed": true
+    },
+    {
+      "key": "FE-56#1",
+      "fe": "FE-56",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to the administrative report",
+      "request": "GET /api/admin/report",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-56#2",
+      "fe": "FE-56",
+      "type": "Forbidden",
+      "title": "Reject request from FARM_MANAGER role to the administrative report",
+      "request": "GET /api/admin/report",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-57#1",
+      "fe": "FE-57",
+      "type": "Unauthenticated",
+      "title": "Reject unauthenticated request to inventory Excel export",
+      "request": "GET /api/chatbot/export/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": 401,
+      "actual": 401,
+      "passed": true
+    },
+    {
+      "key": "FE-57#2",
+      "fe": "FE-57",
+      "type": "Forbidden",
+      "title": "Reject request from FARMER role to inventory Excel export",
+      "request": "GET /api/chatbot/export/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": 403,
+      "actual": 403,
+      "passed": true
+    },
+    {
+      "key": "FE-57#3",
+      "fe": "FE-57",
+      "type": "Not found",
+      "title": "Return not found for exporting the inventory of a farm that does not exist",
+      "request": "GET /api/chatbot/export/inventory/99999999-9999-4999-8999-999999999999",
+      "expected": [
+        403,
+        404
+      ],
+      "actual": 403,
+      "passed": true
+    }
+  ]
+}

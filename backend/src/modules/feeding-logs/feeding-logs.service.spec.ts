@@ -116,3 +116,128 @@ describe('FeedingLogsService grouped list', () => {
     expect(errors.length).toBe(0);
   });
 });
+
+describe('FeedingLogsService inventory deduction', () => {
+  const user = { userId: 'farmer-id', role: 'FARMER' };
+  const feedingDate = '2026-11-19';
+  const day = new Date(feedingDate);
+  const baseLog = {
+    farmId: 'farm-1',
+    pondId: 'pond-1',
+    cropId: 'crop-1',
+    feedingDate: day,
+    feedProductId: 'feed-1',
+    feedingTime: '06:00',
+    feedingMethod: 'MANUAL',
+    feedingStatus: 'COMPLETED',
+  };
+
+  const buildPrisma = (opts: { deductCount?: number } = {}) => {
+    const prisma: any = {
+      pond: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'pond-1', name: 'Ao A1', farmId: 'farm-1' }),
+      },
+      crop: { findFirst: jest.fn().mockResolvedValue({ id: 'crop-1', status: 'ACTIVE' }) },
+      feedingLog: {
+        findMany: jest
+          .fn()
+          // 1) các cử đã có trước khi lưu: cử 1 đã cho ăn 5 kg
+          .mockResolvedValueOnce([{ ...baseLog, feedingSession: 'SESSION_1', feedAmount: 5 }])
+          // 2) đọc lại cả ngày sau khi upsert: cử 1 + cử 2
+          .mockResolvedValueOnce([
+            { ...baseLog, feedingSession: 'SESSION_1', feedAmount: 5 },
+            { ...baseLog, feedingSession: 'SESSION_2', feedAmount: 4 },
+          ]),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      inventory: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'feed-1', quantity: 100, unit: 'kg', itemName: 'Cám' }),
+        updateMany: jest.fn().mockResolvedValue({ count: opts.deductCount ?? 1 }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'feed-1', quantity: 91, packageQty: 4, weightPerPkg: 25 }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      inventoryUsageLog: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'usage-1', inventoryId: 'feed-1' }]),
+        update: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({}),
+      },
+    };
+    prisma.$transaction = jest.fn((cb: (tx: any) => unknown) => cb(prisma));
+    return prisma;
+  };
+  const farmAccess = { assertCanAccessFarm: jest.fn().mockResolvedValue(undefined) };
+
+  const saveSession2 = (service: FeedingLogsService) =>
+    service.createOrUpdateDailyLog(user as any, {
+      farmId: 'farm-1',
+      pondId: 'pond-1',
+      cropId: 'crop-1',
+      feedingDate,
+      sessions: [
+        {
+          feedingSession: FeedingSession.SESSION_2,
+          feedingTime: '08:00',
+          feedProductId: 'feed-1',
+          feedAmount: 4,
+          feedingMethod: FeedingMethod.MANUAL,
+          feedingStatus: FeedingStatus.COMPLETED,
+        },
+      ],
+    } as any);
+
+  it('lưu từng cử: chỉ trừ kho phần của cử mới, phiếu xuất kho là tổng cả ngày', async () => {
+    const prisma = buildPrisma();
+    const service = new FeedingLogsService(prisma, farmAccess as any);
+
+    await saveSession2(service);
+
+    // Chỉ trừ 4 kg của cử 2 (cử 1 đã trừ trước đó)
+    expect(prisma.inventory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'feed-1', quantity: { gte: 4 } }),
+        data: { quantity: { decrement: 4 } },
+      }),
+    );
+    // Số bao = ceil(91 / 25) = 4
+    expect(prisma.inventory.update).toHaveBeenCalledWith({
+      where: { id: 'feed-1' },
+      data: { quantity: 91, packageQty: 4 },
+    });
+    // Phiếu xuất kho = 5 + 4 = 9 kg (không bị ghi đè thành 4 kg)
+    expect(prisma.inventoryUsageLog.update).toHaveBeenCalledWith({
+      where: { id: 'usage-1' },
+      data: expect.objectContaining({ quantityUsed: 9, pondId: 'pond-1', cropId: 'crop-1' }),
+    });
+    // Tìm phiếu theo ghi chú chính xác của đúng ao & trang trại
+    expect(prisma.inventoryUsageLog.findMany.mock.calls[0][0].where).toMatchObject({
+      notes: 'Xuất kho từ Nhật ký cho ăn - Ao A1',
+      inventory: { farmId: 'farm-1' },
+    });
+  });
+
+  it('báo lỗi (không kẹp tồn kho về 0) khi kho không còn đủ lúc trừ', async () => {
+    const prisma = buildPrisma({ deductCount: 0 });
+    const service = new FeedingLogsService(prisma, farmAccess as any);
+
+    await expect(saveSession2(service)).rejects.toThrow('không đủ');
+    expect(prisma.inventoryUsageLog.update).not.toHaveBeenCalled();
+  });
+
+  it('xoá nhật ký ngày: xoá đúng phiếu xuất kho của ao tên bắt đầu bằng "Ao"', async () => {
+    const prisma = buildPrisma();
+    prisma.feedingLog.findMany = jest.fn().mockResolvedValue([
+      { ...baseLog, feedingSession: 'SESSION_1', feedAmount: 5, pond: { name: 'Ao A1' } },
+    ]);
+    prisma.feedingLog.deleteMany = jest.fn().mockResolvedValue({});
+    const service = new FeedingLogsService(prisma, farmAccess as any);
+
+    await service.deleteDailyLog(user as any, 'farm-1', 'pond-1', 'crop-1', feedingDate);
+
+    expect(prisma.inventoryUsageLog.deleteMany.mock.calls[0][0].where).toMatchObject({
+      notes: 'Xuất kho từ Nhật ký cho ăn - Ao A1',
+      inventory: { farmId: 'farm-1' },
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useEffectEvent, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -144,7 +144,7 @@ export default function RegisterPage() {
     return isValid;
   };
 
-  const handleGoogleLogin = async (response: any) => {
+  const handleGoogleLogin = async (response: GoogleCredentialResponse) => {
     setServerError('');
     setIsLoading(true);
 
@@ -174,27 +174,32 @@ export default function RegisterPage() {
           state: data.joinedFarm ? { welcomeFarm: data.joinedFarm.name } : undefined,
         });
       }
-    } catch (error) {
+    } catch {
       setServerError('Không thể kết nối máy chủ.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Google gọi lại sau khi đăng nhập: luôn dùng handleGoogleLogin mới nhất
+  const onGoogleCredential = useEffectEvent((response: GoogleCredentialResponse) => {
+    void handleGoogleLogin(response);
+  });
+
   useEffect(() => {
     const initGoogle = () => {
-      if ((window as any).google?.accounts?.id) {
+      if (window.google?.accounts?.id) {
         const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id-here.apps.googleusercontent.com';
 
         if (googleClientId && !googleClientId.includes('your-google-client-id-here')) {
-          (window as any).google.accounts.id.initialize({
+          window.google.accounts.id.initialize({
             client_id: googleClientId,
-            callback: handleGoogleLogin,
+            callback: (response: GoogleCredentialResponse) => onGoogleCredential(response),
             auto_select: false,
           });
 
           if (googleBtnRef.current) {
-            (window as any).google.accounts.id.renderButton(
+            window.google.accounts.id.renderButton(
               googleBtnRef.current,
               { theme: 'outline', size: 'large', width: '100%', shape: 'pill', logo_alignment: 'center' }
             );
@@ -210,7 +215,7 @@ export default function RegisterPage() {
       }
     };
     const timer = setInterval(() => {
-      if ((window as any).google) {
+      if (window.google) {
         initGoogle();
         clearInterval(timer);
       }
@@ -263,7 +268,7 @@ export default function RegisterPage() {
             navigate('/login');
           }
         }
-      } catch (error) {
+      } catch {
         setServerError('Không thể kết nối đến máy chủ.');
       } finally {
         setIsLoading(false);
@@ -272,7 +277,8 @@ export default function RegisterPage() {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let { id, value } = e.target;
+    const { id } = e.target;
+    let { value } = e.target;
     if (id === 'phone') value = value.replace(/\D/g, '').slice(0, 10);
     const newData = { ...formData, [id]: value };
     setFormData(newData);
@@ -426,8 +432,8 @@ export default function RegisterPage() {
                 </div>
                 <div className="text-[11px] leading-tight">
                   <span className="text-slate-300/70 block text-[9.5px]">Hotline kỹ thuật:</span>
-                  <a href="tel:0123456789" className="text-cyan-300 hover:text-cyan-200 font-bold tracking-wide transition-colors">
-                    0123 456 789 <span className="text-[9px] text-slate-300/60 font-normal">(24/7)</span>
+                  <a href="tel:0934880683" className="text-cyan-300 hover:text-cyan-200 font-bold tracking-wide transition-colors">
+                    0934 880 683 <span className="text-[9px] text-slate-300/60 font-normal">(24/7)</span>
                   </a>
                 </div>
               </div>
@@ -816,7 +822,7 @@ export default function RegisterPage() {
           {/* Mobile support note */}
           <div className="md:hidden mt-2 pt-2 border-t border-slate-200/60 text-center">
             <p className="text-[10px] text-slate-500 font-medium">
-              Hỗ trợ kỹ thuật: <a href="tel:0123456789" className="text-cyan-700 font-bold hover:underline">0123 456 789</a> (24/7) • <a href="mailto:support@ssfm.com" className="text-cyan-700 font-medium hover:underline">support@ssfm.com</a>
+              Hỗ trợ kỹ thuật: <a href="tel:0934880683" className="text-cyan-700 font-bold hover:underline">0934 880 683</a> (24/7) • <a href="mailto:support@ssfm.com" className="text-cyan-700 font-medium hover:underline">support@ssfm.com</a>
             </p>
           </div>
         </div>

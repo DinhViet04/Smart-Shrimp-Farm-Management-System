@@ -39,6 +39,7 @@ import NotificationDropdown from "../components/NotificationDropdown";
 import LoadingMotion from "../components/LoadingMotion";
 import { chatbotService, type KnowledgeDoc } from "../services/chatbot.service";
 import { apiFetch, logoutSession } from "../utils/api";
+import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 
 const AccountSettings = lazy(() => import("../components/AccountSettings"));
 const FarmList = lazy(() => import("../features/farms/FarmList"));
@@ -353,23 +354,26 @@ export default function AdminDashboard() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col bg-white transition-all duration-500 ease-out lg:relative lg:translate-x-0 ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"} ${isSidebarCollapsed ? "lg:my-3 lg:ml-3 lg:h-[calc(100vh-1.5rem)] lg:w-20 lg:rounded-3xl lg:border lg:border-white/60 lg:bg-white/85 lg:shadow-[0_8px_30px_rgba(0,0,0,0.08)] lg:backdrop-blur-xl" : "lg:h-screen lg:w-72 lg:border-r lg:border-slate-200/80 lg:shadow-sm"}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col bg-white transition-all duration-500 ease-out lg:relative lg:translate-x-0 ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"} ${isSidebarCollapsed ? "lg:h-screen lg:w-20 lg:border-r lg:border-slate-200/80 lg:shadow-sm" : "lg:h-screen lg:w-72 lg:border-r lg:border-slate-200/80 lg:shadow-sm"}`}
       >
         {/* Header / Logo & Top Toggle */}
         {isSidebarCollapsed ? (
-          <div className="hidden lg:flex flex-col items-center py-3.5 px-2 gap-2 border-b border-purple-50/80 flex-shrink-0">
-            <img
-              src="/logonen.jpg"
-              alt="SSFM Logo"
-              className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 flex-shrink-0 transition-transform duration-300 hover:scale-105"
-            />
-            {/* Dedicated Expand Button */}
+          <div className="hidden lg:flex h-20 items-center justify-center border-b border-slate-100 flex-shrink-0">
+            {/* Logo: hover để hiện nút mở rộng */}
             <button
               onClick={() => setIsSidebarCollapsed(false)}
               title="Mở rộng thanh điều hướng"
-              className="group relative flex items-center justify-center w-8 h-8 rounded-xl bg-purple-50/80 hover:bg-purple-100 text-purple-600 hover:scale-105 active:scale-95 transition-all duration-200 border border-purple-100/80 shadow-2xs cursor-pointer"
+              aria-label="Mở rộng thanh điều hướng"
+              className="group relative w-10 h-10 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
             >
-              <PanelLeftOpen className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+              <img
+                src="/logonen.jpg"
+                alt="SSFM Logo"
+                className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 transition-opacity duration-200 group-hover:opacity-0 group-focus-visible:opacity-0"
+              />
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-purple-50 text-purple-600 border border-purple-100 shadow-sm opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                <PanelLeftOpen className="w-5 h-5" />
+              </span>
             </button>
           </div>
         ) : null}
@@ -592,6 +596,7 @@ function Overview({
   const [saas, setSaas] = useState<SaasMetrics | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["farms", "ponds", "crops", "incidents", "water-quality", "environment", "feeding-logs", "inventory", "shrimp-health", "shrimp-size", "survival-rate", "farm-staffs", "users", "workspaces"], () => setRevision((value) => value + 1));
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
@@ -888,6 +893,7 @@ function UsersView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["users", "workspaces", "farm-staffs"], () => setRevision((value) => value + 1));
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingUserChange | null>(
     null,
@@ -1361,6 +1367,7 @@ function WorkspacesView({ initialStatus = "" }: { initialStatus?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["workspaces", "farms", "users"], () => setRevision((value) => value + 1));
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<WorkspaceSummary | null>(null);
   const [pendingStatus, setPendingStatus] = useState<WorkspaceSummary | null>(
@@ -1850,6 +1857,8 @@ function WorkspaceMembers({
       );
     setMembers((await response.json()) as WorkspaceMember[]);
   };
+  const [membersTick, setMembersTick] = useState(0);
+  useRealtimeRefresh(["workspaces", "users"], () => setMembersTick((value) => value + 1));
   useEffect(() => {
     let cancelled = false;
     void apiFetch(`/api/workspaces/${workspace.id}/members`)
@@ -1874,7 +1883,7 @@ function WorkspaceMembers({
     return () => {
       cancelled = true;
     };
-  }, [workspace.id]);
+  }, [workspace.id, membersTick]);
   const add = async () => {
     const response = await apiFetch(`/api/workspaces/${workspace.id}/members`, {
       method: "POST",
@@ -2533,6 +2542,7 @@ function AlertsView({
   const [data, setData] = useState<SystemAlert[] | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["incidents", "water-quality", "environment", "inventory", "crops", "ponds"], () => setRevision((value) => value + 1));
   useEffect(() => {
     let cancelled = false;
     void apiFetch("/api/admin/alerts")
@@ -2674,6 +2684,7 @@ function ReportsView() {
   const [data, setData] = useState<AdminReport | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["farms", "ponds", "crops", "survival-rate", "feeding-logs"], () => setRevision((value) => value + 1));
   useEffect(() => {
     let cancelled = false;
     void apiFetch(`/api/admin/report?year=${year}`)
@@ -3011,6 +3022,7 @@ function AuditView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  useRealtimeRefresh(["users", "workspaces", "farms"], () => setRevision((value) => value + 1));
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({
@@ -3368,6 +3380,7 @@ function KnowledgeBaseView() {
   useEffect(() => {
     void loadDocs();
   }, []);
+  useRealtimeRefresh("knowledge", () => void loadDocs());
 
   const openDetail = async (doc: KnowledgeDoc) => {
     setViewingDoc(doc);

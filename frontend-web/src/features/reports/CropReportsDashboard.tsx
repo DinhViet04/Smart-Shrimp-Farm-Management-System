@@ -13,6 +13,7 @@ import {
   Table as TableIcon,
   LayoutGrid,
   Lock,
+  ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cropService, type Crop } from '../../services/crop.service';
@@ -22,6 +23,8 @@ import CropReportExportModal from '../../components/CropReportExportModal';
 import CropDetailReportModal from '../../components/CropDetailReportModal';
 import LoadingMotion from '../../components/LoadingMotion';
 import { formatVND, formatNumber, formatDateVi } from '../../utils/cropReportExporter';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
 
 export default function CropReportsDashboard() {
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -41,8 +44,8 @@ export default function CropReportsDashboard() {
   const [previewCrop, setPreviewCrop] = useState<Crop | null>(null);
 
   // Load dữ liệu
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     setError(null);
     try {
       const [overview, cropsRes] = await Promise.all([
@@ -52,13 +55,18 @@ export default function CropReportsDashboard() {
       setFarms(overview.farms as FarmInfo[]);
       setPonds(overview.ponds as PondInfo[]);
       setCrops(cropsRes);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading crop report data:', err);
-      setError(err?.message || 'Không thể tải dữ liệu vụ nuôi');
+      setError(getErrorMessage(err) || 'Không thể tải dữ liệu vụ nuôi');
     } finally {
       setLoading(false);
     }
   };
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops', 'survival-rate', 'feeding-logs', 'shrimp-size'], () => {
+    void loadData(true);
+  });
 
   useEffect(() => {
     loadData();
@@ -120,6 +128,38 @@ export default function CropReportsDashboard() {
       totalProfit,
     };
   }, [allCycles]);
+
+  // ── Trang riêng: Tải báo cáo vụ nuôi (PDF, Word, Excel, ZIP) ──────────
+  if (exportCycle) {
+    return (
+      <div className="w-full max-w-7xl mx-auto space-y-4 pb-12 animate-in fade-in duration-200">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-200 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setExportCycle(null)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại Báo cáo vụ nuôi
+          </button>
+          <div className="h-4 w-px bg-slate-200" />
+          <span className="text-xs font-semibold text-slate-400">Báo cáo vụ nuôi</span>
+          <span className="text-xs text-slate-300">/</span>
+          <span className="text-xs font-bold text-slate-700">Tải báo cáo: {exportCycle.name}</span>
+        </div>
+        <CropReportExportModal
+          asPage
+          isOpen
+          cycle={exportCycle}
+          crop={exportCycle.allCrops[0] || null}
+          onClose={() => setExportCycle(null)}
+          onOpenDetailedPreview={(crop) => {
+            setExportCycle(null);
+            setPreviewCrop(crop);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 pb-12 animate-in fade-in duration-300">
@@ -673,20 +713,6 @@ export default function CropReportsDashboard() {
             </table>
           </div>
         </div>
-      )}
-
-      {/* ── Modal Tải Báo Cáo 3 Định Dạng (PDF, DOCS, EXCEL) ─────────────── */}
-      {exportCycle && (
-        <CropReportExportModal
-          isOpen={!!exportCycle}
-          cycle={exportCycle}
-          crop={exportCycle.allCrops[0] || null}
-          onClose={() => setExportCycle(null)}
-          onOpenDetailedPreview={(crop) => {
-            setExportCycle(null);
-            setPreviewCrop(crop);
-          }}
-        />
       )}
 
       {/* ── Modal Xem Trước Báo Cáo Chi Tiết Trực Quan ──────────────────── */}

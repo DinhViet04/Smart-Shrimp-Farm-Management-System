@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffectEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -16,6 +16,7 @@ import {
   Folder,
   Lock,
   AlertTriangle,
+  ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cropService, type CropDetailedReportResponse, type Crop } from '../services/crop.service';
@@ -29,6 +30,8 @@ import {
   formatVND,
   formatNumber,
 } from '../utils/cropReportExporter';
+import { scrollToTop } from '../utils/scrollHelper';
+import { getErrorMessage } from '../utils/errors';
 
 interface CropReportExportModalProps {
   isOpen: boolean;
@@ -36,6 +39,8 @@ interface CropReportExportModalProps {
   cycle?: CropCycle | null;
   onClose: () => void;
   onOpenDetailedPreview?: (crop: Crop) => void;
+  /** Hiển thị như một trang riêng (thay vì hộp thoại nổi) */
+  asPage?: boolean;
 }
 
 type ExportFormat = 'pdf' | 'docx' | 'xlsx' | 'pdf_print';
@@ -47,6 +52,7 @@ export default function CropReportExportModal({
   cycle,
   onClose,
   onOpenDetailedPreview,
+  asPage = false,
 }: CropReportExportModalProps) {
   // Danh sách các ao trong vụ nuôi
   const availableCrops: Crop[] =
@@ -69,7 +75,7 @@ export default function CropReportExportModal({
   const [downloadingFormat, setDownloadingFormat] = useState<ExportFormat | 'all' | 'zip' | null>(null);
 
   // Cập nhật selectedPond khi initialCrop hoặc cycle thay đổi
-  React.useEffect(() => {
+  const syncSelectedPond = useEffectEvent(() => {
     if (cycle && cycle.allCrops && cycle.allCrops.length > 1) {
       setSelectedPond('ALL');
     } else if (initialCrop?.id) {
@@ -77,7 +83,16 @@ export default function CropReportExportModal({
     } else if (availableCrops[0]?.id) {
       setSelectedPond(availableCrops[0].id);
     }
+  });
+  React.useEffect(() => {
+    syncSelectedPond();
   }, [initialCrop, cycle]);
+
+  React.useEffect(() => {
+    if (isOpen && asPage) {
+      scrollToTop();
+    }
+  }, [isOpen, asPage]);
 
   if (!isOpen) return null;
 
@@ -120,9 +135,9 @@ export default function CropReportExportModal({
       toast.loading('Đang đóng gói file ZIP theo từng thư mục ao...', { id: 'export-toast' });
       await exportCycleToZip(cycle, allReports);
       toast.success(`Đã tải xuống gói báo cáo toàn vụ (${cycle.totals.totalPondsCount} ao) thành công!`, { id: 'export-toast' });
-    } catch (err: any) {
+    } catch (err) {
       console.error('Export zip error:', err);
-      toast.error(err?.message || 'Có lỗi xảy ra khi tạo gói zip báo cáo.', { id: 'export-toast' });
+      toast.error(getErrorMessage(err) || 'Có lỗi xảy ra khi tạo gói zip báo cáo.', { id: 'export-toast' });
     } finally {
       setLoading(false);
       setDownloadingFormat(null);
@@ -159,9 +174,9 @@ export default function CropReportExportModal({
         exportCropToDirectPdf(report, cycle);
         toast.success(`Đã tải xuống file PDF báo cáo ao ${currentCrop.pond?.name}!`, { id: 'export-toast' });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Export error:', err);
-      toast.error(err?.message || 'Có lỗi xảy ra khi tạo file báo cáo. Vui lòng thử lại!', { id: 'export-toast' });
+      toast.error(getErrorMessage(err) || 'Có lỗi xảy ra khi tạo file báo cáo. Vui lòng thử lại!', { id: 'export-toast' });
     } finally {
       setLoading(false);
       setDownloadingFormat(null);
@@ -194,18 +209,21 @@ export default function CropReportExportModal({
       exportCropToDirectPdf(report, cycle);
 
       toast.success(`Đã tải thành công trọn bộ 3 định dạng báo cáo ao ${currentCrop.pond?.name}!`, { id: 'export-toast' });
-    } catch (err: any) {
+    } catch (err) {
       console.error('Export all error:', err);
-      toast.error(err?.message || 'Không thể tải trọn bộ báo cáo. Vui lòng thử tải từng định dạng!', { id: 'export-toast' });
+      toast.error(getErrorMessage(err) || 'Không thể tải trọn bộ báo cáo. Vui lòng thử tải từng định dạng!', { id: 'export-toast' });
     } finally {
       setLoading(false);
       setDownloadingFormat(null);
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col relative max-h-[95vh]">
+  const content = (
+      <div
+        className={`bg-white rounded-3xl w-full border border-slate-200/90 overflow-hidden flex flex-col relative ${
+          asPage ? 'shadow-sm' : 'max-w-3xl shadow-2xl max-h-[95vh]'
+        }`}
+      >
         {/* Top Gradient Stripe */}
         <div className="h-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 shrink-0" />
 
@@ -245,17 +263,27 @@ export default function CropReportExportModal({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-slate-200/70 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-            title="Đóng hộp thoại"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {asPage ? (
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl bg-slate-200/70 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              title="Đóng hộp thoại"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+        <div className={`p-5 sm:p-6 space-y-5 ${asPage ? '' : 'overflow-y-auto flex-1'}`}>
           {/* Cảnh báo nếu vụ / ao chưa thu hoạch */}
           {!isTargetHarvested && (
             <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3 text-amber-900 animate-in fade-in duration-200">
@@ -647,7 +675,7 @@ export default function CropReportExportModal({
               disabled={loading}
               className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer w-full sm:w-auto"
             >
-              Hủy
+              {asPage ? 'Quay lại' : 'Hủy'}
             </button>
 
             {isFullCycleMode ? (
@@ -712,6 +740,15 @@ export default function CropReportExportModal({
           </div>
         </div>
       </div>
+  );
+
+  if (asPage) {
+    return <div className="w-full max-w-5xl mx-auto pb-12 animate-in fade-in duration-200">{content}</div>;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200">
+      {content}
     </div>,
     document.body,
   );

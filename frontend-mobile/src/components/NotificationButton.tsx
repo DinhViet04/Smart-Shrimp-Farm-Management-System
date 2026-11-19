@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import {
   View,
   Text,
@@ -37,6 +38,8 @@ export default function NotificationButton({
 }: NotificationButtonProps) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
+  const isModalVisibleRef = useRef(false);
+  isModalVisibleRef.current = isModalVisible;
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -49,9 +52,18 @@ export default function NotificationButton({
 
   useEffect(() => {
     checkUnreadCount();
-    const interval = setInterval(checkUnreadCount, 30000); // 30s poll
-    return () => clearInterval(interval);
   }, [checkUnreadCount]);
+
+  // Realtime: cập nhật số chưa đọc ngay khi có thông báo mới hoặc
+  // khi trạng thái đọc thay đổi trên thiết bị khác.
+  useRealtimeRefresh(
+    'notifications',
+    () => {
+      void checkUnreadCount();
+      if (isModalVisibleRef.current) void loadNotifications();
+    },
+    { debounceMs: 200 },
+  );
 
   const loadNotifications = async () => {
     setIsLoading(true);

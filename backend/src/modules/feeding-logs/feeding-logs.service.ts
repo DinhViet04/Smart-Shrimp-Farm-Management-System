@@ -12,6 +12,29 @@ import { CreateDailyFeedingLogDto } from './dto/create-feeding-log.dto';
 import { GetFeedingLogsQueryDto } from './dto/get-feeding-logs.dto';
 import { FeedingStatus, CropStatus } from '@prisma/client';
 
+/** Tiền tố ghi chú của phiếu xuất kho tự động sinh từ nhật ký cho ăn */
+const FEEDING_USAGE_NOTE_PREFIX = 'Xuất kho từ Nhật ký cho ăn';
+
+/** Ghi chú phiếu xuất kho cho 1 ao (dùng chung khi tạo/cập nhật/xoá để luôn khớp nhau) */
+export const buildFeedingUsageNote = (pondName: string) => {
+  const pondLabel = pondName.toLowerCase().startsWith('ao')
+    ? pondName
+    : `Ao ${pondName}`;
+  return `${FEEDING_USAGE_NOTE_PREFIX} - ${pondLabel}`;
+};
+
+/** Khoảng [00:00, 23:59:59.999] UTC của ngày cho ăn */
+const dayRange = (date: Date) => {
+  const start = new Date(date);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(date);
+  end.setUTCHours(23, 59, 59, 999);
+  return { gte: start, lte: end };
+};
+
+/** Làm tròn số kg để tránh sai số dấu phẩy động (0.1 + 0.2) */
+const roundKg = (n: number) => Math.round(n * 1000) / 1000;
+
 @Injectable()
 export class FeedingLogsService {
   constructor(
@@ -177,16 +200,44 @@ export class FeedingLogsService {
         results.push(log);
       }
 
-      // Apply net inventory adjustments — only deduct kg, package count = floor(kg / weightPerPkg)
-      for (const [inventoryId, netDelta] of netDeltas.entries()) {
+      // Apply net inventory adjustments — only deduct kg, package count = ceil(kg / weightPerPkg)
+      for (const [inventoryId, rawDelta] of netDeltas.entries()) {
+        const netDelta = roundKg(rawDelta);
         if (netDelta !== 0) {
+          if (netDelta > 0) {
+            // Trừ kho có điều kiện ngay trong DB: nếu 2 yêu cầu đồng thời cùng trừ
+            // thì yêu cầu sau sẽ thất bại thay vì làm tồn kho âm / bị kẹp về 0.
+            const deducted = await tx.inventory.updateMany({
+              where: {
+                id: inventoryId,
+                farmId: dto.farmId,
+                deletedAt: null,
+                quantity: { gte: netDelta },
+              },
+              data: { quantity: { decrement: netDelta } },
+            });
+            if (deducted.count === 0) {
+              throw new BadRequestException(
+                'Số lượng thức ăn trong kho không đủ (có thể vừa được người khác xuất). Vui lòng tải lại và thử lại.',
+              );
+            }
+          } else {
+            // Hoàn kho (giảm/bỏ cử). updateMany: không lỗi nếu sản phẩm đã bị xoá khỏi kho
+            await tx.inventory.updateMany({
+              where: { id: inventoryId },
+              data: { quantity: { increment: -netDelta } },
+            });
+          }
+
           const inv = await tx.inventory.findUnique({
             where: { id: inventoryId },
           });
 
           if (inv) {
-            const nextQuantity = Math.max(0, inv.quantity - netDelta);
-            const updatePayload: any = { quantity: nextQuantity };
+            const nextQuantity = roundKg(Math.max(0, inv.quantity));
+            const updatePayload: { quantity: number; packageQty?: number } = {
+              quantity: nextQuantity,
+            };
 
             // Package count: round up — bag still counts until fully consumed
             if (
@@ -207,44 +258,52 @@ export class FeedingLogsService {
         }
       }
 
-      // Calculate total actual consumption per product for this pond and date across dto.sessions
-      // and update/upsert/delete corresponding InventoryUsageLog records to prevent duplicates
+      // Tổng lượng đã cho ăn theo từng sản phẩm của CẢ NGÀY (đọc lại sau khi upsert),
+      // để lưu từng cử riêng lẻ vẫn ra đúng tổng — trước đây chỉ cộng các cử trong request
+      // nên lưu cử 2 sẽ ghi đè phiếu xuất của cử 1.
+      const dayLogs = await tx.feedingLog.findMany({
+        where: {
+          farmId: dto.farmId,
+          pondId: dto.pondId,
+          cropId: dto.cropId,
+          feedingDate: feedingDateObj,
+        },
+      });
       const productTotals = new Map<string, number>();
-      for (const session of dto.sessions) {
-        if (
-          session.feedingStatus !== FeedingStatus.SKIPPED &&
-          session.feedProductId
-        ) {
-          const amt = Number(session.feedAmount) || 0;
+      for (const log of dayLogs) {
+        if (log.feedingStatus !== FeedingStatus.SKIPPED && log.feedProductId) {
+          const amt = Number(log.feedAmount) || 0;
           if (amt > 0) {
             productTotals.set(
-              session.feedProductId,
-              (productTotals.get(session.feedProductId) || 0) + amt,
+              log.feedProductId,
+              roundKg((productTotals.get(log.feedProductId) || 0) + amt),
             );
           }
         }
       }
 
-      const pondLabel = pond.name.toLowerCase().startsWith('ao')
-        ? pond.name
-        : `Ao ${pond.name}`;
-      const notePrefix = `Xuất kho từ Nhật ký cho ăn - ${pondLabel}`;
-      const startOfDay = new Date(feedingDateObj);
-      startOfDay.setUTCHours(0, 0, 0, 0);
-      const endOfDay = new Date(feedingDateObj);
-      endOfDay.setUTCHours(23, 59, 59, 999);
+      const notePrefix = buildFeedingUsageNote(pond.name);
 
+      // Chỉ lấy phiếu của đúng ao này: so khớp ghi chú chính xác (không dùng "contains"
+      // vì "Ao A1" khớp nhầm "Ao A10") và chỉ trong kho của trang trại này.
       const existingUsageLogs = await tx.inventoryUsageLog.findMany({
         where: {
-          usageDate: { gte: startOfDay, lte: endOfDay },
-          notes: { contains: notePrefix },
+          usageDate: dayRange(feedingDateObj),
+          notes: notePrefix,
+          inventory: { farmId: dto.farmId },
         },
+        orderBy: { createdAt: 'asc' },
       });
 
-      const existingUsageMap = new Map<string, any>();
-      existingUsageLogs.forEach((ul) => {
-        existingUsageMap.set(ul.inventoryId, ul);
-      });
+      const existingUsageMap = new Map<string, { id: string }>();
+      for (const ul of existingUsageLogs) {
+        if (existingUsageMap.has(ul.inventoryId)) {
+          // Dọn phiếu trùng do lỗi cũ: mỗi sản phẩm/ao/ngày chỉ giữ 1 phiếu
+          await tx.inventoryUsageLog.delete({ where: { id: ul.id } });
+        } else {
+          existingUsageMap.set(ul.inventoryId, ul);
+        }
+      }
 
       const allProductIds = new Set<string>([
         ...Array.from(productTotals.keys()),
@@ -262,6 +321,8 @@ export class FeedingLogsService {
               data: {
                 quantityUsed: currentTotal,
                 notes: notePrefix,
+                pondId: dto.pondId,
+                cropId: dto.cropId,
               },
             });
           } else {
@@ -271,6 +332,8 @@ export class FeedingLogsService {
                 quantityUsed: currentTotal,
                 usageDate: feedingDateObj,
                 notes: notePrefix,
+                pondId: dto.pondId,
+                cropId: dto.cropId,
                 createdBy: user.userId,
               },
             });
@@ -565,11 +628,13 @@ export class FeedingLogsService {
       }
 
       // Delete auto-generated inventory usage logs for this pond and date
-      const notePrefix = `Xuất kho từ Nhật ký cho ăn - Ao ${pondName}`;
+      // (dùng cùng hàm tạo ghi chú với lúc ghi nhận -> trước đây tên ao bắt đầu bằng "Ao"
+      // bị thành "Ao Ao ..." nên phiếu xuất không bị xoá dù kho đã được hoàn)
       await tx.inventoryUsageLog.deleteMany({
         where: {
-          usageDate: feedingDateObj,
-          notes: { contains: notePrefix },
+          usageDate: dayRange(feedingDateObj),
+          notes: buildFeedingUsageNote(pondName),
+          inventory: { farmId },
         },
       });
 

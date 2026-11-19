@@ -25,8 +25,10 @@ import {
   BorderStyle,
 } from 'docx';
 import { jsPDF } from 'jspdf';
+import toast from 'react-hot-toast';
 import { type CropDetailedReportResponse, type Crop } from '../services/crop.service';
 import { type CropCycle } from './cropCycleGrouping';
+/** Một dòng trong sheet Excel (giá trị ô: chữ, số, ngày hoặc trống) */type SheetRow = (string | number | boolean | Date | null | undefined)[];
 
 // ── Helper: Format tiền tệ VND ──────────────────────────────────────────────
 export const formatVND = (num: number | null | undefined): string => {
@@ -72,7 +74,7 @@ export const toAsciiVi = (str: string | null | undefined): string => {
 // ── Helper: Khử dấu tiếng Việt và ký tự cấm trên Windows để đặt tên file an toàn ──
 export const sanitizeFileName = (name: string): string => {
   return toAsciiVi(name)
-    .replace(/[^a-zA-Z0-9_\-\.]/g, '_')
+    .replace(/[^a-zA-Z0-9_.-]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
 };
@@ -364,7 +366,7 @@ export const exportCycleToExcel = (
   const wb = XLSX.utils.book_new();
 
   // ── Sheet 1: Tổng quan toàn bộ vụ nuôi & Bảng so sánh các ao ──
-  const overviewData: any[][] = [
+  const overviewData: SheetRow[] = [
     ['HỆ THỐNG QUẢN LÝ TRANG TRẠI NUÔI TÔM THÔNG MINH - SSFM'],
     ['BÁO CÁO TỔNG KẾT TOÀN VỤ NUÔI (TẤT CẢ CÁC AO)'],
     ['Ngày xuất báo cáo:', formatDateVi(new Date())],
@@ -475,7 +477,7 @@ export const exportCycleToExcel = (
   XLSX.utils.book_append_sheet(wb, wsOverview, 'Tong_Quan_Toan_Vu');
 
   // ── Sheet 2: Chi tiết tài chính từng ao & Toàn vụ ──
-  const costSheetRows: any[][] = [
+  const costSheetRows: SheetRow[] = [
     ['BẢNG HẠCH TOÁN CHI PHÍ TỪNG AO & TOÀN VỤ'],
     ['Vụ:', cycle.name, 'Trang trại:', cycle.farmName],
     [],
@@ -501,7 +503,7 @@ export const exportCycleToExcel = (
     let rowTotal = 0;
     const pondCosts = cycle.allCrops.map((c) => {
       const r = reports.find((item) => item.crop.id === c.id);
-      const val = (r?.financial.costs as any)?.[cat.key] || 0;
+      const val = (r?.financial.costs as Record<string, number> | undefined)?.[cat.key] || 0;
       rowTotal += val;
       return val;
     });
@@ -558,7 +560,7 @@ export const exportCycleToExcel = (
   ];
 
   let feedIdx = 1;
-  const allFeedingRows: any[][] = [];
+  const allFeedingRows: SheetRow[] = [];
   reports.forEach((r) => {
     (r.feeding.recentLogs || []).forEach((log) => {
       allFeedingRows.push([
@@ -588,7 +590,7 @@ export const exportCycleToExcel = (
   ];
 
   let waterIdx = 1;
-  const allWaterRows: any[][] = [];
+  const allWaterRows: SheetRow[] = [];
   reports.forEach((r) => {
     (r.waterQuality.recentRecords || []).forEach((w) => {
       const isAlert = Number(w.ph) < 7.5 || Number(w.ph) > 8.5 || Number(w.dissolvedOxygen) < 4.0 || Number(w.nh3) > 0.1 || Number(w.no2) > 0.2;
@@ -620,7 +622,7 @@ export const exportCycleToExcel = (
   ];
 
   let medIdx = 1;
-  const allMedRows: any[][] = [];
+  const allMedRows: SheetRow[] = [];
   reports.forEach((r) => {
     (r.treatmentsAndSupplies.items || []).forEach((item) => {
       allMedRows.push([
@@ -1475,7 +1477,7 @@ export const exportCropToPdfPrint = (
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert('Vui lòng cho phép mở cửa sổ popup để xem trước và in báo cáo PDF!');
+    toast.error('Trình duyệt đã chặn cửa sổ xem trước. Vui lòng cho phép mở cửa sổ popup để xem trước và in báo cáo PDF!');
     return;
   }
 
@@ -1629,7 +1631,7 @@ export const exportCycleToPdfPrint = (
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert('Vui lòng cho phép mở cửa sổ popup để xem trước và in báo cáo PDF!');
+    toast.error('Trình duyệt đã chặn cửa sổ xem trước. Vui lòng cho phép mở cửa sổ popup để xem trước và in báo cáo PDF!');
     return;
   }
 

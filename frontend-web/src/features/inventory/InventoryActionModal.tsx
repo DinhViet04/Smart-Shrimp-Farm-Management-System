@@ -1,6 +1,7 @@
-import { useState, type FormEvent, useEffect } from 'react';
+import { useState, type FormEvent, useEffect, useEffectEvent } from 'react';
 import { X, PackagePlus, PackageMinus, Info, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { inventoryService } from '../../services/inventory.service';
+import { inventoryService, type InventoryItem } from '../../services/inventory.service';
+import { getErrorMessage } from '../../utils/errors';
 
 const sanitizeNumericInput = (val: string): string => {
   if (!val) return '';
@@ -11,10 +12,10 @@ const sanitizeNumericInput = (val: string): string => {
 
 interface InventoryActionModalProps {
   isOpen: boolean;
-  item: any | null;
-  items?: any[];
+  item: InventoryItem | null;
+  items?: InventoryItem[];
   initialAction?: 'IMPORT' | 'EXPORT';
-  ponds?: any[];
+  ponds?: { id: string; name: string; farmId?: string }[];
   selectedFarmId?: string;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -74,7 +75,8 @@ export default function InventoryActionModal({
     }
   }, [isOpen, item, items, initialAction]);
 
-  useEffect(() => {
+  // Reset form khi mở modal hoặc đổi mặt hàng (đọc activeItem mới nhất)
+  const resetFormsForItem = useEffectEvent(() => {
     if (isOpen && activeItem) {
       let defaultPurpose = 'OTHER';
       if (activeItem.category === 'FEED') defaultPurpose = 'FEEDING';
@@ -94,6 +96,9 @@ export default function InventoryActionModal({
         notes: '',
       });
     }
+  });
+  useEffect(() => {
+    resetFormsForItem();
   }, [isOpen, activeItem?.id]);
 
   if (!isOpen || !activeItem) return null;
@@ -139,8 +144,8 @@ export default function InventoryActionModal({
         });
         onSuccess(`Ghi nhận nhập kho thành công: +${formatNumber(numImportPackages)} ${packageType}!`);
         onClose();
-      } catch (error: any) {
-        setErrorMessage(error.message || 'Có lỗi xảy ra khi nhập kho');
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error) || 'Có lỗi xảy ra khi nhập kho');
       } finally {
         setIsSubmitting(false);
       }
@@ -170,8 +175,8 @@ export default function InventoryActionModal({
         });
         onSuccess(`Ghi nhận xuất kho thành công: -${formatNumber(numExportQuantity)} ${activeItem.unit}!`);
         onClose();
-      } catch (error: any) {
-        setErrorMessage(error.message || 'Có lỗi xảy ra khi xuất kho');
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error) || 'Có lỗi xảy ra khi xuất kho');
       } finally {
         setIsSubmitting(false);
       }
@@ -289,7 +294,7 @@ export default function InventoryActionModal({
                   <p className="font-bold">Nhập theo quy cách đóng gói ({packageType}):</p>
                   <p className="text-blue-700 mt-0.5">
                     {weightPerPkg ? (
-                      <>1 {packageType} = <b>{weightPerPkg} {item.unit}</b>. Số lượng nhập sẽ tự động nhân quy cách để tính vào tổng tồn kho cơ bản.</>
+                      <>1 {packageType} = <b>{weightPerPkg} {activeItem.unit}</b>. Số lượng nhập sẽ tự động nhân quy cách để tính vào tổng tồn kho cơ bản.</>
                     ) : (
                       <>Nhập số lượng theo đơn vị <b>{packageType}</b> thực tế đưa vào kho.</>
                     )}
@@ -320,7 +325,7 @@ export default function InventoryActionModal({
                     autoFocus
                   />
                   <p className="text-[11px] text-slate-400 font-medium mt-1">
-                    Chỉ nhập số {packageType.toLowerCase()}, không nhập theo {item.unit}
+                    Chỉ nhập số {packageType.toLowerCase()}, không nhập theo {activeItem.unit}
                   </p>
                 </div>
 
@@ -347,8 +352,8 @@ export default function InventoryActionModal({
                   </div>
                   {weightPerPkg && (
                     <div className="flex items-center justify-between font-medium text-slate-600">
-                      <span>Khối lượng quy đổi ({weightPerPkg} {item.unit}/{packageType}):</span>
-                      <span className="font-bold text-indigo-700">+{formatNumber(calculatedImportQuantity)} {item.unit}</span>
+                      <span>Khối lượng quy đổi ({weightPerPkg} {activeItem.unit}/{packageType}):</span>
+                      <span className="font-bold text-indigo-700">+{formatNumber(calculatedImportQuantity)} {activeItem.unit}</span>
                     </div>
                   )}
                   <div className="pt-2 border-t border-blue-200/60 flex items-center justify-between font-bold text-slate-800">
@@ -357,7 +362,7 @@ export default function InventoryActionModal({
                     </span>
                     <span className="text-blue-900 font-black">
                       {formatNumber(projectedPackageQty)} {packageType}
-                      {weightPerPkg && ` (~${formatNumber(projectedBaseQuantity)} ${item.unit})`}
+                      {weightPerPkg && ` (~${formatNumber(projectedBaseQuantity)} ${activeItem.unit})`}
                     </span>
                   </div>
                 </div>
@@ -438,7 +443,7 @@ export default function InventoryActionModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    2. Số lượng xuất ({item.unit}) <span className="text-red-500">*</span>
+                    2. Số lượng xuất ({activeItem.unit}) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -461,7 +466,7 @@ export default function InventoryActionModal({
                   />
                   {isExportExceeded ? (
                     <p className="text-[11px] font-bold text-red-600 mt-1 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Vượt quá tồn kho ({formatNumber(item.quantity)} {item.unit})!
+                      <AlertTriangle className="w-3 h-3" /> Vượt quá tồn kho ({formatNumber(activeItem.quantity)} {activeItem.unit})!
                     </p>
                   ) : (
                     equivalentExportPackages && (

@@ -22,6 +22,7 @@ import { waterQualityService, type WaterQualityRecord } from '../../services/wat
 import { feedingLogService, type DailyFeedingGroup } from '../../services/feeding-log.service';
 import { incidentService, type Incident } from '../../services/incident.service';
 import { shrimpHealthService, type ShrimpHealthHistoryRecord } from '../../services/shrimp-health.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface FarmerDashboardHomeProps {
   onNavigateTab: (tab: string, config?: any) => void;
@@ -141,6 +142,11 @@ export default function FarmerDashboardHome({ onNavigateTab, currentUser }: Farm
       setIsRefreshing(false);
     }
   }, [selectedFarmId, todayIsoDateOnly]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops', 'feeding-logs', 'water-quality', 'environment', 'incidents', 'shrimp-health', 'shrimp-size', 'inventory', 'farm-staffs'], () => {
+    void fetchAllData(true);
+  });
 
   useEffect(() => {
     fetchAllData();
@@ -410,7 +416,7 @@ export default function FarmerDashboardHome({ onNavigateTab, currentUser }: Farm
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <button
-            onClick={() => onNavigateTab('Nhật ký Chăm sóc')}
+            onClick={() => onNavigateTab('Nhật ký cho ăn')}
             className="flex items-center gap-3 p-3.5 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200/80 rounded-2xl transition-all cursor-pointer group text-left"
           >
             <div className="w-10 h-10 rounded-xl bg-white text-emerald-600 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
@@ -675,7 +681,7 @@ export default function FarmerDashboardHome({ onNavigateTab, currentUser }: Farm
                     {!isIdle ? (
                       <>
                         <button
-                          onClick={() => onNavigateTab('Nhật ký Chăm sóc')}
+                          onClick={() => onNavigateTab('Nhật ký cho ăn')}
                           className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all text-center cursor-pointer shadow-xs"
                         >
                           + Ghi cữ ăn

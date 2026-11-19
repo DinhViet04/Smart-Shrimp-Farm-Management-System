@@ -32,6 +32,7 @@ import {
   getErrorMessage,
   type FarmIncidentTab,
 } from './farmIncidentConstants';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface FarmIncidentDashboardProps {
   role?: 'ADMIN' | 'FARM_MANAGER' | 'TECHNICIAN' | 'FARMER';
@@ -131,8 +132,8 @@ export default function FarmIncidentDashboard({
   }, []);
 
   // Fetch incidents
-  const loadIncidents = useCallback(async () => {
-    setLoading(true);
+  const loadIncidents = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     try {
       const filters: Parameters<typeof incidentService.getAll>[0] = {
         size: 400,
@@ -157,6 +158,11 @@ export default function FarmIncidentDashboard({
       setLoading(false);
     }
   }, [selectedPondId, isFarmer]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['incidents'], () => {
+    void loadIncidents(true);
+  });
 
   useEffect(() => {
     loadIncidents();
@@ -190,7 +196,7 @@ export default function FarmIncidentDashboard({
     try {
       const detail = await incidentService.getById(inc.id);
       setActiveIncident(detail);
-      const targetFarmId = detail?.crop?.pond?.farm?.id || (detail?.crop?.pond as any)?.farmId || farmId;
+      const targetFarmId = detail?.crop?.pond?.farm?.id || detail?.crop?.pond?.farmId || farmId;
       if (isManager && targetFarmId) {
         loadTechnicians(targetFarmId);
       }
@@ -206,7 +212,7 @@ export default function FarmIncidentDashboard({
     setSelectedTechId(inc.assignedToId || '');
     setAssignNote('');
     setShowAssignModal(true);
-    const targetFarmId = inc.crop?.pond?.farm?.id || (inc.crop?.pond as any)?.farmId || farmId;
+    const targetFarmId = inc.crop?.pond?.farm?.id || inc.crop?.pond?.farmId || farmId;
     if (targetFarmId) {
       loadTechnicians(targetFarmId);
     }
@@ -265,11 +271,11 @@ export default function FarmIncidentDashboard({
 
   const roleScopedIncidents = useMemo(() => {
     if (isFarmer) {
-      return farmOnlyIncidents.filter((i) => i.reporter?.id === currentUserId || (i as any).reporterId === currentUserId);
+      return farmOnlyIncidents.filter((i) => i.reporter?.id === currentUserId || i.reporterId === currentUserId);
     }
     if (isTechnician) {
       if (techViewMode === 'my_reports') {
-        return farmOnlyIncidents.filter((i) => i.reporter?.id === currentUserId || (i as any).reporterId === currentUserId);
+        return farmOnlyIncidents.filter((i) => i.reporter?.id === currentUserId || i.reporterId === currentUserId);
       }
       return farmOnlyIncidents.filter((i) => i.assignedToId === currentUserId || i.assignedTo?.id === currentUserId);
     }
@@ -659,7 +665,7 @@ export default function FarmIncidentDashboard({
               Sự cố tôi đã báo cáo (
               {
                 incidents.filter(
-                  (i) => i.reporter?.id === currentUserId || (i as any).reporterId === currentUserId
+                  (i) => i.reporter?.id === currentUserId || i.reporterId === currentUserId
                 ).length
               }
               )

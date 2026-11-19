@@ -213,19 +213,21 @@ export default function FarmerDashboard() {
 
 
 
-  const navItems = [
+  // Đặt `hidden: true` để ẩn mục khỏi thanh điều hướng (code màn hình vẫn giữ nguyên).
+  // Muốn hiện lại: xoá `hidden: true` hoặc đổi thành `hidden: false`.
+  const allNavItems: { name: string; icon: React.ReactNode; hidden?: boolean }[] = [
 
     { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
 
     { name: 'Quản lý Ao của tôi', icon: <Waves className="w-5 h-5" /> },
 
-    { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" /> },
+    { name: 'Môi trường nước', icon: <Droplets className="w-5 h-5" />, hidden: true },
 
-    { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" /> },
+    { name: 'Sức khỏe tôm', icon: <HeartPulse className="w-5 h-5" />, hidden: true },
 
-    { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5 text-teal-600" /> },
+    { name: 'Theo dõi tăng trưởng', icon: <TrendingUp className="w-5 h-5 text-teal-600" />, hidden: true },
 
-    { name: 'Nhật ký Chăm sóc', icon: <ClipboardList className="w-5 h-5" /> },
+    { name: 'Nhật ký cho ăn', icon: <ClipboardList className="w-5 h-5" /> },
 
     { name: 'Kho thức ăn', icon: <Package className="w-5 h-5" /> },
 
@@ -236,6 +238,8 @@ export default function FarmerDashboard() {
     { name: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
 
   ];
+
+  const navItems = allNavItems.filter((item) => !item.hidden);
 
 
 
@@ -253,7 +257,7 @@ export default function FarmerDashboard() {
 
           isSidebarCollapsed
 
-            ? 'w-20 my-3 ml-3 h-[calc(100vh-1.5rem)] rounded-3xl bg-white/85 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.08)]'
+            ? 'w-20 h-screen bg-white border-r border-teal-100 shadow-sm'
 
             : 'w-72 h-screen bg-white border-r border-teal-100 shadow-sm'
 
@@ -265,56 +269,34 @@ export default function FarmerDashboard() {
 
         {isSidebarCollapsed ? (
 
-          <div className="flex flex-col items-center py-3.5 px-2 gap-2 border-b border-teal-50/80 flex-shrink-0">
-
-            <img
-
-              src="/logonen.jpg"
-
-              alt="SSFM Logo"
-
-              className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 flex-shrink-0 transition-transform duration-300 hover:scale-105"
-
-            />
-
-            {/* Dedicated Expand Button */}
-
+          <div className="flex h-20 items-center justify-center border-b border-teal-50 flex-shrink-0">
+            {/* Logo: hover để hiện nút mở rộng */}
             <button
-
               onClick={() => {
-
                 setIsSidebarCollapsed(false);
-
                 setHoveredTooltip(null);
-
               }}
-
               onMouseEnter={(e) => {
-
                 const rect = e.currentTarget.getBoundingClientRect();
-
                 setHoveredTooltip({
-
                   text: 'Mở rộng thanh điều hướng',
-
                   top: rect.top + rect.height / 2,
-
                 });
-
               }}
-
               onMouseLeave={() => setHoveredTooltip(null)}
-
               title="Mở rộng thanh điều hướng"
-
-              className="group relative flex items-center justify-center w-8 h-8 rounded-xl bg-teal-50/80 hover:bg-teal-100 text-teal-600 hover:scale-105 active:scale-95 transition-all duration-200 border border-teal-100/80 shadow-2xs cursor-pointer"
-
+              aria-label="Mở rộng thanh điều hướng"
+              className="group relative w-10 h-10 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2"
             >
-
-              <PanelLeftOpen className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-
+              <img
+                src="/logonen.jpg"
+                alt="SSFM Logo"
+                className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 transition-opacity duration-200 group-hover:opacity-0 group-focus-visible:opacity-0"
+              />
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-teal-50 text-teal-600 border border-teal-100 shadow-sm opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                <PanelLeftOpen className="w-5 h-5" />
+              </span>
             </button>
-
           </div>
 
         ) : (
@@ -1033,7 +1015,7 @@ export default function FarmerDashboard() {
 
              </div>
 
-          ) : activeTab === 'Nhật ký Chăm sóc' ? (
+          ) : activeTab === 'Nhật ký cho ăn' ? (
 
              <FeedingLogDashboard />
 
@@ -1053,7 +1035,7 @@ export default function FarmerDashboard() {
 
                   {activeTab === 'Quản lý Ao của tôi' && <Waves className="w-12 h-12 text-teal-500" />}
 
-                  {activeTab === 'Nhật ký Chăm sóc' && <ClipboardList className="w-12 h-12 text-teal-500" />}
+                  {activeTab === 'Nhật ký cho ăn' && <ClipboardList className="w-12 h-12 text-teal-500" />}
 
                 </div>
 

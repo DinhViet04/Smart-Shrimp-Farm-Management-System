@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useEffectEvent } from 'react';
 import {
   ArrowLeft,
   Search,
@@ -24,7 +24,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import LoadingMotion from '../../components/LoadingMotion';
-import { inventoryService } from '../../services/inventory.service';
+import { inventoryService, type InventoryItem, type InventoryUsageLog } from '../../services/inventory.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import {
   feedingLogService,
@@ -36,11 +36,14 @@ import {
   findSeasonByCropId,
 } from '../../utils/cropGrouping';
 import InventoryActionModal from './InventoryActionModal';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
 
 interface InventoryUsageHistoryViewProps {
-  farmId: string;
+  // Không truyền farmId = kho tổng của Manager (dữ liệu của tất cả trang trại)
+  farmId?: string;
   farmName?: string;
-  ponds: any[];
+  ponds: { id: string; name: string; farmId?: string }[];
   onBack: () => void;
 }
 
@@ -50,21 +53,21 @@ export default function InventoryUsageHistoryView({
   ponds,
   onBack,
 }: InventoryUsageHistoryViewProps) {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<InventoryUsageLog[]>([]);
   const [feedingGroups, setFeedingGroups] = useState<DailyFeedingGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Modal chi tiết cữ ăn & chi tiết giao dịch kho
   const [selectedFeedingGroup, setSelectedFeedingGroup] = useState<DailyFeedingGroup | null>(null);
-  const [selectedMovementLog, setSelectedMovementLog] = useState<any | null>(null);
+  const [selectedMovementLog, setSelectedMovementLog] = useState<InventoryUsageLog | null>(null);
 
   // Modal nhập / xuất kho trực tiếp ngay tại trang Nhật ký sử dụng
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionModalAction, setActionModalAction] = useState<'IMPORT' | 'EXPORT'>('IMPORT');
-  const [actionItem, setActionItem] = useState<any | null>(null);
+  const [actionItem, setActionItem] = useState<InventoryItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Bộ lọc loại biến động: ALL (Cả Nhập & Xuất) | IMPORT (Chỉ Nhập) | EXPORT (Chỉ Xuất) | FEEDING (Nhật ký cho ăn ao)
@@ -78,9 +81,8 @@ export default function InventoryUsageHistoryView({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch cả nhật ký kho, nhật ký cho ăn hàng ngày và danh sách vật tư của farm
-  const fetchAllData = async () => {
-    if (!farmId) return;
-    setIsLoading(true);
+  const fetchAllData = async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     setError(null);
     try {
       const [usageData, feedingRes, inventoryRes] = await Promise.all([
@@ -97,20 +99,28 @@ export default function InventoryUsageHistoryView({
         ? inventoryRes
         : inventoryRes?.data || [];
       setInventoryItems(itemsList);
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải nhật ký biến động kho');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Không thể tải nhật ký biến động kho');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['inventory', 'feeding-logs'], () => {
+    void fetchAllData(true);
+  });
+
   // Fetch crops
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [cropsRealtimeTick, setCropsRealtimeTick] = useState(0);
+  useRealtimeRefresh(['crops'], () => setCropsRealtimeTick((v) => v + 1));
   useEffect(() => {
     const fetchCrops = async () => {
       try {
         const cropsData = await cropService.getAll();
         const farmCrops = (cropsData || []).filter(
-          (c) => c.pond?.farmId === farmId || ponds.some((p) => p.id === c.pondId)
+          (c) => !farmId || c.pond?.farmId === farmId || ponds.some((p) => p.id === c.pondId)
         );
         setCrops(farmCrops);
       } catch {
@@ -119,39 +129,57 @@ export default function InventoryUsageHistoryView({
     };
 
     fetchCrops();
-  }, [farmId, ponds]);
+  }, [farmId, ponds, cropsRealtimeTick]);
 
+  const reloadAllData = useEffectEvent(() => {
+    void fetchAllData();
+  });
   useEffect(() => {
-    fetchAllData();
+    reloadAllData();
+    const handleUpdate = () => {
+      reloadAllData();
+    };
+    window.addEventListener('inventory_updated', handleUpdate);
+    window.addEventListener('farm_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('inventory_updated', handleUpdate);
+      window.removeEventListener('farm_data_updated', handleUpdate);
+    };
   }, [farmId]);
 
   // Nhận diện một dòng nhật ký là Nhập kho hay Xuất kho
-  const isImportLog = (log: any): boolean => {
+  const isImportLog = (log: InventoryUsageLog): boolean => {
     return log?.type === 'IMPORT' || log?.notes?.startsWith('[NHẬP KHO') || false;
   };
 
   // Parse ghi chú và gói quy cách của log
-  const parseLogDetails = (log: any) => {
+  const parseLogDetails = (log: InventoryUsageLog) => {
     const rawNote = log.notes || '';
     const isImport = isImportLog(log);
 
     if (isImport) {
+      const isAI = rawNote.includes('[NHẬP KHO AI]') || rawNote.includes('[AI') || rawNote.includes('AI Tự Động') || rawNote.includes('AI');
       const match = rawNote.match(/^\[NHẬP KHO(?::\s*([^\]]+))?\](.*)/);
-      if (match) {
-        return {
-          isImport: true,
-          actionLabel: 'Nhập kho',
-          packageInfo: match[1]?.trim() || '',
-          cleanNote: match[2]?.replace(/^ —\s*/, '').trim() || '',
-          purpose: 'Bổ sung tồn kho sản phẩm',
-        };
+      let packageInfo = match?.[1]?.trim() || '';
+
+      // Trích xuất quy cách nếu có trong dấu ngoặc đơn (vd: (10 Bao), (10 Can)...)
+      if (!packageInfo) {
+        const pkgMatch = rawNote.match(/\(([^)]*(?:Bao|Chai|Can|Gói|Thùng|Hộp|Túi|đơn vị|lít|kg)[^)]*)\)/i);
+        if (pkgMatch) {
+          packageInfo = pkgMatch[1].trim();
+        }
       }
+
+      let cleanNote = match ? match[2] : rawNote.replace(/^\[NHẬP KHO[^\]]*\]/, '');
+      cleanNote = cleanNote.replace(/^[\s—-]+/, '').trim();
+
       return {
         isImport: true,
-        actionLabel: 'Nhập kho',
-        packageInfo: '',
-        cleanNote: rawNote,
-        purpose: 'Bổ sung tồn kho sản phẩm',
+        isAI,
+        actionLabel: isAI ? 'Nhập kho (AI)' : 'Nhập kho',
+        packageInfo,
+        cleanNote: cleanNote || 'Nhập kho bổ sung tồn kho',
+        purpose: isAI ? 'Nhập kho tự động qua Trợ lý AI' : 'Bổ sung tồn kho sản phẩm',
       };
     }
 
@@ -218,7 +246,7 @@ export default function InventoryUsageHistoryView({
     }
 
     // 3. Fallback: regex nhận diện tên ao đầy đủ bao gồm cả chữ số/tên ao phía sau (vd: "Ao số 2", "Ao 2", "Ao lắng", "Ao ương 1")
-    const match = note.match(/Ao\s+(?:số\s+)?[\p{L}\d\.\-_]+/iu);
+    const match = note.match(/Ao\s+(?:số\s+)?[\p{L}\d.\-_]+/iu);
     if (match) return match[0].trim();
 
     return null;
@@ -1287,10 +1315,18 @@ export default function InventoryUsageHistoryView({
                         {/* 3. Loại biến động */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap">
                           {isImport ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                              <PackagePlus className="w-3.5 h-3.5 text-emerald-600" />
-                              Nhập kho
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                <PackagePlus className="w-3.5 h-3.5 text-emerald-600" />
+                                Nhập kho
+                              </span>
+                              {details.isAI && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+                                  <Sparkles className="w-3 h-3 text-purple-500" />
+                                  Trợ lý AI
+                                </span>
+                              )}
+                            </div>
                           ) : log.notes?.includes('Nhật ký cho ăn') ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
                               <Utensils className="w-3.5 h-3.5 text-amber-600" />
@@ -1425,7 +1461,7 @@ export default function InventoryUsageHistoryView({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const found = inventoryItems.find((i) => i.id === log.inventoryId) || log.inventory;
+                                  const found = inventoryItems.find((i) => i.id === log.inventoryId) || log.inventory || null;
                                   setActionItem(found);
                                   setActionModalAction('IMPORT');
                                   setIsActionModalOpen(true);

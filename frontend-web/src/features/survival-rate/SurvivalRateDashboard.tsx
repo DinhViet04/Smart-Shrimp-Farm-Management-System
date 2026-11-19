@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useCallback, useMemo } from 'react';
 import {
   Activity,
   Calendar,
@@ -16,10 +16,12 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
 import { pondService } from '../../services/pond.service';
+import { getErrorMessage } from '../../utils/errors';
 import { cropService, type Crop } from '../../services/crop.service';
 import { survivalRateService, type SurvivalRateStats } from '../../services/survival-rate.service';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface Farm {
   id: string;
@@ -92,11 +94,6 @@ export default function SurvivalRateDashboard({
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Fetch initial farms & ponds
-  useEffect(() => {
-    fetchFarmsAndPonds();
-  }, []);
-
   const fetchFarmsAndPonds = async () => {
     setError(null);
     try {
@@ -106,7 +103,7 @@ export default function SurvivalRateDashboard({
       if (farmsData.length > 0) {
         setSelectedFarmId((prev) => {
           if (initialPondId) {
-            const pondMatch = pondsData.find((p: any) => p.id === initialPondId);
+            const pondMatch = pondsData.find((p) => p.id === initialPondId);
             if (pondMatch && farmsData.some((f: Farm) => f.id === pondMatch.farmId)) {
               onSelectFarm?.(pondMatch.farmId);
               return pondMatch.farmId;
@@ -121,16 +118,33 @@ export default function SurvivalRateDashboard({
           return chosen;
         });
       }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi khi tải danh sách trang trại');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Lỗi khi tải danh sách trang trại'));
     }
   };
+
+  // Fetch initial farms & ponds
+  const loadOnMount = useEffectEvent(() => {
+    void fetchFarmsAndPonds();
+  });
+  useEffect(() => {
+    loadOnMount();
+  }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds'], () => {
+    void fetchFarmsAndPonds();
+  });
 
   // Filter ponds based on selected farm
   const farmPonds = useMemo(() => {
     if (!selectedFarmId) return [];
     return ponds.filter((p) => p.farmId === selectedFarmId);
   }, [ponds, selectedFarmId]);
+
+  const notifySelectFarm = useEffectEvent((farmId: string) => {
+    onSelectFarm?.(farmId);
+  });
 
   // Sync when initialPondId changes
   useEffect(() => {
@@ -139,7 +153,7 @@ export default function SurvivalRateDashboard({
       if (matchPond) {
         if (matchPond.farmId !== selectedFarmId) {
           setSelectedFarmId(matchPond.farmId);
-          onSelectFarm?.(matchPond.farmId);
+          notifySelectFarm(matchPond.farmId);
         }
         if (selectedPondId !== matchPond.id) {
           setSelectedPondId(matchPond.id);
@@ -149,7 +163,8 @@ export default function SurvivalRateDashboard({
   }, [initialPondId, ponds, selectedFarmId, selectedPondId]);
 
   // When selected farm changes, update ponds & select pond
-  useEffect(() => {
+  // (đọc selectedPondId mới nhất nhưng không chạy lại khi người dùng tự đổi ao)
+  const syncPondForFarm = useEffectEvent(() => {
     if (farmPonds.length > 0) {
       if (initialPondId && farmPonds.some((p) => p.id === initialPondId)) {
         if (selectedPondId !== initialPondId) {
@@ -173,10 +188,13 @@ export default function SurvivalRateDashboard({
       setSelectedCropId('');
       setStats(null);
     }
+  });
+  useEffect(() => {
+    syncPondForFarm();
   }, [selectedFarmId, farmPonds, initialPondId, ponds]);
 
   // Fetch crops for selected pond
-  const fetchCropsForPond = useCallback(async (pondId: string) => {
+  const fetchCropsForPond = useEffectEvent(async (pondId: string) => {
     if (!pondId) {
       setCrops([]);
       setSelectedCropId('');
@@ -205,8 +223,8 @@ export default function SurvivalRateDashboard({
           setStats(null);
         }
       }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi khi tải danh sách vụ nuôi');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Lỗi khi tải danh sách vụ nuôi'));
       setCrops([]);
       setSelectedCropId('');
       onSelectCrop?.('');
@@ -214,13 +232,14 @@ export default function SurvivalRateDashboard({
     } finally {
       setLoadingStats(false);
     }
-  }, [initialCropId]);
+  });
 
+  // Tải lại vụ nuôi khi đổi ao hoặc khi prop initialCropId thay đổi
   useEffect(() => {
     if (selectedPondId) {
-      fetchCropsForPond(selectedPondId);
+      void fetchCropsForPond(selectedPondId);
     }
-  }, [selectedPondId, fetchCropsForPond]);
+  }, [selectedPondId, initialCropId]);
 
   // Fetch Survival Rate Stats for selected crop
   const fetchSurvivalData = useCallback(async (cropId: string) => {
@@ -233,13 +252,18 @@ export default function SurvivalRateDashboard({
       if (statsRes) {
         setActualHarvestCountInput(statsRes.harvestCount || '');
       }
-    } catch (err: any) {
-      setError(err.message || 'Không thể tải tỷ lệ sống');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Không thể tải tỷ lệ sống');
       setStats(null);
     } finally {
       setLoadingStats(false);
     }
   }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['survival-rate', 'crops'], () => {
+    if (selectedCropId) void fetchSurvivalData(selectedCropId);
+  });
 
   useEffect(() => {
     if (selectedCropId) {
@@ -261,8 +285,8 @@ export default function SurvivalRateDashboard({
       showToastNotification('Đã ghi nhận số lượng tôm thu hoạch thành công!', 'success');
       setShowHarvestModal(false);
       await fetchSurvivalData(selectedCropId);
-    } catch (err: any) {
-      showToastNotification(err.message || 'Không thể cập nhật thu hoạch', 'error');
+    } catch (err) {
+      showToastNotification(getErrorMessage(err) || 'Không thể cập nhật thu hoạch', 'error');
     } finally {
       setSubmittingHarvest(false);
     }

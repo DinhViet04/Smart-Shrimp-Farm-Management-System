@@ -7,7 +7,11 @@ import {
   Param,
   UseGuards,
   Request,
+  Res,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ChatbotService } from './chatbot.service';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -16,6 +20,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Throttle } from '@nestjs/throttler';
+import type { UploadedFileDto } from './file-parser.service';
 
 @Controller('chatbot')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,11 +39,63 @@ export class ChatbotController {
   }
 
   /**
-   * Thực thi hành động tạo thực thể do AI đề xuất sau khi người dùng xác nhận
+   * Tải tệp (Excel, PDF, Word) lên để AI phân tích và chuẩn bị lệnh nhập kho vật tư
+   * Endpoint: POST /api/chatbot/upload-and-parse
+   */
+  @Post('upload-and-parse')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 15 * 1024 * 1024 }, // Tối đa 15MB
+    }),
+  )
+  async uploadAndParse(
+    @UploadedFile() file: UploadedFileDto,
+    @Body('question') question: string,
+    @Body('history') historyStr: string,
+    @Request() req: any,
+  ) {
+    let history: any = undefined;
+    if (historyStr) {
+      try {
+        history = JSON.parse(historyStr);
+      } catch {}
+    }
+    return this.chatbotService.handleFileUploadAndAction(file, question, req.user, history);
+  }
+
+  /**
+   * Xuất báo cáo tồn kho trang trại ra file Excel (.xlsx)
+   * Endpoint: GET /api/chatbot/export/inventory/:farmId
+   */
+  @Get('export/inventory/:farmId')
+  @Roles('ADMIN', 'FARM_MANAGER')
+  async exportInventoryExcel(
+    @Param('farmId') farmId: string,
+    @Request() req: any,
+    @Res() res: any,
+  ) {
+    const result = await this.chatbotService.exportInventoryExcel(farmId, req.user);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(result.filename)}"`,
+    );
+    res.setHeader('Content-Length', result.buffer.length);
+    return res.end(result.buffer);
+  }
+
+  /**
+   * Thực thi hành động do AI đề xuất sau khi người dùng xác nhận
    * Endpoint: POST /api/chatbot/execute-action
    */
   @Post('execute-action')
-  @Roles('FARM_MANAGER', 'FARMER')
+  // FARM_MANAGER: tạo trang trại / ao / vụ, nhập kho. TECHNICIAN: lưu số đo nước.
+  // Quyền chi tiết theo từng loại phiếu kiểm tra lại trong AgentActionService.
+  @Roles('FARM_MANAGER', 'TECHNICIAN')
   async executeAgentAction(@Body() dto: ExecuteActionDto, @Request() req: any) {
     return this.chatbotService.executeAction(dto, req.user);
   }
@@ -103,4 +160,3 @@ export class ChatbotController {
     return this.chatbotService.syncDriveDocuments(body);
   }
 }
-

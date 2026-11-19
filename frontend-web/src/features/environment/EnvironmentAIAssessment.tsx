@@ -172,7 +172,7 @@ export default function EnvironmentAIAssessment() {
           nh3: Number(rec.nh3),
           no2: Number(rec.no2),
           transparency: Number(rec.transparency),
-          note: (rec as any).note,
+          note: (rec as { note?: string }).note,
           createdBy: rec.createdBy,
           createdAt: rec.createdAt,
         });

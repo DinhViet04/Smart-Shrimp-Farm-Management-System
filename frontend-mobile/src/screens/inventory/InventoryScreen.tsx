@@ -38,6 +38,7 @@ import { inventoryService, InventoryItem, InventoryUsageLog } from '../../servic
 import { pondService, OverviewFarm } from '../../services/pondService';
 import { useAuth } from '../../context/AuthContext';
 import BusinessHeader from '../../components/BusinessHeader';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 type CategoryFilter = 'ALL' | 'FEED' | 'MEDICINE' | 'CHEMICAL';
 
@@ -112,6 +113,11 @@ export default function InventoryScreen({ route }: any) {
       setIsRefreshing(false);
     }
   }, [selectedCategory, searchQuery, createFarmId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['inventory', 'suppliers', 'feeding-logs', 'ponds'], () => {
+    void loadData();
+  });
 
   useEffect(() => {
     setIsLoading(true);

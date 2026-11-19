@@ -35,6 +35,7 @@ import { pondService, OverviewPond, OverviewCrop } from '../../services/pondServ
 import { cropService, CreateCropPayload } from '../../services/cropService';
 import { toLocalDateString } from '../../utils/date';
 import { useAuth } from '../../context/AuthContext';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const DOC = (startDate: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000));
@@ -122,6 +123,11 @@ export default function FarmManagementScreen({ navigation }: any) {
       setIsRefreshing(false);
     }
   }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops', 'farm-staffs', 'workspaces'], () => {
+    void loadData();
+  });
 
   useEffect(() => {
     loadData();

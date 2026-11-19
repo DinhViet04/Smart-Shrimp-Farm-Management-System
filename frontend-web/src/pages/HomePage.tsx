@@ -560,7 +560,7 @@ export default function HomePage() {
             </div>
 
             <h2 className="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight tracking-tight drop-shadow-md">Sẵn sàng chuyển đổi số trang trại của bạn?</h2>
-            <p className="text-blue-50 text-base md:text-lg mb-10 max-w-2xl mx-auto drop-shadow-md">Tham gia cùng các hộ nông dân tiên phong áp dụng <strong className="text-white">Quy trình 5T</strong> để tối ưu chi phí, kiểm soát rủi ro dịch bệnh và bứt phá năng suất bền vững.</p>
+            <p className="text-blue-50 text-base md:text-lg mb-10 max-w-2xl mx-auto drop-shadow-md">Tham gia cùng các hộ nông dân tiên phong áp dụng <strong className="text-white">SSFM</strong> để tối ưu chi phí, kiểm soát rủi ro dịch bệnh và bứt phá năng suất bền vững.</p>
 
             {/* Buttons */}
             <div className="flex items-center justify-center mb-8 w-full sm:w-auto">
@@ -595,7 +595,7 @@ export default function HomePage() {
                 </div>
               </Link>
               <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                Smart Shrimp Farm Management System - Nền tảng quản trị kỹ thuật số toàn diện, tích hợp AI và phân tích dữ liệu chuyên sâu dành riêng cho <strong className="text-slate-200">Quy trình 5T</strong>.
+                Smart Shrimp Farm Management System - Nền tảng quản trị kỹ thuật số toàn diện, tích hợp AI và phân tích dữ liệu chuyên sâu dành riêng cho <strong className="text-slate-200">trang trại nuôi tôm</strong>.
               </p>
 
               <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">KẾT NỐI VỚI CHÚNG TÔI</h4>
@@ -620,12 +620,12 @@ export default function HomePage() {
               <ul className="space-y-5">
                 <li className="flex items-start gap-3 text-slate-400 text-sm">
                   <MapPin className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">Khoa Công Nghệ Thông Tin, Trường ĐH KHTN ĐHQG-HCM, 227 Nguyễn Văn Cừ, Quận 5, TP.HCM</span>
+                  <span className="leading-relaxed">Khoa Kỹ thuật Phần mềm, Trường Đại học FPT Đà Nẵng</span>
                 </li>
                 <li className="flex items-start gap-3 text-slate-400 text-sm">
                   <Phone className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="text-white block text-base font-bold tracking-wide">0123 456 789</strong>
+                    <strong className="text-white block text-base font-bold tracking-wide">0934 880 683</strong>
                     <span className="text-xs">Hỗ trợ kỹ thuật 24/7</span>
                   </div>
                 </li>
@@ -643,7 +643,7 @@ export default function HomePage() {
               </h3>
               <ul className="space-y-3.5">
                 {[
-                  'Quy trình 5T chuẩn hóa',
+                  'Quản lý vụ nuôi & ao nuôi',
                   'Bản đồ ao nuôi (IoT GIS)',
                   'Giám sát môi trường nước',
                   'Dự báo dịch bệnh AI',
@@ -684,7 +684,7 @@ export default function HomePage() {
 
           {/* Bottom Bar */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-[11px] font-medium text-slate-500 tracking-wide">
-            <p>© 2024 <strong className="text-slate-300">SSFM Team</strong> (Khoa CNTT - ĐH KHTN ĐHQG-HCM). All rights reserved.</p>
+            <p>© 2024 <strong className="text-slate-300">SSFM Team</strong> (Khoa Kỹ thuật Phần mềm - ĐH FPT Đà Nẵng). All rights reserved.</p>
             <div className="flex items-center gap-4 sm:gap-6">
               <a href="#" className="hover:text-cyan-400 transition-colors">Điều khoản dịch vụ</a>
               <span className="w-1 h-1 bg-slate-700 rounded-full"></span>

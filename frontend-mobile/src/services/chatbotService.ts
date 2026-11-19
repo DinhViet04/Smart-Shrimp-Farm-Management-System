@@ -10,13 +10,58 @@ export interface ChatbotSource {
 }
 
 export interface AgentActionDraft {
+  /** Mã phiếu duy nhất do backend cấp */
+  draftId?: string;
   type: 'SLOT_FILLING' | 'CONFIRM_ACTION';
-  intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+  intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP' | 'RECORD_WATER_QUALITY';
   collectedData: Record<string, any>;
   missingFields: string[];
   quickSuggestions?: string[];
   summary?: Record<string, string>;
   isExecuted?: boolean;
+  /** Danh sách ao cho thẻ nhập thông số nước */
+  pondOptions?: WaterPondOption[];
+  /** Ao đang trống cho thẻ tạo vụ nuôi (chỉ Quản lý trang trại) */
+  cropPondOptions?: CropPondOption[];
+  /** Giá tôm giống thị trường (Tép Bạc) cho mục đơn giá giống trên thẻ tạo vụ */
+  seedMarketPrice?: SeedPriceInfo;
+}
+
+/** Giá tôm giống thị trường gửi kèm thẻ tạo vụ (cùng nguồn với form tạo vụ thủ công) */
+export interface SeedPriceInfo {
+  name: string;
+  price: number;
+  unit: string;
+  source: string;
+  sourceUrl: string;
+  updatedAt: string;
+  /** false = không lấy được giá trực tuyến, đang dùng giá mặc định */
+  isLive: boolean;
+}
+
+/** Ao đang trống kèm mô hình trang trại cho thẻ tạo vụ nuôi trong khung chat */
+export interface CropPondOption {
+  id: string;
+  name: string;
+  farmId: string;
+  farmName: string;
+  /** HIGH_TECH -> vụ mới bắt buộc Ương dưỡng; TRADITIONAL -> chỉ Thương phẩm */
+  farmingModel: string | null;
+  areaSize: number;
+  depth: number;
+}
+
+/** Ao kèm dữ liệu cho thẻ thông số nước trong khung chat */
+export interface WaterPondOption {
+  id: string;
+  name: string;
+  farmId?: string;
+  farmName: string;
+  areaSize?: number;
+  depth?: number;
+  waterVolume?: number;
+  doc?: number | null;
+  lastRecord?: ({ recordTime: string; waterColor?: string | null } & Record<string, number | string | null | undefined>) | null;
 }
 
 export interface ChatMessage {
@@ -32,6 +77,8 @@ export interface ChatMessage {
   poweredBy?: string;
   isError?: boolean;
   actionDraft?: AgentActionDraft;
+  /** Tin nhắn kết thúc phiếu đang chờ (hủy, không đủ quyền...) -> khóa các phiếu trước đó */
+  endsPendingAction?: boolean;
 }
 
 export interface ChatSession {
@@ -49,6 +96,8 @@ export interface ChatbotResponse {
   recommendations?: string[];
   poweredBy?: string;
   actionDraft?: AgentActionDraft;
+  /** true khi agent kết thúc luồng (hủy, không đủ quyền...) -> xoá phiếu đang chờ */
+  clearPendingAction?: boolean;
 }
 
 export interface PondOption {
@@ -57,8 +106,19 @@ export interface PondOption {
   farmId?: string;
 }
 
-const SESSIONS_STORAGE_KEY = '@ssfm_ai_chatgpt_sessions_v2';
-const ACTIVE_SESSION_STORAGE_KEY = '@ssfm_ai_active_session_id_v2';
+// Lịch sử chat được lưu RIÊNG theo từng tài khoản (khóa gắn với userId)
+const SESSIONS_STORAGE_PREFIX = '@ssfm_ai_chatgpt_sessions_v3';
+const ACTIVE_SESSION_STORAGE_PREFIX = '@ssfm_ai_active_session_id_v3';
+// Khóa cũ dùng chung cho mọi tài khoản -> xóa để không lộ lịch sử chat giữa các tài khoản
+const LEGACY_SHARED_KEYS = ['@ssfm_ai_chatgpt_sessions_v2', '@ssfm_ai_active_session_id_v2'];
+
+const getStorageKeys = async () => {
+  const userId = (await AsyncStorage.getItem('userId')) || 'guest';
+  return {
+    sessions: `${SESSIONS_STORAGE_PREFIX}:${userId}`,
+    active: `${ACTIVE_SESSION_STORAGE_PREFIX}:${userId}`,
+  };
+};
 
 export const createNewSession = (title = 'Cuộc trò chuyện mới'): ChatSession => {
   const now = new Date();
@@ -126,14 +186,18 @@ export const chatbotService = {
    * Thực thi hành động do AI đề xuất sau khi người dùng xác nhận
    */
   async executeAction(action: {
-    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP' | 'RECORD_WATER_QUALITY';
     data: Record<string, any>;
+    /** Mã phiếu: backend chỉ thực thi mỗi phiếu 1 lần */
+    draftId?: string;
   }): Promise<{
     success: boolean;
     message: string;
     entity: any;
     type: string;
     redirectTab?: string;
+    /** Phiếu đã được thực thi trước đó (bấm lặp / thiết bị khác) -> không tạo thêm */
+    alreadyExecuted?: boolean;
   }> {
     return apiClient.post('/chatbot/execute-action', action);
   },
@@ -176,7 +240,8 @@ export const chatbotService = {
    */
   async getSessions(): Promise<ChatSession[]> {
     try {
-      const json = await AsyncStorage.getItem(SESSIONS_STORAGE_KEY);
+      await AsyncStorage.multiRemove(LEGACY_SHARED_KEYS);
+      const json = await AsyncStorage.getItem((await getStorageKeys()).sessions);
       if (json) {
         return JSON.parse(json);
       }
@@ -193,7 +258,7 @@ export const chatbotService = {
    */
   async saveSessions(sessions: ChatSession[]): Promise<void> {
     try {
-      await AsyncStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      await AsyncStorage.setItem((await getStorageKeys()).sessions, JSON.stringify(sessions));
     } catch (e) {
       console.error('Error saving chat sessions', e);
     }
@@ -204,7 +269,7 @@ export const chatbotService = {
    */
   async getActiveSessionId(): Promise<string | null> {
     try {
-      return await AsyncStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+      return await AsyncStorage.getItem((await getStorageKeys()).active);
     } catch (e) {
       return null;
     }
@@ -215,7 +280,7 @@ export const chatbotService = {
    */
   async setActiveSessionId(id: string): Promise<void> {
     try {
-      await AsyncStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id);
+      await AsyncStorage.setItem((await getStorageKeys()).active, id);
     } catch (e) {
       console.error('Error setting active session ID', e);
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import {
   CheckCircle2,
   AlertCircle,
@@ -8,6 +8,7 @@ import {
   Layers,
   Check,
   Ban,
+  Pencil,
   Sliders,
   Sparkles,
   Calculator,
@@ -23,6 +24,7 @@ import {
   type FeedingStatus,
   type SingleSessionPayload,
 } from '../../services/feeding-log.service';
+import { getErrorMessage } from '../../utils/errors';
 
 interface Farm { id: string; name: string; }
 interface Pond { id: string; name: string; farmId: string; }
@@ -35,6 +37,12 @@ interface FeedProduct {
   packageQty?: number | null;
   packageType?: string | null;
   weightPerPkg?: number | null;
+}
+
+interface SavedSession {
+  amount: number;
+  productId: string;
+  locked: boolean;
 }
 
 interface ToastProps {
@@ -117,6 +125,10 @@ export default function CreateFeedingLog() {
 
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Các cử đã được ghi nhận "Hoàn thành" trên server (đã trừ kho).
+  // locked = đang khoá (tối màu); bấm "Sửa" sẽ mở khoá nhưng vẫn nhớ lượng đã trừ để tính chênh lệch kho.
+  const [savedSessions, setSavedSessions] = useState<Partial<Record<FeedingSession, SavedSession>>>({});
+  const [savingSession, setSavingSession] = useState<FeedingSession | null>(null);
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [statusBanner, setStatusBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -180,8 +192,11 @@ export default function CreateFeedingLog() {
     }
   };
 
+  const reloadProducts = useEffectEvent(() => {
+    void loadProducts();
+  });
   useEffect(() => {
-    loadProducts();
+    reloadProducts();
   }, [selectedFarmId]);
 
   // Derived Ponds & Active Crops
@@ -209,6 +224,48 @@ export default function CreateFeedingLog() {
     }
   }, [activeCrops]);
 
+  // Tải các cử đã ghi nhận của ngày đang chọn để giữ trạng thái "Đã cho ăn" khi mở lại trang
+  useEffect(() => {
+    setSavedSessions({});
+    if (!selectedPondId || !selectedCropId || !feedingDate) return;
+    let cancelled = false;
+    feedingLogService
+      .getDailyDetails(selectedPondId, feedingDate)
+      .then((logs) => {
+        if (cancelled) return;
+        const dayLogs = logs.filter((l) => l.cropId === selectedCropId && l.feedingStatus === 'COMPLETED');
+        if (dayLogs.length === 0) return;
+        const saved: Partial<Record<FeedingSession, SavedSession>> = {};
+        dayLogs.forEach((l) => {
+          saved[l.feedingSession] = { amount: Number(l.feedAmount) || 0, productId: l.feedProductId, locked: true };
+        });
+        setSavedSessions(saved);
+        setActiveSessions((prev) => {
+          const next = { ...prev };
+          dayLogs.forEach((l) => { next[l.feedingSession] = true; });
+          return next;
+        });
+        setSessionData((prev) => {
+          const next = { ...prev };
+          dayLogs.forEach((l) => {
+            next[l.feedingSession] = {
+              ...next[l.feedingSession],
+              feedingTime: l.feedingTime || next[l.feedingSession].feedingTime,
+              feedProductId: l.feedProductId || next[l.feedingSession].feedProductId,
+              feedAmount: Number(l.feedAmount) || 0,
+              feedingMethod: l.feedingMethod || next[l.feedingSession].feedingMethod,
+              feedingStatus: 'COMPLETED',
+            };
+          });
+          return next;
+        });
+      })
+      .catch((err) => console.error('Không tải được nhật ký cho ăn trong ngày:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPondId, selectedCropId, feedingDate]);
+
   // Handler: Apply Preset (e.g. 2, 3, 4, 5, 6, 7 sessions)
   const applyPreset = (presetId: string) => {
     setSelectedPresetId(presetId);
@@ -229,6 +286,10 @@ export default function CreateFeedingLog() {
     preset.activeSessions.forEach((s) => {
       nextActiveMap[s] = true;
     });
+    // Cử đã cho ăn luôn giữ trạng thái hoàn thành
+    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
+      if (savedSessions[item.session]) nextActiveMap[item.session] = true;
+    });
 
     setActiveSessions(nextActiveMap);
 
@@ -238,6 +299,7 @@ export default function CreateFeedingLog() {
       DEFAULT_FEEDING_SESSIONS.forEach((item) => {
         const sKey = item.session;
         const isActive = nextActiveMap[sKey];
+        if (savedSessions[sKey]) return; // giữ nguyên cử đã cho ăn
         next[sKey] = {
           ...next[sKey],
           feedingTime: preset.times[sKey] || item.defaultTime,
@@ -284,6 +346,69 @@ export default function CreateFeedingLog() {
     });
   };
 
+  // Bấm "Hoàn thành" ở 1 cử: ghi nhận NGAY cử đó lên server (trừ kho) rồi khoá cử lại
+  const completeSession = async (session: FeedingSession) => {
+    if (savingSession) return;
+    setStatusBanner(null);
+    if (!selectedFarmId) return showToast('Vui lòng chọn trang trại', 'error');
+    if (!selectedPondId) return showToast('Vui lòng chọn ao nuôi', 'error');
+    if (!selectedCropId) return showToast('Không tìm thấy vụ nuôi ĐANG HOẠT ĐỘNG (ACTIVE) cho ao này. Hãy mở/tạo vụ nuôi mới trước!', 'error');
+    if (!feedingDate) return showToast('Vui lòng chọn ngày cho ăn', 'error');
+
+    const def = DEFAULT_FEEDING_SESSIONS.find((d) => d.session === session);
+    const current = sessionData[session];
+    // Cử đang "Bỏ cử" mà bấm Hoàn thành -> khôi phục lượng đã nhập trước đó
+    const amount = Number(current.feedAmount) > 0 ? Number(current.feedAmount) : cachedFeedAmounts[session] || 0;
+    const productId = current.feedProductId || feedProducts[0]?.id || '';
+    const label = def?.label || session;
+
+    if (!productId) return showToast('Vui lòng chọn sản phẩm thức ăn trước khi hoàn thành cử', 'error');
+    if (amount <= 0) return showToast(`Vui lòng nhập số kg thức ăn cho ${label} trước khi bấm Hoàn thành`, 'error');
+
+    const payload: SingleSessionPayload = {
+      feedingSession: session,
+      feedingTime: current.feedingTime || def?.defaultTime || '',
+      feedProductId: productId,
+      feedAmount: amount,
+      feedingMethod: current.feedingMethod || 'MANUAL',
+      feedingStatus: 'COMPLETED',
+      note: current.note?.trim() || undefined,
+    };
+
+    try {
+      setSavingSession(session);
+      await feedingLogService.createDailyLog({
+        farmId: selectedFarmId,
+        pondId: selectedPondId,
+        cropId: selectedCropId,
+        feedingDate,
+        sessions: [payload],
+      });
+      setSelectedPresetId('CUSTOM');
+      setActiveSessions((prev) => ({ ...prev, [session]: true }));
+      setSessionData((prev) => ({
+        ...prev,
+        [session]: { ...prev[session], feedProductId: productId, feedAmount: amount, feedingStatus: 'COMPLETED' },
+      }));
+      setCachedFeedAmounts((c) => ({ ...c, [session]: amount }));
+      setSavedSessions((prev) => ({ ...prev, [session]: { amount, productId, locked: true } }));
+      showToast(`Đã ghi nhận ${label}: ${amount} kg — đã trừ kho.`, 'success');
+      await loadProducts();
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể ghi nhận cử cho ăn', 'error');
+    } finally {
+      setSavingSession(null);
+    }
+  };
+
+  // Mở khoá cử đã cho ăn để chỉnh lại (bấm Hoàn thành lần nữa sẽ cập nhật & bù trừ kho)
+  const editSavedSession = (session: FeedingSession) => {
+    setSavedSessions((prev) => {
+      const current = prev[session];
+      return current ? { ...prev, [session]: { ...current, locked: false } } : prev;
+    });
+  };
+
   // Automatically propagate selected feed product to ALL sessions
   const handleSelectFeedProduct = (productId: string) => {
     setBatchFeedProductId(productId);
@@ -291,6 +416,7 @@ export default function CreateFeedingLog() {
     setSessionData((prev) => {
       const next = { ...prev };
       DEFAULT_FEEDING_SESSIONS.forEach((item) => {
+        if (savedSessions[item.session]?.locked) return; // cử đã cho ăn giữ nguyên sản phẩm
         next[item.session] = { ...next[item.session], feedProductId: productId };
       });
       return next;
@@ -327,17 +453,28 @@ export default function CreateFeedingLog() {
       return showToast('Vui lòng nhập tổng lượng thức ăn hợp lệ (> 0 kg)', 'error');
     }
 
-    const activeList = DEFAULT_FEEDING_SESSIONS.filter((item) => activeSessions[item.session]);
+    // Các cử đã cho ăn (đang khoá) giữ nguyên; chỉ chia phần còn lại cho các cử chưa cho ăn
+    const lockedKg = DEFAULT_FEEDING_SESSIONS.reduce(
+      (sum, item) => sum + (savedSessions[item.session]?.locked ? savedSessions[item.session]!.amount : 0),
+      0,
+    );
+    const remaining = parseFloat((total - lockedKg).toFixed(2));
+    const activeList = DEFAULT_FEEDING_SESSIONS.filter(
+      (item) => activeSessions[item.session] && !savedSessions[item.session]?.locked,
+    );
     const N = activeList.length;
     if (N === 0) {
-      return showToast('Không có cử nào đang bật để chia thức ăn', 'error');
+      return showToast('Không còn cử nào chưa cho ăn để chia thức ăn', 'error');
+    }
+    if (remaining <= 0) {
+      return showToast(`Các cử đã cho ăn đã dùng ${lockedKg} kg, không còn lượng nào để chia (tổng nhập ${total} kg)`, 'error');
     }
 
     // Base amount rounded UP to 2 decimal places for the first (N - 1) sessions
-    const basePerSession = Math.ceil((total / N) * 100) / 100;
+    const basePerSession = Math.ceil((remaining / N) * 100) / 100;
     const sumFirst = basePerSession * (N - 1);
     // Remainder for the last active session (evening/night)
-    const lastSessionAmount = parseFloat((total - sumFirst).toFixed(2));
+    const lastSessionAmount = parseFloat((remaining - sumFirst).toFixed(2));
 
     setSessionData((prev) => {
       const next = { ...prev };
@@ -362,7 +499,12 @@ export default function CreateFeedingLog() {
       return nextCache;
     });
 
-    showToast(`Đã chia chính xác ${total} kg cho ${N} cử đang bật!`, 'success');
+    showToast(
+      lockedKg > 0
+        ? `Đã chia ${remaining} kg còn lại cho ${N} cử chưa cho ăn (đã cho ăn ${lockedKg} kg).`
+        : `Đã chia chính xác ${total} kg cho ${N} cử đang bật!`,
+      'success',
+    );
   };
 
 
@@ -384,12 +526,12 @@ export default function CreateFeedingLog() {
       if (s.feedingStatus !== 'SKIPPED' && isActive) {
         totalFeedKg += amt;
       }
-      if (s.feedingStatus === 'COMPLETED' && isActive) completed++;
+      if (savedSessions[sKey]) completed++;
       if (s.feedingStatus === 'SKIPPED' || !isActive) skipped++;
     });
 
     return { totalFeedKg, completed, skipped, activeCount };
-  }, [sessionData, activeSessions]);
+  }, [sessionData, activeSessions, savedSessions]);
 
   // Real-time stock demand calculation and validation
   const stockValidation = useMemo(() => {
@@ -400,7 +542,9 @@ export default function CreateFeedingLog() {
       const isActive = activeSessions[sKey];
       if (isActive && s.feedingStatus !== 'SKIPPED' && s.feedProductId) {
         const amt = Number(s.feedAmount) || 0;
-        demands[s.feedProductId] = (demands[s.feedProductId] || 0) + amt;
+        const saved = savedSessions[sKey];
+        const alreadyDeducted = saved && saved.productId === s.feedProductId ? saved.amount : 0;
+        demands[s.feedProductId] = (demands[s.feedProductId] || 0) + (amt - alreadyDeducted);
       }
     });
 
@@ -438,7 +582,7 @@ export default function CreateFeedingLog() {
       hasDeficit: deficits.length > 0,
       deficits,
     };
-  }, [sessionData, activeSessions, feedProducts, cachedFeedAmounts]);
+  }, [sessionData, activeSessions, feedProducts, cachedFeedAmounts, savedSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -457,7 +601,7 @@ export default function CreateFeedingLog() {
     const parsedBatchTotal = parseFloat(batchTotalFeedKg);
     const workingSessionData = { ...sessionData };
     if (!isNaN(parsedBatchTotal) && parsedBatchTotal > 0 && summary.totalFeedKg === 0) {
-      const activeKeys = DEFAULT_FEEDING_SESSIONS.filter((it) => activeSessions[it.session]).map((it) => it.session);
+      const activeKeys = DEFAULT_FEEDING_SESSIONS.filter((it) => activeSessions[it.session] && !savedSessions[it.session]).map((it) => it.session);
       if (activeKeys.length > 0) {
         const perSession = parseFloat((parsedBatchTotal / activeKeys.length).toFixed(2));
         activeKeys.forEach((sKey) => {
@@ -516,10 +660,21 @@ export default function CreateFeedingLog() {
       });
 
       setBatchTotalFeedKg('');
+      setSavedSessions((prev) => {
+        const next = { ...prev };
+        sessionList.forEach((s) => {
+          if (s.feedingStatus === 'COMPLETED' && s.feedAmount > 0) {
+            next[s.feedingSession] = { amount: s.feedAmount, productId: s.feedProductId, locked: true };
+          } else {
+            delete next[s.feedingSession]; // bỏ cử -> server đã hoàn kho
+          }
+        });
+        return next;
+      });
       showToast('Ghi nhận nhật ký cho ăn và trừ kho thành công!', 'success');
       await loadProducts();
-    } catch (err: any) {
-      showToast(err.message || 'Không thể ghi nhận nhật ký cho ăn', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể ghi nhận nhật ký cho ăn', 'error');
     } finally {
       setSaving(false);
     }
@@ -921,12 +1076,17 @@ export default function CreateFeedingLog() {
               const totalProductDemanded = selectedProd ? (stockValidation.demands[selectedProd.id] || 0) : 0;
               const isExcess = selectedProd && isActive && s.feedingStatus !== 'SKIPPED' && totalProductDemanded > selectedProd.quantity;
               const displayAmount = s.feedAmount > 0 ? s.feedAmount : (cachedFeedAmounts[sKey] > 0 ? cachedFeedAmounts[sKey] : 0);
+              const isDone = Boolean(savedSessions[sKey]?.locked);
+              const isSavingThis = savingSession === sKey;
+              const isEditable = isActive && !isDone;
 
               return (
                 <div
                   key={sKey}
-                  className={`bg-white/90 backdrop-blur-md rounded-2xl border p-3.5 sm:p-4 transition-all duration-200 ${
-                    !isActive
+                  className={`bg-white/90 backdrop-blur-md rounded-2xl border p-3.5 sm:p-4 transition-all duration-300 ${
+                    isDone
+                      ? 'border-slate-200 !bg-slate-100 opacity-60 grayscale'
+                      : !isActive
                       ? 'border-slate-200 bg-slate-50/50 opacity-70'
                       : 'border-white/80 shadow-md shadow-slate-200/30 hover:shadow-lg hover:border-emerald-200'
                   }`}
@@ -951,11 +1111,11 @@ export default function CreateFeedingLog() {
                       {/* Giờ cho ăn */}
                       <input
                         type="time"
-                        disabled={!isActive}
+                        disabled={!isEditable}
                         value={s.feedingTime}
                         onChange={(e) => updateSession(sKey, 'feedingTime', e.target.value)}
                         className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold outline-none transition-all ${
-                          isActive
+                          isEditable
                             ? 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-emerald-500'
                             : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
                         }`}
@@ -964,18 +1124,35 @@ export default function CreateFeedingLog() {
 
                     {/* Góc phải: Nút Hoàn thành / Bỏ cử + Ô nhập số kg thức ăn */}
                     <div className="flex flex-wrap items-center gap-2.5 self-end sm:self-auto flex-shrink-0">
-                      {/* Nút Hoàn thành / Bỏ cử */}
+                      {/* Nút Hoàn thành / Bỏ cử (cử đã cho ăn: nhãn + nút Sửa) */}
+                      {isDone ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="py-1.5 px-3 rounded-xl text-xs font-black bg-slate-300 text-slate-700 flex items-center gap-1.5">
+                            <Check className="w-3.5 h-3.5" /> Đã cho ăn
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => editSavedSession(sKey)}
+                            title="Mở khoá để chỉnh lại cử này"
+                            className="py-1.5 px-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3" /> Sửa
+                          </button>
+                        </div>
+                      ) : (
                       <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70">
                         <button
                           type="button"
-                          onClick={() => setSessionStatus(sKey, 'COMPLETED')}
-                          className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                          onClick={() => void completeSession(sKey)}
+                          disabled={savingSession !== null}
+                          title="Ghi nhận ngay cử này (trừ kho) và khoá lại"
+                          className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait ${
                             isActive
-                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 hover:bg-emerald-700'
                               : 'text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          <Check className="w-3.5 h-3.5" /> Hoàn thành
+                          {isSavingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Hoàn thành
                         </button>
                         <button
                           type="button"
@@ -989,6 +1166,7 @@ export default function CreateFeedingLog() {
                           <Ban className="w-3 h-3" /> Bỏ cử
                         </button>
                       </div>
+                      )}
 
                       {/* Ô nhập số kg thức ăn */}
                       <div className="relative w-32 sm:w-36">
@@ -996,12 +1174,12 @@ export default function CreateFeedingLog() {
                           type="number"
                           step="0.1"
                           min="0"
-                          disabled={!isActive}
+                          disabled={!isEditable}
                           value={isActive ? (s.feedAmount > 0 ? s.feedAmount : '') : (displayAmount > 0 ? displayAmount : 0)}
                           onChange={(e) => updateSession(sKey, 'feedAmount', e.target.value)}
                           placeholder="0.0"
                           className={`w-full px-3 py-1.5 pr-9 rounded-xl border text-sm font-extrabold outline-none transition-all ${
-                            !isActive
+                            !isEditable
                               ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed font-bold'
                               : isExcess
                                 ? 'bg-red-50 text-red-900 border-red-300 focus:border-red-500'
@@ -1026,7 +1204,7 @@ export default function CreateFeedingLog() {
                   )}
 
                   {/* Cảnh báo vượt tồn kho */}
-                  {isActive && isExcess && (
+                  {isEditable && isExcess && (
                     <p className="text-[11px] text-red-600 font-bold flex items-center gap-1 mt-2.5 pt-2 border-t border-red-100">
                       <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> Cảnh báo: Tổng nhu cầu ({totalProductDemanded.toFixed(1)} kg) vượt tồn kho ({selectedProd?.quantity} kg)! Hãy giảm kg hoặc bấm "Bỏ cử".
                     </p>

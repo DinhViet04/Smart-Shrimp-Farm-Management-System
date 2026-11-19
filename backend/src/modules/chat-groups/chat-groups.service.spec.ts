@@ -28,7 +28,7 @@ describe('ChatGroupsService', () => {
         }),
       },
       chatGroupMember: {
-        upsert: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({ count: 3 }),
       },
       chatMessage: {
         create: jest.fn().mockResolvedValue({ id: 'msg-welcome' }),
@@ -47,7 +47,16 @@ describe('ChatGroupsService', () => {
 
     const group = await service.ensureFarmChatGroup('farm-1');
     expect(group).toMatchObject({ id: 'group-1', farmId: 'farm-1' });
-    expect(prisma.chatGroupMember.upsert).toHaveBeenCalledTimes(3);
+    expect(prisma.chatGroupMember.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skipDuplicates: true,
+        data: expect.arrayContaining([
+          expect.objectContaining({ groupId: 'group-1', userId: 'owner-1' }),
+          expect.objectContaining({ groupId: 'group-1', userId: 'farmer-1' }),
+          expect.objectContaining({ groupId: 'group-1', userId: 'tech-1' }),
+        ]),
+      }),
+    );
     expect(prisma.chatMessage.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -83,6 +92,7 @@ describe('ChatGroupsService', () => {
       },
       chatGroupMember: {
         findUnique: jest.fn().mockResolvedValue(null),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
         upsert: jest.fn().mockResolvedValue({
           id: 'member-1',
           groupId: 'group-1',

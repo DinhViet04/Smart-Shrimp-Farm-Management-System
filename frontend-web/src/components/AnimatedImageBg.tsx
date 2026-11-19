@@ -29,6 +29,9 @@ export default function AnimatedImageBg({ src, className = '' }: Props) {
             animation: cinematicMotion 45s ease-in-out infinite;
             will-change: transform;
           }
+          @media (prefers-reduced-motion: reduce) {
+            .cinematic-bg-img { animation: none; transform: scale(1.15); }
+          }
         `}
       </style>
       <img

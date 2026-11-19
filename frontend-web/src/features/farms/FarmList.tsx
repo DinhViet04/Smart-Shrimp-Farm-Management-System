@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { Plus, Search, Edit2, Trash2, MapPin, Maximize, AlertCircle, Building2, CheckCircle2, Eye, Waves, User, ArrowRight, UserCog, X } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import FarmFormModal from './FarmFormModal';
 import FarmDetailPanel from './FarmDetailPanel';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
 
 interface FarmListProps {
   onNavigateToPonds?: (farmId?: string) => void;
@@ -45,28 +47,41 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canEdit = user.role === 'FARM_MANAGER';
 
-  const fetchFarms = async () => {
-    setIsLoading(true);
+  const showToast = (message: string, type: 'success' | 'error', farmId?: string) => {
+    setToast({ message, type, farmId });
+    setTimeout(() => setToast(null), farmId ? 7000 : 3500);
+  };
+
+  const fetchFarms = async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     try {
       const workspaceId = user.role === 'ADMIN'
         ? undefined
         : localStorage.getItem('active_workspace_id') || undefined;
       const data = await farmService.getAll(search, undefined, workspaceId);
       setFarms(data);
-    } catch (error) {
+    } catch {
       showToast('Không thể tải danh sách trang trại', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'farm-staffs', 'workspaces'], () => {
+    void fetchFarms(true);
+  });
+
+  const loadFarms = useEffectEvent(() => {
+    void fetchFarms();
+  });
   useEffect(() => {
     if (!search) {
-      fetchFarms();
+      loadFarms();
       return;
     }
     const timer = setTimeout(() => {
-      fetchFarms();
+      loadFarms();
     }, 150);
     return () => clearTimeout(timer);
   }, [search, workspaceRevision]);
@@ -77,11 +92,6 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
     return () => window.removeEventListener('workspace-changed', handleWorkspaceChange);
   }, []);
 
-  const showToast = (message: string, type: 'success' | 'error', farmId?: string) => {
-    setToast({ message, type, farmId });
-    setTimeout(() => setToast(null), farmId ? 7000 : 3500);
-  };
-
   const handleDelete = async () => {
     if (!farmToDelete) return;
     setIsDeleting(true);
@@ -89,8 +99,8 @@ export default function FarmList({ onNavigateToPonds }: FarmListProps = {}) {
       await farmService.remove(farmToDelete.id);
       showToast('Xóa trang trại thành công!', 'success');
       fetchFarms();
-    } catch (error: any) {
-      showToast(error.message || 'Không thể xóa trang trại này', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Không thể xóa trang trại này', 'error');
     } finally {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);

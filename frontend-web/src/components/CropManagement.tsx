@@ -50,6 +50,7 @@ import { groupCropsIntoCycles, type CropCycle } from '../utils/cropCycleGrouping
 import { GitFork, Layers } from 'lucide-react';
 import { analyzeCropHistory, type HistoryMetricKey } from '../utils/cropHistoryAnalysis';
 import { scrollToTop } from '../utils/scrollHelper';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 const formatVND = (num: number | null | undefined): string => {
   if (num === null || num === undefined || isNaN(num)) return '0';
@@ -369,8 +370,8 @@ export default function CropManagement({
     setLoading(true);
   }
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     try {
       const [overview, cropsData] = await Promise.all([
         pondService.getOverview(),
@@ -387,6 +388,11 @@ export default function CropManagement({
       setLoading(false);
     }
   }, [activeView, filterStatus]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops', 'incidents', 'shrimp-size', 'survival-rate', 'feeding-logs', 'environment', 'water-quality'], () => {
+    void fetchData(true);
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -554,7 +560,7 @@ export default function CropManagement({
           usagePercentage,
         };
       });
-  }, [farms, ponds, crops, activeView, filterStatus, filterYear, filterQuarter, filterFarmId, filterPondId, search]);
+  }, [farms, ponds, crops, allCropCycles, activeView, filterStatus, filterYear, filterQuarter, filterFarmId, filterPondId, search]);
 
   // Flattened historical crops for Table view
   const allFilteredHistoryCrops = useMemo(() => {
@@ -2982,7 +2988,7 @@ export default function CropManagement({
                   Hành động này sẽ làm <strong className="font-black text-rose-700 underline">MẤT TOÀN BỘ dữ liệu liên quan</strong> và không thể khôi phục:
                 </p>
                 <ul className="text-xs text-rose-800/90 list-disc list-inside space-y-1 font-medium pl-1">
-                  <li>Toàn bộ nhật ký chăm sóc hàng ngày & chi phí thức ăn</li>
+                  <li>Toàn bộ nhật ký cho ăn hàng ngày & chi phí thức ăn</li>
                   <li>Dữ liệu đo đạc chỉ số môi trường (pH, Oxy, kiềm, khí độc...)</li>
                   <li>Lịch sử tăng trưởng và theo dõi kích thước tôm</li>
                   <li>Dữ liệu thu hoạch và phân tích lợi nhuận vụ (nếu có)</li>

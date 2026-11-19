@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useEffectEvent, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, ArrowRight, Activity, LineChart, Eye, EyeOff, UserCheck, ShieldCheck, Waves, CheckCircle2 } from 'lucide-react';
 import { verifyInviteToken, acceptInviteToken } from '../services/farm.service';
+import { getErrorMessage } from '../utils/errors';
+import type { StoredUser } from '../types/user';
 
 /* ─── Floating bubble particle ─── */
 function Bubble({ style }: { style: React.CSSProperties }) {
@@ -69,7 +71,7 @@ export default function LoginPage() {
     return () => { cancelled = true; };
   }, [inviteTokenFromUrl]);
 
-  const [loggedInUser, setLoggedInUser] = useState<any>(() => {
+  const [loggedInUser, setLoggedInUser] = useState<StoredUser | null>(() => {
     try {
       const u = localStorage.getItem('user');
       const token = localStorage.getItem('accessToken');
@@ -79,7 +81,7 @@ export default function LoginPage() {
     }
   });
 
-  const handleGoogleLogin = async (response: any) => {
+  const handleGoogleLogin = async (response: GoogleCredentialResponse) => {
     setServerError('');
     setIsLoading(true);
     try {
@@ -134,8 +136,8 @@ export default function LoginPage() {
       navigate(redirectPath, {
         state: { welcomeFarm: result.farm.name },
       });
-    } catch (err: any) {
-      setServerError(err.message || 'Không thể chấp nhận lời mời');
+    } catch (err) {
+      setServerError(getErrorMessage(err) || 'Không thể chấp nhận lời mời');
     } finally {
       setIsLoading(false);
     }
@@ -148,18 +150,23 @@ export default function LoginPage() {
     setLoggedInUser(null);
   };
 
+  // Google gọi lại sau khi đăng nhập: luôn dùng handleGoogleLogin mới nhất
+  const onGoogleCredential = useEffectEvent((response: GoogleCredentialResponse) => {
+    void handleGoogleLogin(response);
+  });
+
   useEffect(() => {
     const initGoogle = () => {
-      if ((window as any).google?.accounts?.id) {
+      if (window.google?.accounts?.id) {
         const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id-here.apps.googleusercontent.com';
         if (googleClientId && !googleClientId.includes('your-google-client-id-here')) {
-          (window as any).google.accounts.id.initialize({
+          window.google.accounts.id.initialize({
             client_id: googleClientId,
-            callback: handleGoogleLogin,
+            callback: (response: GoogleCredentialResponse) => onGoogleCredential(response),
             auto_select: false,
           });
           if (googleBtnRef.current) {
-            (window as any).google.accounts.id.renderButton(
+            window.google.accounts.id.renderButton(
               googleBtnRef.current,
               { theme: 'outline', size: 'large', width: '100%', shape: 'pill', logo_alignment: 'center' },
             );
@@ -174,7 +181,7 @@ export default function LoginPage() {
       }
     };
     const timer = setInterval(() => {
-      if ((window as any).google) { initGoogle(); clearInterval(timer); }
+      if (window.google) { initGoogle(); clearInterval(timer); }
     }, 100);
     return () => clearInterval(timer);
   }, []);

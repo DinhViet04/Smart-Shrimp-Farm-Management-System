@@ -44,6 +44,7 @@ import { weatherService, type WeatherInfo } from '../../services/weather.service
 import type { CreateWaterQualityPayload } from '../../services/water-quality.service';
 import type { WaterWarningRecord } from './WaterTreatment';
 import LoadingMotion from '../../components/LoadingMotion';
+import { getErrorMessage } from '../../utils/errors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,10 +405,10 @@ export default function RecordWaterQuality({
     return farms.find((f) => f.id === selectedFarmId);
   }, [farms, selectedFarmId]);
 
-  const numVal = (key: FormKey): number | null => {
+  const numVal = useCallback((key: FormKey): number | null => {
     const n = parseFloat(form[key]);
     return isNaN(n) ? null : n;
-  };
+  }, [form]);
 
   const status = {
     temperature: getTemperatureStatus(numVal('temperature')),
@@ -421,6 +422,16 @@ export default function RecordWaterQuality({
     waterColor: getWaterColorStatus(form.waterColor),
   };
 
+  const showToast = (
+    message: string,
+    type: 'success' | 'error',
+    actionLabel?: string,
+    onAction?: () => void,
+  ) => {
+    setToast({ message, type, actionLabel, onAction });
+    setTimeout(() => setToast(null), actionLabel ? 7000 : 3500);
+  };
+
   // ── Load farms & ponds ───────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -431,7 +442,7 @@ export default function RecordWaterQuality({
 
         // Auto select first farm or prop initial
         if (initialPondId) {
-          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
+          const found = (pondsData || []).find((p) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);
@@ -508,16 +519,6 @@ export default function RecordWaterQuality({
     setForm((prev) => ({ ...prev, [key]: val }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }, []);
-
-  const showToast = (
-    message: string,
-    type: 'success' | 'error',
-    actionLabel?: string,
-    onAction?: () => void,
-  ) => {
-    setToast({ message, type, actionLabel, onAction });
-    setTimeout(() => setToast(null), actionLabel ? 7000 : 3500);
-  };
 
   const handleRefreshAi = () => {
     setIsRefreshingAi(true);
@@ -678,7 +679,7 @@ export default function RecordWaterQuality({
     }
 
     return issues;
-  }, [form]);
+  }, [form, numVal]);
 
   // ── Save Functionality ───────────────────────────────────────────────────────
   const executeSave = async (shouldNavigateToTreatment: boolean) => {
@@ -793,8 +794,8 @@ export default function RecordWaterQuality({
           );
         }
       }
-    } catch (err: any) {
-      showToast(err.message || 'Không thể lưu thông số. Vui lòng thử lại.', 'error');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không thể lưu thông số. Vui lòng thử lại.', 'error');
     } finally {
       setSaving(false);
     }
@@ -902,7 +903,7 @@ export default function RecordWaterQuality({
       warnings,
       recommendations,
     };
-  }, [form, weather]);
+  }, [weather, numVal]);
 
   // Weather icon helper
   const renderWeatherIcon = () => {

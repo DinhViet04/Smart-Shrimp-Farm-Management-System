@@ -27,6 +27,7 @@ import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { notificationService } from '../../services/notification.service';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useNow } from '../../hooks/useNow';
 
 export type NotificationLevel = 'INFO' | 'WARNING' | 'DANGER' | 'SUCCESS';
 
@@ -59,7 +60,7 @@ export interface NotificationItem {
 }
 
 // Determine category helper
-export const inferCategory = (item: NotificationItem): NotificationCategory => {
+const inferCategory = (item: NotificationItem): NotificationCategory => {
   if (item.category) return item.category;
   const lowerTitle = (item.title || '').toLowerCase();
   const lowerMsg = (item.message || '').toLowerCase();
@@ -101,6 +102,7 @@ export default function NotificationsCenter({
   onNavigateTab,
 }: NotificationsCenterProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const now = useNow(60_000); // cập nhật nhãn "x phút trước" mỗi phút
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,7 +122,7 @@ export default function NotificationsCenter({
       else setIsRefreshing(true);
       const data = await notificationService.getNotifications();
       setNotifications(Array.isArray(data) ? data : []);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to load notifications', err);
       toast.error('Không thể tải danh sách thông báo');
     } finally {
@@ -158,7 +160,7 @@ export default function NotificationsCenter({
 
   // Format relative time helper
   const formatTimeAgo = (isoString: string) => {
-    const diffMs = Date.now() - new Date(isoString).getTime();
+    const diffMs = now - new Date(isoString).getTime();
     const minutes = Math.floor(diffMs / (1000 * 60));
     if (minutes < 1) return 'Vừa xong';
     if (minutes < 60) return `${minutes} phút trước`;
@@ -301,7 +303,7 @@ export default function NotificationsCenter({
     } else if (cat === 'INVENTORY') {
       onNavigateTab(role === 'FARMER' ? 'Kho thức ăn' : 'Quản Lý Kho', config);
     } else if (cat === 'FEEDING') {
-      onNavigateTab(role === 'FARMER' ? 'Nhật ký Chăm sóc' : 'Quản lý Ao/Vụ', config);
+      onNavigateTab(role === 'FARMER' ? 'Nhật ký cho ăn' : 'Quản lý Ao/Vụ', config);
     } else {
       if (item.pondId) {
         onNavigateTab('Môi trường nước', config);

@@ -11,8 +11,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
-import { AgentActionService } from './agent-action.service';
-import { RoleContextService } from './role-context.service';
+import { AgentActionResult, AgentActionService } from './agent-action.service';
+import { ChatDataScopeService, ChatScope } from './data-scope/chat-data-scope.service';
+import { ChatToolsService } from './data-scope/chat-tools.service';
+import { FileParserService, UploadedFileDto } from './file-parser.service';
+import * as XLSX from 'xlsx';
 import { ExecuteActionDto } from './dto/execute-action.dto';
 import { AuthUser, FarmAccessService } from '../farm-access/farm-access.service';
 import { WeatherService, WeatherData } from './weather.service';
@@ -35,7 +38,9 @@ export class ChatbotService implements OnModuleInit {
     private readonly farmAccess: FarmAccessService,
     private readonly weatherService: WeatherService,
     private readonly agentActionService: AgentActionService,
-    private readonly roleContextService: RoleContextService,
+    private readonly fileParserService: FileParserService,
+    private readonly chatDataScope: ChatDataScopeService,
+    private readonly chatTools: ChatToolsService,
   ) {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
@@ -346,6 +351,8 @@ export class ChatbotService implements OnModuleInit {
         currentUser,
         dto.history,
         dto.pendingAction,
+        undefined,
+        dto.pondId,
       );
       if (agentActionResult && agentActionResult.isAgentAction) {
         return {
@@ -353,7 +360,9 @@ export class ChatbotService implements OnModuleInit {
           sources: [],
           hasLocalKnowledge: false,
           sourceType: 'OPENAI_KNOWLEDGE',
-          actionDraft: agentActionResult.actionDraft,
+          actionDraft: this.agentActionService.stampDraft(agentActionResult.actionDraft),
+          // Agent trả lời mà không kèm phiếu (hủy, không đủ quyền...) -> client xoá phiếu đang chờ
+          clearPendingAction: !agentActionResult.actionDraft,
           poweredBy: 'SSFM Smart Action Agent (OpenAI)',
         };
       }
@@ -361,9 +370,53 @@ export class ChatbotService implements OnModuleInit {
       this.logger.warn('Error in agent action processing:', agentErr?.message || agentErr);
     }
 
-    // 🔒 2. FULL-CONTEXT DATA ACCESS ENGINE: Truy vấn toàn bộ dữ liệu lịch sử & hiện tại được cô lập đúng theo Role & Người dùng
-    const userScopedData = await this.roleContextService.buildUserScopedContext(currentUser, question);
-    const roleBasedSystemContext = userScopedData.summaryText;
+    // 🔒 2. TRA CỨU LỊCH SỬ DỮ LIỆU THEO PHẠM VI NGƯỜI DÙNG (OpenAI tool-calling)
+    // AI tự gọi các công cụ truy vấn; mọi truy vấn đều bị ChatDataScopeService ép bộ lọc theo role + userId.
+    const scope = await this.chatDataScope.resolveScope(currentUser);
+    const roleBasedSystemContext = await this.chatTools.describeScope(scope);
+
+    // Ao đang được mở trên giao diện (vd: màn hình xử lý nước) -> làm ngữ cảnh mặc định cho công cụ
+    let focusPondHint = '';
+    if (dto.pondId) {
+      const focusPond = await this.prisma.pond
+        .findUnique({
+          where: { id: dto.pondId },
+          select: { name: true, farmId: true, farm: { select: { name: true } } },
+        })
+        .catch(() => null);
+      if (focusPond && (scope.farmIds === undefined || scope.farmIds.includes(focusPond.farmId))) {
+        focusPondHint = `- Người dùng đang mở ao: ${focusPond.name} (${focusPond.farm?.name || ''}). Nếu câu hỏi không nêu ao thì hiểu là ao này.\n`;
+      }
+    }
+
+    if (this.openai) {
+      const dataAnswer = await this.answerWithDataTools(
+        question,
+        scope,
+        roleBasedSystemContext + focusPondHint,
+        dto.history,
+        currentUser,
+      );
+      if (dataAnswer && typeof dataAnswer === 'object') {
+        // AI hiểu người dùng muốn tạo trang trại / ao / vụ -> trả phiếu
+        return {
+          answer: dataAnswer.answer || '',
+          sources: [],
+          hasLocalKnowledge: false,
+          sourceType: 'OPENAI_KNOWLEDGE',
+          actionDraft: this.agentActionService.stampDraft(dataAnswer.actionDraft),
+          poweredBy: 'SSFM Smart Action Agent (OpenAI)',
+        };
+      }
+      if (dataAnswer) {
+        return {
+          answer: this.stripReferenceSources(dataAnswer),
+          sources: [],
+          hasLocalKnowledge: false,
+          poweredBy: 'SSFM Data Assistant (OpenAI)',
+        };
+      }
+    }
 
     try {
       // 1. Thu thập dữ liệu ngữ cảnh ao nuôi thực tế từ DB
@@ -719,6 +772,129 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
     }
   }
 
+  /**
+   * Vòng lặp tool-calling: AI quyết định gọi công cụ tra cứu dữ liệu lịch sử.
+   * Trả về null nếu câu hỏi là kiến thức chung (để luồng RAG 5T hiện có xử lý).
+   */
+  private async answerWithDataTools(
+    question: string,
+    scope: ChatScope,
+    scopeSummary: string,
+    history?: Array<{ sender: 'user' | 'ai'; text: string }>,
+    currentUser?: AuthUser,
+  ): Promise<string | AgentActionResult | null> {
+    if (!this.openai) return null;
+    const MAX_TOOL_ROUNDS = 5;
+    const MAX_TOOL_RESULT_CHARS = 15000;
+    const actionTools = currentUser ? this.agentActionService.getActionToolDefinitions(currentUser.role) : [];
+    const tools = [...this.chatTools.getToolDefinitions(scope), ...actionTools];
+    const actionRule = actionTools.length
+      ? `\nTẠO DỮ LIỆU MỚI (công cụ draft_create_*):
+14. Khi người dùng muốn tạo trang trại / ao nuôi / vụ nuôi (thả giống) — với BẤT KỲ cách diễn đạt nào ("tạo 3 ao", "làm cho tôi mấy cái ao", "farm này cần thêm ao 2000m2", "thả 200 nghìn con vào ao 1"...) — gọi ngay công cụ draft_create_* tương ứng, KHÔNG trả lời bằng văn bản và KHÔNG bao giờ nói hệ thống không hỗ trợ.
+15. Chỉ truyền thông tin người dùng đã nói, đổi đơn vị đúng (ha -> m², "200 nghìn" -> 200000); trường chưa có thì bỏ trống, hệ thống sẽ tự hỏi lại. Có thể dùng lịch sử hội thoại để hiểu "trang trại này", "ao đó".
+16. Người dùng chỉ HỎI cách tạo / quy trình tạo (không yêu cầu tạo) thì trả lời hướng dẫn, không gọi công cụ.
+17. Nếu loại dữ liệu cần tạo không có công cụ draft_create_* tương ứng trong danh sách, tài khoản không có quyền tạo loại đó: lịch sự giải thích và gợi ý liên hệ Quản lý trang trại.`
+      : `\nTẠO DỮ LIỆU MỚI: Tài khoản này KHÔNG có quyền tạo trang trại / ao nuôi / vụ nuôi qua trợ lý. Nếu người dùng yêu cầu, lịch sự giải thích và gợi ý liên hệ Quản lý trang trại.`;
+    const today = new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+    const systemPrompt = `Bạn là Trợ lý dữ liệu của hệ thống Smart Shrimp Farm Management. Hôm nay là ${today}.
+
+${scopeSummary}
+NHIỆM VỤ: Trả lời câu hỏi về DỮ LIỆU THỰC TẾ và LỊCH SỬ của người dùng (vụ nuôi trước/hiện tại, cho ăn, môi trường nước, sức khỏe tôm, tăng trưởng, sự cố, thu hoạch, kho...) bằng cách gọi các công cụ tra cứu.
+
+QUY TẮC BẮT BUỘC:
+1. Nếu câu hỏi CHỈ là kiến thức chung/kỹ thuật nuôi tôm, thời tiết, chào hỏi... mà KHÔNG cần dữ liệu của người dùng: KHÔNG gọi công cụ, chỉ trả lời đúng một từ: KNOWLEDGE
+2. Khi cần xác định "vụ trước", "vụ hiện tại", "vụ thứ N" hoặc cropId: gọi list_crops trước. "Vụ trước" = vụ liền trước vụ hiện tại trong cùng ao (cropNumberInPond nhỏ hơn).
+3. Nếu người dùng hỏi dữ liệu nằm ngoài quyền (không có công cụ tương ứng trong danh sách), lịch sự trả lời rằng tài khoản không có quyền xem loại dữ liệu đó. Không gọi công cụ khác để đoán thay.
+4. CHỈ dùng số liệu từ kết quả công cụ. Không bịa số liệu. Nếu không có dữ liệu, nói rõ là chưa có bản ghi.
+5. Ưu tiên dùng phần summary (tổng hợp) của kết quả; nếu truncated=true thì nói rõ đây là các bản ghi gần nhất.
+6. Không hiển thị ID kỹ thuật (cropId, uuid) cho người dùng; gọi vụ theo tên ao + thời gian (vd: "vụ 2 ao A1, thả 01/03/2026").
+7. Có thể kèm nhận xét chuyên môn ngắn (so sánh, xu hướng, cảnh báo) dựa trên số liệu. Trả lời bằng tiếng Việt, rõ ràng, dùng gạch đầu dòng và in đậm số liệu quan trọng.
+7b. Hỏi tình hình chung / trại, ao của tôi / ao nào đang nuôi: gọi get_farm_overview. Hỏi ai trong trại, kỹ thuật viên/nông dân nào: list_farm_staff. Hỏi nhà cung cấp, mua ở đâu: query_suppliers. Hỏi "sự cố được giao cho tôi" dùng query_incidents với mine=ASSIGNED, "sự cố tôi báo cáo" dùng mine=REPORTED.
+7c. Câu hỏi tổng hợp nhiều mảng (vd: "vụ này ao C1 thế nào") có thể gọi nhiều công cụ trong cùng lượt rồi tổng hợp.
+
+NGHIỆP VỤ MÔI TRƯỜNG NƯỚC (khi có công cụ get_water_status trong danh sách — bạn kiêm vai trò chuyên gia môi trường nước):
+8. Hỏi hiện trạng / đánh giá nước / "ao nào có vấn đề" / "cần xử lý gì": gọi get_water_status. Đánh giá theo đúng trạng thái và ngưỡng (thresholds) hệ thống trả về: nêu đánh giá tổng quan, từng chỉ số vượt ngưỡng, thay đổi so với lần đo trước và cảnh báo nếu lần đo đã cũ (hoursAgo > 12).
+9. Hỏi xu hướng / diễn biến / so sánh nhiều ngày: gọi query_water_quality và dùng dailyAverages, statusCounts.
+10. Hỏi hướng xử lý / phác đồ / dùng thuốc, hóa chất cho nước: gọi get_water_status (lấy waterVolumeM3, areaM2) và get_treatment_stock, rồi trình bày theo thứ tự:
+    a. Chẩn đoán nguyên nhân & mức độ nguy cơ cho tôm.
+    b. Phác đồ theo thứ tự ưu tiên 1, 2, 3; liều lượng PHẢI tính theo thể tích ao, hiển thị công thức (vd: "Liều 2 g/m³ × 1.800 m³ = **3,6 kg**"), cách pha, thời điểm tạt, tần suất.
+    c. Hóa chất có trong kho: ghi "✅ [CÓ SẴN TRONG KHO - Tồn: X <đơn vị>]"; chưa có: ghi "⚠️ [KHO HIỆN CHƯA CÓ - Cần mua bổ sung]" nhưng vẫn nêu tên, công dụng, liều đã tính.
+    d. Các chỉ số cần đo lại sau 2 - 4 giờ.
+11. Hỏi đã xử lý gì / lịch sử dùng hóa chất cho ao: gọi query_water_treatments.
+12. Khi thời tiết ảnh hưởng tới nước (mưa, nắng nóng, gió) hoặc người dùng hỏi: gọi get_farm_weather.
+13. Kỹ thuật viên muốn NHẬP số đo nước: hướng dẫn nhắn gộp trong 1 câu, ví dụ "Nhập số đo Ao 1: nhiệt độ 29, pH 8.3, DO 5.2, mặn 15, kiềm 120, NH3 0.1, độ trong 35" — hệ thống sẽ tạo phiếu xác nhận. Không tự nhận là đã lưu số đo.
+${actionRule}`;
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...(history || []).slice(-6).map((h) => ({
+        role: (h.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: String(h.text || '').slice(0, 1500),
+      })),
+      { role: 'user', content: question },
+    ];
+
+    try {
+      for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages,
+          tools,
+          // Lượt cuối buộc AI tổng hợp câu trả lời thay vì tiếp tục gọi công cụ
+          tool_choice: round === MAX_TOOL_ROUNDS ? 'none' : 'auto',
+          temperature: 0.2,
+        });
+        const message = completion.choices[0]?.message;
+        const calls = (message?.tool_calls || []).filter((c) => c.type === 'function');
+
+        if (calls.length === 0) {
+          const content = message?.content?.trim() || '';
+          if (round === 0 && (!content || /^KNOWLEDGE\b/i.test(content))) return null;
+          return content || null;
+        }
+
+        // AI quyết định tạo phiếu -> dựng phiếu và kết thúc ngay (không cần AI viết thêm)
+        const actionCall = currentUser && calls.find((c) => AgentActionService.isActionTool(c.function.name));
+        if (actionCall && currentUser) {
+          let actionArgs: Record<string, any> = {};
+          try {
+            actionArgs = JSON.parse(actionCall.function.arguments || '{}');
+          } catch {
+            /* tham số không hợp lệ -> phiếu sẽ hỏi lại các trường còn thiếu */
+          }
+          this.logger.debug?.(`AI action ${actionCall.function.name}(${actionCall.function.arguments}) by ${scope.role}`);
+          return this.agentActionService.draftFromToolCall(
+            actionCall.function.name,
+            actionArgs,
+            currentUser,
+            question,
+          );
+        }
+
+        messages.push({ role: 'assistant', content: message?.content ?? null, tool_calls: calls });
+        for (const call of calls) {
+          let args: Record<string, any> = {};
+          try {
+            args = JSON.parse(call.function.arguments || '{}');
+          } catch {
+            /* tham số không hợp lệ -> dùng mặc định */
+          }
+          const result = await this.chatTools.execute(call.function.name, args, scope);
+          this.logger.debug?.(`AI tool ${call.function.name}(${call.function.arguments}) by ${scope.role}`);
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify(result).slice(0, MAX_TOOL_RESULT_CHARS),
+          });
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Data tool-calling failed, falling back to knowledge flow: ${err?.message || err}`);
+    }
+    return null;
+  }
+
   private buildFallbackResponse(
     question: string,
     topChunks: ChunkMatch[],
@@ -800,6 +976,144 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
   /**
    * Thực thi hành động do AI tạo (Tạo Farm, Pond, Crop) sau khi người dùng bấm xác nhận
    */
+  
+  /**
+   * Upload tệp (Excel, PDF, Word) và yêu cầu AI phân tích dữ liệu nhập kho tự động
+   */
+  async handleFileUploadAndAction(
+    file: UploadedFileDto,
+    question: string,
+    currentUser: AuthUser,
+    history?: any,
+  ) {
+    if (currentUser.role !== 'FARM_MANAGER' && currentUser.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Chỉ Quản lý Trang trại (Farm Manager) hoặc Quản trị viên mới có quyền tải tệp lên để xử lý tự động.',
+      );
+    }
+    if (!file) {
+      throw new BadRequestException('Vui lòng chọn tệp để tải lên.');
+    }
+
+    let safeFileName = file.originalname;
+    try {
+      const decoded = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      if (decoded && !decoded.includes('\ufffd')) safeFileName = decoded;
+    } catch {}
+
+    const parsed = await this.fileParserService.parseBuffer(
+      file.buffer,
+      safeFileName,
+      file.mimetype,
+    );
+
+    const q =
+      (question || '').trim() ||
+      `Hãy phân tích tệp danh sách vật tư ${safeFileName} và chuẩn bị nhập kho`;
+
+    const agentActionResult = await this.agentActionService.handleAgentConversation(
+      q,
+      currentUser,
+      history,
+      undefined,
+      {
+        fileName: safeFileName,
+        fileType: parsed.fileType,
+        extractedText: parsed.extractedText,
+      },
+    );
+
+    if (agentActionResult) {
+      return {
+        answer: agentActionResult.answer || '',
+        sources: [],
+        hasLocalKnowledge: false,
+        sourceType: 'OPENAI_KNOWLEDGE',
+        actionDraft: this.agentActionService.stampDraft(agentActionResult.actionDraft),
+        poweredBy: 'SSFM Smart Action Agent (OpenAI)',
+      };
+    }
+
+    return {
+      answer: `Tôi đã nhận tệp **${file.originalname}** (${parsed.fileType.toUpperCase()}) nhưng chưa nhận diện được yêu cầu thao tác cụ thể. Bạn vui lòng hướng dẫn rõ hơn (ví dụ: *"Nhập danh sách này vào kho trang trại..."*) nhé!`,
+      sources: [],
+      hasLocalKnowledge: false,
+    };
+  }
+
+  /**
+   * Xuất báo cáo tồn kho của trang trại ra file Excel (.xlsx)
+   */
+  async exportInventoryExcel(farmId: string, currentUser: AuthUser) {
+    if (currentUser.role !== 'FARM_MANAGER' && currentUser.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Chỉ Quản lý Trang trại (Farm Manager) hoặc Quản trị viên mới có quyền xuất dữ liệu kho.',
+      );
+    }
+
+    await this.farmAccess.assertCanAccessFarm(currentUser, farmId);
+
+    const farm = await this.prisma.farm.findUnique({
+      where: { id: farmId },
+      select: { id: true, name: true },
+    });
+    if (!farm) {
+      throw new NotFoundException('Không tìm thấy thông tin trang trại.');
+    }
+
+    const inventoryItems = await this.prisma.inventory.findMany({
+      where: { farmId, deletedAt: null },
+      orderBy: [{ category: 'asc' }, { itemName: 'asc' }],
+    });
+
+    const categoryLabels: Record<string, string> = {
+      FEED: 'Thức ăn',
+      MEDICINE: 'Thuốc / Men vi sinh',
+      CHEMICAL: 'Hóa chất xử lý',
+    };
+
+    const rows = inventoryItems.map((item, idx) => ({
+      STT: idx + 1,
+      'Tên Vật Tư': item.itemName,
+      'Phân Loại': categoryLabels[item.category] || item.category,
+      'Số Lượng Tồn': Number(item.quantity),
+      'Đơn Vị Tính': item.unit,
+      'Ngưỡng Tối Thiểu': Number(item.minThreshold || 0),
+      'Đơn Giá (VNĐ)': Number(item.pricePerPackage || 0),
+      'Mô Tả / Công Dụng': item.description || '',
+      'Ngày Cập Nhật': item.updatedAt
+        ? new Date(item.updatedAt).toLocaleDateString('vi-VN')
+        : '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 6 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 35 },
+      { wch: 15 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Ton_Kho');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const safeFarmName = farm.name.replace(/[^a-zA-Z0-9_À-ɏẠ-ỹ]/g, '_');
+    const filename = `Bao_Cao_Ton_Kho_${safeFarmName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    return {
+      buffer,
+      filename,
+      farmName: farm.name,
+      totalItems: inventoryItems.length,
+    };
+  }
+
   async executeAction(dto: ExecuteActionDto, currentUser: AuthUser) {
     return this.agentActionService.executeAgentAction(dto, currentUser);
   }

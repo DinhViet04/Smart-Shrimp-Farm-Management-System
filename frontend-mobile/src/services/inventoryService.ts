@@ -12,7 +12,7 @@ export interface InventoryItem {
   minThreshold: number;
   supplierName?: string;
   description?: string;
-  farmId: string;
+  ownerId: string; // Kho tổng của Manager (chủ trang trại)
   createdAt: string;
   updatedAt: string;
 }
@@ -137,7 +137,7 @@ export const inventoryService = {
     category: 'FEED' | 'MEDICINE' | 'CHEMICAL' | string;
     quantity: number;
     unit: string;
-    farmId: string;
+    farmId?: string; // Chỉ cần với ADMIN; Manager luôn nhập vào kho tổng của mình
     minThreshold: number;
     packageType?: string;
     packageQty?: number;

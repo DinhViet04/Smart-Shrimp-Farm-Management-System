@@ -26,6 +26,9 @@ import PondDetailPanel from './PondDetailPanel';
 import LoadingMotion from './LoadingMotion';
 import { type Crop } from '../services/crop.service';
 import { pondService } from '../services/pond.service';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
+import { useNow } from '../hooks/useNow';
+import { getErrorMessage } from '../utils/errors';
 
 interface PondManagementProps {
   initialFarmId?: string;
@@ -39,6 +42,7 @@ export default function PondManagement({
   onNavigateToCreateCrop 
 }: PondManagementProps = {}) {
   const [ponds, setPonds] = useState<any[]>([]);
+  const now = useNow(60 * 60_000); // dùng để tính ngày tuổi (DOC), cập nhật mỗi giờ
   const [farms, setFarms] = useState<any[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,8 +102,8 @@ export default function PondManagement({
     setTimeout(() => setToast(null), createdPond ? 7000 : 3000);
   };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     try {
       const overview = await pondService.getOverview();
       setFarms(overview.farms);
@@ -117,9 +121,13 @@ export default function PondManagement({
     }
   }, []);
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops'], () => {
+    void fetchData(true);
+  });
+
   useEffect(() => {
     // Initial remote data synchronization for the screen.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -146,7 +154,7 @@ export default function PondManagement({
     if (activeCrop) {
       const startMs = new Date(activeCrop.startDate).getTime();
       const computedDoc = !Number.isNaN(startMs)
-        ? Math.max(1, Math.floor((Date.now() - startMs) / (1000 * 60 * 60 * 24)))
+        ? Math.max(1, Math.floor((now - startMs) / (1000 * 60 * 60 * 24)))
         : (latestSizeSample?.doc ?? null);
       return {
         hasActiveCrop: true,
@@ -205,8 +213,8 @@ export default function PondManagement({
       showToast(`Xóa ao nuôi "${pondToDelete.name}" thành công!`, 'success');
       setPondToDelete(null);
       fetchData();
-    } catch (error: any) {
-      showToast(error.message || 'Lỗi khi xóa ao nuôi', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Lỗi khi xóa ao nuôi', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -236,8 +244,8 @@ export default function PondManagement({
       
       setShowModal(false);
       fetchData(); // Reload list
-    } catch (error: any) {
-      showToast(error.message || 'Không thể lưu ao', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Không thể lưu ao', 'error');
     }
   };
 
@@ -640,7 +648,7 @@ export default function PondManagement({
                       <Waves className="w-6 h-6 text-blue-400" />
                     </div>
                     <p className="text-sm font-bold text-slate-700 mb-1">Trang trại này chưa có ao nuôi nào</p>
-                    <p className="text-xs text-slate-400 mb-4">Thêm ao nuôi để quản lý môi trường nước, mùa vụ và nhật ký chăm sóc.</p>
+                    <p className="text-xs text-slate-400 mb-4">Thêm ao nuôi để quản lý môi trường nước, mùa vụ và nhật ký cho ăn.</p>
                     {canManagePond && (
                       <button
                         onClick={() => openAddModal(farmGroup.id)}
@@ -1124,7 +1132,7 @@ export default function PondManagement({
                 </p>
                 <ul className="text-xs text-rose-800/90 list-disc list-inside space-y-1 font-medium pl-1">
                   <li>Tất cả các vụ nuôi gắn với ao này (đang nuôi & lịch sử)</li>
-                  <li>Nhật ký chăm sóc hàng ngày & lịch cho ăn</li>
+                  <li>Nhật ký cho ăn hàng ngày</li>
                   <li>Dữ liệu đo đạc chỉ số môi trường (pH, DO, kiềm...)</li>
                   <li>Lịch sử đo kích thước và biểu đồ tăng trưởng tôm</li>
                 </ul>

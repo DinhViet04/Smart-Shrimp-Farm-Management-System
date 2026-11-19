@@ -145,6 +145,16 @@ export class InventoryService {
       );
     }
 
+    // Gắn lượt sử dụng với ao (vd: xử lý môi trường nước) nếu ao thuộc cùng trang trại với vật tư
+    let pondId: string | null = null;
+    if (data.pondId) {
+      const pond = await this.prisma.pond.findUnique({
+        where: { id: data.pondId },
+        select: { farmId: true },
+      });
+      if (pond?.farmId === inventory.farmId) pondId = data.pondId;
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const usageLog = await tx.inventoryUsageLog.create({
         data: {
@@ -152,6 +162,7 @@ export class InventoryService {
           quantityUsed: data.quantityUsed,
           usageDate: data.usageDate ? new Date(data.usageDate) : new Date(),
           notes: data.notes,
+          pondId,
           createdBy: user.userId,
         },
         include: {

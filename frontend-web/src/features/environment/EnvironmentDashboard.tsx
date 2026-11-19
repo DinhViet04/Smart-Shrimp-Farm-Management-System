@@ -5,6 +5,7 @@ import WaterQualityHistory from './WaterQualityHistory';
 import EnvironmentTrendDashboard from './EnvironmentTrendDashboard';
 import WaterTreatment, { type WaterWarningRecord } from './WaterTreatment';
 import WaterTreatmentWorkspace from './WaterTreatmentWorkspace';
+import type { StoredUser } from '../../types/user';
 
 interface EnvironmentDashboardProps {
   viewOnly?: boolean;
@@ -19,7 +20,7 @@ export default function EnvironmentDashboard({
   initialPondId,
   initialSubTab,
 }: EnvironmentDashboardProps) {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const [subTab, setSubTab] = useState<'record' | 'treatment' | 'trend'>(() => {
     if (initialSubTab) return initialSubTab;
     if (viewOnly) return 'treatment';

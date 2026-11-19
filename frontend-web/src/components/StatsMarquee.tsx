@@ -22,13 +22,16 @@ export default function StatsMarquee() {
           .animate-horizontal-marquee:hover {
             animation-play-state: paused;
           }
+          @media (prefers-reduced-motion: reduce) {
+            .animate-horizontal-marquee { animation: none; }
+          }
         `}
       </style>
       <div className="flex w-max animate-horizontal-marquee gap-4 md:gap-6 py-2">
         {[1, 2, 3, 4].map((set) => (
           <div key={set} className="flex gap-4 md:gap-6 shrink-0 w-max">
             {statsData.map((stat, idx) => (
-              <div key={idx} className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 w-[300px] flex items-center justify-center gap-4 shadow-xl shadow-cyan-900/10 hover:bg-white/20 transition-colors">
+              <div key={idx} className="bg-white/10 border border-white/10 rounded-2xl p-4 w-[300px] flex items-center justify-center gap-4 shadow-xl shadow-cyan-900/10 hover:bg-white/20 transition-colors">
                 <span className="text-2xl font-black text-cyan-300 drop-shadow-md">{stat.value}</span>
                 <span className="text-xs text-left text-white font-medium leading-tight whitespace-pre-line">{stat.label}</span>
               </div>

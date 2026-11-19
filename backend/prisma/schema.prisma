@@ -119,6 +119,7 @@ model User {
   reportedIncidents    Incident[]                @relation("IncidentReporter")
   incidentUpdates      IncidentTreatmentUpdate[] @relation("IncidentUpdateAuthor")
   mortalityLogs        MortalityLog[]
+  shrimpSizeSamples    ShrimpSizeSample[]
   notifications        Notification[]
   refreshSessions      RefreshSession[]
   adminAuditLogs       AdminAuditLog[]           @relation("AdminAuditActor")
@@ -277,10 +278,15 @@ model ShrimpSizeSample {
   estimatedTotalShrimp Int?     @map("estimated_total_shrimp")
   estimatedBiomassKg   Decimal? @map("estimated_biomass_kg") @db.Decimal(10, 2)
 
+  // Người bắt mẫu (Technician) — dùng để phân quyền tra cứu lịch sử cho AI
+  createdBy String? @map("created_by")
+  creator   User?   @relation(fields: [createdBy], references: [id])
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([pondId, samplingDate])
+  @@index([createdBy])
   @@map("shrimp_size_samples")
 }
 
@@ -777,4 +783,21 @@ model ChatMessage {
 
   @@index([groupId, createdAt])
   @@map("chat_messages")
+}
+
+/// Phiếu thao tác của trợ lý AI đã được thực thi (tạo trang trại / ao / vụ, nhập kho, nhập số đo nước).
+/// Khóa chính là mã phiếu -> mỗi phiếu chỉ thực thi đúng 1 lần, kể cả khi bấm xác nhận nhiều lần,
+/// mở nhiều tab hoặc chạy nhiều instance backend.
+model AgentActionExecution {
+  draftId   String   @id @map("draft_id")
+  userId    String   @map("user_id")
+  intent    String
+  /// PROCESSING: đang thực thi | DONE: đã xong (result lưu phản hồi để trả lại khi bấm lặp)
+  status    String   @default("PROCESSING")
+  result    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("agent_action_executions")
 }

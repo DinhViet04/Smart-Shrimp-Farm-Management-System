@@ -12,6 +12,7 @@ import { pondService, type OverviewFarm, type OverviewPond } from '../../service
 import { cropService, type Crop, type ManagerHarvestSummary } from '../../services/crop.service';
 import { incidentService, type Incident } from '../../services/incident.service';
 import { waterQualityService, type ManagerWaterTrendsResponse } from '../../services/water-quality.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 type ShrimpSample = NonNullable<OverviewPond['latestSizeSample']>;
 
@@ -104,16 +105,25 @@ export default function ManagerDashboardHome({ onNavigateTab, onOpenCropHistory 
 
   useEffect(() => {
     // Initial data synchronization is the purpose of this effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDashboard();
   }, [loadDashboard]);
 
+  // Realtime: cập nhật ngay khi có thay đổi dữ liệu ở bất kỳ trang trại nào.
+  useRealtimeRefresh(
+    ['farms', 'ponds', 'crops', 'incidents', 'water-quality', 'environment', 'feeding-logs', 'inventory', 'shrimp-health', 'shrimp-size', 'survival-rate', 'farm-staffs'],
+    () => {
+      void loadDashboard(false, true);
+      setOperationalRefreshKey((key) => key + 1);
+    },
+  );
+
+  // Dự phòng: làm mới định kỳ cho dữ liệu không phát sự kiện (thời tiết, chỉ số tính toán).
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       void loadDashboard(false, true);
       setOperationalRefreshKey((key) => key + 1);
-    }, 60_000);
+    }, 5 * 60_000);
     return () => window.clearInterval(timer);
   }, [loadDashboard]);
 

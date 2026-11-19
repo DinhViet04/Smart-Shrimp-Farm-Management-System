@@ -44,6 +44,8 @@ import {
   createNewSession,
 } from '../services/chatbotService';
 import { useAuth } from '../context/AuthContext';
+import WaterRecordCard from '../components/WaterRecordCard';
+import CropCreateCard from '../components/CropCreateCard';
 
 const MASCOT_IMAGE = require('../../assets/images/shrimp-mascot.jpg');
 
@@ -69,6 +71,11 @@ const stripReferenceSources = (text: string): string => {
 export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
   const { userRole } = useAuth();
   const isManager = userRole === 'FARM_MANAGER';
+  const isTechnician = userRole === 'TECHNICIAN';
+  // Kỹ thuật viên có thêm lối tắt mở Thẻ thông số nước
+  const quickPrompts = isTechnician
+    ? [{ label: '💧 Nhập số đo nước', query: 'Nhập số đo môi trường nước' }, ...QUICK_PROMPTS]
+    : QUICK_PROMPTS;
 
   // Navigation tabs: 'chat' | 'history'
   const [activeTab, setActiveTab] = useState<'chat' | 'history'>('chat');
@@ -142,6 +149,19 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
   }, [sessions, activeSessionId]);
 
   const messages = currentSession?.messages || [];
+  // Chỉ thẻ thông số nước mới nhất được phép chỉnh sửa/lưu (tránh lưu trùng từ thẻ cũ)
+  const latestWaterCardId = [...messages]
+    .reverse()
+    .find((m) => m.actionDraft?.intent === 'RECORD_WATER_QUALITY' && m.actionDraft.pondOptions?.length)?.id;
+  // Phiếu / thẻ tạo trang trại, ao, vụ nuôi còn hiệu lực = phiếu tạo mới nhất, chưa bị hủy bởi
+  // tin nhắn sau. Sửa phiếu sẽ sinh phiếu mới -> phiếu cũ bị khóa, tránh bấm nhầm tạo trùng.
+  const latestCreateDraftId = [...messages]
+    .reverse()
+    .find(
+      (m) =>
+        m.endsPendingAction ||
+        (m.actionDraft && ['CREATE_FARM', 'CREATE_POND', 'CREATE_CROP'].includes(m.actionDraft.intent)),
+    )?.id;
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -240,7 +260,15 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
       );
       return;
     }
-    if (!isManager) {
+    const isWaterRecord = draft.intent === 'RECORD_WATER_QUALITY';
+    if (isWaterRecord && !isTechnician) {
+      Alert.alert(
+        'Giới hạn quyền hạn',
+        'Chỉ Kỹ thuật viên mới có quyền ghi nhận số đo môi trường nước.',
+      );
+      return;
+    }
+    if (!isWaterRecord && !isManager) {
       Alert.alert(
         'Giới hạn quyền hạn',
         'Chỉ Quản lý trang trại (Manager) mới có quyền khởi tạo vụ nuôi mới.',
@@ -253,6 +281,7 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
       const res = await chatbotService.executeAction({
         intent: draft.intent,
         data: draft.collectedData,
+        draftId: draft.draftId,
       });
 
       setExecutedActions((prev) => ({
@@ -260,12 +289,19 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
         [msgId]: { success: true, message: res.message },
       }));
 
-      Alert.alert('Thành công', res.message);
+      Alert.alert(
+        'Thành công',
+        isWaterRecord ? 'Đã lưu số đo môi trường nước.' : res.message,
+      );
+      // Phiếu đã lưu -> kết thúc phiên sửa phiếu
+      setActivePendingAction(null);
 
       const aiReply: ChatMessage = {
         id: `ai-success-${Date.now()}`,
         sender: 'ai',
-        text: `${res.message}\n\n✅ Dữ liệu mới đã được đồng bộ vào hệ thống.`,
+        text: isWaterRecord
+          ? res.message
+          : `${res.message}\n\n✅ Dữ liệu mới đã được đồng bộ vào hệ thống.`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         timestamp: Date.now(),
       };
@@ -341,13 +377,21 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
         activePendingAction
       );
 
-      if (result.actionDraft?.type === 'SLOT_FILLING') {
+      if (result.clearPendingAction) {
+        setActivePendingAction(null);
+      } else if (result.actionDraft?.type === 'SLOT_FILLING') {
         setActivePendingAction({
           intent: result.actionDraft.intent,
           collectedData: result.actionDraft.collectedData,
         });
       } else if (result.actionDraft?.type === 'CONFIRM_ACTION') {
-        setActivePendingAction(null);
+        // Giữ dữ liệu phiếu để người dùng có thể ra lệnh sửa trước khi lưu
+        // (vd "sửa pH 8.1", "đổi diện tích thành 1500m2", "tạo 4 ao thay vì 3")
+        setActivePendingAction(
+          ['RECORD_WATER_QUALITY', 'CREATE_FARM', 'CREATE_POND', 'CREATE_CROP'].includes(result.actionDraft.intent)
+            ? { intent: result.actionDraft.intent, collectedData: result.actionDraft.collectedData }
+            : null,
+        );
       }
 
       const aiMsg: ChatMessage = {
@@ -361,6 +405,7 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
         recommendations: result.recommendations,
         poweredBy: result.poweredBy,
         actionDraft: result.actionDraft,
+        endsPendingAction: result.clearPendingAction || undefined,
       };
 
       const finalSessions = updatedSessions.map((s) =>
@@ -483,9 +528,47 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
           <View style={styles.aiContentContainer}>{renderFormattedText(item.text)}</View>
 
           {/* ── AGENT ACTION: SLOT FILLING QUICK CHIPS (MOBILE) ── */}
+          {/* ── AGENT ACTION: THẺ THÔNG SỐ NƯỚC (MOBILE) ── */}
+          {/* Thẻ chỉ hiện khi đã xác định được ao (backend gửi kèm pondOptions) */}
+          {item.actionDraft?.intent === 'RECORD_WATER_QUALITY' && Boolean(item.actionDraft.pondOptions?.length) && (
+            <WaterRecordCard
+              draft={item.actionDraft}
+              executed={Boolean(executedActions[item.id])}
+              executing={executingActionId === item.id}
+              readOnlyReason={
+                !isTechnician
+                  ? 'Chỉ Kỹ thuật viên mới có quyền lưu số đo môi trường nước.'
+                  : item.id !== latestWaterCardId
+                    ? 'Thẻ này đã được thay bằng thẻ mới hơn bên dưới.'
+                    : undefined
+              }
+              onSubmit={(data) =>
+                handleConfirmAction(item.id, { ...item.actionDraft!, collectedData: data })
+              }
+            />
+          )}
+
+          {/* ── AGENT ACTION: THẺ TẠO VỤ NUÔI (MOBILE, chỉ Quản lý trang trại) ── */}
+          {item.actionDraft?.intent === 'CREATE_CROP' && Boolean(item.actionDraft.cropPondOptions?.length) && (
+            <CropCreateCard
+              draft={item.actionDraft}
+              executed={Boolean(executedActions[item.id])}
+              executing={executingActionId === item.id}
+              readOnlyReason={
+                !isManager
+                  ? 'Chỉ Quản lý trang trại mới có quyền tạo vụ nuôi qua trợ lý AI.'
+                  : item.id !== latestCreateDraftId
+                    ? 'Thẻ này đã được thay bằng thẻ mới hơn bên dưới.'
+                    : undefined
+              }
+              onSubmit={(data) => handleConfirmAction(item.id, { ...item.actionDraft!, collectedData: data })}
+            />
+          )}
+
           {item.actionDraft?.type === 'SLOT_FILLING' &&
-            item.actionDraft.intent === 'CREATE_CROP' &&
-            isManager &&
+            ((item.actionDraft.intent === 'CREATE_CROP' && isManager && !item.actionDraft.cropPondOptions?.length) ||
+              // Bước hỏi trang trại / ao trước khi mở thẻ thông số nước
+              (item.actionDraft.intent === 'RECORD_WATER_QUALITY' && isTechnician && !item.actionDraft.pondOptions?.length)) &&
             item.actionDraft.quickSuggestions && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {item.actionDraft.quickSuggestions.map((suggestion, sIdx) => (
@@ -515,7 +598,11 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
           )}
 
           {/* ── AGENT ACTION: CONFIRMATION CARD (MOBILE) ── */}
-          {item.actionDraft?.type === 'CONFIRM_ACTION' && item.actionDraft.summary && (
+          {item.actionDraft?.type === 'CONFIRM_ACTION' &&
+            item.actionDraft.intent !== 'RECORD_WATER_QUALITY' &&
+            // Vụ nuôi có thẻ nhập liệu riêng (CropCreateCard)
+            !item.actionDraft.cropPondOptions?.length &&
+            item.actionDraft.summary && (
             <View
               style={{
                 marginTop: 10,
@@ -549,13 +636,13 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
                 </View>
               ))}
 
-              {item.actionDraft.intent !== 'CREATE_CROP' ? (
+              {item.actionDraft.intent === 'CREATE_FARM' || item.actionDraft.intent === 'CREATE_POND' ? (
                 <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' }}>
                   <Text style={{ fontSize: 11, fontWeight: '600', color: '#1d4ed8', textAlign: 'center' }}>
                     💡 Thiết lập Trang trại và Ao nuôi mới chỉ thực hiện trên hệ thống Web Dashboard.
                   </Text>
                 </View>
-              ) : !isManager ? (
+              ) : item.actionDraft.intent === 'CREATE_CROP' && !isManager ? (
                 <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a' }}>
                   <Text style={{ fontSize: 11, fontWeight: '600', color: '#b45309', textAlign: 'center' }}>
                     🔒 Chỉ Quản lý trang trại (Manager) mới có quyền khởi tạo vụ nuôi mới.
@@ -565,6 +652,12 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
                 <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: '#ecfdf5', alignItems: 'center' }}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
                     ✅ Đã tạo thành công!
+                  </Text>
+                </View>
+              ) : item.id !== latestCreateDraftId ? (
+                <View style={{ marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#64748b', textAlign: 'center' }}>
+                    Phiếu này đã được thay bằng phiếu mới hơn hoặc đã bị hủy.
                   </Text>
                 </View>
               ) : (
@@ -596,7 +689,7 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setInputText('Tôi muốn sửa thông số...')}
+                    onPress={() => setInputText('Sửa phiếu: ')}
                     style={{
                       backgroundColor: '#f1f5f9',
                       paddingHorizontal: 12,
@@ -916,7 +1009,7 @@ export default function ChatbotScreen({ onClose }: ChatbotScreenProps = {}) {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.quickPromptsScroll}
               >
-                {QUICK_PROMPTS.map((item, idx) => (
+                {quickPrompts.map((item, idx) => (
                   <TouchableOpacity
                     key={idx}
                     onPress={() => handleSendMessage(item.query)}

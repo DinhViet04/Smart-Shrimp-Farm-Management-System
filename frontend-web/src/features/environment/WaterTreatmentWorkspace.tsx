@@ -26,9 +26,12 @@ import {
   ClipboardList,
   BookOpen,
 } from 'lucide-react';
-import { inventoryService } from '../../services/inventory.service';
+import { inventoryService, type InventoryItem } from '../../services/inventory.service';
 import { chatbotService } from '../../services/chatbot.service';
 import type { WaterWarningRecord, TreatmentAction, ChemicalItem, Farm, Pond, AIChatMessage } from './WaterTreatment';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { createId } from '../../utils/id';
+import type { StoredUser } from '../../types/user';
 
 export interface TreatmentUpdate {
   id: string;
@@ -120,7 +123,7 @@ function WaterClinicalReportRenderer({ content }: { content: string }) {
   }, [content]);
 
   const parsed = useMemo(() => {
-    let section1Raw = '';
+    let section1Raw: string;
     let section2Raw = '';
     let section3Raw = '';
 
@@ -621,7 +624,7 @@ export default function WaterTreatmentWorkspace({
   farms = [],
 }: WaterTreatmentWorkspaceProps) {
   // ── User Information ────────────────────────────────────────────────────────
-  const [currentUser] = useState<any>(() => {
+  const [currentUser] = useState<StoredUser | null>(() => {
     try {
       const str = localStorage.getItem('user');
       return str ? JSON.parse(str) : null;
@@ -698,7 +701,7 @@ export default function WaterTreatmentWorkspace({
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = Date.now().toString();
+    const id = createId();
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -710,15 +713,15 @@ export default function WaterTreatmentWorkspace({
   };
 
   // ── Fetch Inventory ─────────────────────────────────────────────────────────
-  const fetchInventory = useCallback(async () => {
-    setLoadingInventory(true);
+  const fetchInventory = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setLoadingInventory(true);
     try {
       const invRes = await inventoryService.getAll();
-      const rawItems = Array.isArray(invRes) ? invRes : (invRes as any)?.data || [];
+      const rawItems: (InventoryItem & { name?: string })[] = Array.isArray(invRes) ? invRes : invRes?.data || [];
 
       const filtered = rawItems
-        .filter((item: any) => item.category === 'CHEMICAL' || item.category === 'MEDICINE')
-        .map((item: any) => ({
+        .filter((item) => item.category === 'CHEMICAL' || item.category === 'MEDICINE')
+        .map((item) => ({
           id: item.id,
           name: item.itemName || item.name || 'Hóa chất/Vi sinh',
           stock: Number(item.quantity) || 0,
@@ -740,6 +743,11 @@ export default function WaterTreatmentWorkspace({
       setLoadingInventory(false);
     }
   }, []);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['inventory'], () => {
+    void fetchInventory(true);
+  });
 
   useEffect(() => {
     fetchInventory();
@@ -875,7 +883,7 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
     if (!customQuestion) setAiChatInput('');
 
     const userMsg: AIChatMessage = {
-      id: Date.now().toString(),
+      id: createId(),
       sender: 'user',
       text: q.trim(),
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
@@ -890,7 +898,7 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
 
       const res = await chatbotService.ask(prompt, currentRecord.pondId);
       const aiMsg: AIChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: createId(),
         sender: 'ai',
         text: res.answer,
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
@@ -948,7 +956,7 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
     }
 
     // Extract technical directives note
-    let noteText = '';
+    let noteText: string;
     const section3Match = aiText.match(/(?:^|\n)(?:#{1,4}\s*)?3[.)]\s*([^\n]+)/i);
     if (section3Match && section3Match.index !== undefined) {
       const contentStartIndex = section3Match.index + section3Match[0].length;

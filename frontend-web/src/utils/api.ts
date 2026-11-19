@@ -1,3 +1,4 @@
+import { disconnectRealtime } from '../services/realtime';
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 let refreshRequest: Promise<string | null> | null = null;
 
@@ -37,7 +38,7 @@ const refreshAccessToken = () => {
 };
 
 export const apiFetch = async (url: string, options: RequestInit = {}) => {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
   
   // Create Headers object to manipulate headers easily
   const headers = new Headers(options.headers || {});
@@ -97,6 +98,7 @@ export const logoutSession = async () => {
       headers: { 'X-SSFM-CSRF': '1' },
     });
   } finally {
+    disconnectRealtime();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');

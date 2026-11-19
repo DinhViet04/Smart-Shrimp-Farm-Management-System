@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useEffectEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
@@ -66,7 +66,7 @@ interface NotificationDropdownProps {
 // Audio alert helper using Web Audio API
 const playNotificationChime = (level: NotificationLevel = 'INFO') => {
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const osc = ctx.createOscillator();
@@ -143,9 +143,71 @@ export default function NotificationDropdown({
       .catch((err) => console.error('Failed to fetch notifications', err));
   };
 
-  useEffect(() => {
+  const loadOnMount = useEffectEvent(() => {
     fetchNotifications();
+  });
+  useEffect(() => {
+    loadOnMount();
   }, []);
+
+  // Xử lý thông báo realtime: luôn đọc soundEnabled / onNavigateTab mới nhất
+  // (trước đây handler giữ giá trị cũ, và socket bị kết nối lại mỗi khi onNavigateTab đổi)
+  const handleIncomingNotification = useEffectEvent((notification: NotificationItem) => {
+    const item = notification;
+    setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
+
+    // Play audio chime if sound is enabled
+    if (soundEnabled) {
+      playNotificationChime(notification.level);
+    }
+
+    // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
+    const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
+    const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
+    const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
+    const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+    const promptText = isGrowth
+      ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này'
+      : isShrimpHealth
+        ? '👉 Nhấn để xem ngay sức khỏe tôm ao này'
+        : '👉 Nhấn để xem ngay môi trường ao này';
+    const iconEmoji = isGrowth ? '📈' : isShrimpHealth ? '🦐' : '🔔';
+
+    toast((t) => (
+      <div
+        onClick={() => {
+          toast.dismiss(t.id);
+          if (notification.pondId && onNavigateTab) {
+            onNavigateTab(targetTab, {
+              farmId: notification.farmId,
+              pondId: notification.pondId,
+            });
+          }
+        }}
+        className="cursor-pointer select-none"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">{iconEmoji}</span>
+          <span className="font-bold text-white text-sm">{notification.title}</span>
+        </div>
+        <p className="text-xs text-slate-300 mt-1 line-clamp-2">{notification.message}</p>
+        {notification.pondId && (
+          <div className="text-[11px] text-cyan-400 mt-1 font-semibold flex items-center gap-1">
+            {promptText}
+          </div>
+        )}
+      </div>
+    ), {
+      duration: 7000,
+      style: {
+        borderRadius: '16px',
+        background: '#0f172a',
+        color: '#fff',
+        border: '1px solid #334155',
+        maxWidth: '420px',
+      },
+    });
+  });
 
   // Socket connection
   useEffect(() => {
@@ -162,66 +224,13 @@ export default function NotificationDropdown({
     socketRef.current = socket;
 
     socket.on('newNotification', (notification: NotificationItem) => {
-      const item = notification;
-      setNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
-
-      // Play audio chime if sound is enabled
-      if (soundEnabled) {
-        playNotificationChime(notification.level);
-      }
-
-      // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
-      const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
-      const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
-      const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
-      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
-      const promptText = isGrowth
-        ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này'
-        : isShrimpHealth
-          ? '👉 Nhấn để xem ngay sức khỏe tôm ao này'
-          : '👉 Nhấn để xem ngay môi trường ao này';
-      const iconEmoji = isGrowth ? '📈' : isShrimpHealth ? '🦐' : '🔔';
-
-      toast((t) => (
-        <div
-          onClick={() => {
-            toast.dismiss(t.id);
-            if (notification.pondId && onNavigateTab) {
-              onNavigateTab(targetTab, {
-                farmId: notification.farmId,
-                pondId: notification.pondId,
-              });
-            }
-          }}
-          className="cursor-pointer select-none"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-base">{iconEmoji}</span>
-            <span className="font-bold text-white text-sm">{notification.title}</span>
-          </div>
-          <p className="text-xs text-slate-300 mt-1 line-clamp-2">{notification.message}</p>
-          {notification.pondId && (
-            <div className="text-[11px] text-cyan-400 mt-1 font-semibold flex items-center gap-1">
-              {promptText}
-            </div>
-          )}
-        </div>
-      ), {
-        duration: 7000,
-        style: {
-          borderRadius: '16px',
-          background: '#0f172a',
-          color: '#fff',
-          border: '1px solid #334155',
-          maxWidth: '420px',
-        },
-      });
+      handleIncomingNotification(notification);
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [onNavigateTab]);
+  }, []);
 
   // Close when clicking outside
   useEffect(() => {
@@ -530,7 +539,7 @@ export default function NotificationDropdown({
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveFilter(tab.key as any)}
+                onClick={() => setActiveFilter(tab.key as typeof activeFilter)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFilter === tab.key
                     ? colorMap.tabActive
                     : 'text-slate-600 bg-slate-50 hover:bg-slate-100'

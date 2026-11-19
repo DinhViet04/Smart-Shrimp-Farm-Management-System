@@ -8,6 +8,8 @@ import { shrimpSizeService } from '../../services/shrimpSizeService';
 import LoadingMotion from '../../components/LoadingMotion';
 
 import { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
 
 interface Pond {
   id: string;
@@ -48,18 +50,23 @@ export default function FcrAnalysisDetail({ pond, availablePonds, onSelectPond, 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchFCR = useCallback(async () => {
+  const fetchFCR = useCallback(async (silent?: unknown) => {
     try {
-      setIsLoading(true);
+      if (silent !== true) setIsLoading(true);
       setError(null);
       const fcr = await shrimpSizeService.getFCRAnalysis(pond.id);
       setData(fcr);
-    } catch (err: any) {
-      setError(err.message || 'Lỗi tải dữ liệu FCR');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Lỗi tải dữ liệu FCR');
     } finally {
       setIsLoading(false);
     }
   }, [pond.id]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['feeding-logs', 'shrimp-size', 'crops', 'survival-rate'], () => {
+    void fetchFCR(true);
+  });
 
   useEffect(() => {
     fetchFCR();
@@ -311,14 +318,14 @@ export default function FcrAnalysisDetail({ pond, availablePonds, onSelectPond, 
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     itemStyle={{ fontWeight: 600 }}
-                    formatter={(value: any) => [value, 'FCR']}
+                    formatter={(value) => [value, 'FCR']}
                   />
                   <ReferenceLine y={data.fcrTarget} stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} />
                   <Line 
                     type="linear" 
                     dataKey="fcr" 
                     stroke="transparent" 
-                    dot={(props: any) => {
+                    dot={(props: { cx?: number; cy?: number; key?: React.Key | null; payload: { fcr: number | null } }) => {
                       const { cx, cy, key, payload } = props;
                       if (payload.fcr === null) return <circle key={key} />;
                       return (

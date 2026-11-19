@@ -407,7 +407,7 @@ export function groupCropsIntoCycles(
       : null;
 
     // Trạng thái vụ
-    let status: 'COMPLETED' | 'IN_PROGRESS' | 'FAILED' = 'COMPLETED';
+    let status: 'COMPLETED' | 'IN_PROGRESS' | 'FAILED';
     const anyActive = memberCrops.some((c) => c.status === 'ACTIVE');
     const allFailed = memberCrops.every((c) => c.status === 'FAILED');
 

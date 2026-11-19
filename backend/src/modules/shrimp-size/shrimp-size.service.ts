@@ -149,6 +149,7 @@ export class ShrimpSizeService {
         estimatedTotalShrimp,
         estimatedBiomassKg,
         notes: dto.notes,
+        createdBy: user.userId,
       },
     });
 

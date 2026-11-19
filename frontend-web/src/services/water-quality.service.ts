@@ -15,6 +15,10 @@
  */
 
 import { apiFetch } from '../utils/api';
+import type { WeatherInfo } from './weather.service';
+
+/** Thời tiết lưu kèm bản ghi nước (weatherCode có thể không có ở bản ghi cũ) */
+export type RecordedWeather = Omit<WeatherInfo, 'weatherCode'> & { weatherCode?: number };
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -34,7 +38,7 @@ export interface CreateWaterQualityPayload {
   transparency: number;
   waterColor?: string;
   note?: string;
-  weatherData?: any;
+  weatherData?: RecordedWeather | null;
 }
 
 export interface WaterQualityRecord {
@@ -151,7 +155,7 @@ export const waterQualityService = {
       waterColor?: string;
       overallStatus: 'Optimal' | 'Warning' | 'Danger';
       note?: string;
-      weatherData?: any;
+      weatherData?: RecordedWeather | null;
       createdAt: string;
     }[];
     page: number;

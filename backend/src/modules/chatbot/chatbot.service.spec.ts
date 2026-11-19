@@ -24,7 +24,20 @@ describe('ChatbotService access control', () => {
       isWeatherInquiry: jest.fn().mockReturnValue(false),
       buildWeatherContextString: jest.fn(),
     };
-    const service = new ChatbotService(prisma as any, farmAccess as any, weatherService as any);
+    const agentActionService = { handleAgentConversation: jest.fn().mockResolvedValue(null) };
+    const chatDataScope = {
+      resolveScope: jest.fn().mockResolvedValue({ userId: 'user-1', role: 'TECHNICIAN', farmIds: [] }),
+    };
+    const chatTools = { describeScope: jest.fn().mockResolvedValue('') };
+    const service = new ChatbotService(
+      prisma as any,
+      farmAccess as any,
+      weatherService as any,
+      agentActionService as any,
+      {} as any,
+      chatDataScope as any,
+      chatTools as any,
+    );
 
     await expect(
       service.ask(

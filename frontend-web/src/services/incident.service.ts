@@ -23,6 +23,8 @@ export interface Incident {
   treatment?: string | null;
   status: IncidentStatus;
   assignedToId?: string | null;
+  /** Một số API chỉ trả id người báo cáo, không kèm object reporter */
+  reporterId?: string | null;
   reporter?: { id: string; fullName: string; role: string } | null;
   assignedTo?: { id: string; fullName: string; email: string } | null;
   startedAt?: string | null;
@@ -35,7 +37,7 @@ export interface Incident {
     stage?: 'NURSERY' | 'COMMERCIAL' | string;
     status?: 'ACTIVE' | 'HARVESTED' | 'FAILED' | string;
     actualHarvestDate?: string | null;
-    pond: { id: string; name: string; farm: { id: string; name: string }; areaSize?: number; depth?: number };
+    pond: { id: string; name: string; farmId?: string; farm: { id: string; name: string }; areaSize?: number; depth?: number };
   };
   updates?: IncidentUpdate[];
   _count?: { updates: number };

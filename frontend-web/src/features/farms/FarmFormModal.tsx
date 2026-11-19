@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { X, Save, AlertCircle, Users, FlaskConical, UserCheck, Trash2, Mail, CheckCircle, Clock } from 'lucide-react';
 import { farmService } from '../../services/farm.service';
 import { apiFetch } from '../../utils/api';
+import { getErrorMessage } from '../../utils/errors';
 
 const PROVINCES = [
   "An Giang", "Bà Rịa - Vũng Tàu", "Bắc Giang", "Bắc Kạn", "Bạc Liêu", "Bắc Ninh", "Bến Tre", "Bình Định", "Bình Dương", "Bình Phước", "Bình Thuận", "Cà Mau", "Cần Thơ", "Cao Bằng", "Đà Nẵng", "Đắk Lắk", "Đắk Nông", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Giang", "Hà Nam", "Hà Nội", "Hà Tĩnh", "Hải Dương", "Hải Phòng", "Hậu Giang", "Hòa Bình", "Hưng Yên", "Khánh Hòa", "Kiên Giang", "Kon Tum", "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Long An", "Nam Định", "Nghệ An", "Ninh Bình", "Ninh Thuận", "Phú Thọ", "Phú Yên", "Quảng Bình", "Quảng Nam", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sóc Trăng", "Sơn La", "Tây Ninh", "Thái Bình", "Thái Nguyên", "Thanh Hóa", "Thừa Thiên Huế", "Tiền Giang", "TP Hồ Chí Minh", "Trà Vinh", "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"
@@ -108,6 +109,10 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
     }
   };
 
+  const loadStaffForFarm = useEffectEvent((farmId: string) => {
+    void loadCurrentStaff(farmId);
+  });
+
   useEffect(() => {
     if (!isOpen) {
       setAssignedStaff([]);
@@ -133,7 +138,7 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         status: initialData.status || 'ACTIVE',
         farmingModel: initialData.farmingModel || 'HIGH_TECH',
       });
-      loadCurrentStaff(initialData.id);
+      loadStaffForFarm(initialData.id);
     } else {
       setFormData({
         workspaceId: localStorage.getItem('active_workspace_id') || '',
@@ -225,8 +230,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         setFarmerSearchSuccess(`✅ Đã thêm vào danh sách — sẽ tự động thêm vào trang trại & nhóm chat ngay khi tạo trang trại.`);
       }
       setFarmerEmailInput('');
-    } catch (err: any) {
-      setFarmerSearchError(err.message || 'Không thể thêm Nông dân.');
+    } catch (err) {
+      setFarmerSearchError(getErrorMessage(err) || 'Không thể thêm Nông dân.');
     } finally {
       setIsSearchingFarmer(false);
     }
@@ -274,8 +279,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         setTechSearchSuccess(`✅ Đã thêm vào danh sách — sẽ tự động thêm vào trang trại & nhóm chat ngay khi tạo trang trại.`);
       }
       setTechEmailInput('');
-    } catch (err: any) {
-      setTechSearchError(err.message || 'Không thể thêm Kỹ thuật viên.');
+    } catch (err) {
+      setTechSearchError(getErrorMessage(err) || 'Không thể thêm Kỹ thuật viên.');
     } finally {
       setIsSearchingTech(false);
     }
@@ -302,8 +307,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
       await farmService.unassignStaff(initialData.id, staffToUnassign.id);
       await loadCurrentStaff();
       setStaffToUnassign(null);
-    } catch (err: any) {
-      setError(err.message || 'Không thể gỡ phân công nhân sự này.');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Không thể gỡ phân công nhân sự này.');
     } finally {
       setRemovingStaffEmail(null);
     }
@@ -366,8 +371,8 @@ export default function FarmFormModal({ isOpen, onClose, onSuccess, initialData 
         );
       }
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Đã có lỗi xảy ra. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }

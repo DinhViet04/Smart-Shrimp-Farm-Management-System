@@ -34,8 +34,12 @@ import {
   findSeasonByCropId,
 } from '../../utils/cropGrouping';
 import { waterQualityService } from '../../services/water-quality.service';
-import { weatherService, type WeatherInfo } from '../../services/weather.service';
+import { weatherService } from '../../services/weather.service';
+import type { RecordedWeather } from '../../services/water-quality.service';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
+import type { StoredUser } from '../../types/user';
 
 interface Farm {
   id: string;
@@ -65,7 +69,7 @@ interface HistoryRecord {
   waterColor?: string;
   overallStatus: 'Optimal' | 'Warning' | 'Danger';
   note?: string;
-  weatherData?: WeatherInfo | null;
+  weatherData?: RecordedWeather | null;
   createdAt: string;
 }
 
@@ -133,7 +137,7 @@ export default function WaterQualityHistory({
   initialFarmId,
   initialPondId,
 }: WaterQualityHistoryProps = {}) {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -183,7 +187,7 @@ export default function WaterQualityHistory({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [recordWeather, setRecordWeather] = useState<WeatherInfo | null>(null);
+  const [recordWeather, setRecordWeather] = useState<RecordedWeather | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
 
   // Danh sách các năm nuôi
@@ -267,7 +271,7 @@ export default function WaterQualityHistory({
         setCrops(cropsData || []);
 
         if (initialPondId) {
-          const found = (pondsData || []).find((p: any) => p.id === initialPondId);
+          const found = (pondsData || []).find((p) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);
@@ -311,8 +315,8 @@ export default function WaterQualityHistory({
     }
   }, [showDetailDialog, selectedRecord, ponds, farms, selectedFarmId]);
 
-  const fetchHistory = useCallback(async () => {
-    setIsLoading(true);
+  const fetchHistory = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     setErrorMsg(null);
     try {
       const data = await waterQualityService.getHistory({
@@ -328,12 +332,17 @@ export default function WaterQualityHistory({
       });
       setRecords(data.content || []);
       setTotalElements(data.totalElements || 0);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi khi tải lịch sử đo');
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err) || 'Lỗi khi tải lịch sử đo');
     } finally {
       setIsLoading(false);
     }
   }, [selectedFarmId, selectedPondId, selectedCropId, selectedYear, fromDate, toDate, page, size]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['water-quality', 'environment'], () => {
+    void fetchHistory(true);
+  });
 
   useEffect(() => {
     fetchHistory();

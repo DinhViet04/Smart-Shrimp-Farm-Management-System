@@ -2,6 +2,22 @@ import { apiFetch } from '../utils/api';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+/** Nhà cung cấp (khớp model Prisma `Supplier`, kèm vài trường thống kê do API trả thêm). */
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  note?: string | null;
+  farmId?: string;
+  items: { itemName: string }[];
+  itemCount: number;
+  lowStockCount: number;
+  categories: string[];
+  latestUpdatedAt?: string;
+}
+
 export const supplierService = {
   getAll: async (farmId?: string, search?: string) => {
     const params = new URLSearchParams();
@@ -13,7 +29,7 @@ export const supplierService = {
     return response.json();
   },
 
-  create: async (data: any) => {
+  create: async (data: object) => {
     const response = await apiFetch(`${apiUrl}/api/suppliers`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -23,7 +39,7 @@ export const supplierService = {
     return resData;
   },
 
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: object) => {
     const response = await apiFetch(`${apiUrl}/api/suppliers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

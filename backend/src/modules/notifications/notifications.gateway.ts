@@ -231,6 +231,31 @@ export class NotificationsGateway
     this.server.to(rooms).emit('chatGroupUpdated', group);
   }
 
+  /**
+   * Phát một sự kiện tới danh sách người dùng (mọi thiết bị của họ),
+   * tùy chọn kèm toàn bộ quản trị viên.
+   */
+  emitToUsers(
+    userIds: string[],
+    event: string,
+    payload: unknown,
+    options: { includeAdmins?: boolean } = {},
+  ) {
+    if (!this.server) return;
+    const rooms = Array.from(new Set(userIds.filter(Boolean))).map(
+      (id) => `user_${id}`,
+    );
+    if (options.includeAdmins) rooms.push('role_ADMIN');
+    if (!rooms.length) return;
+    this.server.to(rooms).emit(event, payload);
+  }
+
+  /** Phát sự kiện tới mọi kết nối đã xác thực. */
+  emitToAll(event: string, payload: unknown) {
+    if (!this.server) return;
+    this.server.emit(event, payload);
+  }
+
   getRealtimeStats() {
     let totalConnections = 0;
     this.userSockets.forEach((sockets) => {

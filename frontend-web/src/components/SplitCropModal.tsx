@@ -19,6 +19,7 @@ import {
   type SplitCropPayload,
 } from '../services/crop.service';
 import { scrollToTop } from '../utils/scrollHelper';
+import { getErrorMessage } from '../utils/errors';
 
 interface Pond {
   id: string;
@@ -295,8 +296,8 @@ export default function SplitCropModal({
       const result = await cropService.split(crop.id, payload);
       onSuccess(result.message || 'Tách ao thành công!');
       onClose();
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Lỗi khi tách ao.');
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err) || 'Lỗi khi tách ao.');
     } finally {
       setSubmitting(false);
     }

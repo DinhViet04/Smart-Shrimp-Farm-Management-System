@@ -114,19 +114,14 @@ export default function TechnicianDashboard() {
         onMouseLeave={() => setHoveredTooltip(null)}
         className={`relative flex flex-col z-30 flex-shrink-0 transition-all duration-500 ease-out ${
           isSidebarCollapsed
-            ? 'w-20 my-3 ml-3 h-[calc(100vh-1.5rem)] rounded-3xl bg-white/85 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.08)]'
+            ? 'w-20 h-screen bg-white border-r border-indigo-100 shadow-sm'
             : 'w-72 h-screen bg-white border-r border-indigo-100 shadow-sm'
         }`}
       >
         {/* Header / Logo & Top Toggle */}
         {isSidebarCollapsed ? (
-          <div className="flex flex-col items-center py-3.5 px-2 gap-2 border-b border-indigo-50/80 flex-shrink-0">
-            <img
-              src="/logonen.jpg"
-              alt="SSFM Logo"
-              className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 flex-shrink-0 transition-transform duration-300 hover:scale-105"
-            />
-            {/* Dedicated Expand Button */}
+          <div className="flex h-20 items-center justify-center border-b border-indigo-50 flex-shrink-0">
+            {/* Logo: hover để hiện nút mở rộng */}
             <button
               onClick={() => {
                 setIsSidebarCollapsed(false);
@@ -141,9 +136,17 @@ export default function TechnicianDashboard() {
               }}
               onMouseLeave={() => setHoveredTooltip(null)}
               title="Mở rộng thanh điều hướng"
-              className="group relative flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-600 hover:scale-105 active:scale-95 transition-all duration-200 border border-indigo-100/80 shadow-2xs cursor-pointer"
+              aria-label="Mở rộng thanh điều hướng"
+              className="group relative w-10 h-10 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
             >
-              <PanelLeftOpen className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+              <img
+                src="/logonen.jpg"
+                alt="SSFM Logo"
+                className="w-10 h-10 rounded-full object-cover bg-white shadow-sm border border-slate-200 transition-opacity duration-200 group-hover:opacity-0 group-focus-visible:opacity-0"
+              />
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                <PanelLeftOpen className="w-5 h-5" />
+              </span>
             </button>
           </div>
         ) : (

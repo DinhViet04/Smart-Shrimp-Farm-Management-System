@@ -14,6 +14,7 @@ import type { CastDto } from '../../services/shrimpSizeService';
 import { cropService } from '../../services/crop.service';
 import type { Crop } from '../../services/crop.service';
 import GrowthHeaderTabs, { type GrowthTabType } from '../growth/GrowthHeaderTabs';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface Pond {
   id: string;
@@ -130,6 +131,11 @@ export default function PondSizeDetail({
       setActiveCrop(null);
     }
   }, [pondId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['shrimp-size', 'crops'], () => {
+    void fetchSamples();
+  });
 
   useEffect(() => {
     let isMounted = true;

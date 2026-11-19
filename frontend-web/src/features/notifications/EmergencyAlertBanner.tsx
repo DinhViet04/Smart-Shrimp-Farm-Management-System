@@ -34,7 +34,9 @@ export default function EmergencyAlertBanner({
     setDismissedIds(next);
     try {
       sessionStorage.setItem('dismissed_emergency_alerts', JSON.stringify(next));
-    } catch {}
+    } catch {
+      // sessionStorage có thể bị chặn (chế độ riêng tư) – bỏ qua, banner vẫn ẩn trong phiên này
+    }
   };
 
   const handleAction = () => {

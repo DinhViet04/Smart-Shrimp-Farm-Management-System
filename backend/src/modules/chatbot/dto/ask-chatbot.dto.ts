@@ -20,7 +20,12 @@ export class AskChatbotDto {
   @IsObject()
   @IsOptional()
   pendingAction?: {
-    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP';
+    intent:
+      | 'CREATE_FARM'
+      | 'CREATE_POND'
+      | 'CREATE_CROP'
+      | 'IMPORT_INVENTORY'
+      | 'RECORD_WATER_QUALITY';
     collectedData: Record<string, any>;
   };
 }

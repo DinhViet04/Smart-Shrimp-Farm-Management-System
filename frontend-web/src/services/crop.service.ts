@@ -373,7 +373,7 @@ export interface HarvestSummaryResponse {
     feedLogs: MaterialUsageItem[];
     medicineLogs: MaterialUsageItem[];
     chemicalLogs: MaterialUsageItem[];
-    availableInventory: any[];
+    availableInventory: unknown[];
   };
 }
 

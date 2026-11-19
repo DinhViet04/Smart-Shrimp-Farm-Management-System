@@ -21,6 +21,7 @@ import {
   Pond,
   WaterQualityHistoryRecord,
 } from '../../services/waterQualityService';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 // ─── Status colors config ───────────────────────────────────────────────────
 
@@ -193,6 +194,11 @@ export default function RecordHistoryScreen() {
     },
     [userToken, selectedFarmId, selectedPondId, fromDate, toDate, page, size, sortOrder],
   );
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['water-quality', 'environment'], () => {
+    void fetchHistory(true);
+  });
 
   // Tăng mỗi lần bấm Tìm kiếm / Đặt lại để effect tải lại với bộ lọc MỚI
   const [searchVersion, setSearchVersion] = useState(0);

@@ -6,7 +6,7 @@
  * Adapted to Indigo theme for Technician and Teal for Farmer.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useEffectEvent, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Calendar,
@@ -30,6 +30,9 @@ import type {
   ShrimpHealthStatusType,
   ShrimpSeverityType,
 } from '../../services/shrimp-health.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
+import type { StoredUser } from '../../types/user';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +114,7 @@ export default function ShrimpHealthList({
   initialFarmId,
   initialPondId,
 }: ShrimpHealthListProps = {}) {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -176,7 +179,7 @@ export default function ShrimpHealthList({
         setPonds(pondsData);
 
         if (initialPondId) {
-          const found = pondsData.find((p: any) => p.id === initialPondId);
+          const found = pondsData.find((p) => p.id === initialPondId);
           if (found) {
             setSelectedFarmId(found.farmId);
             setSelectedPondId(initialPondId);
@@ -198,8 +201,8 @@ export default function ShrimpHealthList({
   }, [initialFarmId, initialPondId]);
 
   // ─── Fetch Records ─────────────────────────────────────────────────────────
-  const fetchHistory = useCallback(async () => {
-    setIsLoading(true);
+  const fetchHistory = useCallback(async (silent?: unknown) => {
+    if (silent !== true) setIsLoading(true);
     setErrorMsg(null);
     try {
       const data = await shrimpHealthService.getHistory({
@@ -214,15 +217,24 @@ export default function ShrimpHealthList({
       });
       setRecords(data.content);
       setTotalElements(data.totalElements);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Không thể tải lịch sử sức khỏe tôm');
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err) || 'Không thể tải lịch sử sức khỏe tôm');
     } finally {
       setIsLoading(false);
     }
   }, [selectedFarmId, selectedPondId, selectedHealthStatus, fromDate, toDate, page, size, sortOrder]);
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['shrimp-health'], () => {
+    void fetchHistory(true);
+  });
+
+  // Chỉ tự tải lại khi đổi trang / thứ tự sắp xếp (bộ lọc áp dụng qua nút tìm kiếm)
+  const reloadHistory = useEffectEvent(() => {
+    void fetchHistory();
+  });
   useEffect(() => {
-    fetchHistory();
+    reloadHistory();
   }, [page, sortOrder]);
 
   const handleSearch = (e: React.FormEvent) => {

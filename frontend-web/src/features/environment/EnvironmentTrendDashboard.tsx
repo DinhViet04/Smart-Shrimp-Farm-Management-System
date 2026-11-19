@@ -13,6 +13,7 @@ import {
 } from '../../utils/cropGrouping';
 import { waterQualityService } from '../../services/water-quality.service';
 import LoadingMotion from '../../components/LoadingMotion';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 type TimeRange = '24h' | '7d' | '30d' | 'crop' | 'year';
 type WQStatus = 'Optimal' | 'Warning' | 'Danger';
@@ -90,7 +91,7 @@ export default function EnvironmentTrendDashboard({
       const targetPond = initialPondId;
 
       if (targetPond) {
-        const found = p.find((item: any) => item.id === targetPond);
+        const found = p.find((item) => item.id === targetPond);
         if (found) {
           targetFarm = found.farmId;
           if (targetFarm) setSelectedFarm(targetFarm);
@@ -99,13 +100,13 @@ export default function EnvironmentTrendDashboard({
         }
       }
 
-      if (targetFarm && f.some((farm: any) => farm.id === targetFarm)) {
+      if (targetFarm && f.some((farm) => farm.id === targetFarm)) {
         setSelectedFarm(targetFarm);
-      } else if (f.length > 0 && !selectedFarm) {
-        setSelectedFarm(f[0].id);
+      } else if (f.length > 0) {
+        setSelectedFarm((prev) => prev || f[0].id);
       }
 
-      if (targetPond && p.some((pond: any) => pond.id === targetPond)) {
+      if (targetPond && p.some((pond) => pond.id === targetPond)) {
         setSelectedPond(targetPond);
       } else {
         setSelectedPond('ALL');
@@ -169,6 +170,9 @@ export default function EnvironmentTrendDashboard({
   }, [initialFarmId, initialPondId]);
 
   // Fetch trend data when pond, time range, crop, year or farm changes
+  // Realtime: tăng bộ đếm để effect bên dưới tải lại khi dữ liệu thay đổi
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  useRealtimeRefresh(['water-quality', 'environment'], () => setRealtimeTick((v) => v + 1));
   useEffect(() => {
     if (!selectedPond) {
       setTrendData([]);
@@ -178,7 +182,6 @@ export default function EnvironmentTrendDashboard({
       setLoading(true);
       try {
         let fromDate: Date | undefined;
-        let toDate: Date | undefined;
         if (timeRange === '24h') fromDate = subHours(new Date(), 24);
         if (timeRange === '7d') fromDate = subDays(new Date(), 7);
         if (timeRange === '30d') fromDate = subDays(new Date(), 30);
@@ -189,7 +192,7 @@ export default function EnvironmentTrendDashboard({
         const data = await waterQualityService.getTrends(
           selectedPond,
           fromDate ? fromDate.toISOString() : undefined,
-          toDate ? toDate.toISOString() : undefined,
+          undefined, // toDate: luôn lấy tới hiện tại
           cId,
           yr,
           selectedFarm || undefined,
@@ -202,7 +205,7 @@ export default function EnvironmentTrendDashboard({
       }
     };
     fetchData();
-  }, [selectedPond, timeRange, selectedCropId, selectedYear, selectedFarm]);
+  }, [selectedPond, timeRange, selectedCropId, selectedYear, selectedFarm, realtimeTick]);
 
   const filteredPonds = ponds.filter(p => p.farmId === selectedFarm);
 

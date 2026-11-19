@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import type { FormEvent } from 'react';
 import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign, Loader2 } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
@@ -10,6 +10,31 @@ import InventoryActionModal from './InventoryActionModal';
 import InventoryUsageHistoryView from './InventoryUsageHistoryView';
 import LoadingMotion from '../../components/LoadingMotion';
 import { feedingLogService, type DailyFeedingGroup } from '../../services/feeding-log.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { getErrorMessage } from '../../utils/errors';
+import type { InventoryItem, InventoryUsageLog } from '../../services/inventory.service';
+import type { Supplier } from '../../services/supplier.service';
+import type { OverviewFarm, OverviewPond } from '../../services/pond.service';
+
+interface ConsumptionSummary {
+  totalUsed: number;
+  consumptionByItem?: { inventoryId: string; quantityUsed: number }[];
+}
+
+/** Một dòng trong "Hoạt động gần đây" (cho ăn hoặc nhập/xuất kho) */
+interface RecentActivity {
+  id: string;
+  isFeeding: boolean;
+  isImport?: boolean;
+  date: string;
+  title: string;
+  category: string;
+  amount: number;
+  unit: string;
+  creator: string;
+  sessionsSummary: string | null;
+  note?: string | null;
+}
 
 const SUPPLIER_PHONE_REGEX = /^0\d{9}$/;
 const SUPPLIER_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,30 +48,30 @@ const formatVND = (val: number | string) => {
 export default function InventoryManagement() {
   const [currentView, setCurrentView] = useState<'main' | 'usage-history'>('main');
   const [consumptionCategory, setConsumptionCategory] = useState<'FEED' | 'MEDICINE' | 'CHEMICAL'>('FEED');
-  const [inventories, setInventories] = useState<any[]>([]);
+  const [inventories, setInventories] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [productCategoryFilter, setProductCategoryFilter] = useState<'ALL' | 'FEED' | 'MEDICINE' | 'CHEMICAL'>('ALL');
   const [productSearch, setProductSearch] = useState('');
-  const [farms, setFarms] = useState<any[]>([]);
+  const [farms, setFarms] = useState<OverviewFarm[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
-  const [consumptionSummary, setConsumptionSummary] = useState<any>(null);
-  const [usageLogs, setUsageLogs] = useState<any[]>([]);
+  const [consumptionSummary, setConsumptionSummary] = useState<ConsumptionSummary | null>(null);
+  const [usageLogs, setUsageLogs] = useState<InventoryUsageLog[]>([]);
   const [recentFeedingLogs, setRecentFeedingLogs] = useState<DailyFeedingGroup[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [selectedDetailsItem, setSelectedDetailsItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [selectedDetailsItem, setSelectedDetailsItem] = useState<InventoryItem | null>(null);
   
   // Delete Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [ponds, setPonds] = useState<any[]>([]);
-  const [actionItem, setActionItem] = useState<any>(null);
+  const [ponds, setPonds] = useState<OverviewPond[]>([]);
+  const [actionItem, setActionItem] = useState<InventoryItem | null>(null);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
-  const [editingSupplier, setEditingSupplier] = useState<any>(null);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supplierForm, setSupplierForm] = useState({
     name: '',
     phone: '',
@@ -56,7 +81,7 @@ export default function InventoryManagement() {
   });
   const [supplierErrors, setSupplierErrors] = useState<{ phone?: string; email?: string }>({});
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
-  const [supplierToDelete, setSupplierToDelete] = useState<any | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
 
   // Toast State
@@ -66,17 +91,26 @@ export default function InventoryManagement() {
   const canManageInventory = user.role === 'FARM_MANAGER';
   const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(user.role || '');
   const isFarmerOrTech = ['FARMER', 'TECHNICIAN'].includes(user.role || '');
+  // KHO TỔNG: Manager chỉ dùng một kho tổng chung cho tất cả trang trại -> không chọn trang trại, không gửi farmId.
+  // Nhân viên vẫn gửi farmId, backend tự quy về kho tổng của chủ trang trại đó.
+  const isCentralWarehouse = user.role === 'FARM_MANAGER';
+  const warehouseFarmId = (farmId: string) => (isCentralWarehouse ? undefined : farmId);
 
   const lowStockCount = useMemo(() => {
     return inventories.filter((i) => (i.quantity || 0) <= (i.minThreshold || 0)).length;
   }, [inventories]);
 
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const fetchInventories = async (farmId: string) => {
-    if (!farmId) return;
+    if (!farmId && !isCentralWarehouse) return;
     try {
-      const data = await inventoryService.getAll('', 'ALL', farmId);
+      const data = await inventoryService.getAll('', 'ALL', warehouseFarmId(farmId));
       setInventories(data.data || []);
-    } catch (error) {
+    } catch {
       showToast('Không thể tải danh sách sản phẩm', 'error');
     }
   };
@@ -85,33 +119,35 @@ export default function InventoryManagement() {
     farmId: string,
     category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory,
   ) => {
-    if (!farmId) return;
+    if (!farmId && !isCentralWarehouse) return;
     try {
       const [summary, logs, feedingRes] = await Promise.all([
-        inventoryService.getConsumptionSummary(farmId, undefined, category),
-        inventoryService.getUsageLogs(farmId),
-        feedingLogService.getAllGrouped({ farmId, size: 5 }).catch(() => ({ data: [] })),
+        inventoryService.getConsumptionSummary(warehouseFarmId(farmId), undefined, category),
+        inventoryService.getUsageLogs(warehouseFarmId(farmId)),
+        feedingLogService
+          .getAllGrouped({ farmId: warehouseFarmId(farmId), size: 5 })
+          .catch(() => ({ data: [] })),
       ]);
       setConsumptionSummary(summary);
       setUsageLogs(logs || []);
       setRecentFeedingLogs(feedingRes?.data || []);
-    } catch (error) {
+    } catch {
       showToast('Không thể tải dữ liệu tiêu thụ', 'error');
     }
   };
 
   const fetchSuppliers = async (farmId: string) => {
-    if (!farmId || !canManageInventory) return;
+    if ((!farmId && !isCentralWarehouse) || !canManageInventory) return;
     try {
-      const data = await supplierService.getAll(farmId);
+      const data = await supplierService.getAll(warehouseFarmId(farmId));
       setSuppliers(data || []);
-    } catch (error) {
+    } catch {
       showToast('Không thể tải danh sách nhà cung cấp', 'error');
     }
   };
 
   const loadAllFarmData = async (farmId: string, category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory) => {
-    if (!farmId) {
+    if (!farmId && !isCentralWarehouse) {
       setIsLoading(false);
       return;
     }
@@ -135,34 +171,64 @@ export default function InventoryManagement() {
       if (overview.farms.length > 0 && !selectedFarmId) {
         setSelectedFarmId(overview.farms[0].id);
       } else if (!overview.farms.length) {
-        setIsLoading(false);
+        // Manager chưa có trang trại vẫn có kho tổng của mình
+        if (isCentralWarehouse) loadAllFarmData('', consumptionCategory);
+        else setIsLoading(false);
       }
-    } catch (error) {
+    } catch {
       showToast('Không thể tải dữ liệu trang trại và ao nuôi', 'error');
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchOverview();
-  }, []);
-
-  useEffect(() => {
+  const refreshOverview = useEffectEvent(() => {
+    void fetchOverview();
+  });
+  const onInventoryDataUpdate = useEffectEvent(() => {
+    void fetchOverview();
     if (selectedFarmId) {
-      loadAllFarmData(selectedFarmId, consumptionCategory);
+      void loadAllFarmData(selectedFarmId, consumptionCategory);
     }
+  });
+  useEffect(() => {
+    refreshOverview();
+
+    const handleDataUpdate = () => onInventoryDataUpdate();
+    window.addEventListener('inventory_updated', handleDataUpdate);
+    window.addEventListener('farm_data_updated', handleDataUpdate);
+    return () => {
+      window.removeEventListener('inventory_updated', handleDataUpdate);
+      window.removeEventListener('farm_data_updated', handleDataUpdate);
+    };
+  }, [selectedFarmId, consumptionCategory]);
+
+  const loadFarmData = useEffectEvent((farmId: string) => {
+    void loadAllFarmData(farmId, consumptionCategory);
+  });
+  useEffect(() => {
+    if (selectedFarmId) loadFarmData(selectedFarmId);
   }, [selectedFarmId]);
 
-  useEffect(() => {
-    if (selectedFarmId) {
-      fetchConsumptionData(selectedFarmId, consumptionCategory);
-    }
-  }, [consumptionCategory]);
+  // Realtime: tải lại âm thầm (không hiện loading) khi kho / NCC / nhật ký cho ăn thay đổi.
+  // Không lọc theo farmId vì kho tổng của quản lý dùng chung cho mọi trang trại.
+  useRealtimeRefresh(['inventory', 'suppliers', 'feeding-logs'], () => {
+    if (!selectedFarmId && !isCentralWarehouse) return;
+    void Promise.allSettled([
+      fetchInventories(selectedFarmId),
+      fetchConsumptionData(selectedFarmId, consumptionCategory),
+      fetchSuppliers(selectedFarmId),
+    ]);
+  });
+  useRealtimeRefresh(['farms', 'ponds'], () => {
+    void fetchOverview();
+  });
 
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const reloadConsumption = useEffectEvent((category: 'FEED' | 'MEDICINE' | 'CHEMICAL') => {
+    if (selectedFarmId) void fetchConsumptionData(selectedFarmId, category);
+  });
+  useEffect(() => {
+    reloadConsumption(consumptionCategory);
+  }, [consumptionCategory]);
 
   const handleDelete = async () => {
     if (!itemToDelete) return;
@@ -171,8 +237,8 @@ export default function InventoryManagement() {
       await inventoryService.remove(itemToDelete.id);
       showToast('Xóa sản phẩm thành công!', 'success');
       fetchInventories(selectedFarmId);
-    } catch (error: any) {
-      showToast(error.message || 'Không thể xóa sản phẩm này', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Không thể xóa sản phẩm này', 'error');
     } finally {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);
@@ -180,12 +246,12 @@ export default function InventoryManagement() {
     }
   };
 
-  const handleOpenForm = (item?: any) => {
+  const handleOpenForm = (item?: InventoryItem) => {
     setEditingItem(item || null);
     setIsModalOpen(true);
   };
 
-  const handleOpenActionModal = (item: any) => {
+  const handleOpenActionModal = (item: InventoryItem) => {
     setActionItem(item);
   };
 
@@ -197,7 +263,7 @@ export default function InventoryManagement() {
     return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(date));
   };
 
-  const handleOpenSupplierForm = (supplier?: any) => {
+  const handleOpenSupplierForm = (supplier?: Supplier) => {
     setEditingSupplier(supplier || null);
     setSupplierForm({
       name: supplier?.name || '',
@@ -212,7 +278,7 @@ export default function InventoryManagement() {
 
   const handleSaveSupplier = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedFarmId) return;
+    if (!selectedFarmId && !isCentralWarehouse) return;
 
     const phone = supplierForm.phone.trim();
     const email = supplierForm.email.trim();
@@ -236,7 +302,7 @@ export default function InventoryManagement() {
       const payload = {
         ...supplierForm,
         name: supplierForm.name.trim(),
-        farmId: selectedFarmId,
+        farmId: warehouseFarmId(selectedFarmId),
         phone: phone || undefined,
         email: email || undefined,
         address: supplierForm.address.trim() || undefined,
@@ -254,14 +320,14 @@ export default function InventoryManagement() {
       setIsSupplierModalOpen(false);
       setEditingSupplier(null);
       fetchSuppliers(selectedFarmId);
-    } catch (error: any) {
-      showToast(error.message || 'Không thể lưu nhà cung cấp', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Không thể lưu nhà cung cấp', 'error');
     } finally {
       setIsSavingSupplier(false);
     }
   };
 
-  const handleDeleteSupplier = (supplier: any) => {
+  const handleDeleteSupplier = (supplier: Supplier) => {
     setSupplierToDelete(supplier);
   };
 
@@ -273,8 +339,8 @@ export default function InventoryManagement() {
       showToast('Xóa nhà cung cấp thành công', 'success');
       setSupplierToDelete(null);
       fetchSuppliers(selectedFarmId);
-    } catch (error: any) {
-      showToast(error.message || 'Không thể xóa nhà cung cấp', 'error');
+    } catch (error) {
+      showToast(getErrorMessage(error) || 'Không thể xóa nhà cung cấp', 'error');
     } finally {
       setIsDeletingSupplier(false);
     }
@@ -325,7 +391,7 @@ export default function InventoryManagement() {
 
     return currentCategoryItems.map((item) => {
       const consumed = consumptionSummary?.consumptionByItem?.find(
-        (c: any) => c.inventoryId === item.id
+        (c) => c.inventoryId === item.id
       );
       const quantityUsed = consumed ? consumed.quantityUsed : 0;
       const quantityRemaining = item.quantity || 0;
@@ -340,7 +406,7 @@ export default function InventoryManagement() {
       // - Đỏ (CRITICAL): Cảnh báo khi chạm hoặc dưới ngưỡng tối thiểu (hoặc hết hàng)
       // - Vàng cam (LOW): Sắp hết khi tồn kho gần ngưỡng (<= 1.5 lần ngưỡng tối thiểu)
       // - Xanh lá (SAFE): Còn dồi dào, an toàn (> 1.5 lần ngưỡng tối thiểu)
-      let status: 'SAFE' | 'LOW' | 'CRITICAL' = 'SAFE';
+      let status: 'SAFE' | 'LOW' | 'CRITICAL';
       if (quantityRemaining <= minThreshold || quantityRemaining === 0) {
         status = 'CRITICAL';
       } else if (quantityRemaining <= minThreshold * 1.5) {
@@ -368,7 +434,7 @@ export default function InventoryManagement() {
 
   // Tổng hợp hoạt động sử dụng gần nhất (cả Cho ăn hàng ngày và Xuất kho)
   const recentActivities = useMemo(() => {
-    const list: any[] = [];
+    const list: RecentActivity[] = [];
 
     // 1. Thêm các đợt cho ăn gần đây
     recentFeedingLogs.forEach((fg) => {
@@ -417,8 +483,8 @@ export default function InventoryManagement() {
   if (currentView === 'usage-history') {
     return (
       <InventoryUsageHistoryView
-        farmId={selectedFarmId}
-        farmName={selectedFarm?.name}
+        farmId={warehouseFarmId(selectedFarmId)}
+        farmName={isCentralWarehouse ? 'Kho tổng' : selectedFarm?.name}
         ponds={ponds}
         onBack={() => setCurrentView('main')}
       />
@@ -465,7 +531,14 @@ export default function InventoryManagement() {
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          {farms.length > 0 && (
+          {isCentralWarehouse ? (
+            <span
+              className="px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-xl text-sm font-bold text-blue-700 shadow-sm whitespace-nowrap"
+              title="Kho dùng chung cho tất cả trang trại của bạn"
+            >
+              Kho tổng · {farms.length} trang trại
+            </span>
+          ) : farms.length > 0 && (
             <select
               value={selectedFarmId}
               onChange={(e) => setSelectedFarmId(e.target.value)}
@@ -498,9 +571,9 @@ export default function InventoryManagement() {
             <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">Toàn thời gian</span>
           </div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng xuất dùng</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed)} <span className="text-base font-semibold text-slate-500">kg/lít</span></p>
+          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed ?? 0)} <span className="text-base font-semibold text-slate-500">kg/lít</span></p>
           <p className="text-xs text-slate-400 mt-2 font-medium">
-            {consumptionSummary?.totalUsed > 0 ? 'Tổng lượng đã xuất dùng cho các ao nuôi' : 'Chưa phát sinh xuất dùng'}
+            {(consumptionSummary?.totalUsed ?? 0) > 0 ? 'Tổng lượng đã xuất dùng cho các ao nuôi' : 'Chưa phát sinh xuất dùng'}
           </p>
         </div>
 
@@ -811,8 +884,13 @@ export default function InventoryManagement() {
                                 🦐 Cho ăn ({activity.sessionsSummary})
                               </span>
                             ) : activity.isImport ? (
-                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
                                 📥 Nhập kho
+                                {(activity.note?.includes('[AI') || activity.note?.includes('[NHẬP KHO AI]')) && (
+                                  <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-1 rounded">
+                                    AI
+                                  </span>
+                                )}
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 shrink-0">
@@ -914,7 +992,7 @@ export default function InventoryManagement() {
                     <td className="px-6 py-4">
                       <p className="font-bold text-slate-800">{supplier.name}</p>
                       <p className="text-xs text-slate-500 mt-1 line-clamp-1">
-                        {supplier.items?.slice(0, 3).map((item: any) => item.itemName).join(', ')}
+                        {supplier.items?.slice(0, 3).map((item) => item.itemName).join(', ')}
                         {supplier.items?.length > 3 ? '...' : ''}
                       </p>
                     </td>
@@ -948,7 +1026,7 @@ export default function InventoryManagement() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-slate-600">{formatDate(supplier.latestUpdatedAt)}</span>
+                      <span className="text-sm font-medium text-slate-600">{supplier.latestUpdatedAt ? formatDate(supplier.latestUpdatedAt) : '—'}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">

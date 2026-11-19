@@ -41,6 +41,7 @@ import {
 import { inventoryService, InventoryItem } from '../../services/inventoryService';
 import BusinessHeader from '../../components/BusinessHeader';
 import { toLocalDateString, shiftLocalDate } from '../../utils/date';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 interface FeedingLogScreenProps {
   navigation?: any;
@@ -98,9 +99,9 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
   const HISTORY_PAGE_SIZE = 10;
 
   // Initialize data on mount
-  const loadInitialData = useCallback(async () => {
+  const loadInitialData = useCallback(async (silent?: unknown) => {
     try {
-      setIsLoading(true);
+      if (silent !== true) setIsLoading(true);
       const overview = await pondService.getOverview();
       const pondList = overview.ponds || [];
       setPonds(pondList);
@@ -128,6 +129,11 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
       setIsRefreshing(false);
     }
   }, [route?.params?.pondId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['farms', 'ponds', 'crops'], () => {
+    void loadInitialData(true);
+  });
 
   useEffect(() => {
     loadInitialData();
@@ -161,10 +167,10 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
   }, [activePond?.farmId]);
 
   // Auto Load Existing Daily Feeding Details When Date or Pond Changes
-  const loadDailyDetails = useCallback(async () => {
+  const loadDailyDetails = useCallback(async (silent?: unknown) => {
     if (!selectedPondId || !feedingDate) return;
     try {
-      setLoadingDailyDetails(true);
+      if (silent !== true) setLoadingDailyDetails(true);
       setDailyDetailsError(null);
       const existingLogs = await feedingLogService.getDailyDetails(selectedPondId, feedingDate);
       if (Array.isArray(existingLogs) && existingLogs.length > 0) {
@@ -210,6 +216,11 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
     }
   }, [selectedPondId, feedingDate, selectedFeedProductId]);
 
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['feeding-logs', 'inventory'], () => {
+    void loadDailyDetails(true);
+  });
+
   useEffect(() => {
     if (activeSubTab === 'RECORD') {
       loadDailyDetails();
@@ -217,10 +228,10 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
   }, [activeSubTab, loadDailyDetails]);
 
   // Load Feeding History Groups
-  const loadFeedingHistory = useCallback(async () => {
+  const loadFeedingHistory = useCallback(async (silent?: unknown) => {
     if (!selectedPondId) return;
     try {
-      setLoadingHistory(true);
+      if (silent !== true) setLoadingHistory(true);
       const res = await feedingLogService.getAllGrouped({
         pondId: selectedPondId,
         size: 120,
@@ -233,6 +244,11 @@ export default function FeedingLogScreen({ route }: FeedingLogScreenProps) {
       setLoadingHistory(false);
     }
   }, [selectedPondId]);
+
+  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  useRealtimeRefresh(['feeding-logs'], () => {
+    void loadFeedingHistory(true);
+  });
 
   const totalHistoryPages = Math.max(1, Math.ceil(historyGroups.length / HISTORY_PAGE_SIZE));
   const paginatedHistoryGroups = useMemo(() => {

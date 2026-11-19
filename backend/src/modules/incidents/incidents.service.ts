@@ -199,6 +199,9 @@ export class IncidentsService {
 
     const crop = await this.getCropWithFarm(targetCropId);
     await this.farmAccess.assertCanAccessFarm(user, crop.pond.farmId);
+    if (crop.status !== 'ACTIVE') {
+      throw new BadRequestException('Chỉ được ghi nhận sự cố cho vụ nuôi đang hoạt động');
+    }
 
     // Định dạng tiêu đề & mô tả nếu có danh mục / mức độ / vị trí cụ thể
     let finalTitle = dto.title.trim();
@@ -215,9 +218,11 @@ export class IncidentsService {
       finalDescription = `${metaTags.join(' ')}\n\n${finalDescription}`;
     }
 
-    // Role FARMER và TECHNICIAN chỉ có quyền báo cáo sự cố lên Quản lý (không tự phân công).
-    // Chỉ FARM_MANAGER mới có thể tự tiếp nhận ngay khi tạo sự cố nếu muốn.
+    // FARMER chỉ báo cáo sự cố lên Quản lý.
+    // TECHNICIAN báo cáo thì tự động được giao xử lý sự cố đó (trạng thái vẫn OPEN cho tới khi bắt đầu xử lý).
+    // FARM_MANAGER có thể tự tiếp nhận và xử lý ngay khi tạo sự cố nếu muốn.
     const canSelfAssign = user.role === 'FARM_MANAGER' && Boolean(dto.selfAssign);
+    const isTechnicianReport = user.role === 'TECHNICIAN';
 
     const incident = await this.prisma.$transaction(async (tx) => {
       const created = await tx.incident.create({
@@ -226,7 +231,8 @@ export class IncidentsService {
           title: finalTitle,
           description: finalDescription,
           reporterId: user.userId,
-          ...(canSelfAssign ? { assignedToId: user.userId, status: 'TREATING' } : {}),
+          ...(canSelfAssign || isTechnicianReport ? { assignedToId: user.userId } : {}),
+          ...(canSelfAssign ? { status: 'TREATING' } : {}),
         },
       });
       await tx.incidentTreatmentUpdate.create({
@@ -235,7 +241,9 @@ export class IncidentsService {
           authorId: user.userId,
           treatment: canSelfAssign
             ? 'Quản lý tự tiếp nhận và xử lý sự cố'
-            : 'Đã báo cáo sự cố lên Quản lý trang trại để tiếp nhận & phân công nhân sự khắc phục',
+            : isTechnicianReport
+              ? 'Kỹ thuật viên báo cáo và được giao xử lý sự cố'
+              : 'Đã báo cáo sự cố lên Quản lý trang trại để tiếp nhận & phân công nhân sự khắc phục',
           status: canSelfAssign ? 'TREATING' : 'OPEN',
           eventType: 'REPORTED',
         },
@@ -326,11 +334,12 @@ export class IncidentsService {
       );
     }
 
-    const nextStatus = incident.status === 'OPEN' ? 'TREATING' : incident.status;
+    // Phân công chỉ gán người xử lý; kỹ thuật viên tự bấm "Bắt đầu xử lý" để chuyển sang TREATING
+    const nextStatus = incident.status;
     const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.incident.update({
         where: { id },
-        data: { assignedToId: dto.assignedToId, status: nextStatus },
+        data: { assignedToId: dto.assignedToId },
         include: {
           assignedTo: { select: { id: true, fullName: true, email: true } },
         },

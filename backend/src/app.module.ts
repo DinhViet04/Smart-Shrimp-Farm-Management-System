@@ -31,6 +31,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module.js';
 import { SupportModule } from './modules/support/support.module.js';
 import { ChatGroupsModule } from './modules/chat-groups/chat-groups.module.js';
+import { RealtimeModule } from './modules/realtime/realtime.module.js';
 import { validateEnvironment } from './config/environment.js';
 
 @Module({
@@ -80,6 +81,9 @@ import { validateEnvironment } from './config/environment.js';
     WorkspacesModule,
     SupportModule,
     ChatGroupsModule,
+
+    // Realtime data sync (global interceptor)
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [

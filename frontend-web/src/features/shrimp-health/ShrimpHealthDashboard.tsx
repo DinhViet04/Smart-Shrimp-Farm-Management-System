@@ -3,6 +3,8 @@ import { ClipboardList, History, AlertTriangle } from 'lucide-react';
 import CreateShrimpHealth from './CreateShrimpHealth';
 import ShrimpHealthList from './ShrimpHealthList';
 import IncidentDashboard from '../incidents/IncidentDashboard';
+import type { StoredUser } from '../../types/user';
+import type { IncidentRole } from '../incidents/farmIncidentConstants';
 
 export type ShrimpHealthSubTab = 'record' | 'incident' | 'history';
 
@@ -23,7 +25,7 @@ export default function ShrimpHealthDashboard({
   initialIncidentSubTab = 'board',
   role,
 }: ShrimpHealthDashboardProps) {
-  const [currentUser, setCurrentUser] = useState<any>(() => {
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(() => {
     try {
       const userStr = localStorage.getItem('user');
       return userStr ? JSON.parse(userStr) : null;
@@ -140,7 +142,7 @@ export default function ShrimpHealthDashboard({
           />
         ) : subTab === 'incident' ? (
           <IncidentDashboard
-            role={userRole}
+            role={userRole as IncidentRole}
             initialSubTab={incidentSubTab}
             initialIncidentId={targetIncidentId}
             onClearInitialIncidentId={() => setTargetIncidentId(undefined)}

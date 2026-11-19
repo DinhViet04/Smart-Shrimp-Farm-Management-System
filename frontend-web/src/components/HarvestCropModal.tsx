@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -37,6 +37,7 @@ import {
   interpolateShrimpPrice,
 } from '../services/crop.service';
 import { scrollToTop } from '../utils/scrollHelper';
+import { getErrorMessage } from '../utils/errors';
 
 interface HarvestCropModalProps {
   isOpen: boolean;
@@ -97,6 +98,9 @@ export default function HarvestCropModal({
   const [addQty, setAddQty] = useState('');
 
   // Load harvest summary from backend
+  // Tính giá theo bảng giá thị trường mới nhất (không cần chạy lại effect khi bảng giá đổi)
+  const priceInfoForSize = useEffectEvent((size: number) => interpolateShrimpPrice(size, marketSizes));
+
   useEffect(() => {
     if (!isOpen || !crop) return;
 
@@ -111,7 +115,7 @@ export default function HarvestCropModal({
     setPricePerKg(existingPrice);
     setIsPriceCustomized(!!crop.actualHarvestPricePerKg);
     if (crop.actualHarvestSize) {
-      setMarketPriceInfo(interpolateShrimpPrice(crop.actualHarvestSize, marketSizes));
+      setMarketPriceInfo(priceInfoForSize(crop.actualHarvestSize));
     } else {
       setMarketPriceInfo(null);
     }
@@ -239,6 +243,19 @@ export default function HarvestCropModal({
     };
   }, [isOpen, crop]);
 
+  // Áp dụng bảng giá mới tải về, đọc kích cỡ / giá đang nhập mới nhất
+  const applyMarketSizes = useEffectEvent((sizes: CommercialShrimpSize[]) => {
+    setMarketSizes(sizes);
+    const s = parseFloat(harvestSize);
+    if (s > 0) {
+      const calc = interpolateShrimpPrice(s, sizes);
+      setMarketPriceInfo(calc);
+      if (!isPriceCustomized && !crop?.actualHarvestPricePerKg) {
+        setPricePerKg(calc.price.toString());
+      }
+    }
+  });
+
   // Tự động đồng bộ các mốc giá tôm thương phẩm từ Tép Bạc
   useEffect(() => {
     if (!isOpen) return;
@@ -250,15 +267,7 @@ export default function HarvestCropModal({
       .then((sizes) => {
         if (!isMounted) return;
         if (sizes && sizes.length > 0) {
-          setMarketSizes(sizes);
-          const s = parseFloat(harvestSize);
-          if (s > 0) {
-            const calc = interpolateShrimpPrice(s, sizes);
-            setMarketPriceInfo(calc);
-            if (!isPriceCustomized && !crop?.actualHarvestPricePerKg) {
-              setPricePerKg(calc.price.toString());
-            }
-          }
+          applyMarketSizes(sizes);
         }
       })
       .catch((err) => {
@@ -473,9 +482,9 @@ export default function HarvestCropModal({
           : 'Thu hoạch vụ nuôi thành công! Dữ liệu đã được lưu vào lịch sử vụ nuôi.'
       );
       onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
-      toast.error(err.message || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err) || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
+      toast.error(getErrorMessage(err) || 'Lỗi khi ghi nhận thu hoạch vụ nuôi');
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
 import { setOnUnauthorizedListener } from '../services/apiClient';
 import { disconnectRealtime } from '../services/realtime';
+import {
+  registerForPushNotificationsAsync,
+  unregisterPushNotificationsAsync,
+} from '../services/pushNotificationService';
 
 type AuthContextType = {
   userToken: string | null;
@@ -86,6 +90,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => setOnUnauthorizedListener(null);
   }, []);
 
+  useEffect(() => {
+    if (!userToken) return;
+    void registerForPushNotificationsAsync();
+  }, [userToken]);
+
   const login = async (token: string, user: any, refreshToken?: string) => {
     try {
       setIsLoading(true);
@@ -130,6 +139,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
       if (userToken) {
+        await unregisterPushNotificationsAsync();
         await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
           headers: {

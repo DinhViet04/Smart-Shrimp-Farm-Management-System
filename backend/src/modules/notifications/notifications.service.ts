@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsGateway } from './notifications.gateway.js';
+import { ExpoPushService } from './expo-push.service.js';
 import { NotificationLevel, Prisma } from '@prisma/client';
 
 @Injectable()
@@ -8,7 +9,13 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: NotificationsGateway,
+    @Optional() private readonly expoPush?: ExpoPushService,
   ) {}
+
+  private deliverToUser(userId: string, notification: any) {
+    this.gateway.sendNotificationToUser(userId, notification);
+    void this.expoPush?.sendToUser(userId, notification);
+  }
 
   async createWelcomeNotification(userId: string) {
     const data: Prisma.NotificationUncheckedCreateInput = {
@@ -20,7 +27,7 @@ export class NotificationsService {
     const notification = await this.prisma.notification.create({ data });
 
     // Real-time emit
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
 
     return notification;
   }
@@ -34,7 +41,7 @@ export class NotificationsService {
     const notification = await this.prisma.notification.create({
       data: { userId, title, message, level },
     });
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -75,7 +82,7 @@ export class NotificationsService {
     const notification = await this.prisma.notification.create({ data });
 
     // Real-time emit qua WebSocket
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
 
     return notification;
   }
@@ -110,7 +117,7 @@ export class NotificationsService {
     };
     const notification = await this.prisma.notification.create({ data });
 
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -140,7 +147,7 @@ export class NotificationsService {
       message: `Quản lý ${managerName} đã mời bạn tham gia trang trại "${farmName}" với vai trò ${roleLabel}. Vui lòng xác nhận qua email hoặc đăng nhập để tham gia.`,
     };
     const notification = await this.prisma.notification.create({ data });
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -178,7 +185,7 @@ export class NotificationsService {
       message,
     };
     const notification = await this.prisma.notification.create({ data });
-    this.gateway.sendNotificationToUser(managerId, notification);
+    this.deliverToUser(managerId, notification);
     return notification;
   }
 
@@ -198,7 +205,7 @@ export class NotificationsService {
       message: `Trang trại "${farmName}" đã được tạo thành công trên hệ thống.`,
     };
     const notification = await this.prisma.notification.create({ data });
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -221,7 +228,7 @@ export class NotificationsService {
       message: `Ao nuôi "${pondName}" thuộc trang trại "${farmName}" đã được tạo thành công.`,
     };
     const notification = await this.prisma.notification.create({ data });
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -244,7 +251,7 @@ export class NotificationsService {
       message: `Vụ nuôi mới tại ao "${pondName}" (${farmName}) đã được tạo thành công.`,
     };
     const notification = await this.prisma.notification.create({ data });
-    this.gateway.sendNotificationToUser(userId, notification);
+    this.deliverToUser(userId, notification);
     return notification;
   }
 
@@ -320,7 +327,7 @@ export class NotificationsService {
         createdAt: new Date().toISOString(),
       };
 
-      this.gateway.sendNotificationToUser(userId, {
+      this.deliverToUser(userId, {
         ...notif,
         farmId,
         pondId,
@@ -404,7 +411,7 @@ export class NotificationsService {
         createdAt: new Date().toISOString(),
       };
 
-      this.gateway.sendNotificationToUser(userId, {
+      this.deliverToUser(userId, {
         ...notif,
         farmId,
         pondId,
@@ -489,7 +496,7 @@ export class NotificationsService {
         createdAt: new Date().toISOString(),
       };
 
-      this.gateway.sendNotificationToUser(userId, {
+      this.deliverToUser(userId, {
         ...notif,
         farmId,
         pondId,
@@ -593,7 +600,7 @@ export class NotificationsService {
         createdAt: new Date().toISOString(),
       };
 
-      this.gateway.sendNotificationToUser(userId, {
+      this.deliverToUser(userId, {
         ...notif,
         farmId,
         pondId,
@@ -647,7 +654,7 @@ export class NotificationsService {
       },
     });
 
-    this.gateway.sendNotificationToUser(assigneeId, {
+    this.deliverToUser(assigneeId, {
       ...notification,
       farmId,
       pondId,

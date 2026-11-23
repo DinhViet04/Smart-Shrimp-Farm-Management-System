@@ -1,19 +1,47 @@
 import {
   Controller,
   Get,
+  Post,
   Put,
   Delete,
   Param,
+  Body,
   UseGuards,
   Request,
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service.js';
+import { ExpoPushService } from './expo-push.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly expoPushService: ExpoPushService,
+  ) {}
+
+  @Post('push-token')
+  async registerPushToken(
+    @Request() req: any,
+    @Body() body: { token?: string; platform?: string },
+  ) {
+    const userId = req.user.userId || req.user.sub || req.user.id;
+    return this.expoPushService.registerToken(
+      userId,
+      body?.token ?? '',
+      body?.platform,
+    );
+  }
+
+  @Delete('push-token')
+  async unregisterPushToken(
+    @Request() req: any,
+    @Body() body: { token?: string },
+  ) {
+    const userId = req.user.userId || req.user.sub || req.user.id;
+    return this.expoPushService.unregisterToken(userId, body?.token ?? '');
+  }
 
   @Get()
   async getUserNotifications(@Request() req: any) {

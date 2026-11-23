@@ -20,7 +20,8 @@
       },
       "permissions": [
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "POST_NOTIFICATIONS"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -28,7 +29,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-notifications"
     ]
   }
 }

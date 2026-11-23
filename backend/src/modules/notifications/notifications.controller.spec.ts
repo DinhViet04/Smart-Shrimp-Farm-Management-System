@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
+import { ExpoPushService } from './expo-push.service';
 
 describe('NotificationsController', () => {
   let controller: NotificationsController;
@@ -12,6 +13,13 @@ describe('NotificationsController', () => {
         {
           provide: NotificationsService,
           useValue: {},
+        },
+        {
+          provide: ExpoPushService,
+          useValue: {
+            registerToken: jest.fn(),
+            unregisterToken: jest.fn(),
+          },
         },
       ],
     }).compile();

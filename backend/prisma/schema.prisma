@@ -129,6 +129,7 @@ model User {
   assignedTickets      SupportTicket[]           @relation("SupportAssignee")
   chatGroupMemberships ChatGroupMember[]
   chatMessages         ChatMessage[]
+  devicePushTokens     DevicePushToken[]
 
   @@map("users")
 }
@@ -606,6 +607,19 @@ model Notification {
   @@index([farmId, isRead])
   @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+model DevicePushToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("device_push_tokens")
 }
 
 enum FeedingSession {

@@ -17,9 +17,11 @@ export class PrismaService
   constructor() {
     const adapter = new PrismaPg({
       connectionString: process.env.DATABASE_URL!,
-      max: 5,
-      min: 1,
-      idleTimeoutMillis: 30_000,
+      // DB (Supabase) ở xa: mở 1 kết nối mới mất ~1-1.5s, nên giữ sẵn kết nối lâu hơn
+      // và cho phép nhiều request song song hơn. Giữ max <= pool_size của Supabase pooler.
+      max: Number(process.env.DB_POOL_MAX) || 10,
+      min: 2,
+      idleTimeoutMillis: 300_000,
       connectionTimeoutMillis: 10_000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10_000,

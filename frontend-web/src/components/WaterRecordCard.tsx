@@ -394,7 +394,7 @@ export default function WaterRecordCard({
                 type="text"
                 inputMode="decimal"
                 value={values[f.key]}
-                placeholder={f.optimal ? `TƯ: ${f.optimal}` : 'Không bắt buộc'}
+                placeholder={f.required ? 'Nhập số đo' : 'Không bắt buộc'}
                 onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
                 disabled={locked}
                 aria-invalid={showError}
@@ -402,6 +402,13 @@ export default function WaterRecordCard({
                   showError ? 'border-rose-300 bg-rose-50/40' : style ? style.input : 'border-slate-200 bg-white'
                 } placeholder:text-[10px] placeholder:font-medium placeholder:text-slate-300`}
               />
+              {/* Ngưỡng tối ưu luôn hiển thị (kể cả khi đang nhập / có lỗi) */}
+              {f.optimal && (
+                <span className="block text-[9.5px] font-semibold leading-none text-emerald-700/80">
+                  Tối ưu: {f.optimal}
+                  {f.unit ? ` ${f.unit}` : ''}
+                </span>
+              )}
               <span className="flex justify-between gap-1 text-[9.5px] font-semibold leading-none min-h-[10px]">
                 <span className={showError ? 'text-rose-500' : style ? style.text : 'text-slate-400'}>
                   {showError ? ev.error : style ? style.label : ''}

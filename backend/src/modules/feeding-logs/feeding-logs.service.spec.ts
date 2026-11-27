@@ -71,6 +71,29 @@ describe('FeedingLogsService grouped list', () => {
     });
   });
 
+  it('skips the full count query when the page is not full', async () => {
+    const prisma = {
+      feedingLog: {
+        groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn(),
+      },
+    };
+    const farmAccess = {
+      getAccessibleFarmIds: jest.fn().mockResolvedValue(undefined),
+      assertCanAccessFarm: jest.fn(),
+    };
+    const service = new FeedingLogsService(prisma as any, farmAccess as any);
+
+    const result = await service.findAllGrouped(
+      { userId: 'admin-id', role: 'ADMIN' },
+      { page: 0, size: 50 },
+    );
+
+    expect(prisma.feedingLog.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.feedingLog.findMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ data: [], total: 0, page: 0, size: 50 });
+  });
+
   it('validates an explicit farm filter before querying logs', async () => {
     const prisma = {
       feedingLog: {

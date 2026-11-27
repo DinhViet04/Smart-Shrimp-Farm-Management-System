@@ -78,3 +78,134 @@
   }
 }
 
+
+/* ─── Màu theo role ───────────────────────────────────────────────────────
+ * blue / cyan / indigo của Tailwind đọc qua biến CSS (xem tailwind.config.js).
+ * Mặc định giữ nguyên bảng màu gốc của Tailwind → giao diện các role khác không đổi.
+ * Bọc trong .theme-farmer → đổi sang teal (màu chủ đạo của Nông dân).
+ */
+@layer base {
+  :root {
+    --c-blue-50: 239 246 255;
+    --c-blue-100: 219 234 254;
+    --c-blue-200: 191 219 254;
+    --c-blue-300: 147 197 253;
+    --c-blue-400: 96 165 250;
+    --c-blue-500: 59 130 246;
+    --c-blue-600: 37 99 235;
+    --c-blue-700: 29 78 216;
+    --c-blue-800: 30 64 175;
+    --c-blue-900: 30 58 138;
+    --c-blue-950: 23 37 84;
+    --c-cyan-50: 236 254 255;
+    --c-cyan-100: 207 250 254;
+    --c-cyan-200: 165 243 252;
+    --c-cyan-300: 103 232 249;
+    --c-cyan-400: 34 211 238;
+    --c-cyan-500: 6 182 212;
+    --c-cyan-600: 8 145 178;
+    --c-cyan-700: 14 116 144;
+    --c-cyan-800: 21 94 117;
+    --c-cyan-900: 22 78 99;
+    --c-cyan-950: 8 51 68;
+    --c-indigo-50: 238 242 255;
+    --c-indigo-100: 224 231 255;
+    --c-indigo-200: 199 210 254;
+    --c-indigo-300: 165 180 252;
+    --c-indigo-400: 129 140 248;
+    --c-indigo-500: 99 102 241;
+    --c-indigo-600: 79 70 229;
+    --c-indigo-700: 67 56 202;
+    --c-indigo-800: 55 48 163;
+    --c-indigo-900: 49 46 129;
+    --c-indigo-950: 30 27 75;
+  }
+
+  .theme-farmer {
+    --c-blue-50: 240 253 250;
+    --c-blue-100: 204 251 241;
+    --c-blue-200: 153 246 228;
+    --c-blue-300: 94 234 212;
+    --c-blue-400: 45 212 191;
+    --c-blue-500: 20 184 166;
+    --c-blue-600: 13 148 136;
+    --c-blue-700: 15 118 110;
+    --c-blue-800: 17 94 89;
+    --c-blue-900: 19 78 74;
+    --c-blue-950: 4 47 46;
+    --c-cyan-50: 240 253 250;
+    --c-cyan-100: 204 251 241;
+    --c-cyan-200: 153 246 228;
+    --c-cyan-300: 94 234 212;
+    --c-cyan-400: 45 212 191;
+    --c-cyan-500: 20 184 166;
+    --c-cyan-600: 13 148 136;
+    --c-cyan-700: 15 118 110;
+    --c-cyan-800: 17 94 89;
+    --c-cyan-900: 19 78 74;
+    --c-cyan-950: 4 47 46;
+    --c-indigo-50: 240 253 250;
+    --c-indigo-100: 204 251 241;
+    --c-indigo-200: 153 246 228;
+    --c-indigo-300: 94 234 212;
+    --c-indigo-400: 45 212 191;
+    --c-indigo-500: 20 184 166;
+    --c-indigo-600: 13 148 136;
+    --c-indigo-700: 15 118 110;
+    --c-indigo-800: 17 94 89;
+    --c-indigo-900: 19 78 74;
+    --c-indigo-950: 4 47 46;
+  }
+}
+
+/* Nông dân: phóng to chữ quá nhỏ cho dễ đọc */
+.theme-farmer .text-\[8px\],
+.theme-farmer .text-\[9px\],
+.theme-farmer .text-\[10px\] {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.theme-farmer .text-\[11px\],
+.theme-farmer .text-xs {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Quản lý: dùng giao diện gọn (.theme-farmer) nhưng GIỮ màu chủ đạo xanh dương */
+@layer base {
+  .role-manager .theme-farmer {
+    --c-blue-50: 239 246 255;
+    --c-blue-100: 219 234 254;
+    --c-blue-200: 191 219 254;
+    --c-blue-300: 147 197 253;
+    --c-blue-400: 96 165 250;
+    --c-blue-500: 59 130 246;
+    --c-blue-600: 37 99 235;
+    --c-blue-700: 29 78 216;
+    --c-blue-800: 30 64 175;
+    --c-blue-900: 30 58 138;
+    --c-blue-950: 23 37 84;
+    --c-cyan-50: 236 254 255;
+    --c-cyan-100: 207 250 254;
+    --c-cyan-200: 165 243 252;
+    --c-cyan-300: 103 232 249;
+    --c-cyan-400: 34 211 238;
+    --c-cyan-500: 6 182 212;
+    --c-cyan-600: 8 145 178;
+    --c-cyan-700: 14 116 144;
+    --c-cyan-800: 21 94 117;
+    --c-cyan-900: 22 78 99;
+    --c-cyan-950: 8 51 68;
+    --c-indigo-50: 238 242 255;
+    --c-indigo-100: 224 231 255;
+    --c-indigo-200: 199 210 254;
+    --c-indigo-300: 165 180 252;
+    --c-indigo-400: 129 140 248;
+    --c-indigo-500: 99 102 241;
+    --c-indigo-600: 79 70 229;
+    --c-indigo-700: 67 56 202;
+    --c-indigo-800: 55 48 163;
+    --c-indigo-900: 49 46 129;
+    --c-indigo-950: 30 27 75;
+  }
+}

@@ -43,11 +43,82 @@ export interface InventoryParsedItem {
   imageUrl?: string;
 }
 
+export type AgentActionIntent =
+  | 'CREATE_FARM'
+  | 'CREATE_POND'
+  | 'CREATE_CROP'
+  | 'IMPORT_INVENTORY'
+  | 'EXPORT_INVENTORY'
+  | 'RECORD_WATER_QUALITY'
+  | 'RECORD_FEEDING';
+
+export type FeedingSessionKey = 'SESSION_1' | 'SESSION_2' | 'SESSION_3' | 'SESSION_4' | 'SESSION_5' | 'SESSION_6' | 'SESSION_7';
+export type FeedingStatusKey = 'COMPLETED' | 'SKIPPED' | 'DELAYED';
+
+/** Ao đang có vụ nuôi cho thẻ ghi nhật ký cho ăn (chỉ Nông dân) */
+export interface FeedingPondOption {
+  id: string;
+  name: string;
+  farmId: string;
+  farmName: string;
+  cropId: string;
+  doc: number;
+  /** Số cữ đã ghi hôm nay (không tính cữ bỏ) và tổng kg */
+  todaySessions?: number;
+  todayKg?: number;
+}
+
+/** Gợi ý loại thức ăn & số ký theo giai đoạn tôm (backend phân tích dữ liệu vụ nuôi) */
+export interface FeedingSuggestion {
+  pondId: string;
+  pondName: string;
+  farmName: string;
+  date: string;
+  doc: number;
+  stage: string | null;
+  abwSource: 'SAMPLE' | 'PLAN' | 'DOC_CURVE';
+  abwGram: number;
+  aliveCount: number;
+  biomassKg: number;
+  feedRatePercent: number | null;
+  dailyKg: number;
+  fedTodayKg: number;
+  remainingKg: number;
+  recentDailyAvgKg: number | null;
+  recentSessionsPerDay: number | null;
+  recommendedFeedSize: string;
+  /** Tên giai đoạn tăng trưởng theo trọng lượng tôm */
+  growthStage?: string;
+  /** Thức ăn đúng cỡ / gần cỡ đang còn trong kho */
+  matchingFeeds?: Array<{ id: string; name: string; stock: number; unit: string }>;
+  nearFeeds?: Array<{ id: string; name: string; stock: number; unit: string }>;
+  recommendedFeedProductId: string | null;
+  feedOptions: Array<{
+    id: string;
+    name: string;
+    unit: string;
+    stock: number;
+    sizeSpec: string | null;
+    recommended: boolean;
+    lastUsed: boolean;
+  }>;
+  todayLogs: Array<{
+    session: FeedingSessionKey;
+    time: string;
+    feedProductId: string;
+    feedName: string;
+    amountKg: number;
+    status: FeedingStatusKey;
+  }>;
+  notes: string[];
+  warnings: string[];
+}
+
 export interface AgentActionDraft {
   /** Mã phiếu duy nhất do backend cấp */
   draftId?: string;
   type: 'SLOT_FILLING' | 'CONFIRM_ACTION';
-  intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP' | 'IMPORT_INVENTORY' | 'EXPORT_INVENTORY' | 'RECORD_WATER_QUALITY';
+  intent: AgentActionIntent;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dữ liệu do AI điền, cấu trúc thay đổi theo intent
   collectedData: Record<string, any>;
   missingFields: string[];
@@ -64,6 +135,10 @@ export interface AgentActionDraft {
   cropPondOptions?: CropPondOption[];
   /** Giá tôm giống thị trường (Tép Bạc) cho mục đơn giá giống trên thẻ tạo vụ */
   seedMarketPrice?: SeedPriceInfo;
+  /** Ao (đang có vụ) cho thẻ ghi nhật ký cho ăn — chỉ Nông dân */
+  feedingPondOptions?: FeedingPondOption[];
+  /** Kho (trang trại) có thể chọn trên phiếu nhập kho — mỗi trang trại là một kho riêng */
+  farmOptions?: Array<{ id: string; name: string }>;
 }
 
 /** Giá tôm giống thị trường gửi kèm thẻ tạo vụ (cùng nguồn với form tạo vụ thủ công) */
@@ -128,6 +203,42 @@ export interface KnowledgeDoc {
     chunks: number;
   };
 }
+
+/** Cuộc trò chuyện lưu trên server (messages giữ nguyên cấu trúc ChatMessage của khung chat) */
+export interface StoredChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: unknown[];
+}
+
+export const chatHistoryService = {
+  /** available=false: server chưa có bảng lịch sử -> chỉ dùng bản lưu trên trình duyệt */
+  list: async (): Promise<{ available: boolean; sessions: StoredChatSession[] }> => {
+    const res = await apiFetch(`${apiUrl}/api/chatbot/sessions`);
+    if (!res.ok) throw new Error('Không tải được lịch sử trò chuyện');
+    return res.json();
+  },
+  save: async (session: StoredChatSession): Promise<void> => {
+    const res = await apiFetch(`${apiUrl}/api/chatbot/sessions/${encodeURIComponent(session.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: session.title,
+        messages: session.messages,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      }),
+    });
+    if (!res.ok) throw new Error('Không lưu được cuộc trò chuyện');
+  },
+  remove: async (id: string): Promise<void> => {
+    await apiFetch(`${apiUrl}/api/chatbot/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  clear: async (): Promise<void> => {
+    await apiFetch(`${apiUrl}/api/chatbot/sessions`, { method: 'DELETE' });
+  },
+};
 
 export const chatbotService = {
   ask: async (
@@ -196,8 +307,25 @@ export const chatbotService = {
     return `${apiUrl}/api/chatbot/export/inventory/${farmId}`;
   },
 
+  getFeedingSuggestion: async (pondId: string, date?: string): Promise<FeedingSuggestion> => {
+    const query = new URLSearchParams({ pondId });
+    if (date) query.set('date', date);
+    const res = await apiFetch(`${apiUrl}/api/chatbot/feeding-suggestion?${query.toString()}`);
+    if (!res.ok) {
+      let errMsg = 'Không tải được gợi ý cho ăn';
+      try {
+        const errJson = await res.json();
+        if (errJson?.message) errMsg = Array.isArray(errJson.message) ? errJson.message.join(', ') : errJson.message;
+      } catch {
+        /* giữ thông báo mặc định */
+      }
+      throw new Error(errMsg);
+    }
+    return res.json();
+  },
+
   executeAction: async (action: {
-    intent: 'CREATE_FARM' | 'CREATE_POND' | 'CREATE_CROP' | 'IMPORT_INVENTORY' | 'EXPORT_INVENTORY' | 'RECORD_WATER_QUALITY';
+    intent: AgentActionIntent;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dữ liệu do AI điền, cấu trúc thay đổi theo intent
     data: Record<string, any>;
     /** Mã phiếu: backend chỉ thực thi mỗi phiếu 1 lần */

@@ -1,4 +1,4 @@
-import { disconnectRealtime } from '../services/realtime';
+import { disconnectRealtime, markLocalMutation } from '../services/realtime';
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 let refreshRequest: Promise<string | null> | null = null;
 
@@ -53,6 +53,7 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
   }
 
   const fullUrl = url.startsWith('http') ? url : `${apiUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  markLocalMutation(fullUrl, options.method);
   let response = await fetch(fullUrl, {
     ...options,
     headers,
@@ -74,6 +75,8 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
     }
   }
 
+  // Đánh dấu sau khi server trả lời (sự kiện realtime phát ra cùng lúc với response)
+  markLocalMutation(fullUrl, options.method);
   return response;
 };
 

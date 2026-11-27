@@ -1,6 +1,6 @@
 import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, AlertCircle, CheckCircle2, FlaskConical, Pill, Box, TrendingDown, CalendarDays, Truck, X, ArrowRight, ShieldCheck, AlertTriangle, CircleDollarSign, Loader2, Utensils, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { inventoryService } from '../../services/inventory.service';
 import { supplierService } from '../../services/supplier.service';
 import { pondService } from '../../services/pond.service';
@@ -9,6 +9,8 @@ import InventoryDetailsModal from './InventoryDetailsModal';
 import InventoryActionModal from './InventoryActionModal';
 import InventoryUsageHistoryView from './InventoryUsageHistoryView';
 import LoadingMotion from '../../components/LoadingMotion';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 import { feedingLogService, type DailyFeedingGroup } from '../../services/feeding-log.service';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import { getErrorMessage } from '../../utils/errors';
@@ -91,10 +93,11 @@ export default function InventoryManagement() {
   const canManageInventory = user.role === 'FARM_MANAGER';
   const canRecordUsage = ['FARM_MANAGER', 'FARMER', 'TECHNICIAN', 'ADMIN'].includes(user.role || '');
   const isFarmerOrTech = ['FARMER', 'TECHNICIAN'].includes(user.role || '');
-  // KHO TỔNG: Manager chỉ dùng một kho tổng chung cho tất cả trang trại -> không chọn trang trại, không gửi farmId.
-  // Nhân viên vẫn gửi farmId, backend tự quy về kho tổng của chủ trang trại đó.
-  const isCentralWarehouse = user.role === 'FARM_MANAGER';
-  const warehouseFarmId = (farmId: string) => (isCentralWarehouse ? undefined : farmId);
+  // Nông dân: giữ bố cục, chỉ làm gọn giao diện (tông teal, bo góc nhỏ, bỏ bóng / gradient đậm)
+  // Giao diện gọn (teal, ít chữ) cho Nông dân & Quản lý — chỉ đổi trình bày, quyền giữ nguyên
+  const isCompact = user.role === 'FARMER' || user.role === 'FARM_MANAGER';
+  const fc = (compact: string, other: string) => (isCompact ? compact : other);
+  // Mỗi trang trại là một KHO RIÊNG: mọi role (kể cả Quản lý) đều chọn kho theo trang trại.
 
   const lowStockCount = useMemo(() => {
     return inventories.filter((i) => (i.quantity || 0) <= (i.minThreshold || 0)).length;
@@ -106,9 +109,9 @@ export default function InventoryManagement() {
   };
 
   const fetchInventories = async (farmId: string) => {
-    if (!farmId && !isCentralWarehouse) return;
+    if (!farmId) return;
     try {
-      const data = await inventoryService.getAll('', 'ALL', warehouseFarmId(farmId));
+      const data = await inventoryService.getAll('', 'ALL', farmId);
       setInventories(data.data || []);
     } catch {
       showToast('Không thể tải danh sách sản phẩm', 'error');
@@ -119,13 +122,13 @@ export default function InventoryManagement() {
     farmId: string,
     category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory,
   ) => {
-    if (!farmId && !isCentralWarehouse) return;
+    if (!farmId) return;
     try {
       const [summary, logs, feedingRes] = await Promise.all([
-        inventoryService.getConsumptionSummary(warehouseFarmId(farmId), undefined, category),
-        inventoryService.getUsageLogs(warehouseFarmId(farmId)),
+        inventoryService.getConsumptionSummary(farmId, undefined, category),
+        inventoryService.getUsageLogs(farmId),
         feedingLogService
-          .getAllGrouped({ farmId: warehouseFarmId(farmId), size: 5 })
+          .getAllGrouped({ farmId: farmId, size: 5 })
           .catch(() => ({ data: [] })),
       ]);
       setConsumptionSummary(summary);
@@ -137,9 +140,9 @@ export default function InventoryManagement() {
   };
 
   const fetchSuppliers = async (farmId: string) => {
-    if ((!farmId && !isCentralWarehouse) || !canManageInventory) return;
+    if (!farmId || !canManageInventory) return;
     try {
-      const data = await supplierService.getAll(warehouseFarmId(farmId));
+      const data = await supplierService.getAll(farmId);
       setSuppliers(data || []);
     } catch {
       showToast('Không thể tải danh sách nhà cung cấp', 'error');
@@ -147,7 +150,7 @@ export default function InventoryManagement() {
   };
 
   const loadAllFarmData = async (farmId: string, category: 'FEED' | 'MEDICINE' | 'CHEMICAL' = consumptionCategory) => {
-    if (!farmId && !isCentralWarehouse) {
+    if (!farmId) {
       setIsLoading(false);
       return;
     }
@@ -171,9 +174,8 @@ export default function InventoryManagement() {
       if (overview.farms.length > 0 && !selectedFarmId) {
         setSelectedFarmId(overview.farms[0].id);
       } else if (!overview.farms.length) {
-        // Manager chưa có trang trại vẫn có kho tổng của mình
-        if (isCentralWarehouse) loadAllFarmData('', consumptionCategory);
-        else setIsLoading(false);
+        // Chưa có trang trại -> chưa có kho nào
+        setIsLoading(false);
       }
     } catch {
       showToast('Không thể tải dữ liệu trang trại và ao nuôi', 'error');
@@ -210,9 +212,8 @@ export default function InventoryManagement() {
   }, [selectedFarmId]);
 
   // Realtime: tải lại âm thầm (không hiện loading) khi kho / NCC / nhật ký cho ăn thay đổi.
-  // Không lọc theo farmId vì kho tổng của quản lý dùng chung cho mọi trang trại.
   useRealtimeRefresh(['inventory', 'suppliers', 'feeding-logs'], () => {
-    if (!selectedFarmId && !isCentralWarehouse) return;
+    if (!selectedFarmId) return;
     void Promise.allSettled([
       fetchInventories(selectedFarmId),
       fetchConsumptionData(selectedFarmId, consumptionCategory),
@@ -278,7 +279,7 @@ export default function InventoryManagement() {
 
   const handleSaveSupplier = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedFarmId && !isCentralWarehouse) return;
+    if (!selectedFarmId) return;
 
     const phone = supplierForm.phone.trim();
     const email = supplierForm.email.trim();
@@ -302,7 +303,7 @@ export default function InventoryManagement() {
       const payload = {
         ...supplierForm,
         name: supplierForm.name.trim(),
-        farmId: warehouseFarmId(selectedFarmId),
+        farmId: selectedFarmId,
         phone: phone || undefined,
         email: email || undefined,
         address: supplierForm.address.trim() || undefined,
@@ -382,6 +383,9 @@ export default function InventoryManagement() {
       return true;
     });
   }, [inventories, productCategoryFilter, productSearch]);
+
+  // Phân trang danh sách sản phẩm (đổi kho / danh mục / từ khoá → về trang 1)
+  const productPage = usePagination(filteredProducts, 12, `${selectedFarmId}|${productCategoryFilter}|${productSearch}`);
 
   // Danh sách toàn bộ sản phẩm theo danh mục đang chọn kèm tiến độ tiêu thụ & tồn kho
   const categoryProductsWithUsage = useMemo(() => {
@@ -483,8 +487,8 @@ export default function InventoryManagement() {
   if (currentView === 'usage-history') {
     return (
       <InventoryUsageHistoryView
-        farmId={warehouseFarmId(selectedFarmId)}
-        farmName={isCentralWarehouse ? 'Kho tổng' : selectedFarm?.name}
+        farmId={selectedFarmId}
+        farmName={selectedFarm?.name}
         ponds={ponds}
         onBack={() => setCurrentView('main')}
       />
@@ -507,7 +511,7 @@ export default function InventoryManagement() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 relative">
+    <div className={fc('max-w-7xl mx-auto space-y-5 relative theme-farmer', 'max-w-7xl mx-auto space-y-6 relative')}>
       {/* Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300 ${
@@ -519,35 +523,32 @@ export default function InventoryManagement() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60">
+      <div className={fc('flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white px-5 py-4 rounded-2xl border border-slate-200', 'flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60')}>
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner border border-blue-100/50">
+          <div className={fc('w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100', 'w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-inner border border-blue-100/50')}>
             <Package className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tight">Kho Sản phẩm & Thức ăn</h2>
+            <h2 className={fc('text-xl font-bold text-slate-900', 'text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tight')}>Kho Sản phẩm & Thức ăn</h2>
             <p className="text-sm text-slate-500 font-medium">Quản lý các loại thức ăn, thuốc, hóa chất</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          {isCentralWarehouse ? (
-            <span
-              className="px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-xl text-sm font-bold text-blue-700 shadow-sm whitespace-nowrap"
-              title="Kho dùng chung cho tất cả trang trại của bạn"
-            >
-              Kho tổng · {farms.length} trang trại
-            </span>
-          ) : farms.length > 0 && (
-            <select
-              value={selectedFarmId}
-              onChange={(e) => setSelectedFarmId(e.target.value)}
-              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-blue-700 focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm cursor-pointer"
-            >
-              {farms.map(f => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
+          {farms.length > 0 && (
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-500 whitespace-nowrap">
+              Kho trang trại
+              <select
+                value={selectedFarmId}
+                onChange={(e) => setSelectedFarmId(e.target.value)}
+                title="Mỗi trang trại có một kho riêng"
+                className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-blue-700 focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm cursor-pointer"
+              >
+                {farms.map(f => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </label>
           )}
 
           {canManageInventory && (
@@ -563,21 +564,21 @@ export default function InventoryManagement() {
 
       {/* Thống kê hàng đầu */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div className={fc('bg-white rounded-2xl border border-slate-200 px-5 py-4', 'bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow')}>
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
               <TrendingDown className="w-5 h-5" />
             </div>
-            <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">Toàn thời gian</span>
+            <span className={fc('text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md', 'text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg')}>Toàn thời gian</span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng xuất dùng</p>
-          <p className="text-3xl font-black text-slate-800 mt-1">{formatNumber(consumptionSummary?.totalUsed ?? 0)} <span className="text-base font-semibold text-slate-500">kg/lít</span></p>
+          <p className={fc('text-sm font-medium text-slate-500', 'text-xs font-bold text-slate-500 uppercase tracking-wider')}>Tổng xuất dùng</p>
+          <p className={fc('text-2xl font-bold text-slate-900 mt-1 tabular-nums', 'text-3xl font-black text-slate-800 mt-1')}>{formatNumber(consumptionSummary?.totalUsed ?? 0)} <span className="text-base font-semibold text-slate-500">kg/lít</span></p>
           <p className="text-xs text-slate-400 mt-2 font-medium">
             {(consumptionSummary?.totalUsed ?? 0) > 0 ? 'Tổng lượng đã xuất dùng cho các ao nuôi' : 'Chưa phát sinh xuất dùng'}
           </p>
         </div>
 
-        <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div className={fc('bg-white rounded-2xl border border-slate-200 px-5 py-4', 'bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow')}>
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
               <Package className="w-5 h-5" />
@@ -586,15 +587,15 @@ export default function InventoryManagement() {
               {inventories.length} mặt hàng
             </span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng sản phẩm trong kho</p>
-          <p className="text-3xl font-black text-blue-700 mt-1">{inventories.length} <span className="text-base font-semibold text-slate-500">sản phẩm</span></p>
+          <p className={fc('text-sm font-medium text-slate-500', 'text-xs font-bold text-slate-500 uppercase tracking-wider')}>Tổng sản phẩm trong kho</p>
+          <p className={fc('text-2xl font-bold text-slate-900 mt-1 tabular-nums', 'text-3xl font-black text-blue-700 mt-1')}>{inventories.length} <span className="text-base font-semibold text-slate-500">sản phẩm</span></p>
           <p className="text-xs text-slate-400 mt-2 font-medium">
             {feedCount} thức ăn • {medCount} thuốc • {chemCount} hóa chất
           </p>
         </div>
 
         {isFarmerOrTech ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className={fc('bg-white rounded-2xl border border-slate-200 px-5 py-4', 'bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow')}>
             <div className="flex items-center justify-between mb-3">
               <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${
                 lowStockCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'
@@ -607,8 +608,8 @@ export default function InventoryManagement() {
                 {lowStockCount > 0 ? `${lowStockCount} cần lưu ý` : 'Ổn định'}
               </span>
             </div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tình trạng tồn kho</p>
-            <p className={`text-3xl font-black mt-1 ${lowStockCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            <p className={fc('text-sm font-medium text-slate-500', 'text-xs font-bold text-slate-500 uppercase tracking-wider')}>Tình trạng tồn kho</p>
+            <p className={`${fc('text-2xl font-bold', 'text-3xl font-black')} mt-1 ${lowStockCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
               {lowStockCount > 0 ? `${lowStockCount} mặt hàng` : '100% An toàn'}
             </p>
             <p className="text-xs text-slate-400 mt-2 font-medium">
@@ -616,7 +617,7 @@ export default function InventoryManagement() {
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className={fc('bg-white rounded-2xl border border-slate-200 px-5 py-4', 'bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow')}>
             <div className="flex items-center justify-between mb-3">
               <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
                 <Truck className="w-5 h-5" />
@@ -625,8 +626,8 @@ export default function InventoryManagement() {
                 {suppliers.length} đối tác
               </span>
             </div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nhà cung cấp đối tác</p>
-            <p className="text-3xl font-black text-slate-800 mt-1">{suppliers.length} <span className="text-base font-semibold text-slate-500">nhà cung cấp</span></p>
+            <p className={fc('text-sm font-medium text-slate-500', 'text-xs font-bold text-slate-500 uppercase tracking-wider')}>Nhà cung cấp đối tác</p>
+            <p className={fc('text-2xl font-bold text-slate-900 mt-1 tabular-nums', 'text-3xl font-black text-slate-800 mt-1')}>{suppliers.length} <span className="text-base font-semibold text-slate-500">nhà cung cấp</span></p>
             <p className="text-xs text-slate-400 mt-2 font-medium">
               Liên kết trực tiếp với các nguồn sản phẩm
             </p>
@@ -637,17 +638,17 @@ export default function InventoryManagement() {
       {/* Sản phẩm tiêu thụ & Nhật ký sử dụng */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Cột 1: Sản phẩm tiêu thụ (Chiếm 2 cột trên màn hình rộng) */}
-        <div className="xl:col-span-2 bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+        <div className={fc('xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-between', 'xl:col-span-2 bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between')}>
           <div>
             {/* Header của Sản phẩm tiêu thụ với Tabs chọn Danh mục */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                <div className={fc('w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100', 'w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20')}>
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-black text-slate-800">Sản phẩm tiêu thụ</h3>
+                    <h3 className={fc('text-base font-semibold text-slate-900', 'text-lg font-black text-slate-800')}>Sản phẩm tiêu thụ</h3>
                     <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                       {categoryProductsWithUsage.length} mặt hàng
                     </span>
@@ -700,7 +701,7 @@ export default function InventoryManagement() {
             </div>
 
             {/* Chú thích màu sắc */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3 px-3 bg-slate-50/80 rounded-2xl my-3 text-[11px] font-bold text-slate-600 border border-slate-100">
+            <div className={fc('flex flex-wrap items-center gap-x-4 gap-y-1.5 py-2 my-2 text-xs font-medium text-slate-500', 'flex flex-wrap items-center gap-x-4 gap-y-2 py-3 px-3 bg-slate-50/80 rounded-2xl my-3 text-[11px] font-bold text-slate-600 border border-slate-100')}>
               <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Chú thích màu:</span>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-blue-600"></span>
@@ -727,7 +728,7 @@ export default function InventoryManagement() {
             </div>
 
             {/* Danh sách toàn bộ sản phẩm của danh mục được chọn */}
-            <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-1">
+            <div className={fc('space-y-2 max-h-[460px] overflow-y-auto pr-1', 'space-y-3.5 max-h-[460px] overflow-y-auto pr-1')}>
               {categoryProductsWithUsage.length === 0 ? (
                 <div className="py-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                   <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -752,7 +753,7 @@ export default function InventoryManagement() {
                   return (
                     <div
                       key={item.id}
-                      className="p-3.5 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50/60 transition-all duration-200 group"
+                      className={fc('px-3 py-2.5 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50/60 transition-colors group cursor-pointer', 'p-3.5 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50/60 transition-all duration-200 group')}
                       onClick={() => setSelectedDetailsItem(item)}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
@@ -799,7 +800,7 @@ export default function InventoryManagement() {
                       </div>
 
                       {/* Thanh hiển thị đa màu: Xanh dương (đã dùng) & Xanh lá / Vàng / Đỏ (còn lại) */}
-                      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                      <div className={fc('h-2 w-full bg-slate-100 rounded-full overflow-hidden flex', 'h-3 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner')}>
                         {usedPercent > 0 && (
                           <div
                             className="h-full bg-blue-600 transition-all duration-500"
@@ -839,7 +840,7 @@ export default function InventoryManagement() {
         </div>
 
         {/* Cột 2: Nhật ký sử dụng (Giao diện thẻ ngoài, hiển thị cứng 3-4 lượt gần nhất) */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+        <div className={fc('bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-between', 'bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col justify-between')}>
           <div>
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-3">
@@ -858,19 +859,51 @@ export default function InventoryManagement() {
             </div>
 
             {/* Hiển thị cứng 3 - 4 lượt sử dụng gần nhất */}
-            <div className="space-y-3">
+            <div className={fc('', 'space-y-3')}>
               {recentActivities.length === 0 ? (
                 <div className="py-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                   <CalendarDays className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-600">Chưa có nhật ký sử dụng nào.</p>
                 </div>
               ) : (
-                recentActivities.slice(0, 4).map((activity) => {
+                recentActivities.slice(0, isCompact ? 5 : 4).map((activity) => {
                   const cat = getCategoryDetails(activity.category);
+                  if (isCompact) {
+                    // Nông dân: mỗi hoạt động 2 dòng — tên + số lượng / ngày · loại · người ghi
+                    const Icon = activity.isFeeding ? Utensils : activity.isImport ? ArrowDownToLine : ArrowUpFromLine;
+                    const kind = activity.isFeeding ? 'Cho ăn' : activity.isImport ? 'Nhập kho' : 'Xuất kho';
+                    return (
+                      <div
+                        key={activity.id}
+                        className="flex items-center gap-3 px-1 py-2 border-b border-slate-100 last:border-b-0"
+                        title={activity.note || undefined}
+                      >
+                        <span
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            activity.isImport ? 'bg-teal-50 text-teal-600' : activity.isFeeding ? 'bg-slate-100 text-slate-500' : 'bg-rose-50 text-rose-600'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-900 truncate">{activity.title}</p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {formatDate(activity.date)} · {kind} · {activity.creator}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-sm font-semibold tabular-nums whitespace-nowrap ${activity.isImport ? 'text-teal-700' : 'text-slate-700'}`}
+                        >
+                          {activity.isImport ? '+' : '−'}
+                          {formatNumber(activity.amount)} {activity.unit}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={activity.id}
-                      className="border border-slate-100 rounded-2xl p-3.5 hover:bg-slate-50/70 hover:border-blue-100 transition-all shadow-sm"
+                      className={fc('border border-slate-100 rounded-xl px-3 py-2.5 hover:bg-slate-50/70 transition-colors', 'border border-slate-100 rounded-2xl p-3.5 hover:bg-slate-50/70 hover:border-blue-100 transition-all shadow-sm')}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -881,11 +914,11 @@ export default function InventoryManagement() {
                             <p className="text-sm font-bold text-slate-800 truncate">{activity.title}</p>
                             {activity.isFeeding ? (
                               <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 shrink-0">
-                                🦐 Cho ăn ({activity.sessionsSummary})
+                                {isCompact ? '' : '🦐 '}Cho ăn ({activity.sessionsSummary})
                               </span>
                             ) : activity.isImport ? (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
-                                📥 Nhập kho
+                                {isCompact ? '' : '📥 '}Nhập kho
                                 {(activity.note?.includes('[AI') || activity.note?.includes('[NHẬP KHO AI]')) && (
                                   <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-1 rounded">
                                     AI
@@ -894,7 +927,7 @@ export default function InventoryManagement() {
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 shrink-0">
-                                📤 Xuất kho
+                                {isCompact ? '' : '📤 '}Xuất kho
                               </span>
                             )}
                           </div>
@@ -931,7 +964,7 @@ export default function InventoryManagement() {
           <button
             type="button"
             onClick={() => setCurrentView('usage-history')}
-            className="w-full mt-4 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5"
+            className={fc('w-full mt-4 h-10 px-4 bg-white border border-slate-200 hover:border-blue-400 text-blue-700 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-colors', 'w-full mt-4 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5')}
           >
             <span>Xem chi tiết Nhật ký</span>
             <ArrowRight className="w-4 h-4" />
@@ -947,7 +980,7 @@ export default function InventoryManagement() {
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-800">Danh sách nhà cung cấp</h3> 
+              <h3 className={fc('text-base font-semibold text-slate-900', 'text-lg font-black text-slate-800')}>Danh sách nhà cung cấp</h3> 
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -997,7 +1030,7 @@ export default function InventoryManagement() {
                       </p>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-lg font-black text-slate-800">{supplier.itemCount}</span>
+                      <span className={fc('text-base font-semibold text-slate-900', 'text-lg font-black text-slate-800')}>{supplier.itemCount}</span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-2">
@@ -1056,16 +1089,16 @@ export default function InventoryManagement() {
       )}
 
       {/* Khung: Danh sách sản phẩm */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+      <div className={fc('bg-white rounded-2xl border border-slate-200 overflow-hidden', 'bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6')}>
         {/* Header của Khung Danh sách sản phẩm */}
-        <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className={fc('px-5 py-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4', 'p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4')}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-sm">
               <Package className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h3 className="text-lg font-black text-slate-800">Danh sách sản phẩm</h3>
+                <h3 className={fc('text-base font-semibold text-slate-900', 'text-lg font-black text-slate-800')}>Danh sách sản phẩm</h3>
                 <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                   {filteredProducts.length} mặt hàng
                 </span>
@@ -1150,7 +1183,7 @@ export default function InventoryManagement() {
         </div>
 
         {/* Nội dung bên trong khung: Grid thẻ sản phẩm */}
-        <div className="p-5 sm:p-6 bg-slate-50/30">
+        <div className={fc('p-4 sm:p-5 bg-slate-50/40', 'p-5 sm:p-6 bg-slate-50/30')}>
           {isLoading ? (
             <LoadingMotion
               mode="card"
@@ -1182,27 +1215,27 @@ export default function InventoryManagement() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredProducts.map((item) => {
+            <div className={fc('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4', 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6')}>
+              {productPage.pageItems.map((item) => {
                 const cat = getCategoryDetails(item.category);
                 const isLowStock = item.quantity <= item.minThreshold;
 
               return (
                 <div 
                   key={item.id} 
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group relative flex flex-col hover:-translate-y-1 cursor-pointer"
+                  className={fc('bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all overflow-hidden group relative flex flex-col cursor-pointer', 'bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group relative flex flex-col hover:-translate-y-1 cursor-pointer')}
                   onClick={() => setSelectedDetailsItem(item)}
                 >
                   {/* Image Section */}
-                  <div className="relative w-full h-56 bg-slate-100 overflow-hidden flex-shrink-0">
+                  <div className={fc('relative w-full h-36 bg-slate-50 overflow-hidden flex-shrink-0 border-b border-slate-100', 'relative w-full h-56 bg-slate-100 overflow-hidden flex-shrink-0')}>
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.itemName} className="w-full h-full object-contain" />
                     ) : (
                       <div className={`w-full h-full flex items-center justify-center ${cat.bg}`}>
-                        {item.category === 'FEED' && <Package className={`w-24 h-24 ${cat.color} opacity-40`} />}
-                        {item.category === 'MEDICINE' && <Pill className={`w-24 h-24 ${cat.color} opacity-40`} />}
-                        {item.category === 'CHEMICAL' && <FlaskConical className={`w-24 h-24 ${cat.color} opacity-40`} />}
-                        {!['FEED', 'MEDICINE', 'CHEMICAL'].includes(item.category) && <Box className={`w-24 h-24 ${cat.color} opacity-40`} />}
+                        {item.category === 'FEED' && <Package className={`${isCompact ? 'w-12 h-12' : 'w-24 h-24'} ${cat.color} opacity-40`} />}
+                        {item.category === 'MEDICINE' && <Pill className={`${isCompact ? 'w-12 h-12' : 'w-24 h-24'} ${cat.color} opacity-40`} />}
+                        {item.category === 'CHEMICAL' && <FlaskConical className={`${isCompact ? 'w-12 h-12' : 'w-24 h-24'} ${cat.color} opacity-40`} />}
+                        {!['FEED', 'MEDICINE', 'CHEMICAL'].includes(item.category) && <Box className={`${isCompact ? 'w-12 h-12' : 'w-24 h-24'} ${cat.color} opacity-40`} />}
                       </div>
                     )}
                     
@@ -1213,7 +1246,7 @@ export default function InventoryManagement() {
                         {cat.label}
                       </span>
                       {isLowStock && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-500 text-white shadow-sm animate-pulse">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-500 text-white shadow-sm ${isCompact ? '' : 'animate-pulse'}">
                           <AlertCircle className="w-3.5 h-3.5" />
                           Sắp hết
                         </span>
@@ -1251,15 +1284,15 @@ export default function InventoryManagement() {
                   {/* Info Section */}
                   <div className="p-4 flex flex-col flex-1 bg-white">
                     <div className="mb-3">
-                      <h3 className="font-bold text-slate-800 text-lg leading-tight line-clamp-2" title={item.itemName}>{item.itemName}</h3>
+                      <h3 className={fc('font-semibold text-slate-900 text-sm leading-snug line-clamp-2', 'font-bold text-slate-800 text-lg leading-tight line-clamp-2')} title={item.itemName}>{item.itemName}</h3>
                       {item.description && (
-                        <p className="text-sm text-slate-500 mt-2 line-clamp-2" title={item.description}>{item.description}</p>
+                        <p className={fc('text-xs text-slate-500 mt-1 line-clamp-2', 'text-sm text-slate-500 mt-2 line-clamp-2')} title={item.description}>{item.description}</p>
                       )}
                     </div>
                     
-                    <div className="flex-1 flex flex-col justify-end gap-4">
+                    <div className={fc('flex-1 flex flex-col justify-end gap-3', 'flex-1 flex flex-col justify-end gap-4')}>
                       {/* Specification & Price Section (Replaces 20 chai tổng 20 lít & Nhà cung cấp) */}
-                      <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-3.5 flex flex-col gap-2.5">
+                      <div className={fc('bg-slate-50 rounded-lg border border-slate-100 px-3 py-2 flex flex-col gap-2', 'bg-slate-50/80 rounded-2xl border border-slate-100 p-3.5 flex flex-col gap-2.5')}>
                         {/* 1. Quy cách (Bao nhiêu Lít/Chai hoặc kg/Bao) */}
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1307,7 +1340,7 @@ export default function InventoryManagement() {
                             e.stopPropagation();
                             handleOpenActionModal(item);
                           }}
-                          className="w-full mt-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-sm group/btn"
+                          className={fc('w-full inline-flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm font-medium bg-white text-blue-700 border border-slate-200 hover:border-blue-400 transition-colors group/btn', 'w-full mt-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors shadow-sm group/btn')}
                         >
                           <Package className="w-4 h-4 group-hover/btn:-translate-y-0.5 transition-transform" />
                           Nhập kho / Xuất kho
@@ -1320,6 +1353,18 @@ export default function InventoryManagement() {
             })}
           </div>
         )}
+        {!isLoading && filteredProducts.length > 0 && (
+          <Pagination
+            className="mt-5"
+            page={productPage.page}
+            totalPages={productPage.totalPages}
+            total={productPage.total}
+            from={productPage.from}
+            to={productPage.to}
+            onChange={productPage.setPage}
+            unit="sản phẩm"
+          />
+        )}
         </div>
       </div>
 
@@ -1328,6 +1373,7 @@ export default function InventoryManagement() {
         isOpen={isModalOpen}
         initialData={editingItem}
         selectedFarmId={selectedFarmId}
+        farms={farms.map((farm) => ({ id: farm.id, name: farm.name }))}
         onClose={() => setIsModalOpen(false)}
         onSuccess={(msg) => {
           showToast(msg, 'success');

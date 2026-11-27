@@ -46,6 +46,37 @@ describe('AgentActionService role permissions', () => {
     expect(farmsService.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['FARMER', 'tạo trang trại mới ở Cà Mau'],
+    ['FARMER', 'tạo 3 ao cho trang trại'],
+    ['FARMER', 'tạo vụ nuôi mới cho ao 1'],
+    ['TECHNICIAN', 'thêm 2 ao mới'],
+  ])('blocks %s from getting a create draft for "%s"', async (role, message) => {
+    const result = await service.handleAgentConversation(message, { userId: 'u1', role });
+    expect(result).toEqual({
+      isAgentAction: true,
+      answer: expect.stringContaining('chỉ dành cho **Quản lý trang trại**'),
+      actionDraft: undefined,
+    });
+    expect(prisma.farm.findMany).not.toHaveBeenCalled();
+  });
+
+  it('blocks FARMER from continuing a pending create draft sent by the client', async () => {
+    const result = await service.handleAgentConversation(
+      'đổi tên thành Ao 9',
+      { userId: 'u1', role: 'FARMER' },
+      [],
+      { intent: 'CREATE_POND', collectedData: { name: 'Ao 1' } },
+    );
+    expect(result?.actionDraft).toBeUndefined();
+    expect(result?.answer).toContain('Quản lý trang trại');
+  });
+
+  it('lets FARMER ask how to create a pond without being blocked', async () => {
+    const result = await service.handleAgentConversation('làm sao để tạo ao mới?', { userId: 'u1', role: 'FARMER' });
+    expect(result).toBeNull();
+  });
+
   it('rejects ADMIN executing CREATE_FARM, CREATE_POND, or CREATE_CROP', async () => {
     await expect(
       service.executeAgentAction(
@@ -121,10 +152,46 @@ describe('AgentActionService draft_create_* tool calls', () => {
   it('only offers tools allowed for the role', () => {
     const { service } = makeService();
     const names = (role: string) => service.getActionToolDefinitions(role).map((t: any) => t.function.name);
-    expect(names('FARM_MANAGER')).toEqual(['draft_create_farm', 'draft_create_pond', 'draft_create_crop']);
+    // Quản lý: duy nhất được tạo & nhập / xuất kho
+    expect(names('FARM_MANAGER')).toEqual([
+      'draft_create_farm',
+      'draft_create_pond',
+      'draft_create_crop',
+      'draft_import_inventory',
+      'export_inventory_file',
+    ]);
+    // Nông dân, Admin: chỉ hỏi / xem
     expect(names('FARMER')).toEqual([]);
-    expect(names('TECHNICIAN')).toEqual([]);
     expect(names('ADMIN')).toEqual([]);
+    // Kỹ thuật viên không có bộ nhập số đo nước được cấu hình -> không có công cụ ghi
+    expect(names('TECHNICIAN')).toEqual([]);
+  });
+
+  it('Kỹ thuật viên chỉ có công cụ nhập số đo nước; Nông dân gọi công cụ ghi bị từ chối', async () => {
+    const prisma = { farm: { findMany: jest.fn().mockResolvedValue([]) }, pond: { findMany: jest.fn().mockResolvedValue([]) } };
+    const waterAgent = { handleConversation: jest.fn().mockResolvedValue({ isAgentAction: true, answer: 'phiếu nước' }) };
+    const service = new AgentActionService(
+      prisma as any,
+      { getAccessibleFarmIds: jest.fn().mockResolvedValue([]) } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      waterAgent as any,
+    );
+    const names = (role: string) => service.getActionToolDefinitions(role).map((t: any) => t.function.name);
+    expect(names('TECHNICIAN')).toEqual(['draft_record_water_quality']);
+
+    const tech = { userId: 't', role: 'TECHNICIAN' } as any;
+    const res = await service.draftFromToolCall('draft_record_water_quality', {}, tech, 'ao 1 pH 8.2 DO 5', { focusPondId: 'p1' });
+    expect(res.answer).toBe('phiếu nước');
+    expect(waterAgent.handleConversation).toHaveBeenCalledWith('ao 1 pH 8.2 DO 5', tech, undefined, 'p1', undefined);
+
+    for (const tool of ['draft_record_water_quality', 'draft_import_inventory', 'draft_create_pond']) {
+      const denied = await service.draftFromToolCall(tool, {}, { userId: 'f', role: 'FARMER' } as any, 'x');
+      expect(denied.actionDraft).toBeUndefined();
+      expect(denied.answer).toContain('không có quyền');
+    }
+    expect(waterAgent.handleConversation).toHaveBeenCalledTimes(1);
   });
 
   it('drafts several ponds with auto names that skip existing ones', async () => {
@@ -561,5 +628,129 @@ describe('AgentActionService when agent_action_executions table is missing', () 
     );
     expect(res.message).toContain('Ao 9');
     expect(pondsService.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AgentActionService.looksLikeQuestion – không bắt nhầm câu hỏi thành lệnh nhập kho', () => {
+  it.each([
+    'tôm yếu có nên thêm thức ăn không?',
+    'có cần thêm thuốc cho ao a1 không',
+    'cách nhập kho thế nào',
+    'thêm thuốc diệt khuẩn liều bao nhiêu',
+  ])('"%s" là câu hỏi', (q) => {
+    expect(AgentActionService.looksLikeQuestion(q)).toBe(true);
+  });
+
+  it.each(['nhập kho 10 bao cám cp', 'thêm thức ăn vào kho 5 bao', 'nhập hàng thuốc bkc 3 chai'])(
+    '"%s" là câu lệnh',
+    (q) => {
+      expect(AgentActionService.looksLikeQuestion(q)).toBe(false);
+    },
+  );
+});
+
+describe('AgentActionService – có OpenAI thì mọi ý định do OpenAI nhận diện', () => {
+  const ORIGINAL_KEY = process.env.OPENAI_API_KEY;
+  afterEach(() => {
+    if (ORIGINAL_KEY === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = ORIGINAL_KEY;
+  });
+
+  it.each([
+    ['FARM_MANAGER', 'nhập kho 10 bao cám CP'],
+    ['FARM_MANAGER', 'xuất file tồn kho'],
+    ['TECHNICIAN', 'ao 1 nhiệt độ 29, pH 8.2, DO 5.1, mặn 15'],
+    ['FARMER', 'nhập kho 5 bao cám'],
+  ])('%s: "%s" không bị regex chặn trước, để OpenAI quyết định', async (role, message) => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const waterAgent = { handleConversation: jest.fn() };
+    const service = new AgentActionService({} as any, {} as any, {} as any, {} as any, {} as any, waterAgent as any);
+
+    const res = await service.handleAgentConversation(message, { userId: 'u', role } as any);
+
+    expect(res).toBeNull();
+    expect(waterAgent.handleConversation).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentActionService – nhập kho: mỗi trang trại là một kho riêng', () => {
+  const items = [{ itemName: 'Cám CP 01', category: 'FEED', quantity: 250, unit: 'kg', packageQty: 10, weightPerPkg: 25, packageType: 'Bao' }];
+  const pending = { intent: 'IMPORT_INVENTORY' as any, collectedData: { items, fileName: 'tin nhắn', fileText: 'nhập 10 bao cám CP 01' } };
+
+  it('nhiều trang trại mà chưa nói rõ kho nào -> hỏi lại, kèm nút chọn trang trại', async () => {
+    const { service } = makeService({ farms: [farmA, farmB] });
+    const res = await service.handleAgentConversation('xác nhận giúp tôi', manager, [], pending);
+
+    expect(res?.actionDraft?.type).toBe('SLOT_FILLING');
+    expect(res?.actionDraft?.missingFields).toEqual(['farmId']);
+    expect(res?.actionDraft?.quickSuggestions).toEqual(['SSFM Farm', 'Trang Trại Bến Tre']);
+    // Giữ lại danh sách mặt hàng đã bóc tách
+    expect(res?.actionDraft?.collectedData.items).toEqual(items);
+  });
+
+  it('nêu tên trang trại (không dấu cũng được) -> phiếu nhập đúng kho trang trại đó', async () => {
+    const { service } = makeService({ farms: [farmA, farmB] });
+    const res = await service.handleAgentConversation('nhập vào trang trai ben tre', manager, [], pending);
+
+    expect(res?.actionDraft?.type).toBe('CONFIRM_ACTION');
+    expect(res?.actionDraft?.collectedData).toMatchObject({ farmId: 'f2', farmName: 'Trang Trại Bến Tre' });
+    expect(res?.actionDraft?.collectedData).not.toHaveProperty('farmIds');
+    expect(res?.actionDraft?.farmOptions).toEqual([
+      { id: 'f1', name: 'SSFM Farm' },
+      { id: 'f2', name: 'Trang Trại Bến Tre' },
+    ]);
+  });
+
+  it('chỉ có 1 trang trại -> tự chọn kho đó', async () => {
+    const { service } = makeService({ farms: [farmA] });
+    const res = await service.handleAgentConversation('ok', manager, [], pending);
+    expect(res?.actionDraft?.collectedData).toMatchObject({ farmId: 'f1' });
+  });
+
+  it('thực thi phiếu không chỉ định trang trại -> từ chối, không cộng vào mọi kho', async () => {
+    const { service } = makeService({ farms: [farmA, farmB] });
+    await expect(
+      service.executeAgentAction({ intent: 'IMPORT_INVENTORY', data: { items, farmIds: ['f1', 'f2'] } } as any, manager),
+    ).rejects.toThrow('Vui lòng chọn kho của trang trại');
+  });
+});
+
+describe('AgentActionService – nhập kho từ file: không tự đặt số lượng', () => {
+  const makeImportService = () => {
+    const prisma: any = {
+      farm: { findMany: jest.fn().mockResolvedValue([{ id: 'f1', name: 'SSFM Farm' }]) },
+      inventory: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: `inv-${data.itemName}`, ...data })),
+      },
+      inventoryUsageLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const farmAccess = { getAccessibleFarmIds: jest.fn().mockResolvedValue(['f1']) };
+    const service = new AgentActionService(prisma, farmAccess as any, {} as any, {} as any, {} as any);
+    return { service, prisma };
+  };
+
+  it('dòng không có số lượng -> tồn kho 0, chỉ thêm vào danh mục; dòng có số lượng -> nhập đúng số đó', async () => {
+    const { service, prisma } = makeImportService();
+    const res: any = await service.executeAgentAction(
+      {
+        intent: 'IMPORT_INVENTORY',
+        data: {
+          farmId: 'f1',
+          items: [
+            { itemName: 'Grow Max (No.2)', category: 'FEED', unit: 'kg', packageType: 'Bao', weightPerPkg: 25, packageQty: 0, quantity: 0 },
+            { itemName: 'BKC 80%', category: 'CHEMICAL', unit: 'lít', packageType: 'Chai', weightPerPkg: 1, packageQty: 15, quantity: 15 },
+          ],
+        },
+      } as any,
+      manager,
+    );
+
+    const created = prisma.inventory.create.mock.calls.map((c: any) => c[0].data);
+    expect(created[0]).toMatchObject({ itemName: 'Grow Max (No.2)', quantity: 0, packageQty: 0 });
+    expect(created[1]).toMatchObject({ itemName: 'BKC 80%', quantity: 15, packageQty: 15 });
+    // Chỉ dòng có số lượng mới ghi phiếu nhập kho
+    expect(prisma.inventoryUsageLog.create).toHaveBeenCalledTimes(1);
+    expect(res.message).toContain('chưa có số lượng');
   });
 });

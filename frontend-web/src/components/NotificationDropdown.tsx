@@ -60,6 +60,21 @@ export interface NotificationItem {
 interface NotificationDropdownProps {
   themeColor?: 'blue' | 'indigo' | 'teal' | 'purple';
   onNavigateTab?: (tabName: string, config?: { farmId?: string; pondId?: string }) => void;
+  /**
+   * Trang đích có đang hiển thị trong menu của role không. Trả false (vd mục đã bị ẩn khỏi
+   * thanh điều hướng) -> bấm thông báo chỉ mở khung chi tiết, KHÔNG chuyển sang trang đó.
+   */
+  canNavigateTo?: (tabName: string) => boolean;
+}
+
+/** Trang đích của một thông báo (dùng chung cho danh sách, toast realtime và khung chi tiết) */
+function notificationTargetTab(item: { category?: string | null; title?: string | null }): string {
+  const title = item.title?.toLowerCase() || '';
+  if (item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || title.includes('sự cố')) return 'Sự cố trang trại';
+  if (item.category === 'GROWTH' || title.includes('tăng trưởng') || title.includes('kích cỡ') || title.includes('fcr')) return 'Theo dõi tăng trưởng';
+  if (item.category === 'SHRIMP_HEALTH' || title.includes('sức khỏe tôm')) return 'Sức khỏe tôm';
+  if (item.category === 'INVENTORY' || title.includes('vật tư') || /\bkho\b/.test(title)) return 'Quản Lý Kho';
+  return 'Môi trường nước';
 }
 
 
@@ -111,7 +126,11 @@ const formatTimeAgo = (isoString: string) => {
 export default function NotificationDropdown({
   themeColor = 'blue',
   onNavigateTab,
+  canNavigateTo,
 }: NotificationDropdownProps) {
+  // Có thể mở trang đích của thông báo này không (có handler + trang không bị ẩn)
+  const canOpenTarget = (item: { category?: string | null; title?: string | null }) =>
+    Boolean(onNavigateTab) && (canNavigateTo ? canNavigateTo(notificationTargetTab(item)) : true);
   const [isOpen, setIsOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'UNREAD' | 'ALERT'>('ALL');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -162,10 +181,10 @@ export default function NotificationDropdown({
     }
 
     // Toast tương tác nhanh: Nhấn vào là chuyển thẳng tới ao
-    const isGrowth = notification.category === 'GROWTH' || notification.title?.toLowerCase().includes('tăng trưởng') || notification.title?.toLowerCase().includes('kích cỡ') || notification.title?.toLowerCase().includes('fcr');
-    const isShrimpHealth = notification.category === 'SHRIMP_HEALTH' || notification.title?.toLowerCase().includes('sức khỏe tôm');
-    const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
-    const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+    const targetTab = notificationTargetTab(item);
+    const isGrowth = targetTab === 'Theo dõi tăng trưởng';
+    const isShrimpHealth = targetTab === 'Sức khỏe tôm';
+    const canOpen = Boolean(notification.pondId) && canOpenTarget(item);
     const promptText = isGrowth
       ? '👉 Nhấn để xem ngay tăng trưởng & FCR ao này'
       : isShrimpHealth
@@ -191,7 +210,7 @@ export default function NotificationDropdown({
           <span className="font-bold text-white text-sm">{notification.title}</span>
         </div>
         <p className="text-xs text-slate-300 mt-1 line-clamp-2">{notification.message}</p>
-        {notification.pondId && (
+        {canOpen && (
           <div className="text-[11px] text-cyan-400 mt-1 font-semibold flex items-center gap-1">
             {promptText}
           </div>
@@ -333,13 +352,11 @@ export default function NotificationDropdown({
     }
     // Nếu thông báo gắn với Ao nuôi cụ thể (môi trường nước, sức khỏe tôm hoặc tăng trưởng KTV vừa nhập),
     // chuyển trực tiếp tới trang Quản lý tương ứng của Ao đó
-    if (item.pondId && onNavigateTab) {
+    // Trang đích bị ẩn với role này -> chỉ mở khung chi tiết, không chuyển trang
+    if (item.pondId && onNavigateTab && canOpenTarget(item)) {
       setIsOpen(false);
       setSelectedItem(null);
-      const isGrowth = item.category === 'GROWTH' || item.title?.toLowerCase().includes('tăng trưởng') || item.title?.toLowerCase().includes('kích cỡ') || item.title?.toLowerCase().includes('fcr');
-      const isShrimpHealth = item.category === 'SHRIMP_HEALTH' || item.title?.toLowerCase().includes('sức khỏe tôm');
-      const isIncident = item.category === 'INCIDENT' || item.category === 'INCIDENT_ASSIGNMENT' || item.title?.toLowerCase().includes('sự cố');
-      const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : 'Môi trường nước';
+      const targetTab = notificationTargetTab(item);
       onNavigateTab(targetTab, {
         farmId: item.farmId,
         pondId: item.pondId,
@@ -357,6 +374,12 @@ export default function NotificationDropdown({
       headerBg: 'bg-gradient-to-r from-blue-600 to-indigo-700',
       badge: 'bg-blue-100 text-blue-800',
       tabActive: 'bg-blue-600 text-white shadow-sm',
+      accentText: 'text-blue-600',
+      underline: 'bg-blue-600',
+      chip: 'bg-blue-600 text-white',
+      softHover: 'hover:bg-blue-50 hover:text-blue-700',
+      unreadBg: 'bg-blue-50/40',
+      dot: 'bg-blue-500',
     },
     indigo: {
       btnHover: 'hover:text-indigo-600 hover:bg-indigo-50',
@@ -364,6 +387,12 @@ export default function NotificationDropdown({
       headerBg: 'bg-gradient-to-r from-indigo-600 to-purple-700',
       badge: 'bg-indigo-100 text-indigo-800',
       tabActive: 'bg-indigo-600 text-white shadow-sm',
+      accentText: 'text-indigo-600',
+      underline: 'bg-indigo-600',
+      chip: 'bg-indigo-600 text-white',
+      softHover: 'hover:bg-indigo-50 hover:text-indigo-700',
+      unreadBg: 'bg-indigo-50/40',
+      dot: 'bg-indigo-500',
     },
     teal: {
       btnHover: 'hover:text-teal-600 hover:bg-teal-50',
@@ -371,6 +400,12 @@ export default function NotificationDropdown({
       headerBg: 'bg-gradient-to-r from-teal-600 to-emerald-700',
       badge: 'bg-teal-100 text-teal-800',
       tabActive: 'bg-teal-600 text-white shadow-sm',
+      accentText: 'text-teal-600',
+      underline: 'bg-teal-600',
+      chip: 'bg-teal-600 text-white',
+      softHover: 'hover:bg-teal-50 hover:text-teal-700',
+      unreadBg: 'bg-teal-50/40',
+      dot: 'bg-teal-500',
     },
     purple: {
       btnHover: 'hover:text-purple-600 hover:bg-purple-50',
@@ -378,6 +413,12 @@ export default function NotificationDropdown({
       headerBg: 'bg-gradient-to-r from-purple-600 to-indigo-800',
       badge: 'bg-purple-100 text-purple-800',
       tabActive: 'bg-purple-600 text-white shadow-sm',
+      accentText: 'text-purple-600',
+      underline: 'bg-purple-600',
+      chip: 'bg-purple-600 text-white',
+      softHover: 'hover:bg-purple-50 hover:text-purple-700',
+      unreadBg: 'bg-purple-50/40',
+      dot: 'bg-purple-500',
     },
   }[themeColor];
 
@@ -421,6 +462,33 @@ export default function NotificationDropdown({
       default:
         return <Info className="w-4 h-4 text-blue-600" />;
     }
+  };
+
+  /** Màu nền ô biểu tượng + màu chữ nhãn mức độ */
+  const levelStyle: Record<NotificationLevel, { iconBg: string; text: string }> = {
+    DANGER: { iconBg: 'bg-rose-50 ring-rose-100', text: 'text-rose-600' },
+    WARNING: { iconBg: 'bg-amber-50 ring-amber-100', text: 'text-amber-600' },
+    SUCCESS: { iconBg: 'bg-emerald-50 ring-emerald-100', text: 'text-emerald-600' },
+    INFO: { iconBg: 'bg-sky-50 ring-sky-100', text: 'text-sky-600' },
+  };
+  const styleOf = (level: NotificationLevel) => levelStyle[level] ?? levelStyle.INFO;
+
+  /** Bỏ emoji & nhãn "[NGUY HIỂM]" ở đầu tiêu đề (mức độ đã hiển thị bằng nhãn riêng) */
+  const cleanTitle = (title: string) =>
+    (title || '')
+      .replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, '')
+      .replace(/^\[(NGUY HIỂM|CẢNH BÁO|KHẨN CẤP|KHẨN|CHÚ Ý|LƯU Ý|THÔNG TIN|THÀNH CÔNG)\]\s*/i, '')
+      .trim() || title;
+
+  /** Nhóm thông báo theo ngày: Hôm nay / Hôm qua / Trước đó */
+  const dayGroupOf = (iso: string) => {
+    const d = new Date(iso);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const t = d.getTime();
+    if (t >= startOfToday.getTime()) return 'Hôm nay';
+    if (t >= startOfToday.getTime() - 86_400_000) return 'Hôm qua';
+    return 'Trước đó';
   };
 
   const getLevelBadge = (level: NotificationLevel) => {
@@ -471,173 +539,186 @@ export default function NotificationDropdown({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 md:w-[420px] rounded-3xl border border-slate-200/90 bg-white/95 shadow-2xl backdrop-blur-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right">
-          {/* Header */}
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                <Bell className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-sm leading-none flex items-center gap-1.5">
-                  Thông báo
-                  {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-600 text-white">
-                      {unreadCount} mới
-                    </span>
-                  )}
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Cập nhật tin tức & cảnh báo trang trại</p>
-              </div>
+        <div className="absolute right-0 mt-3 w-[400px] max-w-[calc(100vw-1.5rem)] rounded-2xl bg-white shadow-[0_20px_50px_-12px_rgba(15,23,42,0.25)] ring-1 ring-slate-900/5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right">
+          {/* Header: tiêu đề + các nút thao tác dạng biểu tượng (không xuống dòng) */}
+          <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-[15px] font-bold text-slate-900 whitespace-nowrap">Thông báo</h3>
+              {unreadCount > 0 && (
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${colorMap.chip}`}>
+                  {unreadCount} mới
+                </span>
+              )}
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
                 onClick={toggleSound}
-                title={soundEnabled ? 'Âm thanh thông báo: Đang BẬT' : 'Âm thanh thông báo: Đang TẮT'}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${soundEnabled ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                  }`}
+                title={soundEnabled ? 'Tắt âm thanh thông báo' : 'Bật âm thanh thông báo'}
+                aria-label={soundEnabled ? 'Tắt âm thanh thông báo' : 'Bật âm thanh thông báo'}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                  soundEnabled ? `${colorMap.accentText} hover:bg-slate-100` : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                }`}
               >
-                {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
               </button>
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={markAllAsRead}
-                  title="Đánh dấu tất cả đã đọc"
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Đã đọc tất cả</span>
-                </button>
-              )}
-              {notifications.length > 0 && (
-                <button
-                  type="button"
-                  onClick={clearAllNotifications}
-                  title="Xóa tất cả thông báo"
-                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={markAllAsRead}
+                disabled={unreadCount === 0}
+                title="Đánh dấu tất cả là đã đọc"
+                aria-label="Đánh dấu tất cả là đã đọc"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <CheckCheck className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={clearAllNotifications}
+                disabled={notifications.length === 0}
+                title="Xóa tất cả thông báo"
+                aria-label="Xóa tất cả thông báo"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          {/* Filter Tabs */}
-          <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center gap-1.5">
+          {/* Tabs lọc dạng gạch chân */}
+          <div className="flex items-center gap-5 px-5 border-b border-slate-100" role="tablist">
             {[
               { key: 'ALL', label: 'Tất cả', count: notifications.length },
               { key: 'UNREAD', label: 'Chưa đọc', count: unreadCount },
-              {
-                key: 'ALERT',
-                label: 'Cảnh báo',
-                count: notifications.filter((n) => n.level === 'DANGER' || n.level === 'WARNING').length,
-              },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveFilter(tab.key as typeof activeFilter)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeFilter === tab.key
-                    ? colorMap.tabActive
-                    : 'text-slate-600 bg-slate-50 hover:bg-slate-100'
+              { key: 'ALERT', label: 'Cảnh báo', count: notifications.filter((n) => n.level === 'DANGER' || n.level === 'WARNING').length },
+            ].map((tab) => {
+              const active = activeFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveFilter(tab.key as typeof activeFilter)}
+                  className={`relative pb-2.5 pt-1 text-[13px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                    active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'
                   }`}
-              >
-                {tab.label}
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${activeFilter === tab.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                    }`}
                 >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+                  {tab.label}
+                  <span
+                    className={`min-w-[20px] px-1.5 py-px rounded-full text-[11px] font-semibold tabular-nums ${
+                      active ? colorMap.chip : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                  {active && <span className={`absolute left-0 right-0 -bottom-px h-0.5 rounded-full ${colorMap.underline}`} />}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Notification List */}
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100/80">
+          {/* Danh sách */}
+          <div className="max-h-[440px] overflow-y-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent]">
             {filteredNotifications.length === 0 ? (
-              <div className="py-12 px-4 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-6 h-6 text-slate-400" />
+              <div className="py-14 px-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-50 ring-1 ring-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <Bell className="w-5 h-5 text-slate-400" />
                 </div>
-                <p className="text-sm font-bold text-slate-700">Không có thông báo nào</p>
-                <p className="text-xs text-slate-400 mt-1">Bạn đã cập nhật tất cả thông tin mới nhất!</p>
+                <p className="text-sm font-semibold text-slate-700">
+                  {activeFilter === 'UNREAD' ? 'Bạn đã đọc hết thông báo' : activeFilter === 'ALERT' ? 'Không có cảnh báo nào' : 'Chưa có thông báo'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Thông báo mới sẽ xuất hiện tại đây.</p>
               </div>
             ) : (
-              filteredNotifications.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => handleItemClick(item)}
-                  className={`p-3.5 transition-all duration-150 hover:bg-slate-50/90 cursor-pointer flex items-start gap-3 relative group ${!item.isRead ? 'bg-blue-50/30' : 'bg-white'
-                    }`}
-                >
-                  {/* Unread blue dot indicator */}
-                  {!item.isRead && (
-                    <span className="absolute left-1.5 top-5 w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                  )}
+              filteredNotifications.map((item, index) => {
+                const group = dayGroupOf(item.createdAt);
+                const showGroup = index === 0 || dayGroupOf(filteredNotifications[index - 1].createdAt) !== group;
+                const style = styleOf(item.level);
+                return (
+                  <div key={item.id}>
+                    {showGroup && (
+                      <div className="sticky top-0 z-10 px-5 py-1.5 bg-slate-50/95 backdrop-blur-sm border-y border-slate-100 first:border-t-0 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        {group}
+                      </div>
+                    )}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleItemClick(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleItemClick(item);
+                        }
+                      }}
+                      className={`group relative flex gap-3 px-5 py-3.5 border-b border-slate-100 last:border-b-0 cursor-pointer transition-colors hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50 ${
+                        !item.isRead ? colorMap.unreadBg : 'bg-white'
+                      }`}
+                    >
+                      {/* Biểu tượng theo loại, nền theo mức độ */}
+                      <div className={`w-9 h-9 rounded-full ring-1 flex items-center justify-center shrink-0 ${style.iconBg}`}>
+                        {getLevelIcon(item.level, item.category)}
+                      </div>
 
-                  {/* Icon Box */}
-                  <div className="w-9 h-9 rounded-2xl bg-slate-100 flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5 group-hover:scale-105 transition-transform">
-                    {getLevelIcon(item.level, item.category)}
-                  </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-2">
+                          <h4
+                            className={`flex-1 min-w-0 text-[13px] leading-snug line-clamp-1 ${
+                              !item.isRead ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'
+                            }`}
+                            title={item.title}
+                          >
+                            {cleanTitle(item.title)}
+                          </h4>
+                          {/* Thời gian (ẩn khi rê chuột để hiện nút thao tác) */}
+                          <span className="text-[11px] text-slate-400 whitespace-nowrap pt-px group-hover:invisible">
+                            {formatTimeAgo(item.createdAt)}
+                          </span>
+                          {!item.isRead && <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${colorMap.dot}`} aria-label="Chưa đọc" />}
+                        </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 pr-6">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${getLevelBadge(item.level)}`}>
-                        {getLevelName(item.level)}
-                      </span>
-                      {item.pondName && (
-                        <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-                          {item.pondName}
-                        </span>
-                      )}
-                      <span className="text-[11px] text-slate-400 flex items-center gap-1 ml-auto">
-                        <Clock className="w-3 h-3" />
-                        {formatTimeAgo(item.createdAt)}
-                      </span>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{item.message}</p>
+
+                        <div className="flex items-center gap-1.5 mt-1.5 text-[11px]">
+                          <span className={`font-semibold ${style.text}`}>{getLevelName(item.level)}</span>
+                          {item.pondName && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-500 truncate">{item.pondName}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Thao tác nhanh khi rê chuột */}
+                      <div className="absolute right-4 top-3 hidden group-hover:flex items-center gap-0.5 bg-white rounded-lg shadow-sm ring-1 ring-slate-200 p-0.5">
+                        {!item.isRead && (
+                          <button
+                            type="button"
+                            onClick={(e) => markAsRead(item.id, e)}
+                            title="Đánh dấu đã đọc"
+                            aria-label="Đánh dấu đã đọc"
+                            className="w-6 h-6 flex items-center justify-center rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+                          >
+                            <CheckCheck className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => deleteNotification(item.id, e)}
+                          title="Xóa thông báo"
+                          aria-label="Xóa thông báo"
+                          className="w-6 h-6 flex items-center justify-center rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-
-                    <h4 className={`text-xs font-bold mt-1.5 leading-snug line-clamp-1 ${!item.isRead ? 'text-slate-900' : 'text-slate-700'}`}>
-                      {item.title}
-                    </h4>
-
-                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                      {item.message}
-                    </p>
                   </div>
-
-                  {/* Hover Delete Action */}
-                  <button
-                    type="button"
-                    onClick={(e) => deleteNotification(item.id, e)}
-                    title="Xóa thông báo"
-                    className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span className="text-[11px] text-slate-400 font-medium">Hệ thống thông báo thông minh SSFM</span>
-            {onNavigateTab && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  onNavigateTab('Thông báo');
-                }}
-                className="font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-              >
-
-              </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -674,7 +755,7 @@ export default function NotificationDropdown({
 
               <div className="p-6 space-y-3">
                 <h3 className="text-base font-extrabold text-slate-900 leading-snug">
-                  {selectedItem.title}
+                  {cleanTitle(selectedItem.title)}
                 </h3>
                 {selectedItem.pondName && (
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100">
@@ -697,17 +778,13 @@ export default function NotificationDropdown({
                   Xóa thông báo
                 </button>
                 <div className="flex items-center gap-2">
-                  {(selectedItem.pondId || selectedItem.farmId || selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT') && onNavigateTab && (
+                  {(selectedItem.pondId || selectedItem.farmId || selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT') && onNavigateTab && canOpenTarget(selectedItem) && (
                     <button
                       type="button"
                       onClick={() => {
                         const pondId = selectedItem.pondId;
                         const farmId = selectedItem.farmId;
-                        const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ');
-                        const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
-                        const isIncident = selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố');
-                        const isInventory = selectedItem.category === 'INVENTORY' || selectedItem.title?.toLowerCase().includes('kho') || selectedItem.title?.toLowerCase().includes('vật tư');
-                        const targetTab = isIncident ? 'Sự cố trang trại' : isGrowth ? 'Theo dõi tăng trưởng' : isShrimpHealth ? 'Sức khỏe tôm' : isInventory ? 'Quản Lý Kho' : 'Môi trường nước';
+                        const targetTab = notificationTargetTab(selectedItem);
                         setSelectedItem(null);
                         setIsOpen(false);
                         onNavigateTab(targetTab, { farmId, pondId });
@@ -724,10 +801,11 @@ export default function NotificationDropdown({
                         }`}
                     >
                       {(() => {
-                        const isIncident = selectedItem.category === 'INCIDENT' || selectedItem.category === 'INCIDENT_ASSIGNMENT' || selectedItem.title?.toLowerCase().includes('sự cố');
-                        const isGrowth = selectedItem.category === 'GROWTH' || selectedItem.title?.toLowerCase().includes('tăng trưởng') || selectedItem.title?.toLowerCase().includes('kích cỡ') || selectedItem.title?.toLowerCase().includes('fcr');
-                        const isShrimpHealth = selectedItem.category === 'SHRIMP_HEALTH' || selectedItem.title?.toLowerCase().includes('sức khỏe tôm');
-                        const isInventory = selectedItem.category === 'INVENTORY' || selectedItem.title?.toLowerCase().includes('kho');
+                        const target = notificationTargetTab(selectedItem);
+                        const isIncident = target === 'Sự cố trang trại';
+                        const isGrowth = target === 'Theo dõi tăng trưởng';
+                        const isShrimpHealth = target === 'Sức khỏe tôm';
+                        const isInventory = target === 'Quản Lý Kho';
 
                         if (isIncident) {
                           return (

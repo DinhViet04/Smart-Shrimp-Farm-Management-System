@@ -230,9 +230,10 @@ function ParameterField({
       />
 
       {/* Hint & Error row */}
-      {hint && !error && (
-        <p className="mt-1 text-[11px] text-slate-400 font-medium">
-          Khuyến nghị: {hint}
+      {/* Ngưỡng tối ưu luôn hiển thị, kể cả khi đang có lỗi */}
+      {hint && (
+        <p className="mt-1 text-[11px] text-emerald-700/80 font-semibold">
+          Tối ưu: {hint}
         </p>
       )}
       {error && (
@@ -717,37 +718,12 @@ export default function RecordWaterQuality({
       handleRefreshAi();
       setShowAbnormalAlertModal(false);
 
+      // Có chỉ số bất thường -> sang bước "Xử lý môi trường nước": danh sách thẻ cần xử lý
+      // (lần đo vừa lưu xuất hiện ở đó với mã thật; bấm thẻ mới mở trang xử lý).
       if (shouldNavigateToTreatment && onNavigateToTreatment) {
-        showToast('Đã lưu thông số! Đang chuyển sang không gian xử lý môi trường...', 'success');
-        const selectedFarm = farms.find((f) => f.id === selectedFarmId);
-        const selectedPond = ponds.find((p) => p.id === selectedPondId);
-        const warningRecord: WaterWarningRecord = {
-          id: `WQ-${Date.now()}`,
-          date: new Date(recordTime).toLocaleDateString('vi-VN'),
-          time: new Date(recordTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          farmName: selectedFarm?.name || 'Trang trại',
-          pondId: selectedPondId,
-          pondName: selectedPond?.name || 'Ao nuôi',
-          hazardLevel: currentAbnormalIssues.some((i) => i.status === 'danger') ? 'DANGER' : 'WARNING',
-          summaryText:
-            currentAbnormalIssues.map((i) => `${i.name}: ${i.value} ${i.unit}`).join(' • ') ||
-            'Chỉ số bất thường cần xử lý',
-          status: 'UNTREATED',
-          parameters: {
-            temperature: parseFloat(form.temperature) || 0,
-            ph: parseFloat(form.ph) || 0,
-            dissolvedOxygen: parseFloat(form.dissolvedOxygen) || 0,
-            salinity: parseFloat(form.salinity) || 0,
-            alkalinity: parseFloat(form.alkalinity) || 0,
-            nh3: parseFloat(form.nh3) || 0,
-            h2s: parseFloat(form.h2s) || 0,
-            transparency: parseFloat(form.transparency) || 0,
-          },
-          triggeredParams: currentAbnormalIssues.map((i) => i.paramKey),
-        };
-
+        showToast('Đã lưu thông số! Ao có chỉ số cần xử lý — đang chuyển sang danh sách Xử lý môi trường nước...', 'success');
         setTimeout(() => {
-          onNavigateToTreatment(selectedFarmId, selectedPondId, warningRecord);
+          onNavigateToTreatment(selectedFarmId, selectedPondId);
         }, 500);
       } else {
         if (currentAbnormalIssues.length > 0 && onNavigateToTreatment) {
@@ -755,35 +731,7 @@ export default function RecordWaterQuality({
             'Đã lưu thông số đo lường. Ao có chỉ số cảnh báo!',
             'success',
             'Xử lý ngay',
-            () => {
-              const selectedFarm = farms.find((f) => f.id === selectedFarmId);
-              const selectedPond = ponds.find((p) => p.id === selectedPondId);
-              const warningRecord: WaterWarningRecord = {
-                id: `WQ-${Date.now()}`,
-                date: new Date(recordTime).toLocaleDateString('vi-VN'),
-                time: new Date(recordTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-                farmName: selectedFarm?.name || 'Trang trại',
-                pondId: selectedPondId,
-                pondName: selectedPond?.name || 'Ao nuôi',
-                hazardLevel: currentAbnormalIssues.some((i) => i.status === 'danger') ? 'DANGER' : 'WARNING',
-                summaryText:
-                  currentAbnormalIssues.map((i) => `${i.name}: ${i.value} ${i.unit}`).join(' • ') ||
-                  'Chỉ số bất thường cần xử lý',
-                status: 'UNTREATED',
-                parameters: {
-                  temperature: parseFloat(form.temperature) || 0,
-                  ph: parseFloat(form.ph) || 0,
-                  dissolvedOxygen: parseFloat(form.dissolvedOxygen) || 0,
-                  salinity: parseFloat(form.salinity) || 0,
-                  alkalinity: parseFloat(form.alkalinity) || 0,
-                  nh3: parseFloat(form.nh3) || 0,
-                  h2s: parseFloat(form.h2s) || 0,
-                  transparency: parseFloat(form.transparency) || 0,
-                },
-                triggeredParams: currentAbnormalIssues.map((i) => i.paramKey),
-              };
-              onNavigateToTreatment(selectedFarmId, selectedPondId, warningRecord);
-            },
+            () => onNavigateToTreatment(selectedFarmId, selectedPondId),
           );
         } else {
           showToast(

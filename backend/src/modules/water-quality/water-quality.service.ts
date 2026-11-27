@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { WaterQualityResponseDto } from './dto/water-quality-response.dto.js';
@@ -9,6 +14,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { NotificationLevel } from '@prisma/client';
 import { GetManagerWaterTrendsDto } from './dto/get-manager-water-trends.dto.js';
+import { SaveWaterTreatmentDto } from './dto/save-water-treatment.dto.js';
 import {
   calculateOverallWaterStatus,
   WaterMetricsInput,
@@ -354,7 +360,11 @@ export class WaterQualityService {
       this.prisma.waterQualityRecord.count({ where }),
     ]);
 
+    // Gắn trạng thái "đã xử lý" (lưu trên server, dùng chung cho mọi tài khoản)
+    const treatmentByRecord = await this.loadTreatments(records.map((r) => r.id));
+
     const content = records.map((record) => {
+      const treatment = treatmentByRecord.get(record.id);
       const h2sVal =
         record.h2s !== undefined && record.h2s !== null
           ? Number(record.h2s)
@@ -377,6 +387,8 @@ export class WaterQualityService {
       return {
         id: record.id,
         recordTime: record.recordTime.toISOString(),
+        pondId: record.pondId,
+        farmId: record.pond?.farmId,
         farmName: record.pond?.farm?.name ?? 'Trang trại',
         pondName: record.pond?.name ?? 'Ao nuôi',
         temperature: Number(record.temperature),
@@ -396,6 +408,14 @@ export class WaterQualityService {
         note: record.note,
         weatherData: record.weatherData,
         createdAt: record.createdAt.toISOString(),
+        treatment: treatment
+          ? {
+              note: treatment.note,
+              chemicals: treatment.chemicals,
+              treatedByName: treatment.treatedBy?.fullName ?? null,
+              treatedAt: treatment.createdAt.toISOString(),
+            }
+          : null,
       };
     });
 
@@ -405,6 +425,63 @@ export class WaterQualityService {
       size,
       totalElements,
     };
+  }
+
+  /** Việc xử lý của các lần đo; bảng chưa được tạo (chưa `prisma db push`) -> coi như chưa xử lý */
+  private async loadTreatments(recordIds: string[]) {
+    if (recordIds.length === 0) return new Map();
+    try {
+      const rows = await this.prisma.waterTreatment.findMany({
+        where: { waterQualityRecordId: { in: recordIds } },
+        include: { treatedBy: { select: { fullName: true } } },
+      });
+      return new Map(rows.map((t) => [t.waterQualityRecordId, t]));
+    } catch (err: any) {
+      if (err?.code === 'P2021') return new Map();
+      throw err;
+    }
+  }
+
+  /**
+   * Ghi nhận ĐÃ XỬ LÝ 1 cảnh báo môi trường nước (can thiệp 1 lần là xong).
+   * Lưu trên server để Quản lý / tài khoản khác / thiết bị khác đều thấy cảnh báo đã vào lịch sử.
+   * (Việc trừ kho hóa chất vẫn ghi qua /inventory/:id/usage như trước.)
+   */
+  async saveTreatment(user: AuthUser, recordId: string, dto: SaveWaterTreatmentDto) {
+    const record = await this.prisma.waterQualityRecord.findUnique({
+      where: { id: recordId },
+      include: { pond: { select: { id: true, farmId: true } } },
+    });
+    if (!record) throw new NotFoundException('Không tìm thấy lần đo nước này');
+    await this.farmAccess.assertCanAccessFarm(user, record.pond.farmId);
+
+    try {
+      const existing = await this.prisma.waterTreatment.findUnique({
+        where: { waterQualityRecordId: recordId },
+      });
+      if (existing) {
+        throw new BadRequestException('Cảnh báo này đã được xử lý trước đó');
+      }
+      return await this.prisma.waterTreatment.create({
+        data: {
+          waterQualityRecordId: recordId,
+          pondId: record.pondId,
+          treatedById: user.userId,
+          note: dto.note?.trim() || null,
+          chemicals: (dto.chemicals ?? []) as any,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2021') {
+        throw new ServiceUnavailableException(
+          'Database chưa có bảng water_treatments — chạy `npx prisma db push` ở thư mục backend.',
+        );
+      }
+      if (err?.code === 'P2002') {
+        throw new BadRequestException('Cảnh báo này đã được xử lý trước đó');
+      }
+      throw err;
+    }
   }
 
   async findTrends(

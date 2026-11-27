@@ -265,7 +265,7 @@ const NumericField = ({
       value={value}
       onChangeText={(t) => onChange(fieldKey, t)}
     />
-    {hint && !error ? <Text style={styles.hintText}>Khuyến nghị: {hint}</Text> : null}
+    {hint ? <Text style={styles.hintText}>Tối ưu: {hint}</Text> : null}
     {error ? <Text style={styles.errorText}>{error}</Text> : null}
   </View>
 );

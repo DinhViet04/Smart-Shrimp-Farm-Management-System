@@ -78,9 +78,18 @@ export default function EnvironmentDashboard({
   const [targetTreatmentFarmId, setTargetTreatmentFarmId] = useState<string | undefined>(initialFarmId);
   const [targetTreatmentPondId, setTargetTreatmentPondId] = useState<string | undefined>(initialPondId);
 
+  // Tab mở sẵn của danh sách xử lý: sau khi xử lý xong thì mở "Lịch sử đã xử lý"
+  const [treatmentView, setTreatmentView] = useState<'incident' | 'history'>('incident');
+
+  // Chỉ tự mở Workspace của ao được chỉ định một lần; sau khi đã mở (rồi bấm "Quay lại")
+  // thì danh sách thẻ sự cố phải hiển thị bình thường, không bị bật lại Workspace.
+  const [autoOpenWorkspace, setAutoOpenWorkspace] = useState(true);
+
   const handleNavigateToTreatment = (farmId: string, pondId: string, warningRecord?: WaterWarningRecord) => {
     setTargetTreatmentFarmId(farmId);
     setTargetTreatmentPondId(pondId);
+    setTreatmentView('incident');
+    setAutoOpenWorkspace(true);
     if (warningRecord) {
       setActiveWorkspaceRecord(warningRecord);
     } else {
@@ -107,10 +116,13 @@ export default function EnvironmentDashboard({
         record={activeWorkspaceRecord}
         onBack={() => {
           setActiveWorkspaceRecord(null);
+          setTreatmentView('incident');
           setSubTab('treatment');
         }}
         onSaved={() => {
+          // Xử lý xong -> về danh sách, mở tab "Lịch sử đã xử lý" (thẻ vừa xử lý nằm ở đó)
           setActiveWorkspaceRecord(null);
+          setTreatmentView('history');
           setSubTab('treatment');
         }}
       />
@@ -137,7 +149,10 @@ export default function EnvironmentDashboard({
         )}
 
         <button
-          onClick={() => setSubTab('treatment')}
+          onClick={() => {
+            setTreatmentView('incident');
+            setSubTab('treatment');
+          }}
           className={`pb-3.5 text-sm font-bold flex items-center gap-2 transition-all outline-none border-b-2 whitespace-nowrap cursor-pointer ${
             subTab === 'treatment'
               ? activeTabClass
@@ -174,7 +189,12 @@ export default function EnvironmentDashboard({
           <WaterTreatment
             initialFarmId={targetTreatmentFarmId || initialFarmId}
             initialPondId={targetTreatmentPondId || initialPondId}
-            onOpenWorkspace={(rec) => setActiveWorkspaceRecord(rec)}
+            initialView={treatmentView}
+            autoOpenWorkspace={autoOpenWorkspace}
+            onOpenWorkspace={(rec) => {
+              setAutoOpenWorkspace(false);
+              setActiveWorkspaceRecord(rec);
+            }}
           />
         ) : (
           <div className="space-y-8">

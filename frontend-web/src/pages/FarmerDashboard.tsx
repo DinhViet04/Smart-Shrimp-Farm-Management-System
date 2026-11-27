@@ -241,6 +241,15 @@ export default function FarmerDashboard() {
 
   const navItems = allNavItems.filter((item) => !item.hidden);
 
+  // Quy đổi tên trang đích (từ thông báo / dashboard) sang tên mục menu của Nông dân
+  const resolveFarmerTab = (tab: string) => {
+    if (tab === 'Sự cố trang trại' || tab === 'Sự cố' || tab === 'Sự cố & Điều trị') return 'Báo cáo sự cố';
+    if (tab === 'Quản Lý Kho') return 'Kho thức ăn';
+    return tab;
+  };
+  // Chỉ cho chuyển tới trang đang hiển thị trên thanh điều hướng (mục đã ẩn thì không mở)
+  const canNavigateTo = (tab: string) => navItems.some((item) => item.name === resolveFarmerTab(tab));
+
 
 
   return (
@@ -727,7 +736,10 @@ export default function FarmerDashboard() {
 
               themeColor="teal" 
 
+              canNavigateTo={canNavigateTo}
+
               onNavigateTab={(tab, config) => {
+                if (!canNavigateTo(tab)) return;
 
                 if (tab === 'Môi trường nước') {
 
@@ -739,6 +751,8 @@ export default function FarmerDashboard() {
 
                   setActiveTab('Báo cáo sự cố');
 
+                } else if (tab === 'Quản Lý Kho') {
+                  setActiveTab('Kho thức ăn');
                 } else if (tab === 'Sức khỏe tôm' || tab === 'Sự cố & Điều trị') {
 
                   setHealthConfig({
@@ -791,11 +805,16 @@ export default function FarmerDashboard() {
 
 
 
-          {activeTab === 'Dashboard' && (
+          {/* Dashboard luôn được giữ lại (chỉ ẩn khi mở chức năng khác) để không mất dữ liệu
+              và không phải tải lại; dữ liệu chỉ cập nhật khi có thay đổi qua realtime. */}
+          <div hidden={activeTab !== 'Dashboard'}>
 
             <FarmerDashboardHome
 
+              canNavigateTo={canNavigateTo}
+
               onNavigateTab={(tab) => {
+                if (!canNavigateTo(tab)) return;
 
                 if (tab === 'Báo cáo sự cố' || tab === 'Sự cố & Điều trị') {
 
@@ -813,7 +832,7 @@ export default function FarmerDashboard() {
 
             />
 
-          )}
+          </div>
 
 
 
@@ -867,7 +886,7 @@ export default function FarmerDashboard() {
 
           ) : activeTab === 'Quản lý Ao của tôi' ? (
 
-             <PondCropDashboard onNavigateToGrowth={handleNavigateToGrowth} />
+             <PondCropDashboard variant="farmer" onNavigateToGrowth={handleNavigateToGrowth} />
 
           ) : activeTab === 'Sức khỏe tôm' ? (
 

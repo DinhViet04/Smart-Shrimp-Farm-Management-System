@@ -15,6 +15,7 @@ import { FarmAccessService } from '../farm-access/farm-access.service.js';
 import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { ChatGroupsService } from '../chat-groups/chat-groups.service.js';
+import { sortPondsActiveFirst } from '../../common/pond-order.js';
 
 @Injectable()
 export class FarmsService {
@@ -183,8 +184,18 @@ export class FarmsService {
         : Promise.resolve([]),
     ]);
 
+    // Ao đang nuôi lên trước, ao trống xuống sau (trong từng trang trại)
+    const activeCrops = ponds.length
+      ? await this.prisma.crop.findMany({
+          where: { pondId: { in: ponds.map((p) => p.id) }, status: 'ACTIVE' },
+          select: { pondId: true },
+          distinct: ['pondId'],
+        })
+      : [];
+    const sortedPonds = sortPondsActiveFirst(ponds, new Set(activeCrops.map((c) => c.pondId)));
+
     const pondsByFarm = new Map<string, typeof ponds>();
-    for (const pond of ponds) {
+    for (const pond of sortedPonds) {
       const farmPonds = pondsByFarm.get(pond.farmId) ?? [];
       farmPonds.push(pond);
       pondsByFarm.set(pond.farmId, farmPonds);
@@ -216,10 +227,18 @@ export class FarmsService {
   async findOne(id: string, userId?: string, role?: string) {
     const farm = await this.prisma.farm.findFirst({
       where: { id, deletedAt: null },
-      include: { owner: true, ponds: true },
+      include: {
+        owner: true,
+        ponds: {
+          include: { crops: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 } },
+        },
+      },
     });
 
     if (!farm) throw new NotFoundException('Khong tim thay nong trai');
+    // Ao đang nuôi lên trước, ao trống xuống sau
+    const activeIds = new Set(farm.ponds.filter((p) => p.crops.length > 0).map((p) => p.id));
+    farm.ponds = sortPondsActiveFirst(farm.ponds, activeIds);
 
     if (userId && role) {
       await this.farmAccess.assertCanAccessFarm({ userId, role }, id);

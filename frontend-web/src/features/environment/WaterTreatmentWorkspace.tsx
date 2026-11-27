@@ -32,6 +32,8 @@ import type { WaterWarningRecord, TreatmentAction, ChemicalItem, Farm, Pond, AIC
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import { createId } from '../../utils/id';
 import type { StoredUser } from '../../types/user';
+import { waterQualityService } from '../../services/water-quality.service';
+import { incidentService } from '../../services/incident.service';
 
 export interface TreatmentUpdate {
   id: string;
@@ -1011,6 +1013,44 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
     setSubmitting(true);
 
     try {
+      // 0. Ghi nhận ĐÃ XỬ LÝ trên server trước (mọi tài khoản / thiết bị đều thấy cảnh báo vào Lịch sử).
+      //    Nếu cảnh báo đã được người khác xử lý -> dừng, không trừ kho lần nữa.
+      //    Thẻ từ sự cố "Môi trường & Nước ao": đóng luôn sự cố (xử lý 1 lần là xong).
+      if (currentRecord.source === 'INCIDENT' && currentRecord.incidentId) {
+        const chemicalsText = selectedItems
+          .map((si) => `${si.quantity} ${si.item.unit} ${si.item.name}`)
+          .join(', ');
+        try {
+          await incidentService.resolve(currentRecord.incidentId, {
+            treatment:
+              [chemicalsText && `[Xuất kho ${pondDisplayName}: ${chemicalsText}]`, treatmentNote.trim()]
+                .filter(Boolean)
+                .join(' ') || 'Đã xử lý môi trường nước.',
+          });
+        } catch (resolveErr) {
+          addToast(
+            'Không thể xử lý',
+            resolveErr instanceof Error ? resolveErr.message : 'Không đóng được sự cố. Vui lòng thử lại.',
+            'error',
+          );
+          return;
+        }
+      } else try {
+        await waterQualityService.saveTreatment(currentRecord.id, {
+          note: treatmentNote.trim() || undefined,
+          chemicals: selectedItems.map((si) => ({
+            inventoryId: si.inventoryId,
+            name: si.item.name,
+            quantity: Number(si.quantity) || 0,
+            unit: si.item.unit,
+          })),
+        });
+      } catch (saveErr) {
+        const msg = saveErr instanceof Error ? saveErr.message : '';
+        addToast('Không thể xử lý', msg || 'Không lưu được việc xử lý. Vui lòng thử lại.', 'error');
+        return;
+      }
+
       // 1. Deduct all selected items from backend inventory store
       for (const si of selectedItems) {
         const qty = Number(si.quantity);
@@ -1049,11 +1089,6 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
         timestamp: timeStr,
       };
 
-      const savedMapStr = localStorage.getItem('water_treatments_map');
-      const treatmentsMap: Record<string, TreatmentAction> = savedMapStr ? JSON.parse(savedMapStr) : {};
-      treatmentsMap[currentRecord.id] = updatedTreatment;
-      localStorage.setItem('water_treatments_map', JSON.stringify(treatmentsMap));
-
       const updatedRecord: WaterWarningRecord = {
         ...currentRecord,
         status: 'TREATED',
@@ -1079,8 +1114,9 @@ Hãy thực hiện đầy đủ các nội dung theo cấu trúc sau:
         'success'
       );
 
+      // Cho người dùng kịp thấy thông báo thành công rồi mới quay về tab "Lịch sử đã xử lý"
       if (onSaved) {
-        onSaved(updatedRecord);
+        setTimeout(() => onSaved(updatedRecord), 1200);
       }
     } catch {
       addToast('Lỗi lưu trữ', 'Không thể hoàn tất thao tác. Vui lòng thử lại.', 'error');

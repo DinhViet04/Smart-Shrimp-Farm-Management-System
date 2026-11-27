@@ -1,4 +1,5 @@
 import { apiFetch } from '../utils/api';
+import { registerDataChangedHook } from './realtime';
 import type { Crop } from './crop.service';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -51,6 +52,14 @@ export function invalidatePondOverviewCache() {
   overviewCache = null;
   overviewRequest = null;
 }
+
+// Người khác sửa trang trại / ao / vụ nuôi -> bỏ cache để lần tải lại do realtime
+// lấy dữ liệu mới thay vì trả về bản cache (tối đa 15s) đã cũ.
+const OVERVIEW_RESOURCES = new Set(['farms', 'ponds', 'crops', 'shrimp-size']);
+registerDataChangedHook((event) => {
+  const touched = event.resources?.length ? event.resources : [event.resource];
+  if (touched.some((r) => OVERVIEW_RESOURCES.has(r))) invalidatePondOverviewCache();
+});
 
 async function getOverview(): Promise<PondOverview> {
   const token = localStorage.getItem('accessToken');

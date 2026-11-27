@@ -14,6 +14,7 @@ import { WaterQualityService } from './water-quality.service.js';
 import { CreateWaterQualityDto } from './dto/create-water-quality.dto.js';
 import { GetWaterQualityHistoryDto } from './dto/get-water-quality-history.dto.js';
 import { GetManagerWaterTrendsDto } from './dto/get-manager-water-trends.dto.js';
+import { SaveWaterTreatmentDto } from './dto/save-water-treatment.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -28,6 +29,18 @@ export class WaterQualityController {
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateWaterQualityDto) {
     return this.waterQualityService.create(req.user, dto);
+  }
+
+  /** Ghi nhận đã xử lý 1 cảnh báo môi trường nước (1 lần là xong) */
+  @Post(':id/treatment')
+  @Roles('TECHNICIAN', 'FARM_MANAGER')
+  @HttpCode(HttpStatus.CREATED)
+  saveTreatment(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: SaveWaterTreatmentDto,
+  ) {
+    return this.waterQualityService.saveTreatment(req.user, id, dto);
   }
 
   @Get('history')

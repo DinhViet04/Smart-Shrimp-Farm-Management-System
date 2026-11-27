@@ -47,6 +47,8 @@ export interface IncidentTechnician {
   id: string;
   fullName: string;
   email: string;
+  /** Vai trò trong trang trại (TECHNICIAN / FARMER) — dùng khi chọn người phụ trách */
+  role?: string;
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -110,6 +112,40 @@ export const incidentService = {
   getById: async (id: string) => {
     const response = await apiFetch(`${apiUrl}/api/incidents/${id}`);
     return handleResponse<Incident>(response);
+  },
+
+  /**
+   * Nhân sự có thể giao xử lý sự cố: mọi Kỹ thuật viên & Nông dân đang hoạt động của trang trại
+   * (kể cả người gửi báo cáo). Kỹ thuật viên xếp trước.
+   */
+  getAssignableStaff: async (farmId: string): Promise<IncidentTechnician[]> => {
+    try {
+      const response = await apiFetch(`${apiUrl}/api/farm-staffs?farmId=${encodeURIComponent(farmId)}`);
+      const staff = await handleResponse<Array<{
+        role: string;
+        isActive: boolean;
+        user?: IncidentTechnician & { role?: string; isActive?: boolean };
+      }>>(response);
+      if (!Array.isArray(staff)) return [];
+      const seen = new Set<string>();
+      return staff
+        .filter(
+          (entry) =>
+            entry.isActive &&
+            entry.user?.isActive &&
+            (entry.user.role === 'TECHNICIAN' || entry.user.role === 'FARMER'),
+        )
+        .map((entry) => ({
+          id: entry.user!.id,
+          fullName: entry.user!.fullName,
+          email: entry.user!.email,
+          role: entry.user!.role,
+        }))
+        .filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)))
+        .sort((a, b) => Number(b.role === 'TECHNICIAN') - Number(a.role === 'TECHNICIAN') || a.fullName.localeCompare(b.fullName, 'vi'));
+    } catch {
+      return [];
+    }
   },
 
   getTechnicians: async (farmId: string) => {

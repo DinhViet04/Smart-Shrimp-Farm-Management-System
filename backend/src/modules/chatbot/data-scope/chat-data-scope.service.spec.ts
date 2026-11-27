@@ -95,14 +95,10 @@ describe('ChatDataScopeService – ma trận phân quyền tra cứu của AI', 
   describe('FARMER', () => {
     const scope = scopeOf('FARMER', 'farmer-1');
 
-    it('chỉ thấy nhật ký cho ăn và sự cố do chính mình tạo', () => {
-      expect(service.feedingWhere(scope)).toMatchObject({
-        createdBy: 'farmer-1',
-      });
-      expect(service.incidentWhere(scope)).toMatchObject({
-        reporterId: 'farmer-1',
-      });
-      expect(service.incidentWhere(scope)).not.toHaveProperty('OR');
+    it('xem nhật ký cho ăn và sự cố của cả trang trại được phân công (không chỉ của mình)', () => {
+      expect(service.feedingWhere(scope)).toEqual({ farmId: { in: ['farm-1'] } });
+      expect(service.feedingWhere(scope)).not.toHaveProperty('createdBy');
+      expect(service.incidentWhere(scope)).not.toHaveProperty('reporterId');
     });
 
     it('xem dữ liệu nước của trang trại được phân công (giống API lịch sử nước)', () => {
@@ -111,12 +107,15 @@ describe('ChatDataScopeService – ma trận phân quyền tra cứu của AI', 
       });
     });
 
-    it('không được xem sức khỏe, tăng trưởng, tôm hao, kho, kết quả thu hoạch', () => {
-      expect(service.healthWhere(scope)).toBeNull();
-      expect(service.growthWhere(scope)).toBeNull();
-      expect(service.mortalityWhere(scope)).toBeNull();
-      expect(service.inventoryWhere(scope)).toBeNull();
-      expect(service.canAccess(scope, 'CROP_RESULTS')).toBe(false);
+    it('hỏi / xem được mọi loại dữ liệu như Kỹ thuật viên (trong trang trại được phân công)', () => {
+      expect(service.allowedDomains(scope)).toEqual(service.allowedDomains(scopeOf('TECHNICIAN')));
+      expect(service.healthWhere(scope)).toEqual({ farmId: { in: ['farm-1'] } });
+      expect(service.growthWhere(scope)).not.toBeNull();
+      expect(service.mortalityWhere(scope)).not.toBeNull();
+      expect(service.inventoryWhere(scope)).toEqual({ farmId: { in: ['farm-1'] }, deletedAt: null });
+      expect(service.staffWhere(scope)).not.toBeNull();
+      expect(service.supplierWhere(scope)).not.toBeNull();
+      expect(service.canAccess(scope, 'CROP_RESULTS')).toBe(true);
     });
   });
 
@@ -162,15 +161,10 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
       'get_treatment_stock',
       'get_farm_weather',
     ];
-    expect(names('FARMER')).toEqual([
-      'list_crops',
-      'query_feeding_logs',
-      ...waterTools,
-      'query_incidents',
-    ]);
     const allTools = [
       'list_crops',
       'get_crop_summary',
+      'get_feeding_status',
       'query_feeding_logs',
       ...waterTools,
       'query_shrimp_health',
@@ -185,6 +179,8 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
     // Kỹ thuật viên đọc được mọi loại dữ liệu như trên app (trong trang trại được phân công)
     expect(names('TECHNICIAN')).toEqual(allTools);
     expect(names('FARM_MANAGER')).toEqual(allTools);
+    // Nông dân: hỏi / xem được mọi thứ (quyền ghi được chặn ở AgentActionService)
+    expect(names('FARMER')).toEqual(allTools);
     expect(names('UNKNOWN')).toEqual(['list_crops']);
   });
 
@@ -221,8 +217,8 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
     expect(prisma.farmStaff.findMany.mock.calls[0][0].where.AND[0]).toMatchObject({ farmId: { in: ['farm-1'] } });
     expect(prisma.supplier.findMany.mock.calls[0][0].where.AND[0]).toMatchObject({ farmId: { in: ['farm-1'] } });
 
-    // Nông dân không có quyền FARM_INFO
-    const denied = await tools.execute('query_suppliers', {}, scopeOf('FARMER', 'farmer-1'));
+    // Role không xác định không có quyền FARM_INFO
+    const denied = await tools.execute('query_suppliers', {}, scopeOf('UNKNOWN'));
     expect(denied).toHaveProperty('error');
     expect(prisma.supplier.findMany).toHaveBeenCalledTimes(1);
   });
@@ -291,7 +287,9 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
   it('get_water_status: đánh giá lần đo mới nhất và tính thể tích ao', async () => {
     const prisma = makePrisma();
     const now = new Date();
-    prisma.pond.findMany.mockResolvedValue([
+    // Lần gọi 1: quy đổi tên ao -> id; lần gọi 2: dữ liệu nước của ao
+    prisma.pond.findMany.mockResolvedValueOnce([{ id: 'p1', name: 'A1' }]);
+    prisma.pond.findMany.mockResolvedValueOnce([
       {
         name: 'A1',
         areaSize: 1500,
@@ -324,19 +322,21 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
       scopeOf('TECHNICIAN', 'tech-1'),
     );
 
-    const where = prisma.pond.findMany.mock.calls[0][0].where;
+    const where = prisma.pond.findMany.mock.calls[1][0].where;
     expect(where.AND[0]).toEqual({
       farmId: { in: ['farm-1'] },
       farm: { deletedAt: null },
     });
+    expect(where.AND[1]).toMatchObject({ id: { in: ['p1'] } });
     expect(result.overview).toMatchObject({ ponds: 1, warning: 1 });
     expect(result.ponds[0].waterVolumeM3).toBe(1800);
     expect(result.ponds[0].latest.overallStatus).toBe('Cần chú ý');
     expect(result.ponds[0].latest.alerts[0]).toContain('Oxy hòa tan');
   });
 
-  it('Farmer tra cứu cho ăn: luôn bị ép createdBy = chính mình', async () => {
+  it('Farmer tra cứu cho ăn: thấy cả trang trại được phân công (không ép createdBy)', async () => {
     const prisma = makePrisma();
+    prisma.pond.findMany.mockResolvedValueOnce([{ id: 'p1', name: 'Ao nuôi A1' }, { id: 'p10', name: 'Ao nuôi A10' }]);
     const tools = new ChatToolsService(prisma as any, scopeService);
     await tools.execute(
       'query_feeding_logs',
@@ -345,14 +345,24 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
     );
 
     const where = prisma.feedingLog.findMany.mock.calls[0][0].where;
-    expect(where.AND[0]).toEqual({
-      farmId: { in: ['farm-1'] },
-      createdBy: 'farmer-1',
-    });
-    expect(where.AND[1]).toMatchObject({ pond: { name: { contains: 'A1' } } });
+    expect(where.AND[0]).toEqual({ farmId: { in: ['farm-1'] } });
+    // "A1" khớp đúng "Ao nuôi A1" (không lẫn sang "Ao nuôi A10")
+    expect(where.AND[1]).toMatchObject({ pond: { id: { in: ['p1'] } } });
   });
 
-  it('Farmer truyền staffName -> bị bỏ qua, không mở rộng sang dữ liệu người khác', async () => {
+  it('tên ao viết khác ("Ao D3", "ao d 3") vẫn tìm đúng "Ao nuôi D3"', async () => {
+    for (const asked of ['Ao D3', 'ao d 3', 'Ao nuôi D3']) {
+      const prisma = makePrisma();
+      prisma.pond.findMany
+        .mockResolvedValueOnce([{ id: 'pd3', name: 'Ao nuôi D3' }, { id: 'pd1', name: 'Ao nuôi D1' }])
+        .mockResolvedValueOnce([]);
+      const tools = new ChatToolsService(prisma as any, scopeService);
+      await tools.execute('get_water_status', { pondName: asked }, scopeOf('TECHNICIAN', 'tech-1'));
+      expect(prisma.pond.findMany.mock.calls[1][0].where.AND[1]).toMatchObject({ id: { in: ['pd3'] } });
+    }
+  });
+
+  it('Farmer lọc theo tên nhân viên được (trong trang trại được phân công)', async () => {
     const prisma = makePrisma();
     const tools = new ChatToolsService(prisma as any, scopeService);
     await tools.execute(
@@ -361,10 +371,9 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
       scopeOf('FARMER', 'farmer-1'),
     );
 
-    expect(prisma.user.findMany).not.toHaveBeenCalled();
     expect(
       prisma.feedingLog.findMany.mock.calls[0][0].where.AND[1],
-    ).not.toHaveProperty('createdBy');
+    ).toMatchObject({ createdBy: { in: ['staff-9'] } });
   });
 
   it('Manager lọc theo tên nhân viên', async () => {
@@ -398,5 +407,90 @@ describe('ChatToolsService – áp bộ lọc phạm vi vào truy vấn', () => 
       scopeService.cropWhere(scopeOf('TECHNICIAN')),
     );
     expect(prisma.waterQualityRecord.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatToolsService – gợi ý nhận diện câu hỏi theo role', () => {
+  const tools = new ChatToolsService({} as any, new ChatDataScopeService({} as any));
+  const scopeOf = (role: string): ChatScope => ({ role, userId: 'u1', farmIds: ['f1'] }) as ChatScope;
+
+  it.each(['ADMIN', 'FARM_MANAGER', 'TECHNICIAN', 'FARMER'])(
+    'chỉ gợi ý các công cụ mà role %s được dùng và có hướng dẫn riêng cho role',
+    (role) => {
+      const scope = scopeOf(role);
+      const available = new Set(tools.getToolDefinitions(scope).map((t) => t.function.name));
+      const guide = tools.describeRouting(scope);
+
+      for (const name of ['query_feeding_logs', 'query_growth_samples', 'query_shrimp_health', 'query_mortality', 'query_inventory', 'get_crop_summary', 'get_farm_overview']) {
+        expect(guide.includes(`- ${name}:`)).toBe(available.has(name));
+      }
+      expect(guide).toContain('VAI TRÒ:');
+      expect(guide).toContain('fromDate/toDate');
+      // Không nêu ao -> tổng hợp tất cả ao, không kế thừa ao từ lượt trước
+      expect(guide).toContain('KHÔNG truyền pondName/farmName');
+    },
+  );
+
+  it('nông dân: có gợi ý cho mọi mảng dữ liệu và được nhắc là chỉ ghi nhật ký cho ăn', () => {
+    const guide = tools.describeRouting(scopeOf('FARMER'));
+    for (const name of ['query_feeding_logs', 'get_water_status', 'query_inventory', 'get_farm_overview', 'get_crop_summary', 'query_growth_samples', 'list_farm_staff']) {
+      expect(guide).toContain(`- ${name}:`);
+    }
+    expect(guide).toContain('CHỈ được ghi NHẬT KÝ CHO ĂN');
+    expect(guide).toContain('NÔNG DÂN');
+  });
+
+  it('chỉ nông dân có công cụ gợi ý cho ăn (cùng bộ tính với thẻ nhật ký)', async () => {
+    const feedingAgent = {
+      listPonds: jest.fn().mockResolvedValue([{ id: 'p1', name: 'Ao 1', farmId: 'farm-1', farmName: 'A', cropId: 'c1', doc: 30 }]),
+      getSuggestion: jest.fn().mockResolvedValue({
+        pondName: 'Ao 1', farmName: 'A', date: '2026-11-23', doc: 30, abwGram: 2.5, abwSource: 'DOC_CURVE', aliveCount: 90000,
+        biomassKg: 225, feedRatePercent: 6.5, dailyKg: 14.6, fedTodayKg: 4, remainingKg: 10.6, recentDailyAvgKg: 13,
+        recentSessionsPerDay: 4, recommendedFeedSize: 'số 2',
+        feedOptions: [{ id: 'f2', name: 'Cám số 2', unit: 'kg', stock: 50, recommended: true, lastUsed: true }],
+        todayLogs: [], notes: ['n'], warnings: [],
+      }),
+    };
+    const withFeeding = new ChatToolsService({} as any, new ChatDataScopeService({} as any), undefined, feedingAgent as any);
+    const names = (role: string) => withFeeding.getToolDefinitions(scopeOf(role)).map((t) => t.function.name);
+    expect(names('FARMER')).toContain('get_feeding_suggestion');
+    expect(names('FARM_MANAGER')).not.toContain('get_feeding_suggestion');
+    expect(names('TECHNICIAN')).not.toContain('get_feeding_suggestion');
+
+    const res: any = await withFeeding.execute('get_feeding_suggestion', {}, scopeOf('FARMER'));
+    expect(res.ponds[0]).toMatchObject({ pondName: 'Ao 1', dailyKg: 14.6, remainingKg: 10.6, recommendedFeed: { name: 'Cám số 2' } });
+    const denied: any = await withFeeding.execute('get_feeding_suggestion', {}, scopeOf('TECHNICIAN'));
+    expect(denied.error).toBeDefined();
+  });
+});
+
+describe('ChatToolsService – get_feeding_status (tình hình cho ăn trong ngày)', () => {
+  it('liệt kê mọi ao đang nuôi: cử đã cho ăn của từng ao và ao chưa cho ăn', async () => {
+    const prisma: any = {
+      pond: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'p1', name: 'A1', farm: { name: 'Trại 1' }, crops: [{ startDate: new Date('2026-11-01T00:00:00Z') }] },
+          { id: 'p2', name: 'A2', farm: { name: 'Trại 1' }, crops: [{ startDate: new Date('2026-11-10T00:00:00Z') }] },
+        ]),
+      },
+      feedingLog: {
+        findMany: jest.fn().mockResolvedValue([
+          { pondId: 'p1', feedingSession: 'SESSION_1', feedingTime: '05:30', feedAmount: 57.15, feedingStatus: 'COMPLETED', note: null, feedProduct: { itemName: 'Grow Max' }, pond: { name: 'A1', farm: { name: 'Trại 1' } }, creator: { fullName: 'Nông dân A' } },
+          { pondId: 'p1', feedingSession: 'SESSION_2', feedingTime: '08:00', feedAmount: 40, feedingStatus: 'COMPLETED', note: null, feedProduct: { itemName: 'Grow Max' }, pond: { name: 'A1', farm: { name: 'Trại 1' } }, creator: { fullName: 'Nông dân A' } },
+          { pondId: 'p1', feedingSession: 'SESSION_3', feedingTime: '10:30', feedAmount: 0, feedingStatus: 'SKIPPED', note: null, feedProduct: null, pond: { name: 'A1', farm: { name: 'Trại 1' } }, creator: { fullName: 'Nông dân A' } },
+        ]),
+      },
+    };
+    const tools = new ChatToolsService(prisma, new ChatDataScopeService({} as any));
+    const res: any = await tools.execute('get_feeding_status', { date: '2026-11-19' }, scopeOf('FARMER', 'farmer-1'));
+
+    expect(res.summary.pondsFed).toEqual(['A1']);
+    expect(res.summary.pondsNotFedYet).toEqual(['A2']);
+    expect(res.summary.totalFeedKg).toBe(97.15);
+    const a1 = res.ponds.find((p: any) => p.pond === 'A1');
+    expect(a1.fedSessions.map((s: any) => s.session)).toEqual(['Cử 1', 'Cử 2']);
+    expect(a1.skippedSessions).toEqual(['Cử 3']);
+    // Chỉ ao trong phạm vi trang trại được phân công
+    expect(prisma.pond.findMany.mock.calls[0][0].where.AND[0]).toMatchObject({ farmId: { in: ['farm-1'] } });
   });
 });

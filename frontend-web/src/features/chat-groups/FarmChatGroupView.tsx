@@ -313,6 +313,9 @@ export default function FarmChatGroupView() {
   }, [currentUserId, fetchGroups, fetchMessages]);
 
   const activeGroup = groups.find((g) => g.id === selectedGroupId) || null;
+  // Nông dân & Quản lý: giữ bố cục, làm gọn giao diện & bớt chữ
+  const isCompact = currentUser?.role === 'FARMER' || currentUser?.role === 'FARM_MANAGER';
+  const fc = (farmer: string, other: string) => (isCompact ? farmer : other);
   const isGroupManager =
     currentUser?.role === 'ADMIN' ||
     (activeGroup?.farm?.ownerId && activeGroup.farm.ownerId === currentUserId);
@@ -749,7 +752,7 @@ export default function FarmChatGroupView() {
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm h-[calc(100vh-140px)] min-h-[580px] flex overflow-hidden">
+    <div className={fc('bg-white rounded-2xl border border-slate-200 h-[calc(100vh-140px)] min-h-[580px] flex overflow-hidden theme-farmer', 'bg-white rounded-3xl border border-slate-200 shadow-sm h-[calc(100vh-140px)] min-h-[580px] flex overflow-hidden')}>
       {/* Left Sidebar: Farm Chat Groups */}
       <div className="w-72 sm:w-80 border-r border-slate-200 flex flex-col bg-slate-50/50 flex-shrink-0">
         <div className="p-4 border-b border-slate-200 bg-white">
@@ -760,10 +763,12 @@ export default function FarmChatGroupView() {
               </div>
               <div>
                 <h2 className="text-sm font-black text-slate-800">Trò chuyện</h2>
-                <p className="text-[11px] text-slate-500 font-medium">
+                {!isCompact && (
+<p className="text-[11px] text-slate-500 font-medium">
                   {groups.filter((g) => g.type !== 'DIRECT').length} nhóm trại •{' '}
                   {groups.filter((g) => g.type === 'DIRECT').length} riêng tư
                 </p>
+)}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -773,7 +778,7 @@ export default function FarmChatGroupView() {
                 className="px-2 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
-                <span>Nhắn riêng</span>
+                {!isCompact && <span>Nhắn riêng</span>}
               </button>
               <button
                 onClick={() => void fetchGroups(true)}
@@ -796,7 +801,7 @@ export default function FarmChatGroupView() {
               <button
                 key={tab.id}
                 onClick={() => setChatFilter(tab.id)}
-                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                className={`flex-1 py-1.5 rounded-lg ${fc('text-xs font-semibold', 'text-[11px] font-bold')} transition-colors cursor-pointer ${
                   chatFilter === tab.id
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -813,7 +818,7 @@ export default function FarmChatGroupView() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm nhóm hoặc tên đồng nghiệp..."
+              placeholder={isCompact ? 'Tìm kiếm...' : 'Tìm nhóm hoặc tên đồng nghiệp...'}
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500 transition-all"
             />
           </div>
@@ -833,7 +838,7 @@ export default function FarmChatGroupView() {
               <button
                 key={group.id}
                 onClick={() => setSelectedGroupId(group.id)}
-                className={`w-full text-left p-3.5 transition-all flex items-start gap-3 cursor-pointer ${
+                className={`w-full text-left ${fc('px-3.5 py-3', 'p-3.5')} transition-all flex items-start gap-3 cursor-pointer ${
                   isSelected
                     ? 'bg-blue-50/90 border-l-4 border-l-blue-600'
                     : 'hover:bg-white'
@@ -874,7 +879,7 @@ export default function FarmChatGroupView() {
                       )}
                     </div>
                   </div>
-                  {isDirect ? (
+                  {isCompact ? null : isDirect ? (
                     <p className="text-[11px] text-slate-400 truncate mt-0.5">
                       {partner?.user?.email || 'Tin nhắn riêng tư'}
                     </p>
@@ -887,7 +892,7 @@ export default function FarmChatGroupView() {
                     )
                   )}
                   <p
-                    className={`text-xs truncate mt-1 ${
+                    className={`text-xs truncate ${fc('mt-0.5', 'mt-1')} ${
                       unreadCount > 0
                         ? 'font-bold text-slate-900'
                         : 'text-slate-500'
@@ -916,10 +921,14 @@ export default function FarmChatGroupView() {
           <div className="px-5 py-3.5 bg-white border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
               <div
-                className={`w-10 h-10 rounded-2xl text-white flex items-center justify-center shadow-sm flex-shrink-0 ${
-                  activeGroup.type === 'DIRECT'
-                    ? 'bg-gradient-to-br from-indigo-600 to-violet-500'
-                    : 'bg-gradient-to-br from-blue-600 to-cyan-500'
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                  isCompact
+                    ? 'bg-blue-50 text-blue-600'
+                    : `text-white shadow-sm ${
+                        activeGroup.type === 'DIRECT'
+                          ? 'bg-gradient-to-br from-indigo-600 to-violet-500'
+                          : 'bg-gradient-to-br from-blue-600 to-cyan-500'
+                      }`
                 }`}
               >
                 {activeGroup.type === 'DIRECT' ? (
@@ -936,14 +945,14 @@ export default function FarmChatGroupView() {
                 </div>
                 {activeGroup.type === 'DIRECT' ? (
                   <p className="text-xs text-slate-500 flex items-center gap-2 truncate">
-                    <span>Trò chuyện riêng tư</span>
+                    {!isCompact && <span>Trò chuyện riêng tư</span>}
                     {getDirectPartner(activeGroup)?.role &&
                       getRoleBadge(getDirectPartner(activeGroup)?.role)}
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500 flex items-center gap-2 truncate">
-                    <span>{activeGroup.members?.length || 1} thành viên trong nhóm</span>
-                    {activeGroup.farm?.address && (
+                    <span>{activeGroup.members?.length || 1} {isCompact ? 'thành viên' : 'thành viên trong nhóm'}</span>
+                    {!isCompact && activeGroup.farm?.address && (
                       <>
                         <span>•</span>
                         <span className="truncate">{activeGroup.farm.address}</span>
@@ -964,7 +973,7 @@ export default function FarmChatGroupView() {
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>Thành viên ({activeGroup.members?.length || 1})</span>
+                {!isCompact && <span>Thành viên ({activeGroup.members?.length || 1})</span>}
               </button>
             )}
           </div>
@@ -980,7 +989,7 @@ export default function FarmChatGroupView() {
               <div className="h-full flex flex-col items-center justify-center text-center text-slate-400">
                 <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
                 <p className="text-xs font-medium">
-                  Hãy gửi tin nhắn đầu tiên tới các thành viên trang trại!
+                  {isCompact ? 'Chưa có tin nhắn' : 'Hãy gửi tin nhắn đầu tiên tới các thành viên trang trại!'}
                 </p>
               </div>
             ) : (
@@ -1033,7 +1042,7 @@ export default function FarmChatGroupView() {
                       <span className="text-[11px] font-bold text-slate-600">
                         {isMe ? 'Bạn' : senderName}
                       </span>
-                      {getRoleBadge(msg.sender?.role)}
+                      {!isCompact && getRoleBadge(msg.sender?.role)}
                       <span className="text-[10px] text-slate-400">
                         {new Date(msg.createdAt).toLocaleTimeString('vi-VN', {
                           hour: '2-digit',
@@ -1047,7 +1056,7 @@ export default function FarmChatGroupView() {
                       }`}
                     >
                       <div
-                        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm space-y-2 ${
+                        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${fc('', 'shadow-sm')} space-y-2 ${
                           isMe
                             ? 'bg-blue-600 text-white rounded-br-xs'
                             : 'bg-white text-slate-800 border border-slate-200 rounded-bl-xs'
@@ -1256,7 +1265,9 @@ export default function FarmChatGroupView() {
                   if (messageError) setMessageError(null);
                 }}
                 placeholder={
-                  activeGroup.type === 'DIRECT'
+                  isCompact
+                    ? 'Nhập tin nhắn...'
+                    : activeGroup.type === 'DIRECT'
                     ? `Nhắn riêng cho ${getGroupDisplayName(activeGroup)}...`
                     : `Nhắn tin tới nhóm ${activeGroup.farm?.name || activeGroup.name}...`
                 }
@@ -1268,7 +1279,7 @@ export default function FarmChatGroupView() {
                 className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>{uploadingFile ? 'Đang tải...' : 'Gửi'}</span>
+                {(!isCompact || uploadingFile) && <span>{uploadingFile ? 'Đang tải...' : 'Gửi'}</span>}
               </button>
             </form>
           </div>
@@ -1281,11 +1292,13 @@ export default function FarmChatGroupView() {
           <div className="p-4 border-b border-slate-200">
             <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
               <Users className="w-4 h-4 text-blue-600" />
-              Thành viên nhóm ({activeGroup.members?.length || 0})
+              {isCompact ? 'Thành viên' : 'Thành viên nhóm'} ({activeGroup.members?.length || 0})
             </h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            {!isCompact && (
+<p className="text-[11px] text-slate-500 mt-0.5">
               Thành viên được thêm vào trang trại sẽ tự động vào nhóm chat này.
             </p>
+)}
           </div>
 
           {/* Add Member Form for Farm Manager */}
@@ -1357,15 +1370,17 @@ export default function FarmChatGroupView() {
               return (
                 <div
                   key={member.id}
-                  className="p-2.5 rounded-2xl border border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2"
+                  className={fc('px-2.5 py-2 rounded-xl hover:bg-slate-50 flex items-center justify-between gap-2', 'p-2.5 rounded-2xl border border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2')}
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-slate-800 truncate">
                       {name}
                     </p>
-                    <p className="text-[11px] text-slate-400 truncate">
+                    {!isCompact && (
+<p className="text-[11px] text-slate-400 truncate">
                       {member.user?.email}
                     </p>
+)}
                     <div className="mt-1">{getRoleBadge(member.role)}</div>
                   </div>
 
@@ -1378,7 +1393,7 @@ export default function FarmChatGroupView() {
                         className="px-2 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       >
                         <MessageCircle className="w-3 h-3" />
-                        <span>Nhắn riêng</span>
+                        {!isCompact && <span>Nhắn riêng</span>}
                       </button>
                     )}
 
@@ -1413,9 +1428,11 @@ export default function FarmChatGroupView() {
                   <h3 className="text-sm font-black text-slate-800">
                     Nhắn tin riêng
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  {!isCompact && (
+<p className="text-[11px] text-slate-500">
                     Chọn thành viên cùng trang trại để trao đổi nghiệp vụ riêng
                   </p>
+)}
                 </div>
               </div>
               <button
@@ -1447,9 +1464,11 @@ export default function FarmChatGroupView() {
                         <p className="text-xs font-bold text-slate-800 truncate">
                           {person.fullName}
                         </p>
-                        <p className="text-[11px] text-slate-400 truncate">
+                        {!isCompact && (
+<p className="text-[11px] text-slate-400 truncate">
                           {person.email}
                         </p>
+)}
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           {getRoleBadge(person.role)}
                           {person.farmNames.length > 0 && (

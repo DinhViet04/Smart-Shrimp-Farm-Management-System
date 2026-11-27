@@ -216,7 +216,7 @@ describe('IncidentsService', () => {
           farmId: 'farm-id',
           userId: 'technician-id',
           isActive: true,
-          user: { role: 'TECHNICIAN', isActive: true },
+          user: { role: { in: ['TECHNICIAN', 'FARMER'] }, isActive: true },
         },
       }),
     );
@@ -326,7 +326,7 @@ describe('IncidentsService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('stores a treatment update and changes the incident status', async () => {
+  it('stores a treatment update and keeps the incident status', async () => {
     prisma.incident.findUnique.mockResolvedValue({
       ...incident,
       status: 'TREATING',
@@ -350,7 +350,7 @@ describe('IncidentsService', () => {
     );
     expect(prisma.incident.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'TREATING' }),
+        data: { treatment: 'Tăng cường quạt nước' },
       }),
     );
   });
@@ -426,5 +426,91 @@ describe('IncidentsService', () => {
       { userId: 'manager-id', role: 'FARM_MANAGER' },
       'farm-id',
     );
+  });
+
+  describe('phân công cho người phù hợp & hoàn tất xử lý', () => {
+    const farmer = { userId: 'farmer-id', role: 'FARMER' };
+
+    it('quản lý giao được cho nông dân (kể cả người gửi báo cáo)', async () => {
+      prisma.incident.findUnique.mockResolvedValue({ ...incident, assignedToId: null, reporterId: 'farmer-id' });
+      prisma.farmStaff.findFirst.mockResolvedValue({ user: { id: 'farmer-id', fullName: 'Nông dân A', email: 'a@x.vn' } });
+
+      await service.assign({ userId: 'manager-id', role: 'FARM_MANAGER' }, incident.id, { assignedToId: 'farmer-id' });
+
+      expect(prisma.incident.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { assignedToId: 'farmer-id' } }),
+      );
+    });
+
+    it('nông dân được giao có thể hoàn tất, kể cả khi chưa bấm "Bắt đầu xử lý"', async () => {
+      prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'OPEN', assignedToId: 'farmer-id', startedAt: null });
+
+      await service.resolve(farmer, incident.id, { treatment: 'Đã thay cầu chì máy bơm' });
+
+      expect(prisma.incident.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'RESOLVED', startedAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('người KHÔNG được giao thì không được hoàn tất', async () => {
+      prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'TREATING', assignedToId: 'technician-id' });
+
+      await expect(service.resolve(farmer, incident.id, { treatment: 'x' })).rejects.toThrow(
+        'Chỉ người được phân công',
+      );
+    });
+
+    it('ghi chỉ đạo lúc vừa phân công (chưa bắt đầu) không bị lỗi và giữ trạng thái OPEN', async () => {
+      prisma.incident.findUnique.mockResolvedValue({ ...incident, status: 'OPEN' });
+
+      await service.addTreatmentUpdate({ userId: 'manager-id', role: 'FARM_MANAGER' }, incident.id, {
+        treatment: 'Chỉ đạo của Quản lý: thay motor dự phòng',
+      });
+
+      expect(prisma.incidentTreatmentUpdate.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'OPEN' }) }),
+      );
+    });
+  });
+
+  describe('sự cố môi trường nước: xử lý 1 lần', () => {
+    const tech2 = { userId: 'tech-2', role: 'TECHNICIAN' };
+
+    it('chưa giao cho ai -> Kỹ thuật viên của trại xử lý & đóng luôn, được ghi là người xử lý', async () => {
+      prisma.incident.findUnique.mockResolvedValue({
+        ...incident,
+        title: '[Môi trường nước] NH3 tăng cao ao A1',
+        status: 'OPEN',
+        assignedToId: null,
+      });
+      await service.resolve(tech2, incident.id, { treatment: 'Tạt Yucca 2kg' });
+      expect(prisma.incident.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'RESOLVED', assignedToId: 'tech-2' }),
+        }),
+      );
+    });
+
+    it('đã giao cho người khác -> Kỹ thuật viên khác không được đóng', async () => {
+      prisma.incident.findUnique.mockResolvedValue({
+        ...incident,
+        title: '[Môi trường nước] NH3 tăng cao ao A1',
+        status: 'OPEN',
+        assignedToId: 'technician-id',
+      });
+      await expect(service.resolve(tech2, incident.id, { treatment: 'x' })).rejects.toThrow('Chỉ người được phân công');
+    });
+
+    it('sự cố loại khác chưa giao -> vẫn phải được phân công', async () => {
+      prisma.incident.findUnique.mockResolvedValue({
+        ...incident,
+        title: '[Thiết bị & Máy móc] Quạt nước hỏng',
+        status: 'OPEN',
+        assignedToId: null,
+      });
+      await expect(service.resolve(tech2, incident.id, { treatment: 'x' })).rejects.toThrow('Chỉ người được phân công');
+    });
   });
 });

@@ -15,11 +15,14 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { WaterQualityModule } from '../water-quality/water-quality.module';
 import { MarketPricesModule } from '../market-prices/market-prices.module';
 import { WaterRecordAgentService } from './water-record-agent.service';
+import { ChatHistoryService } from './chat-history.service';
+import { FeedingRecordAgentService } from './feeding-record-agent.service';
+import { FeedingLogsModule } from '../feeding-logs/feeding-logs.module';
 
 @Module({
-  imports: [FarmAccessModule, FarmsModule, PondsModule, CropsModule, InventoryModule, WaterQualityModule, MarketPricesModule],
+  imports: [FarmAccessModule, FarmsModule, PondsModule, CropsModule, InventoryModule, WaterQualityModule, MarketPricesModule, FeedingLogsModule],
   controllers: [ChatbotController],
-  providers: [ChatbotService, WeatherService, AgentActionService, RoleContextService, FileParserService, ChatDataScopeService, ChatToolsService, WaterRecordAgentService],
+  providers: [ChatbotService, WeatherService, AgentActionService, RoleContextService, FileParserService, ChatDataScopeService, ChatToolsService, WaterRecordAgentService, ChatHistoryService, FeedingRecordAgentService],
   exports: [WeatherService, AgentActionService, RoleContextService, FileParserService],
 })
 export class ChatbotModule {}

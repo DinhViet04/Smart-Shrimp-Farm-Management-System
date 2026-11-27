@@ -8,3 +8,7 @@ __pycache__
 data/*.json
 data/*.db
 *.log
+
+# Thông tin đăng nhập Google, không đưa vào build context
+service_account.json
+*credentials*.json

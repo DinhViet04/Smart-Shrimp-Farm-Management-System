@@ -162,7 +162,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
+    <div className="role-manager flex h-screen bg-slate-50 font-sans overflow-hidden">
       {/* Sidebar */}
       <aside
         onMouseLeave={() => setHoveredTooltip(null)}
@@ -480,6 +480,7 @@ export default function Dashboard() {
             <FarmList onNavigateToPonds={handleNavigateToPonds} />
           ) : activeTab === 'Quản lý Ao/Vụ' ? (
             <PondCropDashboard 
+              variant="manager"
               initialSubTab={pondCropConfig?.initialSubTab}
               initialFarmId={pondCropConfig?.initialFarmId}
               initialPondId={pondCropConfig?.initialPondId}

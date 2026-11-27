@@ -61,6 +61,10 @@ export default function FarmIncidentDashboard({
   const isManager = role === 'FARM_MANAGER' || role === 'ADMIN';
   const isTechnician = role === 'TECHNICIAN';
   const isFarmer = role === 'FARMER';
+  // Nông dân: giữ bố cục, làm gọn giao diện & bớt chữ
+  // Giao diện gọn cho Nông dân & Quản lý (logic phạm vi dữ liệu vẫn dùng isFarmer)
+  const isCompact = isFarmer || isManager;
+  const fc = (compact: string, other: string) => (isCompact ? compact : other);
 
   // Technician Sub-View: 'my_reports' vs 'assigned_to_me'
   const [techViewMode, setTechViewMode] = useState<'my_reports' | 'assigned_to_me'>('my_reports');
@@ -174,7 +178,7 @@ export default function FarmIncidentDashboard({
     if (!fId) return;
     setLoadingTechnicians(true);
     try {
-      const list = await incidentService.getTechnicians(fId);
+      const list = await incidentService.getAssignableStaff(fId);
       setTechnicians(list);
     } catch (err) {
       console.warn('Failed to load technicians:', err);
@@ -271,7 +275,14 @@ export default function FarmIncidentDashboard({
 
   const roleScopedIncidents = useMemo(() => {
     if (isFarmer) {
-      return farmOnlyIncidents.filter((i) => i.reporter?.id === currentUserId || i.reporterId === currentUserId);
+      // Sự cố mình gửi báo cáo + sự cố Quản lý giao cho mình xử lý
+      return farmOnlyIncidents.filter(
+        (i) =>
+          i.reporter?.id === currentUserId ||
+          i.reporterId === currentUserId ||
+          i.assignedToId === currentUserId ||
+          i.assignedTo?.id === currentUserId,
+      );
     }
     if (isTechnician) {
       if (techViewMode === 'my_reports') {
@@ -400,7 +411,7 @@ export default function FarmIncidentDashboard({
       const updated = await incidentService.getById(activeIncident.id);
       setActiveIncident(updated);
       await loadIncidents();
-      setNotice('Đã tiếp nhận sự cố và phân công kỹ thuật viên phụ trách thành công!');
+      setNotice('Đã tiếp nhận sự cố và phân công người phụ trách xử lý thành công!');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -540,9 +551,10 @@ export default function FarmIncidentDashboard({
     if (!activeIncident) return false;
     if (activeIncident.status === 'RESOLVED') return false;
     if (isManager) return true;
-    if (isTechnician && activeIncident.assignedToId === currentUserId) return true;
-    return false;
-  }, [activeIncident, isManager, isTechnician, currentUserId]);
+    return activeIncident.assignedToId === currentUserId;
+  }, [activeIncident, isManager, currentUserId]);
+
+  const isActiveAssignee = Boolean(activeIncident && activeIncident.assignedToId === currentUserId);
 
   if (view === 'create') {
     return (
@@ -563,7 +575,7 @@ export default function FarmIncidentDashboard({
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-7xl space-y-6 pb-16 font-sans">
+    <div className={fc('relative mx-auto w-full max-w-7xl space-y-5 pb-16 font-sans theme-farmer', 'relative mx-auto w-full max-w-7xl space-y-6 pb-16 font-sans')}>
       {/* Toast Alert Notice */}
       {(notice || error) && (
         <div
@@ -592,22 +604,24 @@ export default function FarmIncidentDashboard({
       )}
 
       {/* ── HEADER SECTION ── */}
-      <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs">
+      <div className={fc('rounded-2xl border border-slate-200 bg-white px-5 py-4', 'rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs')}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/20">
+            <div className={fc('flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600', 'flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/20')}>
               <AlertTriangle className="h-6 w-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                <h1 className={fc('text-xl font-bold text-slate-900', 'text-xl sm:text-2xl font-black text-slate-900 tracking-tight')}>
                   {isFarmer
-                    ? 'Lịch Sử Báo Cáo Sự Cố Trang Trại'
+                    ? 'Sự cố đã báo cáo'
                     : isTechnician
                     ? 'Báo Cáo Sự Cố & Nhiệm Vụ Khắc Phục'
+                    : isCompact
+                    ? 'Sự cố trang trại'
                     : 'Trung Tâm Điều Phối & Quản Lý Sự Cố Trang Trại'}
                 </h1>
-                <span
+                {!isCompact && <span
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
                     isManager
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -617,15 +631,17 @@ export default function FarmIncidentDashboard({
                   }`}
                 >
                   {isManager ? 'Quản lý' : isTechnician ? 'Kỹ thuật viên' : 'Nông dân'}
-                </span>
+                </span>}
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              {!isCompact && (
+<p className="text-xs sm:text-sm text-slate-500 mt-1">
                 {isFarmer
                   ? 'Theo dõi tiến độ Quản lý tiếp nhận và phân công khắc phục các sự cố do bạn gửi lên.'
                   : isTechnician
                   ? 'Báo cáo sự cố thiết bị/hạ tầng lên Quản lý và theo dõi các nhiệm vụ khắc phục được giao.'
                   : 'Tiếp nhận toàn bộ sự cố từ Nông dân & Kỹ thuật viên; phân công nhân sự khắc phục kịp thời.'}
               </p>
+)}
             </div>
           </div>
 
@@ -633,7 +649,7 @@ export default function FarmIncidentDashboard({
             <button
               onClick={() => loadIncidents()}
               disabled={loading}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+              className={fc('flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer', 'flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer')}
               title="Tải lại danh sách"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -642,10 +658,10 @@ export default function FarmIncidentDashboard({
             {/* Báo cáo sự cố mới button */}
             <button
               onClick={() => setView('create')}
-              className="flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              className={fc('flex items-center gap-2 rounded-lg bg-amber-500 hover:bg-amber-600 h-9 px-4 text-sm font-semibold text-white transition-colors cursor-pointer', 'flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-md shadow-amber-500/20 transition-all cursor-pointer')}
             >
               <Plus className="h-4 w-4 stroke-[3]" />
-              <span>{isManager ? 'Lập Sự Cố Mới' : 'Báo Cáo Sự Cố Mới'}</span>
+              <span>{isManager ? (isCompact ? 'Lập sự cố' : 'Lập Sự Cố Mới') : isFarmer ? 'Báo cáo sự cố' : 'Báo Cáo Sự Cố Mới'}</span>
             </button>
           </div>
         </div>
@@ -771,7 +787,7 @@ export default function FarmIncidentDashboard({
       </div>
 
       {/* ── FILTER & TAB TOOLBAR ── */}
-      <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-xs space-y-3">
+      <div className={fc('rounded-2xl border border-slate-200 bg-white p-3 space-y-2', 'rounded-3xl border border-slate-200/90 bg-white p-4 shadow-xs space-y-3')}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Main Status Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
@@ -888,7 +904,7 @@ export default function FarmIncidentDashboard({
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  Đã giải quyết ({resolvedIncidents.length})
+                  {isFarmer ? 'Đã xong' : 'Đã giải quyết'} ({resolvedIncidents.length})
                 </button>
               </>
             )}
@@ -901,7 +917,7 @@ export default function FarmIncidentDashboard({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tiêu đề, vị trí, người gửi..."
+              placeholder={isCompact ? 'Tìm sự cố...' : 'Tìm theo tiêu đề, vị trí, người gửi...'}
               className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-amber-500 focus:outline-none"
             />
           </div>
@@ -981,9 +997,10 @@ export default function FarmIncidentDashboard({
             <CheckCircle2 className="h-7 w-7" />
           </div>
           <h3 className="mt-4 text-base font-bold text-slate-800">
-            Không có sự cố nào trong mục này
+            {isCompact ? 'Chưa có sự cố' : 'Không có sự cố nào trong mục này'}
           </h3>
-          <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+          {!isCompact && (
+<p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
             {hasActiveFilters
               ? 'Không tìm thấy sự cố phù hợp với bộ lọc hiện tại. Hãy thử đặt lại bộ lọc.'
               : isFarmer
@@ -992,6 +1009,7 @@ export default function FarmIncidentDashboard({
               ? 'Hiện bạn chưa có nhiệm vụ khắc phục sự cố nào được Quản lý phân công.'
               : 'Trang trại hiện đang vận hành ổn định, không có sự cố nào cần xử lý.'}
           </p>
+)}
           {hasActiveFilters ? (
             <button
               onClick={handleResetFilters}
@@ -1022,7 +1040,7 @@ export default function FarmIncidentDashboard({
               <div
                 key={inc.id}
                 onClick={() => handleOpenDetail(inc)}
-                className={`group relative rounded-3xl border bg-white p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between ${
+                className={`group relative ${fc('rounded-2xl p-4', 'rounded-3xl p-5 shadow-xs')} border bg-white hover:shadow-md transition-all cursor-pointer flex flex-col justify-between ${
                   isResolved
                     ? 'border-slate-200 opacity-80 hover:opacity-100'
                     : !isAssigned
@@ -1049,19 +1067,19 @@ export default function FarmIncidentDashboard({
                   </div>
 
                   {/* Description snippet */}
-                  <p className="text-xs text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
+                  <p className={fc('text-xs text-slate-500 mt-1.5 line-clamp-1', 'text-xs text-slate-600 mt-2.5 line-clamp-2 leading-relaxed')}>
                     {cleanDescription || 'Không có mô tả chi tiết.'}
                   </p>
                 </div>
 
                 {/* Card Bottom: Status & Meta */}
-                <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-3">
+                <div className={fc('mt-3 pt-3 border-t border-slate-100 space-y-2', 'mt-4 pt-3.5 border-t border-slate-100 space-y-3')}>
                   {/* Status & Assignee indicator */}
                   <div className="flex items-center justify-between gap-2 text-xs">
                     {isResolved ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Đã nghiệm thu hoàn tất
+                        {isCompact ? 'Đã xử lý xong' : 'Đã nghiệm thu hoàn tất'}
                       </span>
                     ) : isAssigned ? (
                       <span className="inline-flex items-center gap-1 text-indigo-700 font-bold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 truncate">
@@ -1071,9 +1089,9 @@ export default function FarmIncidentDashboard({
                         </span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-800 font-bold bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 animate-pulse">
+                      <span className={`inline-flex items-center gap-1 text-amber-800 font-bold bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 ${isCompact ? '' : 'animate-pulse'}`}>
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        Chờ tiếp nhận & phân công
+                        {isCompact ? 'Chờ tiếp nhận' : 'Chờ tiếp nhận & phân công'}
                       </span>
                     )}
 
@@ -1084,7 +1102,7 @@ export default function FarmIncidentDashboard({
 
                   {/* Reporter tag */}
                   <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                    <span>
+                    <span className={isFarmer ? 'hidden' : ''}>
                       Người gửi:{' '}
                       <strong className="text-slate-600">
                         {inc.reporter?.fullName || 'Nhân sự trại'}
@@ -1187,13 +1205,16 @@ export default function FarmIncidentDashboard({
             {/* Technician List */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-700">
-                Chọn Kỹ thuật viên phụ trách <span className="text-rose-500">*</span>
+                Chọn người phụ trách xử lý <span className="text-rose-500">*</span>
+                <span className="block text-[11px] font-medium text-slate-400 mt-0.5">
+                  Có thể giao cho Kỹ thuật viên, Nông dân hoặc chính người gửi báo cáo.
+                </span>
               </label>
 
               {loadingTechnicians ? (
                 <div className="flex items-center gap-2 text-xs text-slate-500 py-4 justify-center">
                   <RefreshCw className="h-4 w-4 animate-spin text-amber-500" />
-                  Đang tải danh sách kỹ thuật viên...
+                  Đang tải danh sách nhân sự...
                 </div>
               ) : technicians.length > 0 ? (
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -1226,7 +1247,21 @@ export default function FarmIncidentDashboard({
                               .toUpperCase() || 'KT'}
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-slate-900">{tech.fullName}</p>
+                            <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              {tech.fullName}
+                              <span
+                                className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                                  tech.role === 'TECHNICIAN' ? 'bg-indigo-50 text-indigo-700' : 'bg-teal-50 text-teal-700'
+                                }`}
+                              >
+                                {tech.role === 'TECHNICIAN' ? 'Kỹ thuật viên' : 'Nông dân'}
+                              </span>
+                              {(activeIncident.reporter?.id === tech.id || activeIncident.reporterId === tech.id) && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700">
+                                  Người báo cáo
+                                </span>
+                              )}
+                            </p>
                             <p className="text-[11px] text-slate-400">{tech.email}</p>
                           </div>
                         </div>
@@ -1237,7 +1272,7 @@ export default function FarmIncidentDashboard({
                 </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                  Chưa tìm thấy nhân sự Kỹ thuật viên hoạt động trong trang trại này. Bạn có thể thêm nhân sự vào mục Quản lý Trang Trại.
+                  Trang trại này chưa có nhân sự (Kỹ thuật viên / Nông dân) đang hoạt động. Bạn có thể thêm nhân sự vào mục Quản lý Trang Trại.
                 </div>
               )}
             </div>
@@ -1448,8 +1483,8 @@ export default function FarmIncidentDashboard({
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-none"
                   />
 
-                  {/* Manager Resolve Checkbox */}
-                  {isManager && (
+                  {/* Hoàn tất: Quản lý nghiệm thu, hoặc người được giao xác nhận đã khắc phục xong */}
+                  {(isManager || isActiveAssignee) && (
                     <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer pt-1">
                       <input
                         type="checkbox"
@@ -1457,7 +1492,11 @@ export default function FarmIncidentDashboard({
                         onChange={(e) => setIsFinishing(e.target.checked)}
                         className="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
                       />
-                      <span>Nghiệm thu và xác nhận hoàn tất khắc phục sự cố này</span>
+                      <span>
+                        {isManager
+                          ? 'Nghiệm thu và xác nhận hoàn tất khắc phục sự cố này'
+                          : 'Tôi đã khắc phục xong — xác nhận hoàn tất sự cố này'}
+                      </span>
                     </label>
                   )}
 
@@ -1486,7 +1525,7 @@ export default function FarmIncidentDashboard({
                         'Đang lưu...'
                       ) : isFinishing ? (
                         <span className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Nghiệm Thu & Đóng Sự Cố
+                          <CheckCircle2 className="w-3.5 h-3.5" /> {isManager ? 'Nghiệm Thu & Đóng Sự Cố' : 'Hoàn Tất Xử Lý'}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5">
@@ -1498,9 +1537,8 @@ export default function FarmIncidentDashboard({
                 </div>
               )}
 
-              {/* Technician Quick Start button */}
-              {isTechnician &&
-                activeIncident.assignedToId === currentUserId &&
+              {/* Người được giao (Kỹ thuật viên hoặc Nông dân) bấm bắt đầu xử lý */}
+              {isActiveAssignee &&
                 activeIncident.status === 'OPEN' && (
                   <div className="p-3.5 rounded-2xl border border-indigo-200 bg-indigo-50/70 flex items-center justify-between">
                     <div>

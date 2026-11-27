@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import {
+  isOwnRecentChange,
   subscribeDataChanged,
   type DataChangedEvent,
   type RealtimeResource,
@@ -12,6 +13,11 @@ interface Options {
   debounceMs?: number;
   /** Tạm tắt (vd: modal đang đóng). */
   enabled?: boolean;
+  /**
+   * Bỏ qua sự kiện do CHÍNH tab này vừa lưu với các resource này. Chỉ dùng khi
+   * MỌI chỗ ghi resource đó trên màn hình đều tự tải lại sau khi lưu.
+   */
+  skipOwnChanges?: RealtimeResource[];
 }
 
 /**
@@ -25,6 +31,7 @@ export function useRealtimeRefresh(
   options: Options = {},
 ) {
   const { farmId, debounceMs = 500, enabled = true } = options;
+  const skipOwnKey = (options.skipOwnChanges ?? []).slice().sort().join('|');
   const callbackRef = useRef(onChange);
   const farmIdRef = useRef(farmId);
   // Luôn giữ callback / farmId mới nhất mà không phải đăng ký lại socket.
@@ -41,6 +48,9 @@ export function useRealtimeRefresh(
   useEffect(() => {
     if (!enabled) return;
     const wanted = new Set(key.split('|') as RealtimeResource[]);
+    const skipOwn = new Set(
+      (skipOwnKey ? skipOwnKey.split('|') : []) as RealtimeResource[],
+    );
     let timer: ReturnType<typeof setTimeout> | null = null;
     let pending: DataChangedEvent | undefined;
     let hasPending = false;
@@ -75,6 +85,7 @@ export function useRealtimeRefresh(
         if (!touched.some((r) => wanted.has(r))) return;
         const scopeFarm = farmIdRef.current;
         if (scopeFarm && event.farmId && event.farmId !== scopeFarm) return;
+        if (skipOwn.has(event.resource) && isOwnRecentChange(event)) return;
         schedule(event);
       },
       () => schedule(),
@@ -86,5 +97,5 @@ export function useRealtimeRefresh(
       document.removeEventListener('visibilitychange', onVisible);
       if (timer) clearTimeout(timer);
     };
-  }, [key, debounceMs, enabled]);
+  }, [key, skipOwnKey, debounceMs, enabled]);
 }

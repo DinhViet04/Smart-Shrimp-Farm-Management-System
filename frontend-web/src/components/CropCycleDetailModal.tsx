@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -19,7 +19,8 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import CropReportExportModal from './CropReportExportModal';
+// Tải sau: chunk xuất báo cáo (xlsx/jszip) rất nặng, chỉ tải khi người dùng mở
+const CropReportExportModal = lazy(() => import('./CropReportExportModal'));
 import { type CropCycle } from '../utils/cropCycleGrouping';
 import { type Crop } from '../services/crop.service';
 import { scrollToTop } from '../utils/scrollHelper';
@@ -121,28 +122,33 @@ export default function CropCycleDetailModal({
                   </span>
                   <span>•</span>
                   <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5" /> {formatDate(cycle.startDate)} ➔ {formatDate(cycle.endDate)} ({cycle.durationDays} ngày)
+                    <Calendar className="w-3.5 h-3.5" /> {formatDate(cycle.startDate)} ➔{' '}
+                    {cycle.status === 'IN_PROGRESS' ? 'nay' : formatDate(cycle.endDate)} ({cycle.durationDays} ngày{cycle.status === 'IN_PROGRESS' ? ' tuổi' : ''})
                   </span>
                 </div>
               </div>
             </div>
 
             {/* Top Right Financial Pill & Close */}
-            <div className="flex items-center gap-3 self-end md:self-center">
-              <div className="bg-white/15 backdrop-blur-md rounded-2xl px-4 py-2 border border-white/20 text-right">
+            <div className="flex items-center gap-3 self-end md:self-center shrink-0">
+              <div className="bg-white/15 backdrop-blur-md rounded-2xl px-4 py-2 border border-white/20 text-right whitespace-nowrap">
                 <span className="text-[10px] uppercase font-bold text-cyan-200 block">
-                  Tổng lợi nhuận vụ
+                  Lợi nhuận vụ
                 </span>
-                <span className="text-base sm:text-lg font-black text-white">
-                  {isProfitPositive ? '+' : ''}
-                  {formatVND(cycle.totals.totalProfit)}
-                </span>
+                {cycle.status === 'IN_PROGRESS' ? (
+                  <span className="text-sm font-bold text-white/80">Chưa thu hoạch</span>
+                ) : (
+                  <span className="text-base sm:text-lg font-black text-white">
+                    {isProfitPositive ? '+' : ''}
+                    {formatVND(cycle.totals.totalProfit)}
+                  </span>
+                )}
               </div>
 
               {cycle.status === 'COMPLETED' ? (
                 <button
                   onClick={() => setShowExportModal(true)}
-                  className="h-10 px-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer border border-emerald-400/40 hover:scale-105"
+                  className="h-10 px-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black text-xs flex items-center gap-1.5 whitespace-nowrap shadow-lg shadow-emerald-600/25 transition-all cursor-pointer border border-emerald-400/40 hover:scale-105"
                   title="Tải báo cáo toàn vụ (Gói ZIP / Từng ao)"
                 >
                   <FileDown className="w-4 h-4" />
@@ -154,11 +160,11 @@ export default function CropCycleDetailModal({
                   onClick={() => {
                     toast.error('Vụ nuôi này đang nuôi, chưa thu hoạch nên chưa thể tải file báo cáo!', { id: 'status-check-toast' });
                   }}
-                  className="h-10 px-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white/60 font-bold text-xs flex items-center gap-1.5 transition-all border border-white/15 cursor-not-allowed"
+                  className="h-10 px-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white/60 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap transition-all border border-white/15 cursor-not-allowed"
                   title="Vụ đang nuôi, chỉ tải báo cáo sau khi đã hoàn thành thu hoạch"
                 >
                   <Lock className="w-3.5 h-3.5 text-cyan-200/60" />
-                  <span>Chưa thu hoạch</span>
+                  <span>Báo cáo (sau thu hoạch)</span>
                 </button>
               )}
 
@@ -166,7 +172,7 @@ export default function CropCycleDetailModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-10 px-4 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-white/20 shadow-2xs hover:scale-105"
+                  className="h-10 px-4 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer border border-white/20 shadow-2xs hover:scale-105"
                 >
                   <ArrowLeft className="w-4 h-4 text-cyan-200" />
                   <span>Quay lại</span>
@@ -184,7 +190,7 @@ export default function CropCycleDetailModal({
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 mt-6 pt-2 border-t border-white/15 text-xs font-bold">
+          <div className="flex items-center gap-2 mt-6 pt-2 border-t border-white/15 text-xs font-bold overflow-x-auto whitespace-nowrap">
             <button
               onClick={() => setActiveTab('lineage')}
               className={`px-4 py-2 rounded-xl flex items-center gap-2 transition-all cursor-pointer ${
@@ -247,14 +253,16 @@ export default function CropCycleDetailModal({
                 <div className="flex items-center gap-3 text-xs shrink-0">
                   <div className="bg-white px-3 py-1.5 rounded-xl border border-blue-200 shadow-2xs">
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Tổng sản lượng</span>
-                    <strong className="text-blue-700 font-black text-sm">
-                      {cycle.totals.totalHarvestKg.toLocaleString()} kg ({cycle.totals.totalHarvestTons} tấn)
+                    <strong className="text-blue-700 font-black text-sm whitespace-nowrap">
+                      {cycle.totals.totalHarvestKg > 0
+                        ? `${cycle.totals.totalHarvestKg.toLocaleString()} kg (${cycle.totals.totalHarvestTons} tấn)`
+                        : 'Chưa thu hoạch'}
                     </strong>
                   </div>
                   <div className="bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-2xs">
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Sống toàn vụ</span>
-                    <strong className="text-emerald-700 font-black text-sm">
-                      {cycle.totals.overallSurvivalRate || '--'}%
+                    <strong className="text-emerald-700 font-black text-sm whitespace-nowrap">
+                      {cycle.totals.overallSurvivalRate ? `${cycle.totals.overallSurvivalRate}%` : 'Chưa có'}
                     </strong>
                   </div>
                 </div>
@@ -879,6 +887,7 @@ export default function CropCycleDetailModal({
   if (asPage) {
     if (showExportModal) {
       return (
+        <Suspense fallback={null}>
         <CropReportExportModal
           asPage
           isOpen
@@ -886,6 +895,7 @@ export default function CropCycleDetailModal({
           crop={cycle.allCrops[0] || null}
           onClose={() => setShowExportModal(false)}
         />
+        </Suspense>
       );
     }
     return (
@@ -899,12 +909,14 @@ export default function CropCycleDetailModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
       {modalContent}
       {showExportModal && (
+        <Suspense fallback={null}>
         <CropReportExportModal
           isOpen={showExportModal}
           cycle={cycle}
           crop={cycle.allCrops[0] || null}
           onClose={() => setShowExportModal(false)}
         />
+        </Suspense>
       )}
     </div>,
     document.body

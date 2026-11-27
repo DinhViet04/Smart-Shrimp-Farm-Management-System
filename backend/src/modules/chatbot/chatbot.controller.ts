@@ -3,6 +3,9 @@ import {
   Get,
   Post,
   Delete,
+  Put,
+  Query,
+  BadRequestException,
   Body,
   Param,
   UseGuards,
@@ -21,11 +24,18 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Throttle } from '@nestjs/throttler';
 import type { UploadedFileDto } from './file-parser.service';
+import { ChatHistoryService } from './chat-history.service';
+import { FeedingRecordAgentService } from './feeding-record-agent.service';
+import type { ChatSessionPayload } from './chat-history.service';
 
 @Controller('chatbot')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ChatbotController {
-  constructor(private readonly chatbotService: ChatbotService) {}
+  constructor(
+    private readonly chatbotService: ChatbotService,
+    private readonly chatHistory: ChatHistoryService,
+    private readonly feedingRecordAgent: FeedingRecordAgentService,
+  ) {}
 
   /**
    * Hỏi đáp RAG với Trợ lý AI
@@ -36,6 +46,44 @@ export class ChatbotController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async askChatbot(@Body() dto: AskChatbotDto, @Request() req: any) {
     return this.chatbotService.ask(dto, req.user);
+  }
+
+  /**
+   * Gợi ý loại thức ăn & số ký theo giai đoạn tôm cho thẻ ghi nhật ký cho ăn (chỉ Nông dân)
+   * Endpoint: GET /api/chatbot/feeding-suggestion?pondId=&date=YYYY-MM-DD
+   */
+  @Get('feeding-suggestion')
+  @Roles('FARMER')
+  async feedingSuggestion(@Query('pondId') pondId: string, @Query('date') date: string, @Request() req: any) {
+    if (!pondId) throw new BadRequestException('Thiếu mã ao.');
+    return this.feedingRecordAgent.getSuggestion(req.user, pondId, date);
+  }
+
+  // ── LỊCH SỬ HỘI THOẠI (lưu theo tài khoản, xem lại khi đăng nhập lại / đổi máy) ──
+
+  @Get('sessions')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  async listSessions(@Request() req: any) {
+    return this.chatHistory.list(req.user);
+  }
+
+  @Put('sessions/:id')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  async saveSession(@Param('id') id: string, @Body() body: ChatSessionPayload, @Request() req: any) {
+    return this.chatHistory.upsert(req.user, id, body);
+  }
+
+  @Delete('sessions/:id')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  async deleteSession(@Param('id') id: string, @Request() req: any) {
+    return this.chatHistory.remove(req.user, id);
+  }
+
+  @Delete('sessions')
+  @Roles('ADMIN', 'FARM_MANAGER', 'FARMER', 'TECHNICIAN')
+  async clearSessions(@Request() req: any) {
+    return this.chatHistory.clear(req.user);
   }
 
   /**
@@ -94,8 +142,8 @@ export class ChatbotController {
    */
   @Post('execute-action')
   // FARM_MANAGER: tạo trang trại / ao / vụ, nhập kho. TECHNICIAN: lưu số đo nước.
-  // Quyền chi tiết theo từng loại phiếu kiểm tra lại trong AgentActionService.
-  @Roles('FARM_MANAGER', 'TECHNICIAN')
+  // FARMER: ghi nhật ký cho ăn. Quyền chi tiết theo từng loại phiếu kiểm tra lại trong AgentActionService.
+  @Roles('FARM_MANAGER', 'TECHNICIAN', 'FARMER')
   async executeAgentAction(@Body() dto: ExecuteActionDto, @Request() req: any) {
     return this.chatbotService.executeAction(dto, req.user);
   }
@@ -136,8 +184,8 @@ export class ChatbotController {
    */
   @Delete('documents/:id')
   @Roles('ADMIN', 'FARM_MANAGER')
-  async deleteDocument(@Param('id') id: string) {
-    return this.chatbotService.deleteDocument(id);
+  async deleteDocument(@Param('id') id: string, @Request() req: any) {
+    return this.chatbotService.deleteDocument(id, req.user);
   }
 
   /**

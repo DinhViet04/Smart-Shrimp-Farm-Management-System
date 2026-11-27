@@ -22,3 +22,9 @@ ai-service/data/*.db
 *credentials*.json
 *service_account*.json
 *service-account*.json
+# Bản sao lưu dữ liệu DB (chứa dữ liệu thật, không commit)
+db-backups/
+# Kết quả chạy test e2e (sinh lại mỗi lần chạy)
+backend/test/fe-api/results/
+# Script SQL chạy tay, đã có migration tương ứng
+backend/prisma/sql/

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import {
   chatbotService,
+  chatHistoryService,
   type ChatbotSource,
   type RealtimeWeather,
   type AgentActionDraft,
@@ -36,6 +37,7 @@ import {
 import { apiFetch } from '../utils/api';
 import WaterRecordCard from './WaterRecordCard';
 import CropCreateCard from './CropCreateCard';
+import FeedingRecordCard from './FeedingRecordCard';
 import { getErrorMessage } from '../utils/errors';
 
 interface ChatMessage {
@@ -126,6 +128,24 @@ const createNewSession = (title = 'Cuộc trò chuyện mới'): ChatSession => 
   };
 };
 
+/** Phiên đã có tin nhắn của người dùng (trang chỉ có lời chào thì coi là trống) */
+const hasUserMessage = (s: ChatSession) => s.messages.some((m) => m.sender === 'user');
+
+const serializeSession = (s: ChatSession) => JSON.stringify([s.title, s.messages]);
+
+/** Ngày tạo từ server (ISO) -> nhãn hiển thị giống phiên tạo trên máy */
+const formatSessionDate = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const stripReferenceSources = (text: string): string => {
   if (!text) return '';
   return text
@@ -211,28 +231,82 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Khởi tạo sessions từ localStorage
+  // Giống ChatGPT / Gemini: mỗi lần đăng nhập (mở khung chat cho tài khoản) bắt đầu một
+  // trang trò chuyện mới ở đầu danh sách; các cuộc trò chuyện cũ vẫn nằm trong tab Lịch sử.
+  // Các trang trống cũ được bỏ đi để không sinh nhiều trang "Cuộc trò chuyện mới" rỗng.
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    let saved: ChatSession[] = [];
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) saved = parsed;
     } catch (e) {
       console.error('Lỗi khi đọc session từ localStorage:', e);
     }
-    return [createNewSession()];
+    return [createNewSession(), ...saved.filter(hasUserMessage)];
   });
 
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    try {
-      const savedId = localStorage.getItem(ACTIVE_SESSION_KEY);
-      if (savedId) return savedId;
-    } catch (e) {
-      console.error('Lỗi khi đọc activeSessionId:', e);
-    }
-    return sessions[0]?.id || '';
-  });
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => sessions[0].id);
+
+  // ── ĐỒNG BỘ LỊCH SỬ VỚI SERVER (đăng nhập lại / máy khác vẫn thấy chat cũ) ──
+  // Bản đã lưu lên server của từng phiên (JSON) để chỉ gửi phiên có thay đổi.
+  const syncedRef = useRef<Map<string, string>>(new Map());
+  const [serverHistoryReady, setServerHistoryReady] = useState(false);
+
+  useEffect(() => {
+    if (ownerId === 'guest') return;
+    let cancelled = false;
+    chatHistoryService
+      .list()
+      .then(({ available, sessions: remote }) => {
+        if (cancelled || !available) return;
+        const remoteSessions: ChatSession[] = remote.map((r) => ({
+          id: r.id,
+          title: r.title,
+          createdAt: formatSessionDate(r.createdAt),
+          updatedAt: r.updatedAt,
+          messages: (r.messages || []) as ChatMessage[],
+        }));
+        remoteSessions.forEach((s) => syncedRef.current.set(s.id, serializeSession(s)));
+        setSessions((local) => {
+          // Gộp theo id: bản nào cập nhật sau thì giữ bản đó
+          const byId = new Map<string, ChatSession>();
+          [...remoteSessions, ...local].forEach((s) => {
+            const prev = byId.get(s.id);
+            if (!prev || new Date(s.updatedAt).getTime() > new Date(prev.updatedAt).getTime()) {
+              byId.set(s.id, s);
+            }
+          });
+          return [...byId.values()].sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          );
+        });
+        setServerHistoryReady(true);
+      })
+      .catch(() => {
+        /* Lỗi mạng: vẫn dùng bản lưu trên trình duyệt */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerId]);
+
+  // Gửi các phiên có thay đổi lên server (gom lại 1,5 giây để không gọi API mỗi lần gõ)
+  useEffect(() => {
+    if (!serverHistoryReady) return;
+    const timer = setTimeout(() => {
+      sessions.forEach((s) => {
+        if (!hasUserMessage(s)) return; // không lưu trang trống
+        const json = serializeSession(s);
+        if (syncedRef.current.get(s.id) === json) return;
+        syncedRef.current.set(s.id, json);
+        chatHistoryService
+          .save({ id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt, messages: s.messages })
+          .catch(() => syncedRef.current.delete(s.id)); // lần sau thử lại
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [sessions, serverHistoryReady]);
 
   const currentSession =
     sessions.find((s) => s.id === activeSessionId) || sessions[0] || createNewSession();
@@ -243,6 +317,9 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
     .reverse()
     .find((m) => m.actionDraft?.intent === 'RECORD_WATER_QUALITY' && m.actionDraft.pondOptions?.length)?.id;
   const isFarmManager = currentUser?.role === 'FARM_MANAGER';
+  const isFarmer = currentUser?.role === 'FARMER';
+  // Chỉ thẻ nhật ký cho ăn mới nhất được phép lưu (tránh lưu trùng từ thẻ cũ)
+  const latestFeedingCardId = [...messages].reverse().find((m) => m.actionDraft?.intent === 'RECORD_FEEDING')?.id;
   // Phiếu / thẻ tạo trang trại, ao, vụ nuôi còn hiệu lực = phiếu tạo mới nhất, chưa bị hủy bởi
   // tin nhắn sau. Sửa phiếu sẽ sinh phiếu mới -> phiếu cũ bị khóa, tránh bấm nhầm tạo trùng.
   const latestCreateDraftId = [...messages]
@@ -300,6 +377,8 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
 
   const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    syncedRef.current.delete(sessionId);
+    chatHistoryService.remove(sessionId).catch(() => {});
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== sessionId);
       if (filtered.length === 0) {
@@ -319,6 +398,8 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
   };
 
   const confirmClearAll = () => {
+    syncedRef.current.clear();
+    chatHistoryService.clear().catch(() => {});
     const fresh = createNewSession();
     setSessions([fresh]);
     setActiveSessionId(fresh.id);
@@ -396,7 +477,10 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
       } else if (result.actionDraft?.type === 'CONFIRM_ACTION') {
         // Giữ dữ liệu phiếu để người dùng có thể ra lệnh sửa trước khi lưu
         // (vd "sửa pH 8.1", "đổi diện tích thành 1500m2", "tạo 4 ao thay vì 3")
-        const editableIntents = ['RECORD_WATER_QUALITY', 'CREATE_FARM', 'CREATE_POND', 'CREATE_CROP'];
+        // Phiếu tạo trang trại / ao / vụ chỉ giữ để sửa với Quản lý trang trại
+        const editableIntents = isFarmManager
+          ? ['RECORD_WATER_QUALITY', 'CREATE_FARM', 'CREATE_POND', 'CREATE_CROP']
+          : ['RECORD_WATER_QUALITY'];
         setActivePendingAction(
           editableIntents.includes(result.actionDraft.intent)
             ? { intent: result.actionDraft.intent, collectedData: result.actionDraft.collectedData }
@@ -481,6 +565,34 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
       s.messages.some((m) => m.text.toLowerCase().includes(historySearchQuery.toLowerCase())),
   );
 
+  /** Sửa số lượng (số bao / chai... hoặc tổng kg) của 1 dòng trên phiếu nhập kho trước khi xác nhận */
+  const updateImportItemQty = (msgId: string, index: number, value: string) => {
+    const n = Math.max(0, Number(value) || 0);
+    setSessions((prev) =>
+      prev.map((s) => ({
+        ...s,
+        messages: s.messages.map((m) => {
+          if (m.id !== msgId || !m.actionDraft?.inventoryItems) return m;
+          const items = m.actionDraft.inventoryItems.map((it, i) => {
+            if (i !== index) return it;
+            const weight = Number(it.weightPerPkg) || 0;
+            return weight > 0
+              ? { ...it, packageQty: n, quantity: Math.round(n * weight * 100) / 100 }
+              : { ...it, packageQty: 0, quantity: n };
+          });
+          return {
+            ...m,
+            actionDraft: {
+              ...m.actionDraft,
+              inventoryItems: items,
+              collectedData: { ...m.actionDraft.collectedData, items },
+            },
+          };
+        }),
+      })),
+    );
+  };
+
   const handleConfirmAction = async (msgId: string, draft: AgentActionDraft) => {
     setExecutingActionId(msgId);
     try {
@@ -503,6 +615,10 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
       if (isWaterRecord) {
         window.dispatchEvent(new CustomEvent('water_quality_updated', { detail: res }));
       }
+      const isFeedingRecord = draft.intent === 'RECORD_FEEDING';
+      if (isFeedingRecord) {
+        window.dispatchEvent(new CustomEvent('feeding_log_updated', { detail: res }));
+      }
       // Phiếu đã lưu -> kết thúc phiên sửa phiếu
       setActivePendingAction(null);
 
@@ -510,7 +626,7 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
       const aiReply: ChatMessage = {
         id: `ai-success-${Date.now()}`,
         sender: 'ai',
-        text: isWaterRecord || res.alreadyExecuted
+        text: isWaterRecord || isFeedingRecord || res.alreadyExecuted
           ? res.message
           : isImport
           ? `🎉 **Nhập kho hoàn tất!**\n\n${res.message}\n\n📋 **Lịch sử nhập kho:** Hệ thống đã tự động ghi nhận phiếu nhập kho tương ứng vào mục **Quản Lý Kho ➔ Nhật ký sử dụng**. Bạn có thể vào xem chi tiết mọi biến động số lượng, người thực hiện và chứng từ đính kèm bất cứ lúc nào!`
@@ -954,6 +1070,24 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
                             />
                           )}
 
+                          {msg.actionDraft?.intent === 'RECORD_FEEDING' && (
+                            <FeedingRecordCard
+                              draft={msg.actionDraft}
+                              executed={Boolean(executedActions[msg.id])}
+                              executing={executingActionId === msg.id}
+                              readOnlyReason={
+                                !isFarmer
+                                  ? 'Chỉ Nông dân mới ghi nhật ký cho ăn qua trợ lý AI.'
+                                  : msg.id !== latestFeedingCardId
+                                    ? 'Thẻ này đã được thay bằng thẻ mới hơn bên dưới.'
+                                    : undefined
+                              }
+                              onSubmit={(data) =>
+                                handleConfirmAction(msg.id, { ...msg.actionDraft!, collectedData: data })
+                              }
+                            />
+                          )}
+
                           {msg.actionDraft?.type === 'SLOT_FILLING' &&
                             // Nhập số đo nước: chỉ hiện nút chọn nhanh ở bước hỏi trang trại / ao
                             !(msg.actionDraft.intent === 'RECORD_WATER_QUALITY' && msg.actionDraft.pondOptions?.length) &&
@@ -966,8 +1100,8 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
                                   <button
                                     key={sIdx}
                                     onClick={() => {
-                                      // Chọn trang trại / ao khi nhập số đo nước -> gửi luôn
-                                      if (msg.actionDraft?.intent === 'RECORD_WATER_QUALITY') {
+                                      // Chọn trang trại / ao khi nhập số đo nước, hoặc chọn kho trang trại khi nhập kho -> gửi luôn
+                                      if (msg.actionDraft?.intent === 'RECORD_WATER_QUALITY' || msg.actionDraft?.intent === 'IMPORT_INVENTORY') {
                                         handleSendMessage(suggestion);
                                         return;
                                       }
@@ -1001,14 +1135,52 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
                                         {msg.actionDraft.inventoryItems?.length || 0} mặt hàng
                                       </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 font-medium truncate">
-                                      Trang trại:{' '}
-                                      <strong className="text-slate-700">
-                                        {msg.actionDraft.farmName ||
-                                          msg.actionDraft.summary?.['Trang trại nhận hàng'] ||
-                                          'Chưa chọn'}
-                                      </strong>
-                                    </p>
+                                    {(msg.actionDraft.farmOptions?.length || 0) > 1 ? (
+                                      // Mỗi trang trại là một kho riêng: cho đổi kho nhập ngay trên phiếu
+                                      <label className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                                        Nhập vào kho:
+                                        <select
+                                          value={msg.actionDraft.collectedData?.farmId || ''}
+                                          onChange={(e) => {
+                                            const farm = msg.actionDraft?.farmOptions?.find((o) => o.id === e.target.value);
+                                            if (!farm) return;
+                                            setSessions((prev) =>
+                                              prev.map((s) => ({
+                                                ...s,
+                                                messages: s.messages.map((m) =>
+                                                  m.id === msg.id && m.actionDraft
+                                                    ? {
+                                                        ...m,
+                                                        actionDraft: {
+                                                          ...m.actionDraft,
+                                                          farmName: farm.name,
+                                                          collectedData: { ...m.actionDraft.collectedData, farmId: farm.id, farmName: farm.name },
+                                                        },
+                                                      }
+                                                    : m,
+                                                ),
+                                              })),
+                                            );
+                                          }}
+                                          className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-emerald-200 bg-white text-[11px] font-bold text-slate-800 outline-none focus:border-emerald-500 cursor-pointer"
+                                        >
+                                          {msg.actionDraft.farmOptions!.map((o) => (
+                                            <option key={o.id} value={o.id}>
+                                              {o.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    ) : (
+                                      <p className="text-[11px] text-slate-500 font-medium truncate">
+                                        Nhập vào kho:{' '}
+                                        <strong className="text-slate-700">
+                                          {msg.actionDraft.farmName ||
+                                            msg.actionDraft.summary?.['Trang trại nhận hàng'] ||
+                                            'Chưa chọn'}
+                                        </strong>
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
 
@@ -1098,15 +1270,43 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
                                                     <span className="text-slate-400">-</span>
                                                   )}
                                                 </td>
-                                                <td className="py-2 px-2 text-right font-black text-slate-900 text-[12px]">
-                                                  {item.packageQty ? (
-                                                    <div className="flex flex-col items-end">
-                                                      <span>{item.packageQty.toLocaleString('vi-VN')} {item.packageType || 'đơn vị'}</span>
-                                                      <span className="text-[10px] text-slate-400 font-normal">({item.quantity.toLocaleString('vi-VN')} {item.unit})</span>
-                                                    </div>
-                                                  ) : (
-                                                    <span>{item.quantity.toLocaleString('vi-VN')} {item.unit}</span>
-                                                  )}
+                                                <td className="py-2 px-2 text-right text-[12px]">
+                                                  {/* Số lượng sửa được: theo bao/chai nếu có quy cách, ngược lại theo tổng kg/lít */}
+                                                  {(() => {
+                                                    const byPackage = Number(item.weightPerPkg) > 0;
+                                                    const shown = byPackage ? Number(item.packageQty) || 0 : Number(item.quantity) || 0;
+                                                    const locked = Boolean(executedActions[msg.id]?.success);
+                                                    return (
+                                                      <div className="flex flex-col items-end gap-0.5">
+                                                        <div className="flex items-center gap-1">
+                                                          <input
+                                                            type="number"
+                                                            min={0}
+                                                            step="any"
+                                                            disabled={locked}
+                                                            value={shown === 0 ? '' : shown}
+                                                            placeholder="0"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            onChange={(e) => updateImportItemQty(msg.id, iIdx, e.target.value)}
+                                                            className={`w-16 px-1.5 py-1 rounded-md border text-right text-[12px] font-black outline-none focus:border-emerald-500 disabled:bg-slate-50 ${
+                                                              shown === 0 ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-900'
+                                                            }`}
+                                                            title="Sửa số lượng nhập"
+                                                          />
+                                                          <span className="text-[10.5px] font-semibold text-slate-500">
+                                                            {byPackage ? item.packageType || 'đơn vị' : item.unit}
+                                                          </span>
+                                                        </div>
+                                                        {shown === 0 ? (
+                                                          <span className="text-[10px] font-semibold text-amber-600">Chưa có số lượng</span>
+                                                        ) : byPackage ? (
+                                                          <span className="text-[10px] text-slate-400 font-normal">
+                                                            = {item.quantity.toLocaleString('vi-VN')} {item.unit}
+                                                          </span>
+                                                        ) : null}
+                                                      </div>
+                                                    );
+                                                  })()}
                                                 </td>
                                                 <td className="py-2 px-2 text-right text-emerald-700 font-bold text-[11.5px]">
                                                   {item.pricePerPackage && item.pricePerPackage > 0
@@ -1300,6 +1500,10 @@ function ChatboxForUser({ ownerId }: { ownerId: string }) {
                                     {messages.find((m) => m.endsPendingAction && messages.indexOf(m) > messages.indexOf(msg))
                                       ? 'Phiếu này đã bị hủy.'
                                       : 'Phiếu này đã được thay bằng phiếu mới hơn bên dưới.'}
+                                  </div>
+                                ) : CREATE_INTENTS.includes(msg.actionDraft.intent) && !isFarmManager ? (
+                                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-semibold text-center">
+                                    Chỉ Quản lý trang trại mới có quyền tạo trang trại, ao nuôi và vụ nuôi.
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2 pt-1">

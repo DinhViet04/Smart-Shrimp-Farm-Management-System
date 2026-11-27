@@ -137,7 +137,7 @@ export const inventoryService = {
     category: 'FEED' | 'MEDICINE' | 'CHEMICAL' | string;
     quantity: number;
     unit: string;
-    farmId?: string; // Chỉ cần với ADMIN; Manager luôn nhập vào kho tổng của mình
+    farmId?: string; // Kho của trang trại nhận hàng (mỗi trang trại là một kho riêng)
     minThreshold: number;
     packageType?: string;
     packageQty?: number;

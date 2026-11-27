@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Wrench,
   ChevronLeft,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { pondService } from '../../services/pond.service';
 import { waterQualityService } from '../../services/water-quality.service';
+import { incidentService, type Incident } from '../../services/incident.service';
 import LoadingMotion from '../../components/LoadingMotion';
 import WaterTreatmentWorkspace from './WaterTreatmentWorkspace';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
@@ -88,17 +89,24 @@ export interface WaterWarningRecord {
   treatment?: TreatmentAction;
   updates?: any[];
   rawRecordTime?: string;
+  /** Nguồn cảnh báo: lần đo vượt ngưỡng (mặc định) hoặc sự cố "Môi trường & Nước ao" được báo cáo */
+  source?: 'READING' | 'INCIDENT';
+  incidentId?: string;
 }
 
 export interface WaterTreatmentProps {
   initialFarmId?: string;
   initialPondId?: string;
+  /** Tab mở sẵn: 'incident' = Cảnh báo cần xử lý, 'history' = Lịch sử đã xử lý */
+  initialView?: 'incident' | 'history';
   onOpenWorkspace?: (record: WaterWarningRecord) => void;
+  /** Tự mở Workspace của ao initialPondId (chỉ một lần). Tắt khi người dùng đã bấm "Quay lại". */
+  autoOpenWorkspace?: boolean;
 }
 
 // ─── Parser Helper for Real History Records ────────────────────────────────────
 
-function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentAction>): WaterWarningRecord {
+function parseRecordFromHistory(r: any): WaterWarningRecord {
   const d = new Date(r.recordTime || r.createdAt || Date.now());
   const dateStr = isNaN(d.getTime())
     ? '-'
@@ -143,27 +151,41 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
     summaries.push(`H2S cao: ${h2s} mg/L`);
   }
 
+  // Chỉ số = 0 nghĩa là không đo -> không tính là nguy hiểm
   const isDanger =
     r.overallStatus === 'Danger' ||
     nh3 > 0.50 ||
-    doVal < 3.0 ||
+    (doVal > 0 && doVal < 3.0) ||
     h2s > 0.05 ||
-    ph < 7.0 ||
+    (ph > 0 && ph < 7.0) ||
     ph > 9.0;
 
   const hazardLevel: 'DANGER' | 'WARNING' = isDanger ? 'DANGER' : 'WARNING';
   const summaryText = summaries.length > 0 ? summaries.join(' • ') : 'Cần theo dõi môi trường ao';
 
-  const savedTreatment = treatmentsMap[r.id];
-  const savedUpdatesStr = localStorage.getItem(`water_treatment_updates_${r.id}`);
-  let updatesList: any[] = [];
-  if (savedUpdatesStr) {
-    try {
-      updatesList = JSON.parse(savedUpdatesStr);
-    } catch {
-      /* ignore */
-    }
-  }
+  // Việc xử lý được lưu trong bảng water_treatments trên server (dùng chung mọi tài khoản / thiết bị)
+  const serverTreatment = r.treatment as
+    | { note?: string | null; chemicals?: Array<{ inventoryId?: string; name: string; quantity: number; unit: string }> | null; treatedByName?: string | null; treatedAt: string }
+    | null
+    | undefined;
+  const savedTreatment: TreatmentAction | undefined = serverTreatment
+    ? {
+        chemicalId: serverTreatment.chemicals?.[0]?.inventoryId || 'tech-op',
+        chemicalName:
+          (serverTreatment.chemicals || []).map((c) => `${c.quantity} ${c.unit} ${c.name}`).join(', ') || 'Can thiệp kỹ thuật',
+        quantity: Number(serverTreatment.chemicals?.[0]?.quantity) || 1,
+        unit: serverTreatment.chemicals?.[0]?.unit || 'lần',
+        note: serverTreatment.note || 'Đã can thiệp xử lý chất lượng nước ao nuôi.',
+        technicianName: serverTreatment.treatedByName || 'Kỹ thuật viên',
+        timestamp: new Date(serverTreatment.treatedAt).toLocaleString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }
+    : undefined;
 
   return {
     id: r.id || `WQ-${Date.now()}`,
@@ -171,12 +193,13 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
     time: timeStr,
     rawRecordTime: r.recordTime,
     farmName: r.farmName || 'Trang trại',
-    pondId: r.pondId || r.pondName || 'pond-1',
+    pondId: r.pondId || '',
     pondName: r.pondName || 'Ao nuôi',
     hazardLevel,
     summaryText,
     status: savedTreatment ? 'TREATED' : 'UNTREATED',
-    triggeredParams: triggered.length > 0 ? triggered : ['nh3'],
+    // Lần đo bình thường -> rỗng (trước đây gán mặc định ['nh3'] khiến mọi lần đo đều thành cảnh báo)
+    triggeredParams: triggered,
     parameters: {
       temperature: temp,
       ph: ph,
@@ -187,8 +210,70 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
       h2s: h2s,
       transparency: Number(r.transparency) || 0,
     },
-    treatment: savedTreatment || undefined,
-    updates: updatesList,
+    treatment: savedTreatment,
+    updates: [],
+  };
+}
+
+// ─── Sự cố "Môi trường & Nước ao" -> thẻ cảnh báo trong danh sách xử lý nước ──────────
+
+/** Sự cố thuộc loại Môi trường nước (theo nhãn phân loại trong tiêu đề / mô tả) */
+function isWaterIncident(inc: Incident): boolean {
+  const category =
+    inc.title?.match(/^\[(.*?)\]/)?.[1] || inc.description?.match(/\[Phân loại:\s*(.*?)\]/i)?.[1] || '';
+  return /môi trường|nước ao/i.test(category);
+}
+
+function incidentToWarning(inc: Incident, latestByPond: Map<string, WaterWarningRecord>): WaterWarningRecord {
+  const created = new Date(inc.createdAt);
+  const pond = inc.crop?.pond;
+  const latest = pond?.id ? latestByPond.get(pond.id) : undefined;
+  const severity = inc.description?.match(/\[Mức độ:\s*(.*?)\]/i)?.[1] || '';
+  const isDanger = /khẩn cấp|cao|nguy hiểm/i.test(severity);
+  const cleanTitle = (inc.title || '').replace(/^\[(.*?)\]\s*/, '');
+  const cleanDesc = (inc.description || '').replace(/^(\[.*?\]\s*)+\n*/, '').trim();
+  const resolved = inc.status === 'RESOLVED';
+  const resolvedAt = inc.resolvedAt ? new Date(inc.resolvedAt) : null;
+
+  return {
+    id: `INC-${inc.id}`,
+    source: 'INCIDENT',
+    incidentId: inc.id,
+    date: created.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    time: created.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    rawRecordTime: inc.createdAt,
+    farmName: pond?.farm?.name || 'Trang trại',
+    pondId: pond?.id || '',
+    pondName: pond?.name || 'Ao nuôi',
+    hazardLevel: isDanger ? 'DANGER' : 'WARNING',
+    summaryText: `Sự cố được báo cáo: ${cleanTitle}${cleanDesc ? ` — ${cleanDesc}` : ''}`,
+    status: resolved ? 'TREATED' : 'UNTREATED',
+    // Dùng số đo gần nhất của ao (nếu có) để màn xử lý tính liều & AI tư vấn
+    parameters: latest?.parameters || {
+      temperature: 0,
+      ph: 0,
+      dissolvedOxygen: 0,
+      salinity: 0,
+      alkalinity: 0,
+      nh3: 0,
+      h2s: 0,
+      transparency: 0,
+    },
+    triggeredParams: latest?.triggeredParams || [],
+    treatment: resolved
+      ? {
+          chemicalId: 'incident',
+          chemicalName: 'Xử lý sự cố môi trường nước',
+          quantity: 1,
+          unit: 'lần',
+          note: inc.treatment || 'Đã xử lý sự cố môi trường nước.',
+          technicianName: inc.assignedTo?.fullName || 'Kỹ thuật viên',
+          timestamp: resolvedAt
+            ? resolvedAt.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : '',
+        }
+      : undefined,
+    updates: [],
   };
 }
 
@@ -197,7 +282,9 @@ function parseRecordFromHistory(r: any, treatmentsMap: Record<string, TreatmentA
 export default function WaterTreatment({
   initialFarmId,
   initialPondId,
+  initialView = 'incident',
   onOpenWorkspace,
+  autoOpenWorkspace = true,
 }: WaterTreatmentProps = {}) {
   // ── User Role & Theme Sync ──────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
@@ -216,7 +303,7 @@ export default function WaterTreatment({
   const isFarmer = currentUser?.role === 'FARMER';
 
   // ── Segmented SubTab: 1. Cần xử lý | 2. Lịch sử đã xử lý ──
-  const [subTab, setSubTab] = useState<'incident' | 'history'>('incident');
+  const [subTab, setSubTab] = useState<'incident' | 'history'>(initialView);
   const [categoryPage, setCategoryPage] = useState(1);
 
   // ── Farms, Ponds & Filters State ───────────────────────────────────────────
@@ -269,108 +356,52 @@ export default function WaterTreatment({
   const fetchHistoryRecords = useCallback(async (silent?: unknown) => {
     if (silent !== true) setIsLoading(true);
     try {
-      const savedMapStr = localStorage.getItem('water_treatments_map');
-      const treatmentsMap: Record<string, TreatmentAction> = savedMapStr ? JSON.parse(savedMapStr) : {};
+      const [res, incidentRes] = await Promise.all([
+        waterQualityService.getHistory({
+          farmId: selectedFarmId || undefined,
+          pondId: selectedPondId || undefined,
+          page: 0,
+          size: 100,
+        }),
+        // Sự cố "Môi trường & Nước ao" do người dùng báo cáo cũng là cảnh báo cần xử lý
+        incidentService
+          .getAll({ farmId: selectedFarmId || undefined, pondId: selectedPondId || undefined, size: 100 })
+          .catch(() => ({ content: [] as Incident[], totalElements: 0 })),
+      ]);
 
-      const res = await waterQualityService.getHistory({
-        farmId: selectedFarmId || undefined,
-        pondId: selectedPondId || undefined,
-        page: 0,
-        size: 100,
-      });
+      const rawItems = Array.isArray(res) ? res : (res as any)?.content || (res as any)?.items || (res as any)?.data || [];
+      const parsed: WaterWarningRecord[] = rawItems.map((r: any) => parseRecordFromHistory(r));
 
-      const rawItems = Array.isArray(res) ? res : (res as any)?.items || (res as any)?.data || [];
+      // Số đo mới nhất của từng ao (API trả mới nhất trước)
+      const latestByPond = new Map<string, WaterWarningRecord>();
+      for (const r of parsed) if (r.pondId && !latestByPond.has(r.pondId)) latestByPond.set(r.pondId, r);
 
-      if (rawItems.length > 0) {
-        const parsed = rawItems.map((r: any) => parseRecordFromHistory(r, treatmentsMap));
+      const incidentWarnings = (incidentRes?.content || [])
+        .filter(isWaterIncident)
+        .map((inc) => incidentToWarning(inc, latestByPond));
+
+      if (rawItems.length > 0 || incidentWarnings.length > 0) {
         // Filter records that have triggered issues or were marked Danger/Warning
         const warningOnly = parsed.filter(
           (r: WaterWarningRecord) =>
             r.triggeredParams.length > 0 || r.hazardLevel === 'DANGER' || r.treatment
         );
-        setRecords(warningOnly);
+        const time = (r: WaterWarningRecord) => (r.rawRecordTime ? new Date(r.rawRecordTime).getTime() : 0);
+        setRecords([...incidentWarnings, ...warningOnly].sort((a, b) => time(b) - time(a)));
       } else {
-        // Fallback demo records if empty
-        setRecords([
-          {
-            id: 'WQ-101',
-            date: new Date().toLocaleDateString('vi-VN'),
-            time: '07:30',
-            farmName: 'Trang trại Bạc Liêu',
-            pondId: 'p-1',
-            pondName: 'Ao nuôi số 1 (Thương phẩm)',
-            hazardLevel: 'DANGER',
-            summaryText: 'DO thấp: 2.8 mg/L • NH3 cao: 0.65 mg/L',
-            status: 'UNTREATED',
-            parameters: {
-              temperature: 28.5,
-              ph: 8.2,
-              dissolvedOxygen: 2.8,
-              salinity: 18,
-              alkalinity: 110,
-              nh3: 0.65,
-              h2s: 0.04,
-              transparency: 28,
-            },
-            triggeredParams: ['dissolvedOxygen', 'nh3'],
-          },
-          {
-            id: 'WQ-102',
-            date: new Date().toLocaleDateString('vi-VN'),
-            time: '06:15',
-            farmName: 'Trang trại Cà Mau',
-            pondId: 'p-2',
-            pondName: 'Ao nuôi số 2 (Ương giống)',
-            hazardLevel: 'WARNING',
-            summaryText: 'Độ kiềm thấp: 85 mg/L • pH biến động: 7.2',
-            status: 'UNTREATED',
-            parameters: {
-              temperature: 27.0,
-              ph: 7.2,
-              dissolvedOxygen: 4.5,
-              salinity: 15,
-              alkalinity: 85,
-              nh3: 0.15,
-              h2s: 0.01,
-              transparency: 35,
-            },
-            triggeredParams: ['alkalinity', 'ph'],
-          },
-        ]);
+        // Không có lần đo nào -> không có cảnh báo (không hiển thị dữ liệu mẫu giả)
+        setRecords([]);
       }
-    } catch {
-      // Fallback records
-      setRecords([
-        {
-          id: 'WQ-101',
-          date: new Date().toLocaleDateString('vi-VN'),
-          time: '07:30',
-          farmName: 'Trang trại Bạc Liêu',
-          pondId: 'p-1',
-          pondName: 'Ao nuôi số 1 (Thương phẩm)',
-          hazardLevel: 'DANGER',
-          summaryText: 'DO thấp: 2.8 mg/L • NH3 cao: 0.65 mg/L',
-          status: 'UNTREATED',
-          parameters: {
-            temperature: 28.5,
-            ph: 8.2,
-            dissolvedOxygen: 2.8,
-            salinity: 18,
-            alkalinity: 110,
-            nh3: 0.65,
-            h2s: 0.04,
-            transparency: 28,
-          },
-          triggeredParams: ['dissolvedOxygen', 'nh3'],
-        },
-      ]);
+    } catch (err) {
+      console.warn('Không tải được cảnh báo môi trường nước:', err);
+      setRecords([]);
     } finally {
       setIsLoading(false);
     }
   }, [selectedFarmId, selectedPondId]);
 
   // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
-  useRealtimeRefresh(['water-quality', 'environment'], () => {
+  useRealtimeRefresh(['water-quality', 'environment', 'incidents'], () => {
     void fetchHistoryRecords(true);
   });
 
@@ -390,8 +421,11 @@ export default function WaterTreatment({
     [onOpenWorkspace]
   );
 
-  // Tự động mở Workspace nếu được truyền initialPondId
+  // Tự động mở Workspace nếu được truyền initialPondId — chỉ một lần,
+  // để bấm "Quay lại" (hoặc realtime refresh) không bị mở lại ngay lập tức
+  const autoOpenedRef = useRef(false);
   useEffect(() => {
+    if (!autoOpenWorkspace || autoOpenedRef.current) return;
     if (initialPondId && records.length > 0) {
       const matched =
         records.find(
@@ -403,10 +437,11 @@ export default function WaterTreatment({
           (r) => r.pondId === initialPondId || r.pondName === initialPondId
         );
       if (matched) {
+        autoOpenedRef.current = true;
         handleOpenDetail(matched);
       }
     }
-  }, [initialPondId, records, handleOpenDetail]);
+  }, [autoOpenWorkspace, initialPondId, records, handleOpenDetail]);
 
   // Filtered records based on search and hazard level
   const filteredRecords = useMemo(() => {
@@ -742,6 +777,11 @@ export default function WaterTreatment({
                     <h4 className="text-base font-extrabold text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
                       {item.pondName} — {item.farmName}
                     </h4>
+                    {item.source === 'INCIDENT' && (
+                      <span className="inline-flex w-fit items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10.5px] font-bold">
+                        📣 Sự cố báo cáo
+                      </span>
+                    )}
 
                     {/* Summary problem alert */}
                     <div
@@ -792,7 +832,7 @@ export default function WaterTreatment({
                   {/* Card Footer Actions */}
                   <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
                     <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                      <span>Đo lúc: <strong>{item.time} ({item.date})</strong></span>
+                      <span>{item.source === 'INCIDENT' ? 'Báo cáo lúc' : 'Đo lúc'}: <strong>{item.time} ({item.date})</strong></span>
                       {item.treatment && (
                         <span className="text-emerald-700 font-bold flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Đã xử lý

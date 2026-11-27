@@ -29,6 +29,7 @@ import { pondService } from '../services/pond.service';
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 import { useNow } from '../hooks/useNow';
 import { getErrorMessage } from '../utils/errors';
+import { sortPondsActiveFirst } from '../utils/pondOrder';
 
 interface PondManagementProps {
   initialFarmId?: string;
@@ -86,7 +87,10 @@ export default function PondManagement({
   }, [initialFarmId]);
 
   const canManagePond = currentUserRole === 'FARM_MANAGER';
-  const canCreateCrop = currentUserRole === 'FARM_MANAGER' || currentUserRole === 'FARMER';
+  // Nông dân: lời lẽ đơn giản, ẩn số liệu quản lý (quỹ đất, số trại…)
+  const isFarmer = currentUserRole === 'FARMER';
+  // Chỉ Quản lý được tạo vụ / ao / trang trại (Nông dân chỉ theo dõi & ghi nhật ký)
+  const canCreateCrop = currentUserRole === 'FARM_MANAGER';
   const [toast, setToast] = useState<{ 
     message: string; 
     type: 'success' | 'error';
@@ -122,9 +126,10 @@ export default function PondManagement({
   }, []);
 
   // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
+  // Mọi thao tác lưu ao trên màn hình này đều tự gọi fetchData() -> bỏ lượt tải lại trùng
   useRealtimeRefresh(['farms', 'ponds', 'crops'], () => {
     void fetchData(true);
-  });
+  }, { skipOwnChanges: ['ponds'] });
 
   useEffect(() => {
     // Initial remote data synchronization for the screen.
@@ -268,14 +273,11 @@ export default function PondManagement({
     return farms
       .filter((farm) => filterFarmId === 'ALL' || farm.id === filterFarmId)
       .map((farm) => {
-        const allFarmPonds = ponds
-          .filter((p) => p.farmId === farm.id)
-          .sort((a, b) =>
-            String(a.name || '').localeCompare(String(b.name || ''), 'vi', {
-              numeric: true,
-              sensitivity: 'base',
-            }),
-          );
+        // Ao đang nuôi lên trước, ao trống xuống sau (trong từng trang trại)
+        const allFarmPonds = sortPondsActiveFirst(
+          ponds.filter((p) => p.farmId === farm.id),
+          cropByPond.active,
+        );
 
         const totalPondArea = allFarmPonds.reduce(
           (acc, p) => acc + (Number(p.areaSize) || 0),
@@ -309,7 +311,10 @@ export default function PondManagement({
           usagePercentage,
         };
       })
-      .filter((group) => !hasActiveFilter || group.ponds.length > 0);
+      .filter((group) => !hasActiveFilter || group.ponds.length > 0)
+      // Trang trại có ao lên trước, trang trại chưa có ao xuống cuối
+      // (sort ổn định → giữ nguyên thứ tự gốc trong từng nhóm)
+      .sort((a, b) => Number(b.ponds.length > 0) - Number(a.ponds.length > 0));
   }, [farms, ponds, search, filterFarmId, filterStatus, cropByPond]);
 
   if (loading && farms.length === 0) {
@@ -360,8 +365,12 @@ export default function PondManagement({
             <Waves className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">Quản Lý Ao Nuôi</h2>
-            <p className="text-sm text-slate-500 font-medium">Theo dõi và quản lý danh sách ao nuôi phân chia theo từng trang trại</p>
+            <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 tracking-tight">{isFarmer ? 'Ao của tôi' : 'Quản Lý Ao Nuôi'}</h2>
+            <p className={`${isFarmer ? 'text-base' : 'text-sm'} text-slate-500 font-medium`}>
+              {isFarmer
+                ? 'Danh sách ao bạn được giao chăm sóc. Bấm vào ao để xem chi tiết.'
+                : 'Theo dõi và quản lý danh sách ao nuôi phân chia theo từng trang trại'}
+            </p>
           </div>
         </div>
 
@@ -405,6 +414,7 @@ export default function PondManagement({
             </div>
           )}
 
+          {!isFarmer && (
           <div className="inline-flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/70">
             {(
               [
@@ -427,6 +437,7 @@ export default function PondManagement({
               </button>
             ))}
           </div>
+          )}
 
           <div className="inline-flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/70" title="Chế độ hiển thị">
             <button
@@ -467,6 +478,39 @@ export default function PondManagement({
       </div>
 
       {/* Summary KPI Cards */}
+      {isFarmer ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(
+            [
+              { id: 'ALL', label: 'Tất cả ao được giao', value: ponds.length, icon: <Waves className="w-7 h-7" />, box: 'bg-blue-50 text-blue-600 border-blue-100', active: 'border-blue-500 ring-4 ring-blue-500/10' },
+              { id: 'ACTIVE', label: 'Đang nuôi tôm', value: pondSummaryStats.activeCount, icon: <CheckCircle2 className="w-7 h-7" />, box: 'bg-emerald-50 text-emerald-600 border-emerald-100', active: 'border-emerald-500 ring-4 ring-emerald-500/10' },
+              { id: 'EMPTY', label: 'Ao trống', value: pondSummaryStats.emptyCount, icon: <Maximize className="w-7 h-7" />, box: 'bg-slate-100 text-slate-500 border-slate-200', active: 'border-slate-500 ring-4 ring-slate-500/10' },
+            ] as const
+          ).map((card) => {
+            const selected = filterStatus === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => setFilterStatus(card.id)}
+                aria-pressed={selected}
+                className={`bg-white p-5 rounded-3xl border-2 shadow-sm flex items-center gap-4 text-left transition-all cursor-pointer hover:shadow-md ${
+                  selected ? card.active : 'border-slate-100 hover:border-slate-300'
+                }`}
+              >
+                <div className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 ${card.box}`}>{card.icon}</div>
+                <div className="flex-1">
+                  <p className="text-base font-bold text-slate-600">{card.label}</p>
+                  <p className="text-3xl font-black text-slate-900 leading-tight">
+                    {card.value} <span className="text-base font-semibold text-slate-400">ao</span>
+                  </p>
+                </div>
+                {selected && <span className="text-sm font-bold text-blue-600 shrink-0">Đang xem</span>}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-5 rounded-3xl border border-white/60 shadow-lg shadow-blue-900/5 flex items-center gap-4 transition-all hover:-translate-y-0.5">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-inner">
@@ -505,6 +549,7 @@ export default function PondManagement({
           </div>
         </div>
       </div>
+      )}
 
       {/* Loading state */}
       {loading ? (
@@ -603,6 +648,12 @@ export default function PondManagement({
                       </span>
                     </div>
 
+                    {isFarmer ? (
+                      <p className="flex items-center gap-1.5 text-sm text-slate-500">
+                        <MapPin className="w-4 h-4 text-blue-500" />
+                        {farmGroup.address}
+                      </p>
+                    ) : (
                     <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-medium text-slate-500 pl-0 sm:pl-13">
                       <span className="inline-flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
                         <MapPin className="w-3.5 h-3.5 text-blue-500" />
@@ -617,6 +668,7 @@ export default function PondManagement({
                         Mặt nước ao: <strong className="text-blue-600 font-bold">{farmGroup.totalPondArea?.toLocaleString() || 0} m²</strong> ({farmGroup.usagePercentage}% quỹ đất)
                       </span>
                     </div>
+                    )}
                   </div>
 
                   {/* Right side controls */}
@@ -708,7 +760,7 @@ export default function PondManagement({
                                   <div className="flex items-center gap-2">
                                     {cropInfo.docDays && (
                                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200/70 rounded-md font-bold">
-                                        DOC {cropInfo.docDays} ngày
+                                        {isFarmer ? `Ngày nuôi ${cropInfo.docDays}` : `DOC ${cropInfo.docDays} ngày`}
                                       </span>
                                     )}
                                     <span>
@@ -835,11 +887,15 @@ export default function PondManagement({
                                     <div className="flex items-center gap-1 ml-auto">
                                       {cropInfo.docDays && (
                                         <span className="text-[10px] text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md font-bold">
-                                          DOC {cropInfo.docDays}d
+                                          {isFarmer ? `Ngày ${cropInfo.docDays}` : `DOC ${cropInfo.docDays}d`}
                                         </span>
                                       )}
                                       <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-md font-bold">
-                                        {cropInfo.crop?.initialShrimpCount ? `${(cropInfo.crop.initialShrimpCount / 1000).toLocaleString()}k giống` : 'Đang nuôi'}
+                                        {cropInfo.crop?.initialShrimpCount
+                                          ? isFarmer
+                                            ? `${cropInfo.crop.initialShrimpCount.toLocaleString('vi-VN')} con`
+                                            : `${(cropInfo.crop.initialShrimpCount / 1000).toLocaleString()}k giống`
+                                          : 'Đang nuôi'}
                                       </span>
                                     </div>
                                   </div>
@@ -919,7 +975,7 @@ export default function PondManagement({
                                 </button>
                               ) : (
                                 <span className="text-[11px] font-semibold text-slate-400">
-                                  Chế độ xem giám sát
+                                  {isFarmer ? 'Chưa có vụ nuôi' : 'Chế độ xem giám sát'}
                                 </span>
                               )}
 

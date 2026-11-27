@@ -87,7 +87,31 @@ export interface ManagerWaterTrendsResponse {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
+export interface WaterTreatmentInfo {
+  note?: string | null;
+  chemicals?: Array<{ inventoryId?: string; name: string; quantity: number; unit: string }> | null;
+  treatedByName?: string | null;
+  treatedAt: string;
+}
+
 export const waterQualityService = {
+  /** Ghi nhận đã xử lý 1 cảnh báo môi trường nước (lưu trên server, mọi tài khoản đều thấy) */
+  saveTreatment: async (
+    recordId: string,
+    payload: { note?: string; chemicals?: Array<{ inventoryId?: string; name: string; quantity: number; unit: string }> },
+  ) => {
+    const res = await apiFetch(`${apiUrl}/api/water-quality/${recordId}/treatment`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : err.message;
+      throw new Error(msg || 'Không thể lưu việc xử lý cảnh báo nước');
+    }
+    return res.json();
+  },
+
   /**
    * POST /api/water-quality
    * Creates a new water quality record for an owned pond.
@@ -157,6 +181,10 @@ export const waterQualityService = {
       note?: string;
       weatherData?: RecordedWeather | null;
       createdAt: string;
+      pondId?: string;
+      farmId?: string;
+      /** Việc xử lý cảnh báo đã lưu trên server (null = chưa xử lý) */
+      treatment?: WaterTreatmentInfo | null;
     }[];
     page: number;
     size: number;

@@ -1,35 +1,19 @@
 name: ${COMPOSE_PROJECT_NAME:-ssfm}
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    networks:
-      - data
-
+  # Đồng bộ schema lên Supabase bằng "prisma db push" (DB dùng chung có lệch migration
+  # nên không dùng "migrate deploy"). Chỉ chạy khi cần:
+  #   docker compose -f docker-compose.production.yml --env-file .env.production --profile migrate run --rm migrate
   migrate:
+    profiles: ["migrate"]
     build:
       context: ./backend
       target: migrator
+    command: ["npx", "prisma", "db", "push"]
     restart: "no"
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
       DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env.production}
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - data
 
@@ -46,9 +30,6 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL in .env.production}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env.production}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-System Administrator}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     networks:
       - data
 
@@ -91,6 +72,7 @@ services:
       TRUST_PROXY: "true"
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
       DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env.production}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env.production}
       JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-15m}
@@ -108,8 +90,6 @@ services:
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
       AI_SERVICE_URL: http://ai-service:8000
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       ai-service:
         condition: service_healthy
     healthcheck:
@@ -144,7 +124,6 @@ services:
       - edge
 
 volumes:
-  postgres_data:
   ai_data:
 
 networks:

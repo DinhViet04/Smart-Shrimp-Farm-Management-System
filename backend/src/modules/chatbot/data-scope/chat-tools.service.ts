@@ -13,12 +13,15 @@ import {
   ChatDomain,
   ChatScope,
 } from './chat-data-scope.service';
+import { FeedingRecordAgentService } from '../feeding-record-agent.service';
 
 type ToolDef = OpenAI.Chat.Completions.ChatCompletionFunctionTool;
 
 interface CommonArgs {
   cropId?: string;
   pondName?: string;
+  /** Id ao đã quy đổi từ pondName bằng so khớp gần đúng (xem resolvePondIds) */
+  pondIds?: string[];
   farmName?: string;
   fromDate?: string;
   toDate?: string;
@@ -34,10 +37,16 @@ const COMMON_PROPS = {
     description:
       'ID vụ nuôi (lấy từ list_crops). Dùng khi hỏi về một vụ cụ thể, ví dụ "vụ trước".',
   },
-  pondName: { type: 'string', description: 'Tên (hoặc một phần tên) ao nuôi' },
+  pondName: {
+    type: 'string',
+    description:
+      'Tên (hoặc một phần tên) ao nuôi. CHỈ truyền khi CÂU HỎI HIỆN TẠI nêu tên ao (hoặc nói rõ "ao đó / ao này / ao vừa rồi"). ' +
+      'KHÔNG tự lấy ao từ các câu trả lời trước. Bỏ trống = TẤT CẢ ao trong phạm vi.',
+  },
   farmName: {
     type: 'string',
-    description: 'Tên (hoặc một phần tên) trang trại',
+    description:
+      'Tên (hoặc một phần tên) trang trại. CHỈ truyền khi câu hỏi hiện tại nêu trang trại; bỏ trống = tất cả trang trại trong phạm vi.',
   },
   fromDate: { type: 'string', description: 'Từ ngày, định dạng YYYY-MM-DD' },
   toDate: {
@@ -51,6 +60,23 @@ const STAFF_PROP = {
     description: 'Tên nhân viên đã tạo bản ghi (chỉ dành cho quản lý)',
   },
 };
+
+/** SESSION_3 -> "Cử 3" */
+const sessionLabel = (s?: string | null) =>
+  s ? `Cử ${String(s).replace('SESSION_', '')}` : null;
+
+/**
+ * Chuẩn hóa tên ao để so khớp gần đúng: bỏ dấu, chữ thường, bỏ các từ chung ("ao", "nuôi", "số")
+ * và ký tự không phải chữ/số. "Ao nuôi D3", "ao d 3", "D3" -> "d3".
+ */
+const normalizePondName = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/\b(ao|nuoi|so)\b/g, ' ')
+    .replace(/[^a-z0-9]/g, '');
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 const day = (d?: Date | null) =>
@@ -72,6 +98,7 @@ export class ChatToolsService {
     private readonly prisma: PrismaService,
     private readonly scopeService: ChatDataScopeService,
     @Optional() private readonly weatherService?: WeatherService,
+    @Optional() private readonly feedingAgent?: FeedingRecordAgentService,
   ) {}
 
   // ───────────────────────────── TOOL DEFINITIONS ─────────────────────────────
@@ -95,7 +122,7 @@ export class ChatToolsService {
       },
     });
 
-    const defs: Array<[ChatDomain | null, ToolDef]> = [
+    const defs: Array<[ChatDomain | ChatDomain[] | null, ToolDef]> = [
       [
         null,
         tool(
@@ -120,8 +147,21 @@ export class ChatToolsService {
       [
         'FEEDING',
         tool(
+          'get_feeding_status',
+          'TÌNH HÌNH CHO ĂN TRONG 1 NGÀY (mặc định hôm nay) của TẤT CẢ ao đang nuôi trong phạm vi: từng ao -> từng cử đã cho ăn (giờ, loại thức ăn, số kg, người ghi), cử bỏ, tổng kg, và danh sách AO CHƯA CHO ĂN. ' +
+            'Gọi khi hỏi "hôm nay đã cho ăn chưa", "cho ăn mấy cử rồi", "cử nào còn thiếu", "ao nào chưa cho ăn", "hôm qua cho ăn thế nào".',
+          {
+            date: { type: 'string', description: 'Ngày cần xem, YYYY-MM-DD (bỏ trống = hôm nay)' },
+            pondName: COMMON_PROPS.pondName,
+            farmName: COMMON_PROPS.farmName,
+          },
+        ),
+      ],
+      [
+        'FEEDING',
+        tool(
           'query_feeding_logs',
-          'Tra cứu nhật ký cho ăn: tổng lượng thức ăn, số cữ, chi tiết từng cữ.',
+          'Tra cứu LỊCH SỬ nhật ký cho ăn theo khoảng thời gian / vụ: tổng lượng thức ăn, số cữ, chi tiết từng cữ. Hỏi tình hình 1 ngày cụ thể (hôm nay đã cho ăn chưa) thì dùng get_feeding_status.',
           { ...COMMON_PROPS, ...staff },
         ),
       ],
@@ -261,12 +301,80 @@ export class ChatToolsService {
       ],
     ];
 
+    // Gợi ý lượng ăn / loại thức ăn theo giai đoạn tôm: cùng bộ tính với thẻ nhật ký cho ăn (chỉ Nông dân)
+    if (scope.role === 'FARMER' && this.feedingAgent) {
+      defs.push([
+        'FEEDING',
+        tool(
+          'get_feeding_suggestion',
+          'GỢI Ý CHO ĂN theo giai đoạn tôm của ao đang nuôi: tổng kg nên cho ăn trong ngày, đã cho bao nhiêu, còn lại bao nhiêu, ' +
+            'trọng lượng tôm, sinh khối, tỷ lệ cho ăn, cỡ / loại thức ăn phù hợp trong kho, điều chỉnh theo chất lượng nước, các cữ đã ghi hôm nay. ' +
+            'Gọi khi hỏi "hôm nay nên cho ăn bao nhiêu", "cữ tới cho mấy ký", "dùng cám số mấy", "có nên tăng / giảm thức ăn".',
+          {
+            pondName: COMMON_PROPS.pondName,
+            date: { type: 'string', description: 'Ngày YYYY-MM-DD (bỏ trống = hôm nay)' },
+          },
+        ),
+      ]);
+    }
+
     return defs
-      .filter(
-        ([domain]) =>
-          domain === null || this.scopeService.canAccess(scope, domain),
-      )
+      .filter(([domain]) => {
+        if (domain === null) return true;
+        const domains = Array.isArray(domain) ? domain : [domain];
+        return domains.some((d) => this.scopeService.canAccess(scope, d));
+      })
       .map(([, def]) => def);
+  }
+
+  /**
+   * Bảng "cách hỏi thường gặp -> công cụ" để AI nhận diện câu hỏi đời thường của người nuôi.
+   * Chỉ liệt kê công cụ mà role được dùng (khớp getToolDefinitions), kèm hướng dẫn riêng theo role.
+   */
+  describeRouting(scope: ChatScope): string {
+    const available = new Set(
+      this.getToolDefinitions(scope).map((t) => t.function.name),
+    );
+    const hints: Array<[string, string]> = [
+      ['get_feeding_suggestion', '"hôm nay nên cho ăn bao nhiêu", "cữ tới cho mấy ký", "tôm cỡ này ăn cám số mấy", "có nên tăng/giảm cám" -> dùng ĐÚNG số liệu công cụ trả về (dailyKg, remainingKg, recommendedFeed...), giải thích ngắn lý do (notes/warnings); muốn ghi lại việc cho ăn thì nói người dùng nhắn "ao X vừa cho ăn cữ Y"'],
+      ['get_feeding_status', '"hôm nay (tôi) đã cho ăn chưa", "cho ăn mấy cữ/cử rồi", "cử nào còn thiếu / bỏ", "ao nào chưa cho ăn", "hôm qua cho ăn thế nào" -> trả lời ĐỦ TẤT CẢ ao (kể cả ao chưa cho ăn) và từng cử (Cử 1, Cử 2... giờ, loại cám, kg)'],
+      ['query_feeding_logs', '"tổng thức ăn tuần này / tháng này / cả vụ", "lịch sử cho ăn ao X", "ăn có giảm không", "trung bình mỗi ngày bao nhiêu kg cám"'],
+      ['query_growth_samples', '"size tôm", "bao nhiêu con/kg", "tôm được mấy gam", "ABW/ADG", "tôm lớn nhanh không", "sinh khối ước tính"'],
+      ['query_shrimp_health', '"tôm bệnh", "đốm trắng", "phân trắng", "gan tụy", "mềm vỏ", "tôm yếu/lờ đờ", "kết quả kiểm tra sức khỏe"'],
+      ['query_mortality', '"tôm chết", "tôm hao", "rớt đáy", "hao hụt bao nhiêu con", "chết vì sao"'],
+      ['query_inventory', '"kho còn bao nhiêu", "cám còn mấy bao", "thuốc/hóa chất trong kho", "sắp hết hàng", "đã xuất kho gì"'],
+      ['get_crop_summary', '"vụ trước lời hay lỗ", "FCR vụ", "tỉ lệ sống", "thu hoạch được bao nhiêu tấn", "chi phí vụ", "đánh giá vụ" (gọi list_crops trước để lấy cropId)'],
+      ['query_incidents', '"sự cố", "ao đang có vấn đề gì đã báo", "sự cố đang xử lý", "lịch sử điều trị sự cố"'],
+      ['get_water_status', '"nước ao X thế nào", "pH/DO/kiềm/NH3 hiện tại", "ao nào có vấn đề", "nước có ổn không"'],
+      ['query_water_quality', '"diễn biến pH tuần qua", "so sánh chỉ số nước các ngày", "lịch sử đo nước"'],
+      ['get_farm_overview', '"tình hình trại/ao của tôi", "ao nào đang nuôi", "ao bao nhiêu ngày tuổi (DOC)", "mật độ thả"'],
+      ['list_farm_staff', '"ai đang làm ở trại", "kỹ thuật viên phụ trách là ai"'],
+      ['query_suppliers', '"mua cám ở đâu", "nhà cung cấp", "số điện thoại đại lý"'],
+    ];
+    const lines = hints
+      .filter(([name]) => available.has(name))
+      .map(([name, examples]) => `   - ${name}: ${examples}`);
+
+    const roleGuide: Record<string, string> = {
+      FARMER:
+        'Người dùng là NÔNG DÂN: thường hỏi ngắn, dùng từ địa phương (cám = thức ăn, cữ = cử ăn, rớt = chết chìm đáy). Được hỏi / xem mọi dữ liệu của trang trại được phân công và CHỈ được ghi NHẬT KÝ CHO ĂN qua trợ lý (thẻ để nông dân tự chọn cữ, giờ, loại thức ăn, số ký). Trả lời ngắn gọn, dễ hiểu, ưu tiên việc cần làm ngay.',
+      TECHNICIAN:
+        'Người dùng là KỸ THUẬT VIÊN: thường hỏi về chỉ số nước, sức khỏe, tăng trưởng, sự cố được giao và phác đồ xử lý. Được xem mọi dữ liệu trang trại được phân công và CHỈ được nhập số đo môi trường nước qua trợ lý. Trả lời chuyên môn, có số liệu và liều lượng cụ thể.',
+      FARM_MANAGER:
+        'Người dùng là QUẢN LÝ TRANG TRẠI: thường hỏi tổng quan nhiều ao, so sánh vụ, chi phí - lợi nhuận, FCR, kho, nhân sự. Là role DUY NHẤT được tạo trang trại / ao / vụ và nhập / xuất kho qua trợ lý. Ưu tiên tổng hợp, so sánh và cảnh báo.',
+      ADMIN:
+        'Người dùng là QUẢN TRỊ VIÊN: giám sát toàn hệ thống, thường hỏi tổng hợp nhiều trang trại. Chỉ xem, không tạo/sửa dữ liệu nghiệp vụ.',
+    };
+
+    return (
+      `NHẬN DIỆN CÂU HỎI (cách hỏi thường gặp -> công cụ nên gọi):\n` +
+      (lines.length ? lines.join('\n') + '\n' : '   (không có công cụ dữ liệu)\n') +
+      `   - Mốc thời gian "hôm nay / hôm qua / tuần này / tháng này / 7 ngày qua" -> tự quy đổi ra fromDate/toDate (YYYY-MM-DD) theo ngày hôm nay.\n` +
+      `   - Câu nêu tên ao/trang trại viết tắt hoặc sai chính tả nhẹ ("ao 1", "a1", "ao A 1") -> truyền vào pondName/farmName, hệ thống tự so khớp gần đúng.\n` +
+      `   - PHẠM VI AO: câu hỏi hiện tại KHÔNG nêu ao/trang trại -> KHÔNG truyền pondName/farmName, tra cứu & trả lời TỔNG HỢP TẤT CẢ ao (liệt kê theo từng ao). ` +
+      `Ao được nhắc ở các lượt trước KHÔNG tự áp dụng cho câu mới; chỉ dùng lại khi người dùng nói "ao đó", "ao này", "còn ao đó thì sao".\n` +
+      `${roleGuide[scope.role] ? `VAI TRÒ: ${roleGuide[scope.role]}\n` : ''}`
+    );
   }
 
   /** Tóm tắt ngắn phạm vi dữ liệu của người dùng để đưa vào system prompt */
@@ -303,9 +411,7 @@ export class ChatToolsService {
     const ownership =
       scope.role === 'ADMIN' || scope.role === 'FARM_MANAGER'
         ? 'toàn bộ dữ liệu trong các trang trại (của mình và của nhân viên)'
-        : scope.role === 'TECHNICIAN'
-          ? 'toàn bộ dữ liệu của các trang trại được phân công (do mọi nhân viên ghi nhận), giống những gì Kỹ thuật viên xem được trên ứng dụng; chỉ ĐỌC, không sửa dữ liệu'
-          : 'môi trường nước: toàn bộ dữ liệu nước của các trang trại được phân công; các loại khác: CHỈ bản ghi do chính người dùng tạo/báo cáo';
+        : 'toàn bộ dữ liệu của các trang trại được phân công (do mọi nhân viên ghi nhận); chỉ ĐỌC qua trợ lý';
 
     const farmText = farms.length
       ? farms
@@ -338,11 +444,19 @@ export class ChatToolsService {
     scope: ChatScope,
   ): Promise<unknown> {
     try {
+      // Tên ao do AI truyền có thể viết tắt / khác dấu ("Ao D3" cho "Ao nuôi D3") -> quy đổi ra id ao
+      if (typeof args.pondName === 'string' && args.pondName.trim()) {
+        args = { ...args, pondIds: await this.resolvePondIds(scope, args.pondName) };
+      }
       switch (name) {
         case 'list_crops':
           return await this.listCrops(scope, args);
         case 'get_crop_summary':
           return await this.getCropSummary(scope, args.cropId);
+        case 'get_feeding_status':
+          return await this.getFeedingStatus(scope, args);
+        case 'get_feeding_suggestion':
+          return await this.getFeedingSuggestion(scope, args);
         case 'query_feeding_logs':
           return await this.queryFeeding(scope, args);
         case 'query_water_quality':
@@ -380,6 +494,51 @@ export class ChatToolsService {
     }
   }
 
+  /** Gợi ý cho ăn (cùng bộ tính với thẻ nhật ký cho ăn) cho 1 ao hoặc tất cả ao đang nuôi */
+  private async getFeedingSuggestion(scope: ChatScope, args: CommonArgs & { date?: string }) {
+    if (scope.role !== 'FARMER' || !this.feedingAgent) return this.denied();
+    const user = { userId: scope.userId, role: scope.role };
+    const ponds = await this.feedingAgent.listPonds(user);
+    const targets = args.pondIds?.length ? ponds.filter((p) => args.pondIds!.includes(p.id)) : ponds;
+    if (targets.length === 0) {
+      return { message: args.pondName ? `Không có ao "${args.pondName}" đang nuôi trong phạm vi của bạn.` : 'Chưa có ao nào đang có vụ nuôi.' };
+    }
+    const suggestions = await Promise.all(
+      targets.slice(0, 10).map((p) =>
+        this.feedingAgent!.getSuggestion(user, p.id, args.date).catch((e: any) => ({ pondName: p.name, error: e?.message })),
+      ),
+    );
+    return {
+      note: 'Số liệu là GỢI Ý tham khảo; nông dân tự quyết số cữ, giờ và số ký.',
+      ponds: suggestions.map((s: any) =>
+        s.error
+          ? s
+          : {
+              pondName: s.pondName,
+              farmName: s.farmName,
+              date: s.date,
+              doc: s.doc,
+              abwGram: s.abwGram,
+              abwSource: s.abwSource,
+              aliveCount: s.aliveCount,
+              biomassKg: s.biomassKg,
+              feedRatePercent: s.feedRatePercent,
+              dailyKg: s.dailyKg,
+              fedTodayKg: s.fedTodayKg,
+              remainingKg: s.remainingKg,
+              recentDailyAvgKg: s.recentDailyAvgKg,
+              recentSessionsPerDay: s.recentSessionsPerDay,
+              recommendedFeedSize: s.recommendedFeedSize,
+              recommendedFeed: s.feedOptions.find((f: any) => f.recommended) || null,
+              feedInStock: s.feedOptions.map((f: any) => ({ name: f.name, stock: f.stock, unit: f.unit })),
+              todayLogs: s.todayLogs,
+              notes: s.notes,
+              warnings: s.warnings,
+            },
+      ),
+    };
+  }
+
   private denied() {
     return {
       error: 'Tài khoản của bạn không có quyền tra cứu loại dữ liệu này.',
@@ -400,9 +559,35 @@ export class ChatToolsService {
   private pondFilter(args: CommonArgs): Prisma.PondWhereInput | undefined {
     if (!args.pondName && !args.farmName) return undefined;
     return {
-      ...(args.pondName ? { name: contains(args.pondName) } : {}),
+      ...(args.pondIds
+        ? { id: { in: args.pondIds } }
+        : args.pondName
+          ? { name: contains(args.pondName) }
+          : {}),
       ...(args.farmName ? { farm: { name: contains(args.farmName) } } : {}),
     };
+  }
+
+  /**
+   * So khớp gần đúng tên ao trong phạm vi người dùng: ưu tiên trùng khớp sau chuẩn hóa
+   * ("Ao D3" = "Ao nuôi D3"), sau đó mới tới chứa nhau. Không khớp ao nào -> [] (không có dữ liệu).
+   */
+  private async resolvePondIds(scope: ChatScope, rawName: string): Promise<string[]> {
+    const target = normalizePondName(rawName);
+    if (!target) return [];
+    const ponds = await this.prisma.pond.findMany({
+      where: this.scopeService.pondWhere(scope),
+      select: { id: true, name: true },
+      take: 500,
+    });
+    const exact = ponds.filter((p) => normalizePondName(p.name) === target);
+    if (exact.length) return exact.map((p) => p.id);
+    return ponds
+      .filter((p) => {
+        const n = normalizePondName(p.name);
+        return Boolean(n) && (n.includes(target) || target.includes(n));
+      })
+      .map((p) => p.id);
   }
 
   private async staffIds(
@@ -622,6 +807,121 @@ export class ChatToolsService {
     };
   }
 
+  /**
+   * Tình hình cho ăn trong 1 ngày của mọi ao đang nuôi: cử đã cho ăn / bỏ cử / ao chưa cho ăn.
+   * Cử chưa cho ăn không có bản ghi trong DB nên phải đối chiếu từ danh sách ao.
+   */
+  private async getFeedingStatus(scope: ChatScope, args: CommonArgs & { date?: string }) {
+    const scopeWhere = this.scopeService.feedingWhere(scope);
+    if (!scopeWhere) return this.denied();
+
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+    const date = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : today;
+    const pondFilter = this.pondFilter(args);
+
+    const [ponds, logs] = await Promise.all([
+      // Ao đang có vụ nuôi trong phạm vi người dùng
+      this.prisma.pond.findMany({
+        where: {
+          AND: [
+            this.scopeService.pondWhere(scope),
+            { crops: { some: { status: CropStatus.ACTIVE } } },
+            ...(pondFilter ? [pondFilter] : []),
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          farm: { select: { name: true } },
+          crops: {
+            where: { status: CropStatus.ACTIVE },
+            select: { startDate: true },
+            orderBy: { startDate: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: [{ farm: { name: 'asc' } }, { name: 'asc' }],
+        take: 100,
+      }),
+      this.prisma.feedingLog.findMany({
+        where: {
+          AND: [
+            scopeWhere,
+            { feedingDate: this.dateRange({ fromDate: date, toDate: date }) },
+            ...(pondFilter ? [{ pond: pondFilter }] : []),
+          ],
+        },
+        orderBy: [{ feedingSession: 'asc' }],
+        select: {
+          pondId: true,
+          feedingSession: true,
+          feedingTime: true,
+          feedAmount: true,
+          feedingStatus: true,
+          note: true,
+          feedProduct: { select: { itemName: true } },
+          pond: { select: { name: true, farm: { select: { name: true } } } },
+          creator: { select: { fullName: true } },
+        },
+      }),
+    ]);
+
+    // Gộp: ao đang nuôi + ao có bản ghi trong ngày (vd vụ vừa kết thúc)
+    const pondMap = new Map<string, { pond: string; farm: string; doc: number | null }>();
+    const startOfDay = new Date(`${date}T00:00:00+07:00`).getTime();
+    for (const p of ponds) {
+      const crop = p.crops[0];
+      pondMap.set(p.id, {
+        pond: p.name,
+        farm: p.farm?.name ?? '',
+        doc: crop ? Math.max(1, Math.floor((startOfDay - crop.startDate.getTime()) / 86_400_000) + 1) : null,
+      });
+    }
+    for (const l of logs) {
+      if (!pondMap.has(l.pondId)) {
+        pondMap.set(l.pondId, { pond: l.pond.name, farm: l.pond.farm?.name ?? '', doc: null });
+      }
+    }
+
+    const result = [...pondMap.entries()].map(([pondId, info]) => {
+      const pondLogs = logs.filter((l) => l.pondId === pondId);
+      const fed = pondLogs.filter((l) => l.feedingStatus !== 'SKIPPED' && Number(l.feedAmount) > 0);
+      const skipped = pondLogs.filter((l) => l.feedingStatus === 'SKIPPED');
+      return {
+        pond: info.pond,
+        farm: info.farm,
+        doc: info.doc,
+        fedToday: fed.length > 0,
+        fedSessionCount: fed.length,
+        totalFeedKg: round(fed.reduce((s, l) => s + (Number(l.feedAmount) || 0), 0)),
+        fedSessions: fed.map((l) => ({
+          session: sessionLabel(l.feedingSession),
+          time: l.feedingTime,
+          feed: l.feedProduct?.itemName ?? null,
+          amountKg: num(l.feedAmount),
+          status: l.feedingStatus === 'DELAYED' ? 'Trễ giờ' : 'Hoàn thành',
+          by: l.creator?.fullName ?? null,
+          note: l.note,
+        })),
+        skippedSessions: skipped.map((l) => sessionLabel(l.feedingSession)),
+      };
+    });
+
+    return {
+      date: day(new Date(`${date}T12:00:00+07:00`)),
+      isToday: date === today,
+      summary: {
+        pondCount: result.length,
+        pondsFed: result.filter((r) => r.fedToday).map((r) => r.pond),
+        pondsNotFedYet: result.filter((r) => !r.fedToday).map((r) => r.pond),
+        totalFeedKg: round(result.reduce((s, r) => s + (r.totalFeedKg || 0), 0)),
+        totalFedSessions: result.reduce((s, r) => s + r.fedSessionCount, 0),
+      },
+      ponds: result,
+      note: 'Cử chưa cho ăn chưa có bản ghi. Khi trả lời phải liệt kê ĐỦ mọi ao (kể cả ao chưa cho ăn) và từng cử đã cho ăn.',
+    };
+  }
+
   private async queryFeeding(scope: ChatScope, args: CommonArgs) {
     const scopeWhere = this.scopeService.feedingWhere(scope);
     if (!scopeWhere) return this.denied();
@@ -686,7 +986,7 @@ export class ChatToolsService {
         agg._count,
         rows.map((r) => ({
           date: day(r.feedingDate),
-          session: r.feedingSession,
+          session: sessionLabel(r.feedingSession),
           time: r.feedingTime,
           pond: r.pond.name,
           cropId: r.cropId,
@@ -1250,6 +1550,7 @@ export class ChatToolsService {
 
   private async getFarmOverview(scope: ChatScope, args: CommonArgs) {
     if (!this.scopeService.canAccess(scope, 'FARM_INFO')) return this.denied();
+    const canSeeGrowth = this.scopeService.canAccess(scope, 'GROWTH');
     const pondFilter = this.pondFilter(args);
     const farms = await this.prisma.farm.findMany({
       where: {
@@ -1354,7 +1655,7 @@ export class ChatToolsService {
                   alerts: this.assess(last).alerts,
                 }
               : null,
-            latestGrowthSample: sample
+            latestGrowthSample: sample && canSeeGrowth
               ? {
                   date: day(sample.samplingDate),
                   averageWeightG: num(sample.abwGram),

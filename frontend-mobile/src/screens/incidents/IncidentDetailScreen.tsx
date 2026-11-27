@@ -104,7 +104,7 @@ export default function IncidentDetailScreen({
     setShowAssignModal(true);
     setSelectedStaffId(incident.assignedToId || '');
     setAssignNote('');
-    setStaffRoleFilter('TECHNICIAN');
+    setStaffRoleFilter('ALL');
     setLoadingStaff(true);
 
     try {
@@ -121,10 +121,12 @@ export default function IncidentDetailScreen({
     }
   };
 
-  // Filtered staff list in modal (only TECHNICIAN as enforced by backend)
+  // Có thể giao cho Kỹ thuật viên hoặc Nông dân (kể cả người gửi báo cáo); lọc theo vai trò nếu chọn
   const filteredStaffList = useMemo(() => {
-    return staffList.filter((s) => s.role === 'TECHNICIAN');
-  }, [staffList]);
+    return staffList.filter(
+      (s) => (s.role === 'TECHNICIAN' || s.role === 'FARMER') && (staffRoleFilter === 'ALL' || s.role === staffRoleFilter),
+    );
+  }, [staffList, staffRoleFilter]);
 
   const handleAssignSubmit = async () => {
     if (!incident || !selectedStaffId) {

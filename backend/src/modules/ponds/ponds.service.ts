@@ -10,6 +10,7 @@ import {
   FarmAccessService,
 } from '../farm-access/farm-access.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { sortPondsActiveFirst } from '../../common/pond-order.js';
 
 @Injectable()
 export class PondsService {
@@ -68,7 +69,7 @@ export class PondsService {
   async findAll(user: AuthUser) {
     const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(user);
 
-    return this.prisma.pond.findMany({
+    const ponds = await this.prisma.pond.findMany({
       where: {
         farm: { deletedAt: null },
         ...(accessibleFarmIds ? { farmId: { in: accessibleFarmIds } } : {}),
@@ -80,6 +81,18 @@ export class PondsService {
         createdAt: 'desc',
       },
     });
+    return sortPondsActiveFirst(ponds, await this.activePondIds(ponds.map((p) => p.id)));
+  }
+
+  /** Id các ao đang có vụ nuôi ACTIVE (để đưa ao đang nuôi lên đầu danh sách) */
+  private async activePondIds(pondIds: string[]): Promise<Set<string>> {
+    if (pondIds.length === 0) return new Set();
+    const active = await this.prisma.crop.findMany({
+      where: { pondId: { in: pondIds }, status: 'ACTIVE' },
+      select: { pondId: true },
+      distinct: ['pondId'],
+    });
+    return new Set(active.map((c) => c.pondId));
   }
 
   async findOverview(user: AuthUser) {
@@ -183,16 +196,21 @@ export class PondsService {
       };
     });
     const pondById = new Map(overviewPonds.map((pond) => [pond.id, pond]));
-    const overviewCrops = crops.map((crop) => ({
-      ...crop,
-      pond: pondById.get(crop.pondId),
-    }));
+    // Ao đang nuôi lên trước, ao trống xuống sau; vụ nuôi theo cùng thứ tự ao
+    const sortedPonds = sortPondsActiveFirst(overviewPonds, new Set(activeCropByPondId.keys()));
+    const pondRank = new Map(sortedPonds.map((pond, index) => [pond.id, index]));
+    const overviewCrops = crops
+      .map((crop) => ({
+        ...crop,
+        pond: pondById.get(crop.pondId),
+      }))
+      .sort((a, b) => (pondRank.get(a.pondId) ?? 0) - (pondRank.get(b.pondId) ?? 0));
 
-    return { farms, ponds: overviewPonds, crops: overviewCrops };
+    return { farms, ponds: sortedPonds, crops: overviewCrops };
   }
 
   async findAllByManager(userId: string) {
-    return this.prisma.pond.findMany({
+    const ponds = await this.prisma.pond.findMany({
       where: {
         farm: {
           ownerId: userId,
@@ -206,6 +224,7 @@ export class PondsService {
         createdAt: 'desc',
       },
     });
+    return sortPondsActiveFirst(ponds, await this.activePondIds(ponds.map((p) => p.id)));
   }
 
   async findOne(pondId: string, user: AuthUser) {

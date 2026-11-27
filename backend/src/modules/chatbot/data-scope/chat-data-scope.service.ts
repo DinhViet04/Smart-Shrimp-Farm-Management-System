@@ -31,7 +31,11 @@ export type ChatDomain =
  *   trang trại/ao/vụ nuôi & báo cáo chi tiết vụ (gồm kết quả, nhật ký cho ăn), nước, sức khỏe,
  *   tăng trưởng, sự cố, tôm hao, kho & lịch sử kho, nhà cung cấp, nhân sự trang trại.
  *   Chỉ ĐỌC — AI không ghi/sửa gì ngoài luồng nhập số đo nước có xác nhận.
- * - FARMER: chỉ nhật ký cho ăn và sự cố do chính mình tạo/báo cáo.
+ * - FARMER: giống TECHNICIAN — hỏi / xem được toàn bộ dữ liệu của các trang trại được phân công.
+ *
+ * QUYỀN GHI qua trợ lý (không thuộc file này, xem AgentActionService.getActionToolDefinitions):
+ * chỉ FARM_MANAGER được tạo trang trại/ao/vụ và nhập/xuất kho; TECHNICIAN chỉ nhập số đo nước;
+ * FARMER và ADMIN không ghi gì.
  */
 const ROLE_DOMAINS: Record<string, ChatDomain[]> = {
   ADMIN: [
@@ -70,7 +74,19 @@ const ROLE_DOMAINS: Record<string, ChatDomain[]> = {
     'FARM_INFO',
     'STAFF_FILTER',
   ],
-  FARMER: ['FEEDING', 'WATER', 'INCIDENT'],
+  // Nông dân: xem / hỏi được mọi thứ như Kỹ thuật viên (chỉ khác ở quyền ghi)
+  FARMER: [
+    'CROP_RESULTS',
+    'FEEDING',
+    'WATER',
+    'HEALTH',
+    'GROWTH',
+    'INCIDENT',
+    'MORTALITY',
+    'INVENTORY',
+    'FARM_INFO',
+    'STAFF_FILTER',
+  ],
 };
 
 export interface ChatScope {
@@ -103,14 +119,17 @@ export class ChatDataScopeService {
   }
 
   /**
-   * Xem dữ liệu ở cấp trang trại (không chỉ bản ghi của mình):
-   * Quản lý / Admin và Kỹ thuật viên (khớp quyền GET trên app). Nông dân chỉ xem bản ghi của mình.
+   * Xem dữ liệu ở cấp trang trại (không chỉ bản ghi của mình).
+   * Hiện tại MỌI role (Admin, Quản lý, Kỹ thuật viên, Nông dân) đều đọc toàn bộ dữ liệu của các
+   * trang trại được phân công. Các nhánh lọc theo người tạo (createdBy / recordedBy / reporterId)
+   * bên dưới chỉ áp dụng nếu sau này thêm role không nằm trong danh sách này.
    */
   isFarmLevelReader(scope: ChatScope) {
     return (
       scope.role === 'ADMIN' ||
       scope.role === 'FARM_MANAGER' ||
-      scope.role === 'TECHNICIAN'
+      scope.role === 'TECHNICIAN' ||
+      scope.role === 'FARMER'
     );
   }
 
@@ -219,7 +238,7 @@ export class ChatDataScopeService {
     const where: Prisma.IncidentWhereInput = {
       crop: { pond: { farmId: this.farmFilter(scope) } },
     };
-    // Khớp API /incidents: chỉ Nông dân bị giới hạn ở sự cố do mình báo cáo
+    // Role không đọc cấp trang trại chỉ thấy sự cố do mình báo cáo
     if (!this.isFarmLevelReader(scope)) where.reporterId = scope.userId;
     return where;
   }

@@ -71,6 +71,11 @@ export default function CreateFarmIncident({
   onSuccess,
 }: CreateFarmIncidentProps) {
   const isManager = role === 'FARM_MANAGER' || role === 'ADMIN';
+  // Nông dân: giữ bố cục, làm gọn giao diện & bớt chữ
+  const isFarmer = role === 'FARMER';
+  // Giao diện gọn cho Nông dân & Quản lý (nghiệp vụ không đổi)
+  const isCompact = isFarmer || isManager;
+  const fc = (compact: string, other: string) => (isCompact ? compact : other);
 
   // Form states
   const [locationType, setLocationType] = useState<'pond' | 'facility'>('pond');
@@ -223,42 +228,47 @@ export default function CreateFarmIncident({
   const titleSuggestions = COMMON_INCIDENT_TITLE_SUGGESTIONS[category] || [];
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300 font-sans">
+    <div className={fc('w-full max-w-7xl mx-auto space-y-4 pb-20 font-sans theme-farmer', 'w-full max-w-5xl mx-auto space-y-6 pb-20 animate-in fade-in duration-300 font-sans')}>
       {/* ── BREADCRUMB & BACK ACTION BAR ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs">
+      <div className={fc('flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4', 'flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs')}>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="group flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all shadow-2xs cursor-pointer"
+            className={fc('group flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer', 'group flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all shadow-2xs cursor-pointer')}
             title="Quay lại danh sách"
           >
             <ArrowLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" />
           </button>
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+            {!isCompact && (
+<div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
               <span className="hover:text-slate-700 cursor-pointer" onClick={onBack}>
                 Sự Cố Trang Trại
               </span>
               <span>/</span>
               <span className="text-amber-700 font-bold">Lập Báo Cáo</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
-              Phiếu Báo Cáo Sự Cố Trang Trại
+)}
+            <h1 className={fc('text-xl font-bold text-slate-900', 'text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5')}>
+              {isCompact ? (isManager ? 'Lập sự cố' : 'Báo cáo sự cố') : 'Phiếu Báo Cáo Sự Cố Trang Trại'}
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        {!isCompact && (
+<div className="flex items-center gap-2.5">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 border border-amber-200">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
             Thiết bị & Hạ tầng trang trại
           </span>
         </div>
+)}
       </div>
 
       {/* ── TOP NOTIFICATION NOTICE ── */}
-      <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 text-xs text-blue-900 flex items-start gap-3">
+      {!isCompact && (
+<div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 text-xs text-blue-900 flex items-start gap-3">
         <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
         <div>
           <p className="font-bold">Quy trình điều phối sự cố trang trại:</p>
@@ -269,6 +279,7 @@ export default function CreateFarmIncident({
           </p>
         </div>
       </div>
+)}
 
       {/* ── ERROR ALERT ── */}
       {error && (
@@ -279,19 +290,19 @@ export default function CreateFarmIncident({
       )}
 
       {/* ── FORM ── */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className={fc('space-y-4', 'space-y-6')}>
         {/* ── BƯỚC 1: VỊ TRÍ & KHU VỰC SỰ CỐ ── */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5">
+        <div className={fc('rounded-2xl border border-slate-200 bg-white p-5 space-y-4', 'rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5')}>
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-100 text-xs font-black text-amber-800">
                 1
               </span>
               <h2 className="text-base font-bold text-slate-900">
-                Vị trí & Hiện trường sự cố
+                {isCompact ? 'Vị trí' : 'Vị trí & Hiện trường sự cố'}
               </h2>
             </div>
-            <span className="text-xs text-slate-400">Chọn vị trí chính xác tại trại</span>
+            {!isCompact && <span className="text-xs text-slate-400">Chọn vị trí chính xác tại trại</span>}
           </div>
 
           {/* Toggle Type: Ao nuôi vs Khu vực dùng chung */}
@@ -315,10 +326,12 @@ export default function CreateFarmIncident({
                 <Waves className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-bold text-sm text-slate-900">Tại Ao Nuôi Cụ Thể</p>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="font-bold text-sm text-slate-900">{isCompact ? 'Tại ao nuôi' : 'Tại Ao Nuôi Cụ Thể'}</p>
+                {!isCompact && (
+<p className="text-xs text-slate-500 mt-0.5">
                   Dàn quạt, sục khí, máy cho ăn, cống xả, bạt lót của ao
                 </p>
+)}
               </div>
             </button>
 
@@ -342,11 +355,13 @@ export default function CreateFarmIncident({
               </div>
               <div>
                 <p className="font-bold text-sm text-slate-900">
-                  Khu Vực Cơ Sở Vật Chất Chung
+                  {isCompact ? 'Khu vực chung' : 'Khu Vực Cơ Sở Vật Chất Chung'}
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">
+                {!isCompact && (
+<p className="text-xs text-slate-500 mt-0.5">
                   Trạm biến áp, trạm bơm, kho cám, kho hóa chất, kênh cấp
                 </p>
+)}
               </div>
             </button>
           </div>
@@ -399,14 +414,16 @@ export default function CreateFarmIncident({
               )}
 
               <div className="mt-2">
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                {!isCompact && (
+<label className="block text-xs font-semibold text-slate-600 mb-1">
                   Vị trí chi tiết tại ao (tùy chọn)
                 </label>
+)}
                 <input
                   type="text"
                   value={locationDetail}
                   onChange={(e) => setLocationDetail(e.target.value)}
-                  placeholder="Ví dụ: Dàn quạt số 2 bờ tây, cống xả đáy bờ nam..."
+                  placeholder={isCompact ? 'Vị trí cụ thể (nếu có)' : 'Ví dụ: Dàn quạt số 2 bờ tây, cống xả đáy bờ nam...'}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none bg-slate-50/60"
                 />
               </div>
@@ -437,14 +454,16 @@ export default function CreateFarmIncident({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                {!isCompact && (
+<label className="block text-xs font-semibold text-slate-600 mb-1">
                   Mô tả vị trí cụ thể (tùy chọn)
                 </label>
+)}
                 <input
                   type="text"
                   value={locationDetail}
                   onChange={(e) => setLocationDetail(e.target.value)}
-                  placeholder="Ví dụ: Tủ điện số 1, Ngăn cám 2, Cửa kho phía sau..."
+                  placeholder={isCompact ? 'Vị trí cụ thể (nếu có)' : 'Ví dụ: Tủ điện số 1, Ngăn cám 2, Cửa kho phía sau...'}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none bg-slate-50/60"
                 />
               </div>
@@ -453,23 +472,23 @@ export default function CreateFarmIncident({
         </div>
 
         {/* ── BƯỚC 2: PHÂN LOẠI & MỨC ĐỘ ── */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5">
+        <div className={fc('rounded-2xl border border-slate-200 bg-white p-5 space-y-4', 'rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5')}>
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-100 text-xs font-black text-amber-800">
                 2
               </span>
               <h2 className="text-base font-bold text-slate-900">
-                Phân loại & Mức độ khẩn cấp
+                {isCompact ? 'Loại & mức độ' : 'Phân loại & Mức độ khẩn cấp'}
               </h2>
             </div>
-            <span className="text-xs text-slate-400">Đánh giá tính chất sự cố</span>
+            {!isCompact && <span className="text-xs text-slate-400">Đánh giá tính chất sự cố</span>}
           </div>
 
           {/* Danh mục */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">
-              Danh mục sự cố trang trại <span className="text-rose-500">*</span>
+              {isCompact ? 'Loại sự cố' : 'Danh mục sự cố trang trại'} <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {FARM_INCIDENT_CATEGORIES.map((cat) => {
@@ -495,9 +514,11 @@ export default function CreateFarmIncident({
                         {cat.label}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                    {!isCompact && (
+<p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                       {cat.description}
                     </p>
+)}
                   </button>
                 );
               })}
@@ -527,13 +548,13 @@ export default function CreateFarmIncident({
                       <span>{sev.label}</span>
                       {isSelected && <Check className="h-3.5 w-3.5" />}
                     </div>
-                    <div
+                    {!isCompact && <div
                       className={`text-[10px] mt-0.5 truncate ${
                         isSelected ? 'text-white/90' : 'text-slate-400'
                       }`}
                     >
                       {sev.sublabel}
-                    </div>
+                    </div>}
                   </button>
                 );
               })}
@@ -542,17 +563,17 @@ export default function CreateFarmIncident({
         </div>
 
         {/* ── BƯỚC 3: TIÊU ĐỀ & MÔ TẢ HIỆN TRƯỜNG ── */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5">
+        <div className={fc('rounded-2xl border border-slate-200 bg-white p-5 space-y-4', 'rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5')}>
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-100 text-xs font-black text-amber-800">
                 3
               </span>
               <h2 className="text-base font-bold text-slate-900">
-                Nội dung sự cố chi tiết
+                {isCompact ? 'Nội dung' : 'Nội dung sự cố chi tiết'}
               </h2>
             </div>
-            <span className="text-xs text-slate-400">Ghi nhận hiện trường</span>
+            {!isCompact && <span className="text-xs text-slate-400">Ghi nhận hiện trường</span>}
           </div>
 
           {/* Quick title suggestions */}
@@ -560,7 +581,7 @@ export default function CreateFarmIncident({
             <div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-2">
                 <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                <span>Gợi ý tiêu đề thường gặp ({selectedCategoryObj.label}):</span>
+                <span>{isCompact ? 'Gợi ý:' : `Gợi ý tiêu đề thường gặp (${selectedCategoryObj.label}):`}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {titleSuggestions.map((sug) => (
@@ -607,7 +628,7 @@ export default function CreateFarmIncident({
           {/* Mô tả */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Mô tả hiện trạng hiện trường & mức độ ảnh hưởng{' '}
+              {isCompact ? 'Mô tả' : 'Mô tả hiện trạng hiện trường & mức độ ảnh hưởng'}{' '}
               <span className="text-rose-500">*</span>
             </label>
             <textarea
@@ -617,7 +638,7 @@ export default function CreateFarmIncident({
                 setDescription(e.target.value);
                 setFieldErrors((prev) => ({ ...prev, description: '' }));
               }}
-              placeholder="Ghi rõ hiện trạng thiết bị, dấu hiệu bất thường (tiếng ồn, mùi khét, rò rỉ, thời gian phát hiện), nguy cơ gián đoạn vận hành trang trại..."
+              placeholder={isCompact ? 'Mô tả ngắn hiện trạng...' : 'Ghi rõ hiện trạng thiết bị, dấu hiệu bất thường (tiếng ồn, mùi khét, rò rỉ, thời gian phát hiện), nguy cơ gián đoạn vận hành trang trại...'}
               className={`w-full rounded-2xl border px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all resize-y bg-slate-50/50 ${
                 fieldErrors.description
                   ? 'border-rose-300 ring-2 ring-rose-500/20'
@@ -655,8 +676,9 @@ export default function CreateFarmIncident({
         </div>
 
         {/* ── SUBMIT BAR ── */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs">
-          <div className="text-xs text-slate-500 flex items-center gap-2">
+        <div className={fc('flex flex-col sm:flex-row items-center justify-end gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3', 'flex flex-col sm:flex-row items-center justify-between gap-4 rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs')}>
+          {!isCompact && (
+<div className="text-xs text-slate-500 flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
             <span>
               {isManager
@@ -664,6 +686,7 @@ export default function CreateFarmIncident({
                 : 'Thông báo sẽ được chuyển đến Quản lý trang trại ngay khi bạn bấm gửi.'}
             </span>
           </div>
+)}
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
@@ -682,12 +705,12 @@ export default function CreateFarmIncident({
               {saving ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  Đang gửi báo cáo...
+                  {isCompact ? 'Đang gửi...' : 'Đang gửi báo cáo...'}
                 </>
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  {isManager ? 'Lưu Sự Cố Trang Trại' : 'Gửi Báo Cáo Lên Quản Lý'}
+                  {isManager ? (isCompact ? 'Lưu sự cố' : 'Lưu Sự Cố Trang Trại') : isCompact ? 'Gửi báo cáo' : 'Gửi Báo Cáo Lên Quản Lý'}
                 </>
               )}
             </button>

@@ -74,7 +74,8 @@ export class IncidentsService {
     if (query.status) where.status = query.status;
     else if (query.activeOnly) where.status = { in: ['OPEN', 'TREATING'] };
     if (user.role === 'FARMER') {
-      where.reporterId = user.userId;
+      // Nông dân: sự cố do mình báo cáo HOẶC được Quản lý giao cho mình xử lý
+      where.AND = [{ OR: [{ reporterId: user.userId }, { assignedToId: user.userId }] }];
     } else if (query.reportedByMe) {
       where.reporterId = user.userId;
     }
@@ -319,18 +320,20 @@ export class IncidentsService {
       throw new BadRequestException('Không thể phân công lại sự cố đã xử lý');
     }
 
+    // Quản lý được giao cho BẤT KỲ nhân sự đang hoạt động nào của trang trại
+    // (Kỹ thuật viên hoặc Nông dân — kể cả chính người gửi báo cáo).
     const technician = await this.prisma.farmStaff.findFirst({
       where: {
         farmId,
         userId: dto.assignedToId,
         isActive: true,
-        user: { role: 'TECHNICIAN', isActive: true },
+        user: { role: { in: ['TECHNICIAN', 'FARMER'] }, isActive: true },
       },
       include: { user: { select: { id: true, fullName: true, email: true } } },
     });
     if (!technician) {
       throw new BadRequestException(
-        'Kỹ thuật viên chưa được phân công vào trang trại này',
+        'Người được chọn không phải nhân sự đang hoạt động của trang trại này',
       );
     }
 
@@ -422,9 +425,9 @@ export class IncidentsService {
   ) {
     const incident = await this.getIncident(id);
     await this.assertCanTreat(user, incident);
-    if (incident.status !== 'TREATING') {
+    if (incident.status === 'RESOLVED') {
       throw new BadRequestException(
-        'Chỉ có thể cập nhật sau khi đã bắt đầu điều trị sự cố',
+        'Sự cố đã hoàn tất, hãy mở lại sự cố trước khi cập nhật',
       );
     }
 
@@ -436,7 +439,7 @@ export class IncidentsService {
           treatment: dto.treatment.trim(),
           observation: dto.observation?.trim() || null,
           result: dto.result?.trim() || null,
-          status: 'TREATING',
+          status: incident.status,
           eventType: 'TREATMENT',
         },
         include: {
@@ -444,12 +447,10 @@ export class IncidentsService {
         },
       });
 
+      // Giữ nguyên trạng thái: ghi chú lúc mới phân công không tự chuyển sang "đang xử lý"
       await tx.incident.update({
         where: { id },
-        data: {
-          treatment: dto.treatment.trim(),
-          status: 'TREATING',
-        },
+        data: { treatment: dto.treatment.trim() },
       });
       return update;
     });
@@ -457,11 +458,17 @@ export class IncidentsService {
 
   async resolve(user: AuthUser, id: string, dto: ResolveIncidentDto) {
     const incident = await this.getIncident(id);
-    await this.assertCanTreat(user, incident);
-    if (incident.status !== 'TREATING') {
-      throw new BadRequestException(
-        'Chỉ có thể hoàn tất sự cố đang được điều trị',
-      );
+    // Sự cố "Môi trường & Nước ao" CHƯA giao cho ai: Kỹ thuật viên của trang trại xử lý 1 lần là xong
+    // (nhận luôn làm người xử lý). Đã giao cho người khác thì vẫn chỉ người đó / Quản lý được đóng.
+    const takeOverWater =
+      user.role === 'TECHNICIAN' && !incident.assignedToId && IncidentsService.isWaterIncident(incident);
+    if (takeOverWater) {
+      await this.farmAccess.assertCanAccessFarm(user, incident.crop.pond.farmId);
+    } else {
+      await this.assertCanTreat(user, incident);
+    }
+    if (incident.status === 'RESOLVED') {
+      throw new BadRequestException('Sự cố này đã được hoàn tất');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -484,6 +491,9 @@ export class IncidentsService {
           treatment: dto.treatment.trim(),
           status: 'RESOLVED',
           resolvedAt: new Date(),
+          ...(takeOverWater ? { assignedToId: user.userId } : {}),
+          // Hoàn tất thẳng từ trạng thái "đã phân công" -> ghi nhận luôn thời điểm bắt đầu
+          ...(!incident.startedAt ? { startedAt: new Date() } : {}),
         },
       });
       return update;
@@ -518,6 +528,15 @@ export class IncidentsService {
     });
   }
 
+  /** Sự cố thuộc loại Môi trường nước (nhãn phân loại trong tiêu đề hoặc mô tả) */
+  static isWaterIncident(incident: { title?: string | null; description?: string | null }) {
+    const category =
+      incident.title?.match(/^\[(.*?)\]/)?.[1] ||
+      incident.description?.match(/\[Phân loại:\s*(.*?)\]/i)?.[1] ||
+      '';
+    return /môi trường|nước ao/i.test(category);
+  }
+
   private async getCropWithFarm(id: string) {
     const crop = await this.prisma.crop.findUnique({
       where: { id },
@@ -549,9 +568,9 @@ export class IncidentsService {
     if (user.role === 'FARM_MANAGER') {
       return;
     }
-    if (user.role !== 'TECHNICIAN' || incident.assignedToId !== user.userId) {
+    if (incident.assignedToId !== user.userId) {
       throw new ForbiddenException(
-        'Chỉ kỹ thuật viên được phân công hoặc Quản lý trang trại mới có thể điều trị sự cố',
+        'Chỉ người được phân công hoặc Quản lý trang trại mới có thể xử lý sự cố',
       );
     }
   }

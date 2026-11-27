@@ -16,6 +16,7 @@ import { PondsService } from '../ponds/ponds.service';
 import { CropsService } from '../crops/crops.service';
 import { ExecuteActionDto } from './dto/execute-action.dto';
 import { WaterRecordAgentService } from './water-record-agent.service';
+import { FeedingRecordAgentService, FeedingPondOption } from './feeding-record-agent.service';
 import { MarketPricesService } from '../market-prices/market-prices.service';
 
 export type AgentActionIntent =
@@ -24,7 +25,8 @@ export type AgentActionIntent =
   | 'CREATE_CROP'
   | 'IMPORT_INVENTORY'
   | 'EXPORT_INVENTORY'
-  | 'RECORD_WATER_QUALITY';
+  | 'RECORD_WATER_QUALITY'
+  | 'RECORD_FEEDING';
 
 /**
  * Danh mục 63 Tỉnh/Thành phố Việt Nam khớp 100% với form tạo trang trại thủ công (FarmFormModal)
@@ -267,12 +269,16 @@ export interface AgentActionDraft {
   exportUrl?: string;
   fileName?: string;
   farmName?: string;
+  /** Kho (trang trại) có thể chọn trên phiếu nhập kho — mỗi trang trại là một kho riêng */
+  farmOptions?: Array<{ id: string; name: string }>;
   /** Danh sách ao cho thẻ nhập thông số nước trong khung chat */
   pondOptions?: Array<{ id: string; name: string; farmName: string }>;
   /** Ao đang trống cho thẻ tạo vụ nuôi trong khung chat (chỉ Quản lý trang trại) */
   cropPondOptions?: CropPondOption[];
   /** Giá tôm giống thị trường (Tép Bạc) cho mục đơn giá giống trên thẻ tạo vụ */
   seedMarketPrice?: SeedPriceInfo;
+  /** Ao (đang có vụ) cho thẻ ghi nhật ký cho ăn — chỉ Nông dân */
+  feedingPondOptions?: FeedingPondOption[];
 }
 
 /** Giá tôm giống thị trường gửi kèm thẻ tạo vụ (giống khối "Giá giống thị trường" ở form thủ công) */
@@ -329,6 +335,10 @@ const ACTION_TOOL_INTENTS: Record<string, AgentActionIntent> = {
   draft_create_farm: 'CREATE_FARM',
   draft_create_pond: 'CREATE_POND',
   draft_create_crop: 'CREATE_CROP',
+  draft_import_inventory: 'IMPORT_INVENTORY',
+  export_inventory_file: 'EXPORT_INVENTORY',
+  draft_record_water_quality: 'RECORD_WATER_QUALITY',
+  draft_record_feeding: 'RECORD_FEEDING',
 };
 
 const ACTION_TOOL_NOTE =
@@ -420,6 +430,88 @@ const ACTION_TOOLS: Record<string, OpenAI.Chat.Completions.ChatCompletionTool> =
   },
 };
 
+// Các công cụ dưới đây chỉ để OpenAI NHẬN DIỆN ý định; nội dung chi tiết (mặt hàng, số lượng,
+// chỉ số nước...) được bộ xử lý chuyên biệt bóc tách lại từ chính tin nhắn của người dùng.
+ACTION_TOOLS.draft_import_inventory = {
+  type: 'function',
+  function: {
+    name: 'draft_import_inventory',
+    description:
+      'Người dùng RA LỆNH nhập hàng / nhập vật tư vào kho (thức ăn, cám, thuốc, hóa chất, men, khoáng...), vd "nhập kho 10 bao cám CP", "mới mua 5 chai BKC nhập vào kho". ' +
+      'KHÔNG gọi khi người dùng chỉ hỏi tư vấn ("có nên thêm thức ăn không?", "cách nhập kho thế nào?"). Công cụ chỉ TẠO PHIẾU xác nhận, chưa lưu gì.',
+    parameters: {
+      type: 'object',
+      properties: {
+        farmName: {
+          type: 'string',
+          description: 'Tên trang trại (kho) cần nhập nếu người dùng nêu. Mỗi trang trại là một kho riêng; bỏ trống thì hệ thống sẽ hỏi lại người dùng.',
+        },
+      },
+    },
+  },
+};
+ACTION_TOOLS.export_inventory_file = {
+  type: 'function',
+  function: {
+    name: 'export_inventory_file',
+    description:
+      'Người dùng muốn XUẤT / TẢI FILE (Excel) báo cáo tồn kho, danh sách vật tư. KHÔNG dùng cho câu hỏi "kho còn bao nhiêu" (dùng query_inventory).',
+    parameters: { type: 'object', properties: {} },
+  },
+};
+ACTION_TOOLS.draft_record_water_quality = {
+  type: 'function',
+  function: {
+    name: 'draft_record_water_quality',
+    description:
+      'Người dùng muốn GHI NHẬN / NHẬP số đo môi trường nước vừa đo (pH, DO, nhiệt độ, độ mặn, kiềm, NH3, NO2, H2S, độ trong, màu nước), ' +
+      'vd "ao 1 sáng nay pH 8.2, DO 5, nhiệt độ 29", "nhập số đo ao A2: kiềm 120, mặn 15". ' +
+      'KHÔNG gọi khi người dùng chỉ HỎI đánh giá / tư vấn về chỉ số (dùng get_water_status). Công cụ chỉ TẠO PHIẾU xác nhận, chưa lưu gì.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pondName: { type: 'string', description: 'Tên ao nếu người dùng nêu' },
+      },
+    },
+  },
+};
+
+ACTION_TOOLS.draft_record_feeding = {
+  type: 'function',
+  function: {
+    name: 'draft_record_feeding',
+    description:
+      'Người dùng MUỐN CHO ĂN / KỂ LẠI / RA LỆNH GHI việc cho tôm ăn (hoặc bỏ cữ, cho ăn trễ), vd "tôi muốn cho ăn", "cho tôm ăn", ' +
+      '"giờ cho ăn đây", "ao 1 vừa cho ăn cữ 2, 12 kg", "sáng nay cho ăn ao A1 8 ký cám số 2", "ao 3 bỏ cữ trưa", "ghi nhật ký cho ăn ao 2". ' +
+      'Không nêu ao thì vẫn gọi (bỏ trống pondName) — hệ thống sẽ liệt kê các ao đang nuôi để người dùng chọn. ' +
+      'Hệ thống hiện THẺ để người dùng tự chọn cữ, giờ, loại thức ăn trong kho và số ký (kèm gợi ý theo giai đoạn tôm). ' +
+      'KHÔNG gọi khi người dùng chỉ HỎI tư vấn ("hôm nay nên cho ăn bao nhiêu?", "ao 1 ăn bao nhiêu rồi?" -> dùng get_feeding_status). ' +
+      ACTION_TOOL_NOTE,
+    parameters: {
+      type: 'object',
+      properties: {
+        pondName: { type: 'string', description: 'Tên ao nếu người dùng nêu' },
+        date: { type: 'string', description: 'Ngày cho ăn YYYY-MM-DD nếu người dùng nêu ("hôm qua"...). Bỏ trống = hôm nay.' },
+        sessions: {
+          type: 'array',
+          description: 'Các cữ người dùng nhắc tới (mỗi phần tử một cữ). Bỏ trống nếu không nói cữ nào.',
+          items: {
+            type: 'object',
+            properties: {
+              session: { type: 'integer', minimum: 1, maximum: 7, description: 'Số cữ 1-7 nếu người dùng nói "cữ 2", "bữa 3"' },
+              time: { type: 'string', description: 'Giờ cho ăn HH:mm nếu người dùng nói, "4 giờ chiều" -> "16:00"' },
+              amountKg: { type: 'number', description: 'Số ký thức ăn người dùng nói (kg)' },
+              feedName: { type: 'string', description: 'Tên / loại thức ăn người dùng nói' },
+              status: { type: 'string', enum: ['COMPLETED', 'SKIPPED', 'DELAYED'], description: 'Bỏ cữ -> SKIPPED, cho ăn trễ -> DELAYED' },
+              method: { type: 'string', enum: ['MANUAL', 'AUTO'], description: 'Máy cho ăn tự động -> AUTO' },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 /** Lọc các trường tùy chọn hợp lệ của vụ nuôi (số dương, ngày YYYY-MM-DD, chuỗi ngắn) */
 function pickCropOptionalFields(src: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
@@ -462,6 +554,7 @@ export class AgentActionService {
     private readonly cropsService: CropsService,
     @Optional() private readonly waterRecordAgent?: WaterRecordAgentService,
     @Optional() private readonly marketPrices?: MarketPricesService,
+    @Optional() private readonly feedingRecordAgent?: FeedingRecordAgentService,
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (apiKey) {
@@ -499,12 +592,20 @@ export class AgentActionService {
     }
 
     // 2. Nhận diện các ý định nghiệp vụ (Intent Recognition)
+    // Có OpenAI: mọi ý định (tạo, nhập/xuất kho, nhập số đo nước) do chatbot chính nhận diện qua
+    // tool calling -> ở đây chỉ xử lý tệp tải lên và phiếu đang dở. Regex chỉ dùng khi KHÔNG có OpenAI.
+    const useRegexIntent = !this.openai;
     const isInventoryFile = Boolean(fileContext);
+    // Câu hỏi xin tư vấn ("có nên thêm thức ăn không?", "cách nhập kho thế nào?") không phải lệnh nhập kho
+    const looksLikeQuestion = AgentActionService.looksLikeQuestion(lower);
     const isInventoryImportIntent =
       isInventoryFile ||
-      /(nhập.*kho|nhập.*vào kho|đưa.*vào kho|lưu.*vào kho|thêm vật tư|nhập hàng|thêm thuốc|thêm thức ăn|nhập hóa chất|nhập kho tệp|nhập file|import.*kho)/i.test(lower);
+      (useRegexIntent &&
+        !looksLikeQuestion &&
+        /(nhập.*kho|đưa.*vào kho|lưu.*vào kho|thêm vật tư|nhập vật tư|nhập hàng|nhập hóa chất|nhập kho tệp|nhập file|import.*kho|(thêm|nhập)\s+(thuốc|thức ăn|cám|hóa chất|men|khoáng)[^?]*(vào kho|\d+\s*(kg|g|bao|chai|can|lít|lit|gói|thùng|hộp)))/i.test(lower));
 
     const isInventoryExportIntent =
+      useRegexIntent &&
       /(xuất file kho|xuất báo cáo kho|xuất tồn kho|tải file tồn kho|báo cáo tồn kho|xuất excel tồn kho|tải danh sách vật tư|xuất kho ra file)/i.test(lower);
 
     const isExplicitCreate =
@@ -526,7 +627,8 @@ export class AgentActionService {
       const waterIntent = WaterRecordAgentService.detectIntent(q);
       const isSideQuestion =
         isWaterPending && !waterIntent.explicit && WaterRecordAgentService.isSideQuestion(q);
-      if (!isSideQuestion && (isWaterPending || waterIntent.explicit || waterIntent.implicit)) {
+      const regexWaterIntent = useRegexIntent && (waterIntent.explicit || waterIntent.implicit);
+      if (!isSideQuestion && (isWaterPending || regexWaterIntent)) {
         if (currentUser.role === 'TECHNICIAN') {
           return this.waterRecordAgent.handleConversation(
             q,
@@ -536,7 +638,7 @@ export class AgentActionService {
             history,
           );
         }
-        if (waterIntent.explicit || isWaterPending) {
+        if ((useRegexIntent && waterIntent.explicit) || isWaterPending) {
           return {
             isAgentAction: true,
             answer:
@@ -550,12 +652,33 @@ export class AgentActionService {
     // Có OpenAI: yêu cầu tạo MỚI do chatbot chính tự hiểu qua tool calling
     // (draft_create_*), không phụ thuộc mẫu câu. Ở đây chỉ xử lý tiếp phiếu đang chờ.
     // Không có OpenAI: dùng regex làm đường dự phòng.
-    const handleCreateHere = this.openai ? isContinuingPending : isExplicitCreate || isContinuingPending;
-    if (!handleCreateHere && !isInventoryImportIntent && !isInventoryExportIntent) {
-      return null;
+    // Ghi nhật ký cho ăn khi KHÔNG có OpenAI (có OpenAI thì chatbot chính gọi draft_record_feeding)
+    if (
+      useRegexIntent &&
+      this.feedingRecordAgent &&
+      !isInventoryFile &&
+      !isContinuingPending &&
+      FeedingRecordAgentService.detectIntent(q)
+    ) {
+      return this.feedingRecordAgent.buildDraft(currentUser, {}, q, focusPondId);
     }
 
-    if (currentUser.role === 'ADMIN') {
+    const handleCreateHere = this.openai ? isContinuingPending : isExplicitCreate || isContinuingPending;
+
+    // 2b. Tạo trang trại / ao / vụ nuôi chỉ dành cho FARM_MANAGER: chặn NGAY từ bước dựng phiếu
+    // (kể cả phiếu đang chờ do client gửi lên), không để Nông dân / Kỹ thuật viên nhận phiếu
+    // rồi mới bị từ chối lúc bấm xác nhận. Có OpenAI thì lệnh tạo mới không đi qua regex,
+    // nhưng với role không có quyền vẫn chặn theo mẫu câu rõ ràng ("tạo trang trại", "thêm 3 ao",
+    // "tạo vụ") để trả lời từ chối nhất quán thay vì để AI trả lời mập mờ.
+    const isCreateCommand =
+      !isInventoryImportIntent &&
+      !isInventoryExportIntent &&
+      (isContinuingPending ||
+        (!looksLikeQuestion &&
+          !WaterRecordAgentService.detectIntent(q).explicit &&
+          /(tạo|thêm|khởi tạo|lập|mở|setup|thả giống|bắt đầu vụ|thả tôm)\s+(?:(?:\d{1,3}|một|hai|ba|bốn|tư|năm|sáu|bảy|tám|chín|mười|các|những|cái|mới)\s+){0,2}(trang trại|ao|vụ|farm|pond|crop)(?=$|[\s,.!:;])/i.test(lower)));
+
+    if (isCreateCommand && currentUser.role === 'ADMIN') {
       return {
         isAgentAction: true,
         answer:
@@ -564,7 +687,23 @@ export class AgentActionService {
       };
     }
 
-    // 3. Phân quyền bảo mật: Thao tác Kho qua trợ lý AI chỉ dành cho FARM_MANAGER (ADMIN đã bị chặn ở trên)
+    if (isCreateCommand && currentUser.role !== 'FARM_MANAGER') {
+      return {
+        isAgentAction: true,
+        answer:
+          'Dạ, việc **tạo trang trại, ao nuôi hoặc vụ nuôi** chỉ dành cho **Quản lý trang trại**. Tài khoản của bạn vẫn có thể hỏi tôi về tình hình ao, vụ nuôi, môi trường nước, kho... trong phạm vi được phân công. Bạn vui lòng liên hệ Quản lý trang trại để tạo mới nhé!',
+        actionDraft: undefined,
+      };
+    }
+
+    // Role không được tạo mới: câu hỏi kiểu "làm sao để tạo ao?" để chatbot chính tư vấn,
+    // tuyệt đối không đi tiếp xuống bước dựng phiếu tạo trang trại / ao / vụ.
+    const isCreateFlowForbidden = currentUser.role !== 'FARM_MANAGER' && !isInventoryImportIntent && !isInventoryExportIntent;
+    if (isCreateFlowForbidden || (!handleCreateHere && !isInventoryImportIntent && !isInventoryExportIntent)) {
+      return null;
+    }
+
+    // 3. Phân quyền bảo mật: Thao tác Kho qua trợ lý AI chỉ dành cho FARM_MANAGER
     if (isInventoryImportIntent || isInventoryExportIntent) {
       if (currentUser.role !== 'FARM_MANAGER') {
         return {
@@ -667,12 +806,37 @@ export class AgentActionService {
     return { farms, ponds: pondsWithStatus, emptyPonds: pondsWithStatus.filter((p) => !p.hasActiveCrop) };
   }
 
+  /**
+   * Câu mang dạng hỏi / xin tư vấn (không phải câu ra lệnh) — dùng để tránh regex
+   * nhận diện nhầm thành lệnh nhập kho hay tạo dữ liệu.
+   */
+  static looksLikeQuestion(lower: string): boolean {
+    return /\?|(có nên|nên không|có cần|cần không|thế nào|như nào|ra sao|bao nhiêu|mấy |là gì|tại sao|vì sao|làm sao|làm thế nào|cách |hướng dẫn|được không|hay không|có phải|liều)/i.test(
+      lower,
+    );
+  }
+
   /** Các tool tạo phiếu mà role này được phép dùng (đúng với phân quyền khi thực thi) */
   getActionToolDefinitions(role: string): OpenAI.Chat.Completions.ChatCompletionTool[] {
+    // Quản lý: duy nhất được tạo trang trại / ao / vụ và nhập / xuất kho
     if (role === 'FARM_MANAGER') {
-      return [ACTION_TOOLS.draft_create_farm, ACTION_TOOLS.draft_create_pond, ACTION_TOOLS.draft_create_crop];
+      return [
+        ACTION_TOOLS.draft_create_farm,
+        ACTION_TOOLS.draft_create_pond,
+        ACTION_TOOLS.draft_create_crop,
+        ACTION_TOOLS.draft_import_inventory,
+        ACTION_TOOLS.export_inventory_file,
+      ];
     }
-    // Tạo vụ nuôi qua trợ lý AI (thẻ nhập liệu trong chat) chỉ dành cho Quản lý trang trại
+    // Kỹ thuật viên: chỉ nhập số đo môi trường nước
+    if (role === 'TECHNICIAN' && this.waterRecordAgent) {
+      return [ACTION_TOOLS.draft_record_water_quality];
+    }
+    // Nông dân: chỉ ghi nhật ký cho ăn
+    if (role === 'FARMER' && this.feedingRecordAgent) {
+      return [ACTION_TOOLS.draft_record_feeding];
+    }
+    // Admin: chỉ hỏi / xem
     return [];
   }
 
@@ -690,6 +854,7 @@ export class AgentActionService {
     args: Record<string, any>,
     currentUser: AuthUser,
     userMessage: string,
+    context?: { focusPondId?: string; history?: Array<{ sender: 'user' | 'ai'; text: string }> },
   ): Promise<AgentActionResult> {
     const intent = ACTION_TOOL_INTENTS[toolName];
     const allowed = this.getActionToolDefinitions(currentUser.role).includes(ACTION_TOOLS[toolName]);
@@ -700,7 +865,37 @@ export class AgentActionService {
       };
     }
 
+    // Ghi nhật ký cho ăn (Nông dân): thẻ để người dùng tự chọn cữ / thức ăn / số ký
+    if (intent === 'RECORD_FEEDING') {
+      if (!this.feedingRecordAgent) {
+        return { isAgentAction: true, answer: 'Dạ, chức năng ghi nhật ký cho ăn qua trợ lý hiện chưa sẵn sàng.' };
+      }
+      return this.feedingRecordAgent.buildDraft(currentUser, args, userMessage, context?.focusPondId);
+    }
+
+    // Nhập số đo nước: bộ xử lý chuyên biệt bóc tách chỉ số từ tin nhắn & dựng phiếu
+    if (intent === 'RECORD_WATER_QUALITY') {
+      if (!this.waterRecordAgent) {
+        return { isAgentAction: true, answer: 'Dạ, chức năng ghi số đo nước qua trợ lý hiện chưa sẵn sàng.' };
+      }
+      return this.waterRecordAgent.handleConversation(
+        userMessage,
+        currentUser,
+        undefined,
+        context?.focusPondId,
+        context?.history,
+      );
+    }
+
     const db = await this.loadDraftContext(currentUser);
+
+    // Nhập / xuất kho: dùng bộ xử lý kho sẵn có (bóc tách mặt hàng từ tin nhắn)
+    if (intent === 'EXPORT_INVENTORY') {
+      return this.handleInventoryExport(userMessage, db.farms);
+    }
+    if (intent === 'IMPORT_INVENTORY') {
+      return this.handleInventoryImport(userMessage, db.farms, undefined, undefined, args.farmName);
+    }
     const collected: Record<string, any> = {};
 
     if (intent === 'CREATE_FARM') {
@@ -756,6 +951,7 @@ export class AgentActionService {
     farms: Array<{ id: string; name: string; address?: string | null }>,
     pendingAction?: { intent: AgentActionIntent; collectedData: Record<string, any> },
     fileContext?: { fileName: string; fileType: string; extractedText: string },
+    farmNameHint?: string,
   ): Promise<AgentActionResult> {
     if (farms.length === 0) {
       return {
@@ -764,46 +960,22 @@ export class AgentActionService {
       };
     }
 
-    // 1. Xác định phạm vi nhập kho:
-    // BẢO MẬT & PHÂN QUYỀN: 'farms' đã được farmAccess.getAccessibleFarmIds lọc nghiêm ngặt theo đúng Manager hiện tại.
-    // Nếu người dùng nhắc đến tên 1 trang trại cụ thể trong tin nhắn -> Nhập riêng cho trang trại đó.
-    // Nếu không nhắc riêng trang trại nào (hoặc tải file lên) -> Mặc định là KHO TỔNG DÙNG CHUNG cho TẤT CẢ các trang trại thuộc quyền quản lý của Manager đó!
-    const userSpecifiedFarm = farms.find((f) =>
-      question.toLowerCase().includes(f.name.toLowerCase()),
-    );
-
-    let targetFarmIds: string[] = [];
-    let farmDisplayName = '';
-    let isMultiFarm = false;
-
-    if (userSpecifiedFarm) {
-      targetFarmIds = [userSpecifiedFarm.id];
-      farmDisplayName = userSpecifiedFarm.name;
-    } else if (
-      pendingAction?.collectedData?.farmIds &&
-      Array.isArray(pendingAction.collectedData.farmIds) &&
-      pendingAction.collectedData.farmIds.length > 0
-    ) {
-      targetFarmIds = pendingAction.collectedData.farmIds;
-      isMultiFarm = targetFarmIds.length > 1;
-      farmDisplayName = pendingAction.collectedData.farmName || (isMultiFarm
-        ? `Kho Tổng Dùng Chung (${targetFarmIds.length} trang trại của bạn)`
-        : farms.find(f => f.id === targetFarmIds[0])?.name || 'Kho trang trại');
-    } else if (pendingAction?.collectedData?.farmId) {
-      const found = farms.find((f) => f.id === pendingAction.collectedData.farmId);
-      if (found) {
-        targetFarmIds = [found.id];
-        farmDisplayName = found.name;
-      }
-    }
-
-    if (targetFarmIds.length === 0) {
-      targetFarmIds = farms.map((f) => f.id);
-      isMultiFarm = targetFarmIds.length > 1;
-      farmDisplayName = isMultiFarm
-        ? `Kho Tổng Hệ Thống (Dùng chung cho toàn bộ ${farms.length} trang trại của bạn)`
-        : farms[0].name;
-    }
+    // 1. Xác định KHO nhập: mỗi trang trại là một kho riêng, mỗi phiếu chỉ nhập vào ĐÚNG 1 trang trại.
+    // ('farms' đã được lọc theo quyền của Quản lý hiện tại.)
+    //  - Người dùng nêu tên trang trại (trong tin nhắn hoặc AI truyền farmName) -> trang trại đó
+    //  - Phiếu đang chờ đã chọn trang trại -> giữ nguyên
+    //  - Chỉ có 1 trang trại -> tự chọn
+    //  - Nhiều trang trại mà chưa rõ -> hỏi lại người dùng (không còn "kho tổng" cộng vào mọi trại)
+    const normQuestion = normalizeVietnamese(question);
+    const farmByText = [...farms]
+      .sort((a, b) => b.name.length - a.name.length) // ưu tiên tên dài hơn ("Trại A2" trước "Trại A")
+      .find((f) => normQuestion.includes(normalizeVietnamese(f.name)));
+    const targetFarm =
+      matchByName(farms, farmNameHint) ||
+      farmByText ||
+      farms.find((f) => f.id === pendingAction?.collectedData?.farmId) ||
+      (farms.length === 1 ? farms[0] : undefined);
+    const farmOptions = farms.map((f) => ({ id: f.id, name: f.name }));
 
     const contentToParse = fileContext?.extractedText || pendingAction?.collectedData?.fileText || question;
     const fileName = fileContext?.fileName || pendingAction?.collectedData?.fileName || 'Danh_sach_vat_tu';
@@ -818,7 +990,7 @@ export class AgentActionService {
       items = pendingAction.collectedData.items;
     }
 
-    if (this.openai && contentToParse) {
+    if (items.length === 0 && this.openai && contentToParse) {
       try {
         const systemPrompt = `Bạn là Chuyên gia Quản lý Kho Vật tư Nuôi tôm Thông minh SSFM (Smart Shrimp Farm Management).
 Nhiệm vụ: Phân tích toàn bộ dữ liệu bảng tính Excel/CSV, hóa đơn hoặc danh mục kỹ thuật và trích xuất ĐẦY ĐỦ TẤT CẢ các mặt hàng (không được bỏ sót bất kỳ dòng sản phẩm nào).
@@ -846,10 +1018,11 @@ QUY TẮC BÓC TÁCH QUY CÁCH, ĐƠN GIÁ & HÌNH ẢNH:
   + "Xô 5kg" -> packageType: "Xô", weightPerPkg: 5, unit: "kg"
   + "Bao 25kg" -> packageType: "Bao", weightPerPkg: 25, unit: "kg"
 - "unit": Đơn vị đo lường cơ bản chuẩn hóa ("kg", "g", "lít", "ml").
-- "packageQty": Số lượng gói/chai/bao nhập vào. Mặc định 10 (hoặc 1 nếu là thùng lớn 50kg, can 5 lít, xô 5kg).
-- "quantity": Tổng khối lượng tồn kho = packageQty * weightPerPkg.
+- "packageQty": Số lượng gói/chai/bao NHẬP VÀO — CHỈ lấy đúng con số có trong dữ liệu (cột "Số lượng", "SL", "Số bao", "Số chai", "Số thùng", "Qty"... hoặc câu "nhập 15 bao").
+  TUYỆT ĐỐI KHÔNG tự đặt / đoán số lượng (không mặc định 10, không mặc định 1). Dữ liệu không có số lượng (vd bảng giá, danh mục sản phẩm) -> packageQty: 0.
+- "quantity": Tổng khối lượng nhập = packageQty * weightPerPkg (hoặc đúng tổng kg/lít nếu dữ liệu ghi tổng). Không có số lượng -> 0.
 - "pricePerPackage": Đơn giá VNĐ trên 1 đơn vị đóng gói (từ cột Giá hoặc Đơn giá). Ví dụ: 260000, 4500000. Nếu không có giá thì 0.
-- "minThreshold": Ngưỡng cảnh báo tồn kho tối thiểu (mặc định 10-15% tổng quantity).
+- "minThreshold": Ngưỡng cảnh báo tồn kho tối thiểu nếu dữ liệu có ghi; không có thì 10-15% quantity (quantity = 0 thì 0).
 - "supplierName": Tên thương hiệu, nhà sản xuất hoặc công ty cung cấp nếu nhận diện được (ví dụ: "GrowMax", "Cargill", "Bayer", "Uni-President", "CP"...).
 - "description": Tóm tắt ngắn gọn thành phần chính, công dụng, liều dùng và bảo quản.
 - "imageUrl": Bóc tách liên kết URL hình ảnh từ các cột "Hình ảnh", "Ảnh", "Image", "URL" (chuỗi URL hợp lệ bắt đầu bằng http:// hoặc https://).
@@ -861,9 +1034,9 @@ YÊU CẦU TRẢ VỀ JSON THEO SCHEMA:
       "itemName": "Tên cụ thể mặt hàng (Viết hoa đẹp mắt)",
       "category": "FEED" | "MEDICINE" | "CHEMICAL",
       "packageType": "Chai" | "Can" | "Bao" | "Gói" | "Thùng" | "Lon" | "Xô" | "Khác",
-      "packageQty": 10,
+      "packageQty": 0,
       "weightPerPkg": 1,
-      "quantity": 10,
+      "quantity": 0,
       "unit": "kg" | "g" | "lít" | "ml",
       "pricePerPackage": 260000,
       "minThreshold": 2,
@@ -902,10 +1075,11 @@ YÊU CẦU TRẢ VỀ JSON THEO SCHEMA:
             }
             const packageType = it.packageType ? String(it.packageType).trim() : (unit === 'lít' ? 'Chai' : 'Bao');
             const weightPerPkg = Math.max(0.01, Number(it.weightPerPkg) || 1);
-            const packageQty = Math.max(1, Number(it.packageQty) || 1);
-            const quantity = it.quantity ? Math.max(0.1, Number(it.quantity)) : packageQty * weightPerPkg;
+            // Chỉ dùng số lượng có thật trong dữ liệu; không có -> 0 (người dùng nhập trên phiếu)
+            const packageQty = Math.max(0, Number(it.packageQty) || 0);
+            const quantity = Number(it.quantity) > 0 ? Number(it.quantity) : packageQty * weightPerPkg;
             const pricePerPackage = Math.max(0, Number(it.pricePerPackage) || 0);
-            const minThreshold = Number(it.minThreshold) || Math.max(1, Math.round(quantity * 0.15));
+            const minThreshold = Number(it.minThreshold) > 0 ? Number(it.minThreshold) : Math.round(quantity * 0.15);
 
             return {
               itemName: cleanName,
@@ -944,16 +1118,36 @@ YÊU CẦU TRẢ VỀ JSON THEO SCHEMA:
       };
     }
 
+    // Chưa xác định được kho -> hỏi người dùng chọn trang trại (giữ danh sách mặt hàng đã bóc tách)
+    if (!targetFarm) {
+      return {
+        isAgentAction: true,
+        answer:
+          `Dạ, tôi đã trích xuất **${items.length} mặt hàng** từ **"${fileName}"**. ` +
+          `Mỗi trang trại có **kho riêng** — bạn muốn nhập vào **kho của trang trại nào**?\n\n` +
+          farms.map((f) => `- ${f.name}`).join('\n'),
+        actionDraft: {
+          type: 'SLOT_FILLING',
+          intent: 'IMPORT_INVENTORY',
+          collectedData: { items, fileName, fileText: contentToParse },
+          missingFields: ['farmId'],
+          quickSuggestions: farms.slice(0, 8).map((f) => f.name),
+          farmOptions,
+        },
+      };
+    }
+
     const summary: Record<string, string> = {
-      'Phạm vi nhập kho': farmDisplayName,
+      'Kho nhập': `Kho trang trại ${targetFarm.name}`,
       'Tổng số mặt hàng': `${items.length} mặt hàng`,
       'Tệp chứng từ': fileName,
       'Thời gian trích xuất': new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const reply = isMultiFarm
-      ? `Dạ vâng! Tôi đã đọc tệp **"${fileName}"** và trích xuất thành công **${items.length} mặt hàng vật tư** chuẩn bị nhập vào **Kho Tổng Hệ Thống (Dùng chung cho toàn bộ ${targetFarmIds.length} trang trại của bạn)**.\n\nBạn vui lòng kiểm tra bảng danh mục chi tiết bên dưới và nhấn **"Xác nhận nhập kho ngay"** để hoàn tất nhé!`
-      : `Dạ vâng! Tôi đã đọc tệp **"${fileName}"** và trích xuất thành công **${items.length} mặt hàng vật tư** chuẩn bị nhập vào kho cho **"${farmDisplayName}"**.\n\nBạn vui lòng kiểm tra bảng danh mục chi tiết bên dưới và nhấn **"Xác nhận nhập kho ngay"** để hoàn tất nhé!`;
+    const reply =
+      `Dạ vâng! Tôi đã trích xuất **${items.length} mặt hàng vật tư** từ **"${fileName}"**, chuẩn bị nhập vào **kho trang trại "${targetFarm.name}"**.` +
+      (farms.length > 1 ? ' Bạn có thể đổi kho trang trại ngay trên phiếu.' : '') +
+      `\n\nBạn vui lòng kiểm tra bảng danh mục bên dưới và nhấn **"Xác nhận nhập kho ngay"** để hoàn tất nhé!`;
 
     return {
       isAgentAction: true,
@@ -962,9 +1156,8 @@ YÊU CẦU TRẢ VỀ JSON THEO SCHEMA:
         type: 'CONFIRM_ACTION',
         intent: 'IMPORT_INVENTORY',
         collectedData: {
-          farmIds: targetFarmIds,
-          farmId: targetFarmIds[0],
-          farmName: farmDisplayName,
+          farmId: targetFarm.id,
+          farmName: targetFarm.name,
           items,
           fileName,
           fileText: contentToParse,
@@ -973,7 +1166,8 @@ YÊU CẦU TRẢ VỀ JSON THEO SCHEMA:
         summary,
         inventoryItems: items,
         fileName,
-        farmName: farmDisplayName,
+        farmName: targetFarm.name,
+        farmOptions,
       },
     };
   }
@@ -2060,6 +2254,17 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
     const { intent, data } = dto;
     const uid = currentUser.userId || (currentUser as any).id;
 
+    // Ghi nhật ký cho ăn: CHỈ Nông dân
+    if (intent === 'RECORD_FEEDING') {
+      if (currentUser.role !== 'FARMER') {
+        throw new ForbiddenException('Chỉ Nông dân mới ghi nhật ký cho ăn qua trợ lý AI.');
+      }
+      if (!this.feedingRecordAgent) {
+        throw new BadRequestException('Tính năng ghi nhật ký cho ăn bằng AI chưa được kích hoạt');
+      }
+      return this.feedingRecordAgent.execute(data, currentUser);
+    }
+
     if (intent === 'RECORD_WATER_QUALITY') {
       if (!this.waterRecordAgent) {
         throw new BadRequestException('Tính năng nhập số đo nước bằng AI chưa được kích hoạt');
@@ -2103,28 +2308,20 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
       const accessibleFarmIds = await this.farmAccess.getAccessibleFarmIds(currentUser);
       let targetFarms: Array<{ id: string; name: string }> = [];
 
-      const rawFarmIds: string[] =
-        Array.isArray(data.farmIds) && data.farmIds.length > 0
-          ? data.farmIds
-          : (data.farmId ? [data.farmId] : []);
-
-      if (rawFarmIds.length > 0) {
-        targetFarms = await this.prisma.farm.findMany({
-          where: {
-            id: { in: accessibleFarmIds ? rawFarmIds.filter((id) => accessibleFarmIds.includes(id)) : rawFarmIds },
-            deletedAt: null,
-          },
-          select: { id: true, name: true },
-        });
+      // Mỗi trang trại là một kho riêng: phiếu phải chỉ định ĐÚNG 1 trang trại
+      // (không còn "kho tổng" cộng số lượng vào mọi trang trại).
+      const rawFarmId: string | undefined =
+        data.farmId || (Array.isArray(data.farmIds) && data.farmIds.length === 1 ? data.farmIds[0] : undefined);
+      if (!rawFarmId) {
+        throw new BadRequestException('Vui lòng chọn kho của trang trại cần nhập hàng');
       }
-
-      // Nếu không chỉ định cụ thể, đồng bộ cho tất cả các trang trại của Manager này
-      if (targetFarms.length === 0 && accessibleFarmIds && accessibleFarmIds.length > 0) {
-        targetFarms = await this.prisma.farm.findMany({
-          where: { id: { in: accessibleFarmIds }, deletedAt: null },
-          select: { id: true, name: true },
-        });
+      if (accessibleFarmIds && !accessibleFarmIds.includes(rawFarmId)) {
+        throw new ForbiddenException('Bạn không có quyền nhập kho cho trang trại này');
       }
+      targetFarms = await this.prisma.farm.findMany({
+        where: { id: rawFarmId, deletedAt: null },
+        select: { id: true, name: true },
+      });
 
       if (targetFarms.length === 0) {
         throw new BadRequestException('Chưa xác định được trang trại hợp lệ nào thuộc quyền quản lý của bạn để nhập kho');
@@ -2136,6 +2333,8 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
         : targetFarms[0].name;
 
       const processedItems: any[] = [];
+      let importedCount = 0; // mặt hàng có số lượng nhập
+      let catalogOnlyCount = 0; // mặt hàng chỉ thêm vào danh mục (chưa có số lượng)
 
       // Nhập đồng bộ cho từng trang trại thuộc quyền sở hữu của manager
       for (const targetFarm of targetFarms) {
@@ -2153,13 +2352,18 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
           const category = ['FEED', 'MEDICINE', 'CHEMICAL'].includes(it.category)
             ? it.category
             : 'CHEMICAL';
-          const qty = Math.max(0.1, Number(it.quantity) || 1);
+          // Số lượng đúng như phiếu (người dùng đã kiểm tra / sửa); KHÔNG tự đặt số lượng mặc định
+          const rawPkgQty = Math.max(0, Number(it.packageQty) || 0);
+          const rawWeight = Math.max(0, Number(it.weightPerPkg) || 0);
+          const qty = Math.max(0, Number(it.quantity) || rawPkgQty * rawWeight || 0);
           const unit = (it.unit || 'kg').trim();
-          const minThreshold = Number(it.minThreshold) || Math.round(qty * 0.15);
+          const minThreshold = Number(it.minThreshold) > 0 ? Number(it.minThreshold) : Math.round(qty * 0.15);
           const pricePerPackage = Number(it.pricePerPackage) || 0;
           const packageType = it.packageType?.trim() || (unit === 'lít' ? 'Chai' : 'Bao');
-          const packageQty = it.packageQty != null ? Number(it.packageQty) : (it.weightPerPkg ? Math.round(qty / Number(it.weightPerPkg)) : qty);
-          const weightPerPkg = it.weightPerPkg != null ? Number(it.weightPerPkg) : (packageQty > 0 ? Math.round((qty / packageQty) * 100) / 100 : 1);
+          const packageQty = rawPkgQty > 0 ? rawPkgQty : rawWeight > 0 ? Math.round((qty / rawWeight) * 100) / 100 : 0;
+          const weightPerPkg = rawWeight > 0 ? rawWeight : packageQty > 0 ? Math.round((qty / packageQty) * 100) / 100 : 1;
+          if (qty > 0) importedCount += 1;
+          else catalogOnlyCount += 1;
           const supplierName = it.supplierName?.trim() || null;
           const description = it.description?.trim() || null;
           const shape = category === 'FEED' ? (it.shape?.trim() || 'Trụ tròn') : null;
@@ -2169,7 +2373,19 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
           const existing = existingMap.get(cleanName.toLowerCase());
 
           try {
-            if (existing) {
+            if (existing && qty <= 0) {
+              // Không có số lượng: chỉ cập nhật thông tin còn thiếu (giá...), không cộng tồn kho
+              const updated = await this.prisma.inventory.update({
+                where: { id: existing.id },
+                data: {
+                  ...(pricePerPackage > 0 ? { pricePerPackage } : {}),
+                  ...(supplierName && !existing.supplierName ? { supplierName } : {}),
+                  ...(description && !existing.description ? { description } : {}),
+                  ...(imageUrl && !existing.imageUrl ? { imageUrl } : {}),
+                },
+              });
+              processedItems.push(updated);
+            } else if (existing) {
               const updated = await this.prisma.inventory.update({
                 where: { id: existing.id },
                 data: {
@@ -2229,7 +2445,7 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
               const priceInfo = pricePerPackage > 0 ? ` - Đơn giá: ${pricePerPackage.toLocaleString('vi-VN')} đ/${packageType}` : '';
               const fileSource = data.fileName ? `tệp ${data.fileName}` : 'chứng từ';
 
-              await this.prisma.inventoryUsageLog
+              if (qty > 0) await this.prisma.inventoryUsageLog
                 .create({
                   data: {
                     inventoryId: created.id,
@@ -2249,9 +2465,13 @@ TRẢ VỀ ĐỊNH DẠNG JSON SCHEMA:
         }
       }
 
-      const successMsg = isMultiFarm
-        ? `🎉 Đã nhập và đồng bộ thành công **${items.length} mặt hàng vật tư** vào **Kho Tổng Hệ Thống (Đồng bộ dùng chung cho toàn bộ ${targetFarms.length} trang trại của bạn)**! Toàn bộ lịch sử biến động nhập kho đã được lưu vào **Nhật ký sử dụng / Lịch sử kho**.`
-        : `🎉 Đã nhập thành công **${items.length} mặt hàng vật tư** vào kho trang trại **"${farmDisplayName}"**! Toàn bộ lịch sử biến động nhập kho đã được lưu vào **Nhật ký sử dụng / Lịch sử kho**.`;
+      const successMsg =
+        `🎉 Đã xử lý **${items.length} mặt hàng** cho kho trang trại **"${farmDisplayName}"**: ` +
+        `**${importedCount}** mặt hàng nhập theo đúng số lượng trên phiếu` +
+        (catalogOnlyCount > 0
+          ? `, **${catalogOnlyCount}** mặt hàng chưa có số lượng nên chỉ được thêm vào danh mục kho (tồn kho không đổi).`
+          : '.') +
+        ` Lịch sử nhập kho đã được lưu vào **Nhật ký sử dụng / Lịch sử kho**.`;
 
       return {
         success: true,

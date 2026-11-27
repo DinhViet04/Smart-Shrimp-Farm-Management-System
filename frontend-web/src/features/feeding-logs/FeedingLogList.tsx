@@ -1,64 +1,64 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Search,
-  RotateCcw,
   ChevronLeft,
   ChevronRight,
-  Eye,
+  ChevronDown,
   Utensils,
-  Calendar,
-  X,
   Trash2,
-  Edit2,
-  Save,
+  Pencil,
   Loader2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Waves,
+  User,
 } from 'lucide-react';
-import { farmService } from '../../services/farm.service';
-import LoadingMotion from '../../components/LoadingMotion';
+import { pondService, type OverviewFarm, type OverviewPond } from '../../services/pond.service';
+import type { Crop } from '../../services/crop.service';
 import {
   feedingLogService,
   DEFAULT_FEEDING_SESSIONS,
   type DailyFeedingGroup,
   type FeedingStatus,
-  type FeedingSession,
 } from '../../services/feeding-log.service';
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 import { getErrorMessage } from '../../utils/errors';
+import { formatDayVN, isToday, sessionInfo, roundKg } from './feeding-utils';
 
-interface Farm { id: string; name: string; }
+const PAGE_SIZE = 10;
 
-export default function FeedingLogList() {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [selectedFarmId, setSelectedFarmId] = useState('');
-  const [search, setSearch] = useState('');
+/** Lưới cột cố định → các cột thẳng hàng, không bị khoảng trống lớn */
+const ROW_GRID = 'grid-cols-[minmax(0,1fr)_auto_auto_16px] md:grid-cols-[minmax(140px,1.2fr)_minmax(150px,auto)_minmax(0,1.5fr)_96px_16px] items-center gap-x-4';
+
+/** 45.25 → "45,25" (định dạng Việt Nam) */
+const fmtKg = (n: number) => roundKg(n).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
+const STATUS_STYLE: Record<FeedingStatus, { dot: string; text: string; label: string }> = {
+  COMPLETED: { dot: 'bg-teal-500 border-teal-500', text: 'text-teal-700 bg-teal-50', label: 'Đã cho ăn' },
+  DELAYED: { dot: 'bg-amber-400 border-amber-400', text: 'text-amber-800 bg-amber-50', label: 'Trễ cử' },
+  SKIPPED: { dot: 'bg-white border-slate-300', text: 'text-slate-600 bg-slate-100', label: 'Bỏ cử' },
+};
+
+interface Props {
+  /** Mở tab ghi cho ăn ở đúng ao + ngày để sửa */
+  onEditDay: (pondId: string, date: string) => void;
+}
+
+export default function FeedingLogList({ onEditDay }: Props) {
+  const [farms, setFarms] = useState<OverviewFarm[]>([]);
+  const [ponds, setPonds] = useState<OverviewPond[]>([]);
+  const [crops, setCrops] = useState<Crop[]>([]);
+
+  const [pondFilter, setPondFilter] = useState('');
   const [page, setPage] = useState(0);
-  const [size] = useState(10);
   const [total, setTotal] = useState(0);
   const [data, setData] = useState<DailyFeedingGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Selected item for Detail Modal
-  const [selectedGroup, setSelectedGroup] = useState<DailyFeedingGroup | null>(null);
-
-  // Edit Mode state inside Detail Modal
-  const [isEditingModal, setIsEditingModal] = useState(false);
-  const [editingSessions, setEditingSessions] = useState<Record<FeedingSession, {
-    feedingSession: FeedingSession;
-    feedingTime: string;
-    feedProductId: string;
-    feedAmount: number;
-    feedingStatus: FeedingStatus;
-  }>>({} as any);
-  const [modalFeedProducts, setModalFeedProducts] = useState<any[]>([]);
-  const [isSavingModal, setIsSavingModal] = useState(false);
-  const [modalCachedAmounts, setModalCachedAmounts] = useState<Record<string, number>>({});
-
-  // Selected item for Delete Confirmation Modal
   const [groupToDelete, setGroupToDelete] = useState<DailyFeedingGroup | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const listTopRef = useRef<HTMLDivElement>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -66,130 +66,59 @@ export default function FeedingLogList() {
   };
 
   useEffect(() => {
-    farmService.getAll().then(setFarms).catch(console.error);
+    pondService
+      .getOverview()
+      .then((o) => {
+        setFarms(o.farms || []);
+        setPonds(o.ponds || []);
+        setCrops(o.crops || []);
+      })
+      .catch(console.error);
   }, []);
 
-  const fetchLogs = useCallback(async (silent?: unknown) => {
-    try {
-      if (silent !== true) setLoading(true);
-      const res = await feedingLogService.getAllGrouped({
-        farmId: selectedFarmId || undefined,
-        search: search || undefined,
-        page,
-        size,
-      });
-      setData(res.data);
-      setTotal(res.total);
-    } catch (err) {
-      console.error('Error fetching feeding logs:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFarmId, search, page, size]);
-
-  // Realtime: tự tải lại khi dữ liệu liên quan thay đổi trên server
-  useRealtimeRefresh(['feeding-logs'], () => {
-    void fetchLogs(true);
-  });
+  const requestId = useRef(0);
+  const fetchLogs = useCallback(
+    async (silent = false) => {
+      const req = ++requestId.current;
+      if (!silent) setLoading(true);
+      try {
+        const res = await feedingLogService.getAllGrouped({ pondId: pondFilter || undefined, page, size: PAGE_SIZE });
+        if (req !== requestId.current) return;
+        setData(res.data);
+        setTotal(res.total);
+      } catch (err) {
+        if (req === requestId.current) showToast(getErrorMessage(err) || 'Không tải được lịch sử cho ăn', 'error');
+      } finally {
+        if (req === requestId.current) setLoading(false);
+      }
+    },
+    [pondFilter, page],
+  );
 
   useEffect(() => {
-    fetchLogs();
+    void fetchLogs();
   }, [fetchLogs]);
 
-  // Load feed products and populate edit form when a group is selected for detail modal
-  useEffect(() => {
-    if (selectedGroup) {
-      feedingLogService
-        .getFeedProducts(selectedGroup.farmId)
-        .then((prods) => setModalFeedProducts(prods))
-        .catch(console.error);
+  useRealtimeRefresh(['feeding-logs'], () => void fetchLogs(true));
 
-      const map: any = {};
-      const cache: Record<string, number> = {};
-      DEFAULT_FEEDING_SESSIONS.forEach((defItem) => {
-        const found = selectedGroup.sessions.find(
-          (s) => s.feedingSession === defItem.session,
-        );
-        const amt = found?.feedAmount || 0;
-        map[defItem.session] = {
-          feedingSession: defItem.session,
-          feedingTime: found?.feedingTime || defItem.defaultTime,
-          feedProductId: found?.feedProductId || '',
-          feedAmount: amt,
-          feedingStatus: found?.feedingStatus || 'SKIPPED',
-        };
-        if (amt > 0) {
-          cache[defItem.session] = amt;
-        }
-      });
-      setEditingSessions(map);
-      setModalCachedAmounts(cache);
-      setIsEditingModal(false);
-    }
-  }, [selectedGroup]);
+  const activeCropIds = useMemo(() => new Set(crops.filter((c) => c.status === 'ACTIVE').map((c) => c.id)), [crops]);
+  const showFarmName = farms.length > 1;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Calculated total feed kg in modal when editing
-  const editingTotalKg = useMemo(() => {
-    let sum = 0;
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      const ed = editingSessions[item.session];
-      if (ed && ed.feedingStatus !== 'SKIPPED') {
-        sum += Number(ed.feedAmount) || 0;
-      }
-    });
-    return sum;
-  }, [editingSessions]);
-
-  const handleSaveModalEdits = async () => {
-    if (!selectedGroup) return;
-
-    const fallbackProductId = modalFeedProducts[0]?.id || '';
-    const sessionsPayload = DEFAULT_FEEDING_SESSIONS.map((item) => {
-      const ed = editingSessions[item.session];
-      const status = ed?.feedingStatus || 'SKIPPED';
-      return {
-        feedingSession: item.session,
-        feedingTime: ed?.feedingTime || item.defaultTime,
-        feedProductId: ed?.feedProductId || fallbackProductId,
-        feedAmount: status === 'SKIPPED' ? 0 : Number(ed?.feedAmount) || 0,
-        feedingMethod: 'MANUAL' as const,
-        feedingStatus: status,
-      };
-    });
-
-    try {
-      setIsSavingModal(true);
-      await feedingLogService.createDailyLog({
-        farmId: selectedGroup.farmId,
-        pondId: selectedGroup.pondId,
-        cropId: selectedGroup.cropId,
-        feedingDate: selectedGroup.feedingDate,
-        sessions: sessionsPayload,
-      });
-
-      setSelectedGroup(null);
-      showToast('Cập nhật lịch sử cho ăn thành công!', 'success');
-      fetchLogs();
-    } catch (err) {
-      showToast(getErrorMessage(err) || 'Không thể cập nhật lịch sử cho ăn', 'error');
-    } finally {
-      setIsSavingModal(false);
-    }
+  const goToPage = (p: number) => {
+    setPage(p);
+    setExpandedId(null);
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleDelete = async () => {
     if (!groupToDelete) return;
     try {
       setIsDeleting(true);
-      await feedingLogService.deleteDailyLog(
-        groupToDelete.farmId,
-        groupToDelete.pondId,
-        groupToDelete.cropId,
-        groupToDelete.feedingDate
-      );
+      await feedingLogService.deleteDailyLog(groupToDelete.farmId, groupToDelete.pondId, groupToDelete.cropId, groupToDelete.feedingDate);
       setGroupToDelete(null);
-      showToast('Xoá nhật ký cho ăn thành công!', 'success');
-      fetchLogs();
+      showToast('Đã xoá nhật ký và hoàn thức ăn lại vào kho', 'success');
+      void fetchLogs(true);
     } catch (err) {
       showToast(getErrorMessage(err) || 'Không thể xoá nhật ký cho ăn', 'error');
     } finally {
@@ -197,527 +126,279 @@ export default function FeedingLogList() {
     }
   };
 
-  const totalPages = Math.ceil(total / size);
+
+  // Gom các ao theo ngày (dữ liệu đã sắp xếp ngày mới nhất trước)
+  const days = useMemo(() => {
+    const map = new Map<string, DailyFeedingGroup[]>();
+    for (const g of data) {
+      const key = g.feedingDate.slice(0, 10);
+      map.set(key, [...(map.get(key) || []), g]);
+    }
+    return [...map.entries()].map(([date, items]) => ({
+      date,
+      items,
+      totalKg: items.reduce((s, g) => s + g.totalFeedKg, 0),
+    }));
+  }, [data]);
 
   return (
-    <div className="w-full relative space-y-6">
-      {/* ── Search & Filters ────────────────────────────────────────────── */}
-      <div className="bg-white/90 backdrop-blur-md rounded-3xl p-5 border border-white/60 shadow-lg shadow-slate-200/40 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto flex-1">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-              placeholder="Tìm theo tên ao nuôi hoặc trang trại..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium outline-none hover:bg-white focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all"
-            />
-          </div>
-
-          {/* Farm Filter */}
+    <div className="w-full space-y-4" ref={listTopRef}>
+      {/* ── Thanh lọc ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <Waves className="w-4 h-4 text-teal-600" />
+          <span className="font-semibold text-slate-600">Ao</span>
           <select
-            value={selectedFarmId}
+            value={pondFilter}
             onChange={(e) => {
-              setSelectedFarmId(e.target.value);
+              setPondFilter(e.target.value);
               setPage(0);
+              setExpandedId(null);
             }}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-700 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer"
+            className="h-9 min-w-[200px] px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-800 outline-none focus:border-teal-500 cursor-pointer"
           >
-            <option value="">Tất cả trang trại</option>
-            {farms.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
+            <option value="">Tất cả ao</option>
+            {ponds.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {showFarmName ? ` — ${farms.find((f) => f.id === p.farmId)?.name || ''}` : ''}
+              </option>
             ))}
           </select>
+        </label>
+        <p className="text-sm text-slate-500">
+          <span className="font-semibold text-slate-800 tabular-nums">{total.toLocaleString('vi-VN')}</span> bản ghi theo ngày
+        </p>
+      </div>
+
+      {/* ── Danh sách ── */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 h-48 text-sm text-slate-500">
+          <Loader2 className="w-5 h-5 text-teal-600 animate-spin" /> Đang tải lịch sử cho ăn...
         </div>
+      ) : data.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 py-12 text-center">
+          <Utensils className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-slate-700">Chưa có nhật ký cho ăn</p>
+          <p className="text-sm text-slate-500 mt-0.5">Vào tab "Ghi cho ăn" để ghi các cử hằng ngày.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {days.map((day) => (
+            <section key={day.date} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              {/* Tiêu đề ngày */}
+              <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                  {formatDayVN(day.date)}
+                  {isToday(day.date) && (
+                    <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-teal-100 text-teal-800 whitespace-nowrap">Hôm nay</span>
+                  )}
+                </h3>
+                <p className="text-sm text-slate-500 whitespace-nowrap">
+                  {day.items.length} ao · <span className="font-semibold text-slate-800 tabular-nums">{fmtKg(day.totalKg)} kg</span>
+                </p>
+              </header>
 
-        <button
-          onClick={() => {
-            setSearch('');
-            setSelectedFarmId('');
-            setPage(0);
-          }}
-          className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all flex items-center gap-2 text-xs font-bold"
-        >
-          <RotateCcw className="w-4 h-4" /> Làm mới
-        </button>
-      </div>
-
-      {/* ── Data Table ─────────────────────────────────────────────────── */}
-      <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-white/60 shadow-lg shadow-slate-200/40 overflow-hidden">
-        {loading ? (
-          <LoadingMotion
-            mode="card"
-            title="Đang tải nhật ký cho ăn..."
-            subtitle="Đang đồng bộ dữ liệu các cử cho ăn, lượng thức ăn và trạng thái cho ăn..."
-            icon={<Utensils className="w-10 h-10 text-emerald-600 animate-pulse" />}
-            color="emerald"
-          />
-        ) : data.length === 0 ? (
-          <div className="text-center py-16 px-4">
-            <Utensils className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-base font-bold text-slate-700">Chưa có nhật ký cho ăn nào</h4>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Hãy chọn tab "Ghi nhận nhật ký" để tạo mới lịch ghi nhận 7 cử cho ăn mỗi ngày.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                  <th className="py-4 px-6">Ngày Cho Ăn</th>
-                  <th className="py-4 px-6">Trang Trại</th>
-                  <th className="py-4 px-6">Ao Nuôi</th>
-                  <th className="py-4 px-6">Vụ Nuôi</th>
-                  <th className="py-4 px-6 text-right">Tổng Thức Ăn (kg)</th>
-                  <th className="py-4 px-6 text-center">Các Cử Cho Ăn</th>
-                  <th className="py-4 px-6">Người Ghi Nhận</th>
-                  <th className="py-4 px-6 text-center">Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                {data.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-4 px-6 font-bold text-emerald-900">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-emerald-600" />
-                        {new Date(item.feedingDate).toLocaleDateString('vi-VN')}
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-slate-600">{item.farmName}</td>
-                    <td className="py-4 px-6 font-bold text-slate-800">{item.pondName}</td>
-                    <td className="py-4 px-6 text-xs text-slate-500">
-                      Ngày thả {new Date(item.cropStartDate).toLocaleDateString('vi-VN')}
-                    </td>
-                    <td className="py-4 px-6 text-right font-black text-emerald-700 text-base">
-                      {item.totalFeedKg.toFixed(1)} <span className="text-xs text-slate-400 font-normal">kg</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center justify-center gap-1">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {item.completedSessions}/7 Xong
-                        </span>
-                        {item.delayedSessions > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                            {item.delayedSessions} Trễ
-                          </span>
-                        )}
-                        {item.skippedSessions > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-slate-100 text-slate-600 border border-slate-200">
-                            {item.skippedSessions} Bỏ
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-xs text-slate-600 font-medium">{item.createdBy}</td>
-                    <td className="py-4 px-6 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => setSelectedGroup(item)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> Chi tiết
-                        </button>
-                        <button
-                          onClick={() => setGroupToDelete(item)}
-                          className="p-1.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                          title="Xoá nhật ký cho ăn"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">
-              Hiển thị trang <span className="font-bold text-slate-800">{page + 1}</span> / {totalPages} ({total} bản ghi)
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page === 0}
-                onClick={() => setPage(p => p - 1)}
-                className="p-2 rounded-xl border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage(p => p + 1)}
-                className="p-2 rounded-xl border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Detail & Edit Modal ────────────────────────────────────── */}
-      {selectedGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full p-6 max-h-[90vh] overflow-y-auto relative">
-            <button
-              onClick={() => {
-                setSelectedGroup(null);
-                setIsEditingModal(false);
-              }}
-              className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5 border-b pb-4 pr-10">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold flex-shrink-0">
-                  <Utensils className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-800">
-                    Chi Tiết Cho Ăn Ngày {new Date(selectedGroup.feedingDate).toLocaleDateString('vi-VN')}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {selectedGroup.farmName} • <span className="font-bold text-slate-700">{selectedGroup.pondName}</span>
-                  </p>
-                </div>
+              {/* Tiêu đề cột (màn hình rộng) */}
+              <div className={`${ROW_GRID} hidden md:grid px-4 py-2 text-xs font-medium text-slate-500 border-b border-slate-100`}>
+                <span>Ao nuôi</span>
+                <span>Các cử</span>
+                <span>Thức ăn</span>
+                <span className="text-right">Tổng</span>
+                <span />
               </div>
 
+              <ul className="divide-y divide-slate-100">
+                {day.items.map((g) => {
+                  const expanded = expandedId === g.id;
+                  const canEdit = activeCropIds.has(g.cropId);
+                  const sessionMap = new Map(g.sessions.map((s) => [s.feedingSession, s]));
+                  const fedCount = g.completedSessions + g.delayedSessions;
+                  const recorded = g.sessions.length;
+                  const feeds = [...new Set(g.sessions.filter((s) => s.feedingStatus !== 'SKIPPED').map((s) => s.feedProductName))];
+
+                  return (
+                    <li key={g.id}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(expanded ? null : g.id)}
+                        aria-expanded={expanded}
+                        className={`${ROW_GRID} grid w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors cursor-pointer ${expanded ? 'bg-slate-50' : ''}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-slate-900 truncate">{g.pondName}</span>
+                          {showFarmName && <span className="block text-xs text-slate-500 truncate">{g.farmName}</span>}
+                        </span>
+
+                        <span className="flex items-center gap-2">
+                          <span className="flex items-center gap-1" aria-hidden>
+                            {DEFAULT_FEEDING_SESSIONS.map((def) => {
+                              const s = sessionMap.get(def.session);
+                              return (
+                                <span
+                                  key={def.session}
+                                  title={`${sessionInfo(def.session).name}: ${s ? `${STATUS_STYLE[s.feedingStatus].label}${s.feedAmount ? ` · ${fmtKg(s.feedAmount)} kg` : ''}` : 'Không ghi'}`}
+                                  className={`w-2.5 h-2.5 rounded-full border ${s ? STATUS_STYLE[s.feedingStatus].dot : 'bg-slate-100 border-slate-200'}`}
+                                />
+                              );
+                            })}
+                          </span>
+                          <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                            {fedCount === 0 ? 'Bỏ cả ngày' : `${fedCount}/${recorded} cử`}
+                          </span>
+                        </span>
+
+                        <span className="hidden md:block text-slate-600 truncate" title={feeds.join(', ')}>
+                          {feeds.length ? feeds.join(', ') : '—'}
+                        </span>
+
+                        <span className={`text-right font-semibold tabular-nums ${g.totalFeedKg > 0 ? 'text-slate-900' : 'text-slate-400'}`}>
+                          {fmtKg(g.totalFeedKg)} kg
+                        </span>
+
+                        <ChevronDown className={`w-4 h-4 text-slate-400 justify-self-end transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {expanded && (
+                        <div className="px-4 pb-3 pt-1 bg-slate-50 space-y-3">
+                          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
+                                  <th className="py-2 px-3 font-medium">Cử</th>
+                                  <th className="py-2 px-3 font-medium">Giờ</th>
+                                  <th className="py-2 px-3 font-medium">Thức ăn</th>
+                                  <th className="py-2 px-3 font-medium text-right">Số kg</th>
+                                  <th className="py-2 px-3 font-medium">Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {DEFAULT_FEEDING_SESSIONS.filter((def) => sessionMap.has(def.session)).map((def) => {
+                                  const s = sessionMap.get(def.session)!;
+                                  const info = sessionInfo(def.session);
+                                  const skipped = s.feedingStatus === 'SKIPPED';
+                                  return (
+                                    <tr key={def.session} className={skipped ? 'text-slate-400' : 'text-slate-700'}>
+                                      <td className="py-2 px-3 whitespace-nowrap">
+                                        <span className="font-medium text-slate-800">{info.name}</span> <span className="text-slate-400">· {info.period}</span>
+                                      </td>
+                                      <td className="py-2 px-3 tabular-nums">{s.feedingTime}</td>
+                                      <td className="py-2 px-3">{skipped ? '—' : s.feedProductName}</td>
+                                      <td className="py-2 px-3 text-right tabular-nums font-medium">{skipped ? '—' : `${fmtKg(s.feedAmount)} kg`}</td>
+                                      <td className="py-2 px-3">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[s.feedingStatus].text}`}>
+                                          {STATUS_STYLE[s.feedingStatus].label}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <p className="text-xs text-slate-500 flex items-center gap-1">
+                              <User className="w-3.5 h-3.5" /> Người ghi: <span className="font-medium text-slate-700">{g.createdBy}</span>
+                            </p>
+                            {canEdit ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setGroupToDelete(g)}
+                                  className="h-8 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:border-rose-300 hover:text-rose-700 flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Xoá
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onEditDay(g.pondId, g.feedingDate)}
+                                  className="h-8 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" /> Sửa ngày này
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-500">Vụ nuôi đã kết thúc — chỉ xem</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {/* ── Phân trang ── */}
+      {!loading && totalPages > 1 && (
+        <nav aria-label="Phân trang lịch sử cho ăn" className="flex items-center justify-between gap-3 text-sm">
+          <span className="text-slate-500">
+            Trang <span className="font-semibold text-slate-800">{page + 1}</span> / {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => goToPage(page - 1)}
+              className="h-8 px-3 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 hover:border-teal-400 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" /> Mới hơn
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages - 1}
+              onClick={() => goToPage(page + 1)}
+              className="h-8 px-3 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 hover:border-teal-400 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
+            >
+              Cũ hơn <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </nav>
+      )}
+
+      {/* ── Xác nhận xoá ── */}
+      {groupToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5">
+            <h3 className="text-base font-semibold text-slate-900">Xoá nhật ký ngày này?</h3>
+            <p className="text-sm text-slate-600 mt-1.5">
+              {groupToDelete.pondName} · {formatDayVN(groupToDelete.feedingDate)}. {fmtKg(groupToDelete.totalFeedKg)} kg thức ăn sẽ được hoàn lại vào kho.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
               <button
                 type="button"
-                onClick={() => setIsEditingModal(!isEditingModal)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 ${
-                  isEditingModal
-                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300'
-                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                }`}
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                {isEditingModal ? 'Huỷ Chỉnh Sửa' : 'Chỉnh Sửa Nhanh'}
-              </button>
-            </div>
-
-            {/* 7 Session cards list */}
-            <div className="space-y-3 mb-6">
-              {DEFAULT_FEEDING_SESSIONS.map((defItem) => {
-                const sKey = defItem.session;
-                const sessionLog = selectedGroup.sessions.find(
-                  (s) => s.feedingSession === sKey,
-                );
-                const ed = editingSessions[sKey] || {
-                  feedingSession: sKey,
-                  feedingTime: sessionLog?.feedingTime || defItem.defaultTime,
-                  feedProductId: sessionLog?.feedProductId || '',
-                  feedAmount: sessionLog?.feedAmount || 0,
-                  feedingStatus: sessionLog?.feedingStatus || 'SKIPPED',
-                };
-
-                return (
-                  <div
-                    key={sKey}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      isEditingModal
-                        ? 'border-emerald-200 bg-emerald-50/20'
-                        : 'border-slate-200 bg-slate-50/50'
-                    }`}
-                  >
-                    {!isEditingModal ? (
-                      /* Read-only session view */
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <span className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs">
-                            {sKey.replace('SESSION_', '')}
-                          </span>
-                          <div>
-                            <h4 className="text-sm font-bold text-slate-800">{defItem.label}</h4>
-                            <p className="text-xs text-slate-400">Giờ thực tế: {sessionLog?.feedingTime || defItem.defaultTime}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                          <div className="text-left sm:text-right max-w-[200px]">
-                            <p className="text-xs font-bold text-slate-700 truncate" title={sessionLog?.feedProductName}>
-                              {sessionLog?.feedProductName || 'Chưa ghi'}
-                            </p>
-                            <p className="text-sm font-black text-emerald-700">
-                              {sessionLog?.feedAmount ? `${sessionLog.feedAmount} kg` : '0 kg'}
-                            </p>
-                          </div>
-
-                          <span
-                            className={`px-3 py-1 rounded-xl text-xs font-extrabold flex-shrink-0 ${
-                              sessionLog?.feedingStatus === 'COMPLETED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : sessionLog?.feedingStatus === 'DELAYED'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {sessionLog?.feedingStatus === 'COMPLETED'
-                              ? 'Hoàn thành'
-                              : sessionLog?.feedingStatus === 'DELAYED'
-                              ? 'Trễ cử'
-                              : 'Bỏ cử'}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Editable session form */
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-xs">
-                              {sKey.replace('SESSION_', '')}
-                            </span>
-                            <span className="text-xs font-bold text-slate-800">{defItem.label}</span>
-                          </div>
-
-                          <input
-                            type="time"
-                            value={ed.feedingTime}
-                            onChange={(e) =>
-                              setEditingSessions((prev) => ({
-                                ...prev,
-                                [sKey]: { ...prev[sKey], feedingTime: e.target.value },
-                              }))
-                            }
-                            className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-xs font-bold outline-none"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
-                          {/* Status selector */}
-                          <div className="sm:col-span-2 flex items-center gap-1">
-                            {(['COMPLETED', 'SKIPPED'] as FeedingStatus[]).map((st) => (
-                              <button
-                                key={st}
-                                type="button"
-                                onClick={() =>
-                                  setEditingSessions((prev) => {
-                                    const cur = prev[sKey];
-                                    let nextAmt = cur?.feedAmount || 0;
-                                    if (st === 'COMPLETED') {
-                                      if ((!nextAmt || nextAmt <= 0) && modalCachedAmounts[sKey] > 0) {
-                                        nextAmt = modalCachedAmounts[sKey];
-                                      }
-                                    } else {
-                                      if (nextAmt > 0) {
-                                        setModalCachedAmounts((c) => ({ ...c, [sKey]: nextAmt }));
-                                      }
-                                    }
-                                    return {
-                                      ...prev,
-                                      [sKey]: {
-                                        ...cur,
-                                        feedingStatus: st,
-                                        feedAmount: nextAmt,
-                                      },
-                                    };
-                                  })
-                                }
-                                className={`flex-1 py-1 px-2.5 rounded-lg text-[11px] font-extrabold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                                  ed.feedingStatus === st
-                                    ? st === 'COMPLETED'
-                                      ? 'bg-emerald-600 text-white border-emerald-600'
-                                      : 'bg-slate-700 text-white border-slate-700'
-                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                              >
-                                {st === 'COMPLETED' ? 'Hoàn thành' : 'Bỏ cử'}
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* Feed Amount input */}
-                          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              disabled={ed.feedingStatus === 'SKIPPED'}
-                              value={ed.feedAmount > 0 ? ed.feedAmount : (modalCachedAmounts[sKey] > 0 ? modalCachedAmounts[sKey] : (ed.feedingStatus === 'SKIPPED' ? 0 : ''))}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                setEditingSessions((prev) => ({
-                                  ...prev,
-                                  [sKey]: { ...prev[sKey], feedAmount: val },
-                                }));
-                                if (val > 0) {
-                                  setModalCachedAmounts((c) => ({ ...c, [sKey]: val }));
-                                }
-                              }}
-                              className={`w-full text-xs font-bold outline-none text-right ${
-                                ed.feedingStatus === 'SKIPPED' ? 'text-slate-400 bg-slate-50' : 'text-slate-800'
-                              }`}
-                            />
-                            <span className="text-[11px] text-slate-400 font-bold">kg</span>
-                          </div>
-                        </div>
-
-                        {/* Skipped note in modal */}
-                        {ed.feedingStatus === 'SKIPPED' && (
-                          <div className="text-[10px] text-slate-500 font-semibold italic flex items-center gap-1 mt-1">
-                            <span>✓ Đã bỏ cử: Lượng ăn (+{ed.feedAmount || modalCachedAmounts[sKey] || 0} kg) được cộng lại vào kho (vẫn lưu để dùng lại khi bật lại Hoàn thành).</span>
-                          </div>
-                        )}
-
-                        {/* Product selection dropdown */}
-                        {ed.feedingStatus !== 'SKIPPED' && (
-                          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 min-w-0">
-                            <span className="text-[11px] font-bold text-slate-400 flex-shrink-0">Loại cám:</span>
-                            <select
-                              value={ed.feedProductId}
-                              onChange={(e) =>
-                                setEditingSessions((prev) => ({
-                                  ...prev,
-                                  [sKey]: { ...prev[sKey], feedProductId: e.target.value },
-                                }))
-                              }
-                              className="flex-1 min-w-0 truncate text-xs font-semibold text-slate-800 bg-transparent border-none outline-none cursor-pointer"
-                            >
-                              <option value="">-- Chọn loại thức ăn --</option>
-                              {modalFeedProducts.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.itemName} (Tồn: {Math.round(p.quantity * 100) / 100} {p.unit})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Summary footer */}
-            <div className="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-slate-400 font-bold uppercase">
-                  {isEditingModal ? 'Tổng Lượng Mới (Dự kiến)' : 'Tổng Lượng Thức Ăn'}
-                </p>
-                <p className="text-2xl font-black text-emerald-400">
-                  {isEditingModal ? editingTotalKg.toFixed(2) : selectedGroup.totalFeedKg.toFixed(1)} kg
-                </p>
-                {isEditingModal && selectedGroup.totalFeedKg !== editingTotalKg && (
-                  <p className="text-xs font-bold mt-0.5">
-                    {editingTotalKg < selectedGroup.totalFeedKg ? (
-                      <span className="text-emerald-400">
-                        +{Math.round((selectedGroup.totalFeedKg - editingTotalKg) * 100) / 100} kg hoàn lại vào kho
-                      </span>
-                    ) : (
-                      <span className="text-amber-400">
-                        +{Math.round((editingTotalKg - selectedGroup.totalFeedKg) * 100) / 100} kg xuất thêm từ kho
-                      </span>
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isEditingModal ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingModal(false)}
-                      className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all"
-                      disabled={isSavingModal}
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveModalEdits}
-                      disabled={isSavingModal}
-                      className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/30"
-                    >
-                      {isSavingModal ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Save className="w-4 h-4" />
-                      )}
-                      Lưu Thay Đổi
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setSelectedGroup(null)}
-                    className="px-6 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all"
-                  >
-                    Đóng
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
-      {groupToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận xoá</h3>
-            <p className="text-sm text-slate-600 mb-6">
-              Bạn có chắc chắn muốn xoá nhật ký cho ăn ngày <span className="font-bold text-slate-800">{new Date(groupToDelete.feedingDate).toLocaleDateString('vi-VN')}</span> của ao <span className="font-bold text-slate-800">{groupToDelete.pondName}</span> không?
-              <br /><br />
-              <span className="text-rose-600 font-semibold">Lưu ý:</span> Tổng lượng thức ăn đã dùng ({groupToDelete.totalFeedKg} kg) sẽ được hoàn trả lại vào kho.
-            </p>
-            <div className="flex items-center gap-3">
-              <button
                 onClick={() => setGroupToDelete(null)}
-                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-colors"
                 disabled={isDeleting}
+                className="h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
-                Huỷ bỏ
+                Huỷ
               </button>
               <button
-                onClick={handleDelete}
-                className="flex-1 py-3 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors flex items-center justify-center gap-2"
+                type="button"
+                onClick={() => void handleDelete()}
                 disabled={isDeleting}
+                className="h-9 px-4 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium flex items-center gap-1.5 cursor-pointer"
               >
-                {isDeleting ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" /> Xoá nhật ký
-                  </>
-                )}
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Xoá
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className={`px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-bold border ${
-            toast.type === 'success' 
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/25' 
-              : 'bg-rose-600 text-white border-rose-500 shadow-rose-500/25'
-          }`}>
-            {toast.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0" />
-            )}
-            <span>{toast.message}</span>
-          </div>
+        <div
+          role="status"
+          className={`fixed top-6 right-6 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
+            toast.type === 'success' ? 'bg-white border-teal-200 text-teal-900' : 'bg-white border-rose-200 text-rose-800'
+          }`}
+        >
+          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-teal-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
+          <span>{toast.message}</span>
         </div>
       )}
     </div>

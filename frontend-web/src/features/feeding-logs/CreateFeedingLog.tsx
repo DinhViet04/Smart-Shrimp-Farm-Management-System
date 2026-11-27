@@ -1,1267 +1,1404 @@
-import { useState, useEffect, useEffectEvent, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
-  ChevronDown,
   Utensils,
-  Layers,
   Check,
   Ban,
   Pencil,
-  Sliders,
-  Sparkles,
   Calculator,
-  Scale,
+  Package,
+  Waves,
+  Calendar,
+  RotateCcw,
+  Save,
+  Clock,
+  Sparkles,
+  RefreshCw,
+  ChevronDown,
+  Trash2,
 } from 'lucide-react';
-import { pondService } from '../../services/pond.service';
+import { pondService, type OverviewFarm, type OverviewPond } from '../../services/pond.service';
+import type { Crop } from '../../services/crop.service';
 import {
   feedingLogService,
   DEFAULT_FEEDING_SESSIONS,
   FEEDING_SESSION_PRESETS,
   type FeedingSession,
-  type FeedingMethod,
-  type FeedingStatus,
   type SingleSessionPayload,
 } from '../../services/feeding-log.service';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
+import { chatbotService, type FeedingSuggestion } from '../../services/chatbot.service';
 import { getErrorMessage } from '../../utils/errors';
+import { localToday, formatDayVN, sessionInfo, roundKg, isToday } from './feeding-utils';
 
-interface Farm { id: string; name: string; }
-interface Pond { id: string; name: string; farmId: string; }
-interface Crop { id: string; pondId: string; startDate: string; status: string; }
 interface FeedProduct {
   id: string;
   itemName: string;
   quantity: number;
   unit: string;
-  packageQty?: number | null;
-  packageType?: string | null;
-  weightPerPkg?: number | null;
 }
 
-interface SavedSession {
-  amount: number;
-  productId: string;
-  locked: boolean;
+type DayLog = Awaited<ReturnType<typeof feedingLogService.getDailyDetails>>[number];
+
+/** Trạng thái nhập liệu của 1 cử (chỉ ở trình duyệt) */
+interface Draft {
+  active: boolean; // cử có nằm trong lịch cho ăn hôm nay không
+  time: string;
+  amount: string;
+  editing: boolean; // đang sửa lại cử đã ghi / đang "cho ăn lại" cử đã bỏ
+  manual: boolean; // người dùng tự gõ số kg → không bị tự chia lại ghi đè
+}
+type Drafts = Record<FeedingSession, Draft>;
+
+/** Kế hoạch chia đang áp dụng: thêm / bớt cử sẽ tự chia lại tổng này */
+interface Distribution {
+  totalKg: number;
+  source: 'AI' | 'MANUAL';
 }
 
-interface ToastProps {
-  message: string;
-  type: 'success' | 'error';
+/** Chia `total` kg thành `n` phần (2 chữ số lẻ), phần dư dồn vào cử cuối */
+function splitKg(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const base = Math.floor((total / n) * 100) / 100;
+  const last = Math.round((total - base * (n - 1)) * 100) / 100;
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? last : base));
 }
 
-function Toast({ message, type }: ToastProps) {
-  return (
-    <div
-      className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-semibold animate-in slide-in-from-right-8 fade-in duration-300 ${type === 'success'
-          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-          : 'bg-red-50 border-red-200 text-red-800'
-        }`}
-    >
-      {type === 'success' ? (
-        <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-      ) : (
-        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-      )}
-      <span>{message}</span>
-    </div>
-  );
-}
-
-export default function CreateFeedingLog() {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [ponds, setPonds] = useState<Pond[]>([]);
-  const [crops, setCrops] = useState<Crop[]>([]);
-  const [feedProducts, setFeedProducts] = useState<FeedProduct[]>([]);
-
-  const [selectedFarmId, setSelectedFarmId] = useState('');
-  const [selectedPondId, setSelectedPondId] = useState('');
-  const [selectedCropId, setSelectedCropId] = useState('');
-  const [feedingDate, setFeedingDate] = useState<string>(() => {
-    return new Date().toISOString().slice(0, 10);
+/**
+ * Tự chia lại kế hoạch cho các cử CHƯA GHI đang bật:
+ * còn lại = tổng − kg cử đã cho ăn − kg cử đang sửa / tự gõ tay → chia đều cho các cử còn lại.
+ */
+function applyDistribution(d: Drafts, logs: DayLog[], dist: Distribution | null): Drafts {
+  if (!dist) return d;
+  let fixedKg = 0;
+  const targets: FeedingSession[] = [];
+  for (const def of DEFAULT_FEEDING_SESSIONS) {
+    const sKey = def.session;
+    const log = logs.find((l) => l.feedingSession === sKey);
+    const x = d[sKey];
+    const isFedLog = !!log && log.feedingStatus !== 'SKIPPED';
+    if (log && !x.editing) {
+      if (isFedLog) fixedKg += Number(log.feedAmount) || 0; // đã cho ăn
+      continue; // đã cho ăn / đã bỏ: không đụng tới
+    }
+    if (!x.active) continue; // không cho ăn cử này
+    if (isFedLog || x.manual) {
+      fixedKg += parseFloat(x.amount) || 0; // đang sửa cử đã ghi / tự gõ tay
+      continue;
+    }
+    targets.push(sKey);
+  }
+  const parts = splitKg(Math.max(0, Math.round((dist.totalKg - fixedKg) * 100) / 100), targets.length);
+  let changed = false;
+  const out = { ...d };
+  targets.forEach((sKey, i) => {
+    const v = parts[i] > 0 ? String(parts[i]) : '';
+    if (out[sKey].amount !== v) {
+      out[sKey] = { ...out[sKey], amount: v };
+      changed = true;
+    }
   });
+  return changed ? out : d;
+}
 
-  // Session Preset State ('7_SESSIONS' is default)
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('7_SESSIONS');
+/** Ao + ngày cần mở (khi bấm "Sửa ngày này" ở tab Lịch sử) */
+export interface FeedingTarget {
+  pondId: string;
+  date: string;
+  nonce: number;
+}
 
-  // Active state map for each of the 7 sessions
-  const [activeSessions, setActiveSessions] = useState<Record<FeedingSession, boolean>>(() => {
-    const map: any = {};
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      map[item.session] = true;
-    });
-    return map;
-  });
+type SessionState = 'done' | 'skipped' | 'pending' | 'off';
 
-  // Batch action state: Total daily feed kg for auto-distribution
-  const [batchTotalFeedKg, setBatchTotalFeedKg] = useState<string>('');
-  const [batchFeedProductId, setBatchFeedProductId] = useState<string>('');
+const ABW_SOURCE_LABEL: Record<FeedingSuggestion['abwSource'], string> = {
+  SAMPLE: 'theo lần cân mẫu',
+  PLAN: 'theo kế hoạch tăng trưởng',
+  DOC_CURVE: 'ước tính theo ngày nuôi',
+};
 
-  // 7 Session data states
-  const [sessionData, setSessionData] = useState<Record<FeedingSession, SingleSessionPayload>>(() => {
-    const init: any = {};
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      init[item.session] = {
-        feedingSession: item.session,
-        feedingTime: item.defaultTime,
-        feedProductId: '',
-        feedAmount: 0,
-        feedingMethod: 'MANUAL' as FeedingMethod,
-        feedingStatus: 'COMPLETED' as FeedingStatus,
-        note: '',
+const DEFAULT_PRESET = '7_SESSIONS';
+const presetKey = (pondId: string) => `feeding_preset_${pondId}`;
+const LAST_POND_KEY = 'feeding_last_pond';
+
+function readPreset(pondId: string) {
+  try {
+    const id = localStorage.getItem(presetKey(pondId));
+    return id && FEEDING_SESSION_PRESETS.some((p) => p.id === id) ? id : DEFAULT_PRESET;
+  } catch {
+    return DEFAULT_PRESET;
+  }
+}
+
+function buildDrafts(presetId: string, logs: DayLog[], prev?: Drafts): Drafts {
+  const preset = FEEDING_SESSION_PRESETS.find((p) => p.id === presetId) ?? FEEDING_SESSION_PRESETS[FEEDING_SESSION_PRESETS.length - 1];
+  const out = {} as Drafts;
+  for (const def of DEFAULT_FEEDING_SESSIONS) {
+    const s = def.session;
+    const log = logs.find((l) => l.feedingSession === s);
+    const p = prev?.[s];
+    if (log && p?.editing) {
+      // Đang sửa / đang "cho ăn lại": giữ nguyên những gì người dùng đang nhập
+      out[s] = { ...p, active: true };
+    } else if (log) {
+      out[s] = {
+        active: true,
+        time: log.feedingTime || def.defaultTime,
+        amount: log.feedingStatus !== 'SKIPPED' ? String(Number(log.feedAmount)) : '',
+        editing: false,
+        manual: false,
       };
-    });
-    return init;
-  });
+    } else if (p) {
+      out[s] = { ...p, editing: false };
+    } else {
+      out[s] = {
+        active: preset.activeSessions.includes(s),
+        time: preset.times[s] || def.defaultTime,
+        amount: '',
+        editing: false,
+        manual: false,
+      };
+    }
+  }
+  return out;
+}
 
-  // Bộ nhớ đệm lưu trữ lượng thức ăn đã set trước đó khi chuyển đổi giữa Bỏ cử và Hoàn thành
-  const [cachedFeedAmounts, setCachedFeedAmounts] = useState<Record<FeedingSession, number>>(() => {
-    const init: Record<FeedingSession, number> = {} as any;
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      init[item.session] = 0;
-    });
-    return init;
-  });
+export default function CreateFeedingLog({ target }: { target?: FeedingTarget | null }) {
+  // ── Dữ liệu nền ──
+  const [farms, setFarms] = useState<OverviewFarm[]>([]);
+  const [ponds, setPonds] = useState<OverviewPond[]>([]);
+  const [crops, setCrops] = useState<Crop[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [loadingData, setLoadingData] = useState(true);
-  const [saving, setSaving] = useState(false);
-  // Các cử đã được ghi nhận "Hoàn thành" trên server (đã trừ kho).
-  // locked = đang khoá (tối màu); bấm "Sửa" sẽ mở khoá nhưng vẫn nhớ lượng đã trừ để tính chênh lệch kho.
-  const [savedSessions, setSavedSessions] = useState<Partial<Record<FeedingSession, SavedSession>>>({});
-  const [savingSession, setSavingSession] = useState<FeedingSession | null>(null);
-  const [toast, setToast] = useState<ToastProps | null>(null);
-  const [statusBanner, setStatusBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  // ── Lựa chọn ──
+  const [pondId, setPondId] = useState('');
+  const [selectedCropId, setSelectedCropId] = useState('');
+  const [date, setDate] = useState(localToday);
+  const [products, setProducts] = useState<FeedProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+
+  // ── Dữ liệu trong ngày ──
+  const [dayLogs, setDayLogs] = useState<DayLog[]>([]);
+  const [dayLoading, setDayLoading] = useState(false);
+  const presetRef = useRef(DEFAULT_PRESET);
+  const [drafts, setDrafts] = useState<Drafts>(() => buildDrafts(DEFAULT_PRESET, []));
+  const [totalInput, setTotalInput] = useState('');
+  const dayLogsRef = useRef<DayLog[]>([]);
+  const distributionRef = useRef<Distribution | null>(null);
+  const [distribution, setDistributionState] = useState<Distribution | null>(null);
+  const setDistribution = (dist: Distribution | null) => {
+    distributionRef.current = dist;
+    setDistributionState(dist);
+  };
+  /** Mọi thay đổi cử đều đi qua đây → tự chia lại nếu đang có kế hoạch chia */
+  const changeDrafts = (fn: (prev: Drafts) => Drafts) =>
+    setDrafts((prev) => applyDistribution(fn(prev), dayLogsRef.current, distributionRef.current));
+
+  const [busy, setBusy] = useState<FeedingSession | 'ALL' | null>(null);
+  const [confirmSkip, setConfirmSkip] = useState<DayLog | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-    setStatusBanner({ message, type });
-    setTimeout(() => setToast(null), 5000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
-  // 1. Initial Load
-  useEffect(() => {
-    const loadInit = async () => {
-      try {
-        setLoadingData(true);
-        const { farms: fList, ponds: pList, crops: cList } = await pondService.getOverview();
-        setFarms(fList);
-        setPonds(pList);
-        setCrops(cList);
-        if (fList.length > 0) setSelectedFarmId(fList[0].id);
-      } catch (err) {
-        console.error('Error loading initial data:', err);
-      } finally {
-        setLoadingData(false);
-      }
-    };
-    loadInit();
+  // ── 1. Tải trang trại / ao / vụ ──
+  const loadOverview = useCallback(async () => {
+    try {
+      const overview = await pondService.getOverview();
+      setFarms(overview.farms || []);
+      setPonds(overview.ponds || []);
+      setCrops(overview.crops || []);
+    } catch (err) {
+      console.error('Không tải được danh sách ao:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Format product option string with quantity & package info
-  const formatProductLabel = (p: FeedProduct) => {
-    const stockInfo = p.packageQty !== null && p.packageQty !== undefined && p.packageQty > 0
-      ? `Tồn: ${Math.round(p.quantity * 100) / 100} ${p.unit} (${Math.ceil(p.packageQty)} ${p.packageType || 'bao'})`
-      : `Tồn: ${Math.round(p.quantity * 100) / 100} ${p.unit}`;
-    const outStr = p.quantity <= 0 ? ' - [HẾT HÀNG]' : '';
-    return `${p.itemName} (${stockInfo})${outStr}`;
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
+
+  // Vụ đang nuôi theo ao
+  const activeCropsByPond = useMemo(() => {
+    const map = new Map<string, Crop[]>();
+    crops
+      .filter((c) => c.status === 'ACTIVE')
+      .forEach((c) => {
+        const pid = c.pondId || c.pond?.id;
+        if (!pid) return;
+        map.set(pid, [...(map.get(pid) || []), c]);
+      });
+    return map;
+  }, [crops]);
+
+  // Chỉ ao đang có vụ nuôi mới ghi được nhật ký cho ăn
+  const feedablePonds = useMemo(() => {
+    const farmName = (id: string) => farms.find((f) => f.id === id)?.name || '';
+    return ponds
+      .filter((p) => activeCropsByPond.has(p.id))
+      .sort((a, b) => farmName(a.farmId).localeCompare(farmName(b.farmId), 'vi') || a.name.localeCompare(b.name, 'vi', { numeric: true }));
+  }, [ponds, farms, activeCropsByPond]);
+
+  const showFarmName = new Set(feedablePonds.map((p) => p.farmId)).size > 1;
+
+  // Chọn ao mặc định: ao vừa dùng lần trước, nếu không thì ao đầu tiên
+  useEffect(() => {
+    if (feedablePonds.length === 0) return;
+    if (pondId && feedablePonds.some((p) => p.id === pondId)) return;
+    let last = '';
+    try {
+      last = localStorage.getItem(LAST_POND_KEY) || '';
+    } catch {
+      // ignore
+    }
+    setPondId(feedablePonds.some((p) => p.id === last) ? last : feedablePonds[0].id);
+  }, [feedablePonds, pondId]);
+
+  // Mở đúng ao + ngày khi được chuyển từ tab Lịch sử
+  useEffect(() => {
+    if (!target) return;
+    setPondId(target.pondId);
+    setDate(target.date.slice(0, 10));
+  }, [target]);
+
+  const pond = ponds.find((p) => p.id === pondId);
+  const farmId = pond?.farmId || '';
+  const cropOptions = activeCropsByPond.get(pondId) || [];
+  const cropId = cropOptions.some((c) => c.id === selectedCropId) ? selectedCropId : cropOptions[0]?.id || '';
+  const crop = cropOptions.find((c) => c.id === cropId);
+  // Ngày nuôi thứ mấy, tính theo ngày đang ghi (không phải hôm nay)
+  const doc = (() => {
+    if (!crop) return null;
+    const [y, m, d] = date.split('-').map(Number);
+    const start = new Date(crop.startDate);
+    const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    return Math.max(0, Math.round((new Date(y, m - 1, d).getTime() - startDay.getTime()) / 86400000));
+  })();
+
+  const choosePond = (id: string) => {
+    setPondId(id);
+    setSelectedCropId('');
+    setTotalInput('');
+    try {
+      localStorage.setItem(LAST_POND_KEY, id);
+    } catch {
+      // ignore
+    }
   };
 
-  // 2. Fetch Feed Products when Farm changes
-  const loadProducts = async () => {
-    if (!selectedFarmId) {
-      setFeedProducts([]);
+  // ── 2. Thức ăn trong kho của trang trại ──
+  const loadProducts = useCallback(async () => {
+    if (!farmId) {
+      setProducts([]);
       return;
     }
     try {
-      const prods = await feedingLogService.getFeedProducts(selectedFarmId);
-      setFeedProducts(prods);
-      if (prods.length > 0) {
-        setBatchFeedProductId((prev) => prev || prods[0].id);
-        setSessionData((prev) => {
-          const next = { ...prev };
-          DEFAULT_FEEDING_SESSIONS.forEach((s) => {
-            if (!next[s.session].feedProductId) {
-              next[s.session] = { ...next[s.session], feedProductId: prods[0].id };
-            }
-          });
-          return next;
-        });
-      }
+      setProducts(await feedingLogService.getFeedProducts(farmId));
     } catch (err) {
-      console.error('Error loading feed products:', err);
+      console.error('Không tải được thức ăn trong kho:', err);
     }
-  };
+  }, [farmId]);
 
-  const reloadProducts = useEffectEvent(() => {
+  useEffect(() => {
     void loadProducts();
-  });
-  useEffect(() => {
-    reloadProducts();
-  }, [selectedFarmId]);
+  }, [loadProducts]);
 
-  // Derived Ponds & Active Crops
-  const filteredPonds = useMemo(() => {
-    return ponds.filter((p) => p.farmId === selectedFarmId);
-  }, [ponds, selectedFarmId]);
-
-  const activeCrops = useMemo(() => {
-    return crops.filter((c) => c.pondId === selectedPondId && c.status === 'ACTIVE');
-  }, [crops, selectedPondId]);
-
-  // Auto select first pond when filteredPonds changes
-  useEffect(() => {
-    if (filteredPonds.length > 0 && (!selectedPondId || !filteredPonds.some((p) => p.id === selectedPondId))) {
-      setSelectedPondId(filteredPonds[0].id);
+  // ── AI gợi ý: giai đoạn tôm → loại thức ăn trong kho + số kg ──
+  const [suggestion, setSuggestion] = useState<FeedingSuggestion | null>(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState('');
+  const suggestionRequest = useRef(0);
+  const loadSuggestion = useCallback(async () => {
+    const req = ++suggestionRequest.current;
+    if (!pondId) {
+      setSuggestion(null);
+      return;
     }
-  }, [filteredPonds, selectedPondId]);
-
-  // Auto select active crop when pond changes
-  useEffect(() => {
-    if (activeCrops.length > 0) {
-      setSelectedCropId(activeCrops[0].id);
-    } else {
-      setSelectedCropId('');
-    }
-  }, [activeCrops]);
-
-  // Tải các cử đã ghi nhận của ngày đang chọn để giữ trạng thái "Đã cho ăn" khi mở lại trang
-  useEffect(() => {
-    setSavedSessions({});
-    if (!selectedPondId || !selectedCropId || !feedingDate) return;
-    let cancelled = false;
-    feedingLogService
-      .getDailyDetails(selectedPondId, feedingDate)
-      .then((logs) => {
-        if (cancelled) return;
-        const dayLogs = logs.filter((l) => l.cropId === selectedCropId && l.feedingStatus === 'COMPLETED');
-        if (dayLogs.length === 0) return;
-        const saved: Partial<Record<FeedingSession, SavedSession>> = {};
-        dayLogs.forEach((l) => {
-          saved[l.feedingSession] = { amount: Number(l.feedAmount) || 0, productId: l.feedProductId, locked: true };
-        });
-        setSavedSessions(saved);
-        setActiveSessions((prev) => {
-          const next = { ...prev };
-          dayLogs.forEach((l) => { next[l.feedingSession] = true; });
-          return next;
-        });
-        setSessionData((prev) => {
-          const next = { ...prev };
-          dayLogs.forEach((l) => {
-            next[l.feedingSession] = {
-              ...next[l.feedingSession],
-              feedingTime: l.feedingTime || next[l.feedingSession].feedingTime,
-              feedProductId: l.feedProductId || next[l.feedingSession].feedProductId,
-              feedAmount: Number(l.feedAmount) || 0,
-              feedingMethod: l.feedingMethod || next[l.feedingSession].feedingMethod,
-              feedingStatus: 'COMPLETED',
-            };
-          });
-          return next;
-        });
-      })
-      .catch((err) => console.error('Không tải được nhật ký cho ăn trong ngày:', err));
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedPondId, selectedCropId, feedingDate]);
-
-  // Handler: Apply Preset (e.g. 2, 3, 4, 5, 6, 7 sessions)
-  const applyPreset = (presetId: string) => {
-    setSelectedPresetId(presetId);
-    const preset = FEEDING_SESSION_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-
-    // Update active map
-    const nextActiveMap: Record<FeedingSession, boolean> = {
-      SESSION_1: false,
-      SESSION_2: false,
-      SESSION_3: false,
-      SESSION_4: false,
-      SESSION_5: false,
-      SESSION_6: false,
-      SESSION_7: false,
-    };
-
-    preset.activeSessions.forEach((s) => {
-      nextActiveMap[s] = true;
-    });
-    // Cử đã cho ăn luôn giữ trạng thái hoàn thành
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      if (savedSessions[item.session]) nextActiveMap[item.session] = true;
-    });
-
-    setActiveSessions(nextActiveMap);
-
-    // Update session times & status for inactive ones, preserving feed amounts
-    setSessionData((prev) => {
-      const next = { ...prev };
-      DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-        const sKey = item.session;
-        const isActive = nextActiveMap[sKey];
-        if (savedSessions[sKey]) return; // giữ nguyên cử đã cho ăn
-        next[sKey] = {
-          ...next[sKey],
-          feedingTime: preset.times[sKey] || item.defaultTime,
-          feedingStatus: isActive ? 'COMPLETED' : 'SKIPPED',
-          feedAmount: next[sKey].feedAmount,
-        };
-      });
-      return next;
-    });
-  };
-
-  // Handle setting session status (Hoàn thành / Bỏ cử)
-  const setSessionStatus = (session: FeedingSession, status: FeedingStatus) => {
-    setSelectedPresetId('CUSTOM');
-    const isCompleted = status === 'COMPLETED';
-    setActiveSessions((prev) => ({
-      ...prev,
-      [session]: isCompleted,
-    }));
-    setSessionData((prev) => {
-      const current = prev[session];
-      let newAmount = current.feedAmount;
-
-      if (isCompleted) {
-        // Khi bật lại "Hoàn thành", nếu lượng thức ăn đang bằng 0 thì khôi phục từ bộ nhớ đệm
-        if ((!newAmount || newAmount <= 0) && cachedFeedAmounts[session] > 0) {
-          newAmount = cachedFeedAmounts[session];
-        }
-      } else {
-        // Khi chọn "Bỏ cử", lưu lại lượng thức ăn hiện tại vào bộ nhớ đệm để không bị mất
-        if (newAmount > 0) {
-          setCachedFeedAmounts((c) => ({ ...c, [session]: newAmount }));
-        }
-      }
-
-      return {
-        ...prev,
-        [session]: {
-          ...current,
-          feedingStatus: status,
-          feedAmount: newAmount,
-        },
-      };
-    });
-  };
-
-  // Bấm "Hoàn thành" ở 1 cử: ghi nhận NGAY cử đó lên server (trừ kho) rồi khoá cử lại
-  const completeSession = async (session: FeedingSession) => {
-    if (savingSession) return;
-    setStatusBanner(null);
-    if (!selectedFarmId) return showToast('Vui lòng chọn trang trại', 'error');
-    if (!selectedPondId) return showToast('Vui lòng chọn ao nuôi', 'error');
-    if (!selectedCropId) return showToast('Không tìm thấy vụ nuôi ĐANG HOẠT ĐỘNG (ACTIVE) cho ao này. Hãy mở/tạo vụ nuôi mới trước!', 'error');
-    if (!feedingDate) return showToast('Vui lòng chọn ngày cho ăn', 'error');
-
-    const def = DEFAULT_FEEDING_SESSIONS.find((d) => d.session === session);
-    const current = sessionData[session];
-    // Cử đang "Bỏ cử" mà bấm Hoàn thành -> khôi phục lượng đã nhập trước đó
-    const amount = Number(current.feedAmount) > 0 ? Number(current.feedAmount) : cachedFeedAmounts[session] || 0;
-    const productId = current.feedProductId || feedProducts[0]?.id || '';
-    const label = def?.label || session;
-
-    if (!productId) return showToast('Vui lòng chọn sản phẩm thức ăn trước khi hoàn thành cử', 'error');
-    if (amount <= 0) return showToast(`Vui lòng nhập số kg thức ăn cho ${label} trước khi bấm Hoàn thành`, 'error');
-
-    const payload: SingleSessionPayload = {
-      feedingSession: session,
-      feedingTime: current.feedingTime || def?.defaultTime || '',
-      feedProductId: productId,
-      feedAmount: amount,
-      feedingMethod: current.feedingMethod || 'MANUAL',
-      feedingStatus: 'COMPLETED',
-      note: current.note?.trim() || undefined,
-    };
-
+    setSuggestionLoading(true);
     try {
-      setSavingSession(session);
-      await feedingLogService.createDailyLog({
-        farmId: selectedFarmId,
-        pondId: selectedPondId,
-        cropId: selectedCropId,
-        feedingDate,
-        sessions: [payload],
-      });
-      setSelectedPresetId('CUSTOM');
-      setActiveSessions((prev) => ({ ...prev, [session]: true }));
-      setSessionData((prev) => ({
-        ...prev,
-        [session]: { ...prev[session], feedProductId: productId, feedAmount: amount, feedingStatus: 'COMPLETED' },
-      }));
-      setCachedFeedAmounts((c) => ({ ...c, [session]: amount }));
-      setSavedSessions((prev) => ({ ...prev, [session]: { amount, productId, locked: true } }));
-      showToast(`Đã ghi nhận ${label}: ${amount} kg — đã trừ kho.`, 'success');
-      await loadProducts();
+      const res = await chatbotService.getFeedingSuggestion(pondId, date);
+      if (req !== suggestionRequest.current) return;
+      setSuggestion(res);
+      setSuggestionError('');
+      const cur = distributionRef.current;
+      if (cur?.source === 'AI' && cur.totalKg !== res.dailyKg) {
+        const next: Distribution = { totalKg: res.dailyKg, source: 'AI' };
+        distributionRef.current = next;
+        setDistributionState(next);
+        setDrafts((prev) => applyDistribution(prev, dayLogsRef.current, next));
+      }
     } catch (err) {
-      showToast(getErrorMessage(err) || 'Không thể ghi nhận cử cho ăn', 'error');
+      if (req !== suggestionRequest.current) return;
+      setSuggestion(null);
+      setSuggestionError(getErrorMessage(err) || 'Không phân tích được ao này');
     } finally {
-      setSavingSession(null);
+      if (req === suggestionRequest.current) setSuggestionLoading(false);
     }
-  };
+  }, [pondId, date]);
 
-  // Mở khoá cử đã cho ăn để chỉnh lại (bấm Hoàn thành lần nữa sẽ cập nhật & bù trừ kho)
-  const editSavedSession = (session: FeedingSession) => {
-    setSavedSessions((prev) => {
-      const current = prev[session];
-      return current ? { ...prev, [session]: { ...current, locked: false } } : prev;
-    });
-  };
+  useEffect(() => {
+    void loadSuggestion();
+  }, [loadSuggestion]);
 
-  // Automatically propagate selected feed product to ALL sessions
-  const handleSelectFeedProduct = (productId: string) => {
-    setBatchFeedProductId(productId);
-    if (!productId) return;
-    setSessionData((prev) => {
-      const next = { ...prev };
-      DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-        if (savedSessions[item.session]?.locked) return; // cử đã cho ăn giữ nguyên sản phẩm
-        next[item.session] = { ...next[item.session], feedProductId: productId };
-      });
-      return next;
-    });
-  };
+  // Đổi ao → để AI chọn lại loại thức ăn phù hợp
+  useEffect(() => {
+    setSelectedProductId('');
+  }, [pondId]);
 
+  // Ưu tiên: loại người dùng chọn → loại AI gợi ý → loại còn hàng → loại đầu tiên
+  const product =
+    products.find((p) => p.id === selectedProductId) ||
+    products.find((p) => p.id === suggestion?.recommendedFeedProductId && p.quantity > 0) ||
+    products.find((p) => p.quantity > 0) ||
+    products[0];
+  const productId = product?.id || '';
+  const productName = (id: string) => products.find((p) => p.id === id)?.itemName || 'Thức ăn';
 
-  // Handle Session Data Change
-  const updateSession = (session: FeedingSession, key: keyof SingleSessionPayload, val: any) => {
-    setSessionData((prev) => {
-      const current = prev[session];
-      const updated = { ...current, [key]: val };
-
-      return {
-        ...prev,
-        [session]: updated,
-      };
-    });
-
-    if (key === 'feedAmount') {
-      const parsed = parseFloat(val);
-      if (!isNaN(parsed) && parsed > 0) {
-        setCachedFeedAmounts((c) => ({ ...c, [session]: parsed }));
+  // ── 3. Các cử đã ghi trong ngày ──
+  const dayRequest = useRef(0);
+  const loadDay = useCallback(
+    async (fresh: boolean) => {
+      const req = ++dayRequest.current;
+      if (!pondId || !cropId) {
+        setDayLogs([]);
+        return;
       }
-    }
+      if (fresh) {
+        setDayLoading(true);
+        const pid = readPreset(pondId);
+        presetRef.current = pid;
+        distributionRef.current = null;
+        setDistributionState(null);
+      }
+      try {
+        const logs = (await feedingLogService.getDailyDetails(pondId, date)).filter((l) => l.cropId === cropId);
+        if (req !== dayRequest.current) return;
+        setDayLogs(logs);
+        dayLogsRef.current = logs;
+        setDrafts((prev) =>
+          applyDistribution(buildDrafts(presetRef.current, logs, fresh ? undefined : prev), logs, distributionRef.current),
+        );
+      } catch (err) {
+        if (req === dayRequest.current) showToast(getErrorMessage(err) || 'Không tải được nhật ký trong ngày', 'error');
+      } finally {
+        if (req === dayRequest.current) setDayLoading(false);
+      }
+    },
+    [pondId, cropId, date],
+  );
+
+  useEffect(() => {
+    void loadDay(true);
+  }, [loadDay]);
+
+  useRealtimeRefresh(['feeding-logs'], () => void loadDay(false));
+  useRealtimeRefresh(['inventory', 'water-quality', 'shrimp-size', 'shrimp-health', 'crops'], () => void loadSuggestion());
+  useRealtimeRefresh(['inventory'], () => void loadProducts());
+  useRealtimeRefresh(['crops', 'ponds', 'farm-staffs'], () => void loadOverview());
+
+  const logMap = useMemo(() => new Map(dayLogs.map((l) => [l.feedingSession, l])), [dayLogs]);
+
+  const stateOf = (s: FeedingSession): SessionState => {
+    const log = logMap.get(s);
+    const d = drafts[s];
+    if (log && !d.editing) return log.feedingStatus === 'SKIPPED' ? 'skipped' : 'done';
+    if (!d.active) return 'off';
+    return 'pending';
   };
 
-  // ── BATCH TOOLS ──
+  const updateDraft = (s: FeedingSession, patch: Partial<Draft>) =>
+    changeDrafts((prev) => ({ ...prev, [s]: { ...prev[s], ...patch } }));
 
-  // 2. Batch distribute total daily feed kg evenly across ACTIVE sessions (exact remainder math)
-  const batchDistributeFeedAmount = () => {
-    const total = parseFloat(batchTotalFeedKg);
-    if (isNaN(total) || total <= 0) {
-      return showToast('Vui lòng nhập tổng lượng thức ăn hợp lệ (> 0 kg)', 'error');
-    }
-
-    // Các cử đã cho ăn (đang khoá) giữ nguyên; chỉ chia phần còn lại cho các cử chưa cho ăn
-    const lockedKg = DEFAULT_FEEDING_SESSIONS.reduce(
-      (sum, item) => sum + (savedSessions[item.session]?.locked ? savedSessions[item.session]!.amount : 0),
-      0,
-    );
-    const remaining = parseFloat((total - lockedKg).toFixed(2));
-    const activeList = DEFAULT_FEEDING_SESSIONS.filter(
-      (item) => activeSessions[item.session] && !savedSessions[item.session]?.locked,
-    );
-    const N = activeList.length;
-    if (N === 0) {
-      return showToast('Không còn cử nào chưa cho ăn để chia thức ăn', 'error');
-    }
-    if (remaining <= 0) {
-      return showToast(`Các cử đã cho ăn đã dùng ${lockedKg} kg, không còn lượng nào để chia (tổng nhập ${total} kg)`, 'error');
-    }
-
-    // Base amount rounded UP to 2 decimal places for the first (N - 1) sessions
-    const basePerSession = Math.ceil((remaining / N) * 100) / 100;
-    const sumFirst = basePerSession * (N - 1);
-    // Remainder for the last active session (evening/night)
-    const lastSessionAmount = parseFloat((remaining - sumFirst).toFixed(2));
-
-    setSessionData((prev) => {
-      const next = { ...prev };
-      activeList.forEach((item, index) => {
-        const amt = index < N - 1 ? basePerSession : lastSessionAmount;
-        next[item.session] = {
-          ...next[item.session],
-          feedAmount: amt,
-          feedingStatus: 'COMPLETED',
-        };
-      });
-      return next;
-    });
-
-    // Also update cached feed amounts for all active sessions
-    setCachedFeedAmounts((prev) => {
-      const nextCache = { ...prev };
-      activeList.forEach((item, index) => {
-        const amt = index < N - 1 ? basePerSession : lastSessionAmount;
-        nextCache[item.session] = amt;
-      });
-      return nextCache;
-    });
-
-    showToast(
-      lockedKg > 0
-        ? `Đã chia ${remaining} kg còn lại cho ${N} cử chưa cho ăn (đã cho ăn ${lockedKg} kg).`
-        : `Đã chia chính xác ${total} kg cho ${N} cử đang bật!`,
-      'success',
-    );
-  };
-
-
-  // Calculated Live Summary
+  // ── Tổng hợp ──
   const summary = useMemo(() => {
-    let totalFeedKg = 0;
-    let completed = 0;
-    let skipped = 0;
-    let activeCount = 0;
-
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      const sKey = item.session;
-      const s = sessionData[sKey];
-      const isActive = activeSessions[sKey];
-
-      if (isActive) activeCount++;
-
-      const amt = Number(s.feedAmount) || 0;
-      if (s.feedingStatus !== 'SKIPPED' && isActive) {
-        totalFeedKg += amt;
+    let doneCount = 0;
+    let doneKg = 0;
+    // Tổng số cử trong lịch hôm nay — GỒM cả cử đã bỏ, để con số không bị nhảy khi bấm "Bỏ cử"
+    let plannedCount = 0;
+    let skippedCount = 0;
+    let pendingKg = 0; // lượng sẽ xuất thêm từ kho (cử chưa ghi + chênh lệch khi sửa)
+    let pendingFilled = 0;
+    for (const def of DEFAULT_FEEDING_SESSIONS) {
+      const s = def.session;
+      const log = logMap.get(s);
+      const d = drafts[s];
+      const state = (() => {
+        if (log && !d.editing) return log.feedingStatus === 'SKIPPED' ? 'skipped' : 'done';
+        return d.active ? 'pending' : 'off';
+      })();
+      if (state === 'done') {
+        doneCount++;
+        doneKg += Number(log!.feedAmount) || 0;
       }
-      if (savedSessions[sKey]) completed++;
-      if (s.feedingStatus === 'SKIPPED' || !isActive) skipped++;
-    });
-
-    return { totalFeedKg, completed, skipped, activeCount };
-  }, [sessionData, activeSessions, savedSessions]);
-
-  // Real-time stock demand calculation and validation
-  const stockValidation = useMemo(() => {
-    const demands: Record<string, number> = {};
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      const sKey = item.session;
-      const s = sessionData[sKey];
-      const isActive = activeSessions[sKey];
-      if (isActive && s.feedingStatus !== 'SKIPPED' && s.feedProductId) {
-        const amt = Number(s.feedAmount) || 0;
-        const saved = savedSessions[sKey];
-        const alreadyDeducted = saved && saved.productId === s.feedProductId ? saved.amount : 0;
-        demands[s.feedProductId] = (demands[s.feedProductId] || 0) + (amt - alreadyDeducted);
-      }
-    });
-
-    // Total feed amount skipped and credited back to inventory
-    let skippedFeedKg = 0;
-    DEFAULT_FEEDING_SESSIONS.forEach((item) => {
-      const sKey = item.session;
-      const s = sessionData[sKey];
-      const isActive = activeSessions[sKey];
-      if (!isActive || s.feedingStatus === 'SKIPPED') {
-        const amt = Number(s.feedAmount) || cachedFeedAmounts[sKey] || 0;
-        if (amt > 0) skippedFeedKg += amt;
-      }
-    });
-
-    // Check deficits
-    const deficits: { productId: string; productName: string; available: number; needed: number; excess: number; unit: string }[] = [];
-    feedProducts.forEach((prod) => {
-      const needed = demands[prod.id] || 0;
-      if (needed > prod.quantity) {
-        deficits.push({
-          productId: prod.id,
-          productName: prod.itemName,
-          available: prod.quantity,
-          needed: Math.round(needed * 100) / 100,
-          excess: Math.round((needed - prod.quantity) * 100) / 100,
-          unit: prod.unit,
-        });
-      }
-    });
-
-    return {
-      demands,
-      skippedFeedKg,
-      hasDeficit: deficits.length > 0,
-      deficits,
-    };
-  }, [sessionData, activeSessions, feedProducts, cachedFeedAmounts, savedSessions]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setStatusBanner(null);
-
-    if (!selectedFarmId) return showToast('Vui lòng chọn trang trại', 'error');
-    if (!selectedPondId) return showToast('Vui lòng chọn ao nuôi', 'error');
-    if (!selectedCropId) return showToast('Không tìm thấy vụ nuôi ĐANG HOẠT ĐỘNG (ACTIVE) cho ao này. Hãy mở/tạo vụ nuôi mới trước!', 'error');
-    if (!feedingDate) return showToast('Vui lòng chọn ngày cho ăn', 'error');
-    if (feedProducts.length === 0) return showToast('Kho trang trại chưa có sản phẩm thức ăn nào. Vui lòng thêm thức ăn trong Kho vật tư trước!', 'error');
-
-    // Build payload array for ALL 7 sessions so DB unique constraints pass
-    const defaultProductFallback = feedProducts[0]?.id || '';
-
-    // Auto-distribute if user entered total feed kg in the batch input box but hasn't clicked "Chia"
-    const parsedBatchTotal = parseFloat(batchTotalFeedKg);
-    const workingSessionData = { ...sessionData };
-    if (!isNaN(parsedBatchTotal) && parsedBatchTotal > 0 && summary.totalFeedKg === 0) {
-      const activeKeys = DEFAULT_FEEDING_SESSIONS.filter((it) => activeSessions[it.session] && !savedSessions[it.session]).map((it) => it.session);
-      if (activeKeys.length > 0) {
-        const perSession = parseFloat((parsedBatchTotal / activeKeys.length).toFixed(2));
-        activeKeys.forEach((sKey) => {
-          workingSessionData[sKey] = {
-            ...workingSessionData[sKey],
-            feedAmount: perSession,
-            feedingStatus: workingSessionData[sKey].feedingStatus === 'SKIPPED' ? 'COMPLETED' : workingSessionData[sKey].feedingStatus,
-          };
-        });
-        setSessionData(workingSessionData);
-      }
-    }
-
-    const sessionList: SingleSessionPayload[] = DEFAULT_FEEDING_SESSIONS.map((item) => {
-      const sKey = item.session;
-      const s = workingSessionData[sKey];
-      const isActive = activeSessions[sKey];
-
-      return {
-        feedingSession: sKey,
-        feedingTime: s.feedingTime || item.defaultTime,
-        feedProductId: s.feedProductId || defaultProductFallback,
-        feedAmount: isActive && s.feedingStatus !== 'SKIPPED' ? Number(s.feedAmount) || 0 : 0,
-        feedingMethod: s.feedingMethod || 'MANUAL',
-        feedingStatus: isActive ? s.feedingStatus : 'SKIPPED',
-        note: s.note?.trim() || undefined,
-      };
-    });
-
-    // Check that every active session has a selected feed product
-    for (const s of sessionList) {
-      if (activeSessions[s.feedingSession] && s.feedingStatus !== 'SKIPPED') {
-        if (!s.feedProductId) {
-          return showToast(`Vui lòng chọn sản phẩm thức ăn cho cử ${s.feedingSession.replace('SESSION_', '')}`, 'error');
+      if (state === 'skipped') skippedCount++;
+      if (state !== 'off') plannedCount++;
+      if (state === 'pending') {
+        const amt = parseFloat(d.amount) || 0;
+        if (!log || log.feedingStatus === 'SKIPPED') {
+          // cử chưa ghi, hoặc "cho ăn lại" cử đã bỏ → xuất kho toàn bộ
+          pendingKg += amt;
+          if (amt > 0) pendingFilled++;
+        } else if (log.feedProductId === productId) {
+          pendingKg += amt - (Number(log.feedAmount) || 0); // sửa cử đã cho ăn → chỉ tính chênh lệch
         }
       }
     }
+    return { doneCount, doneKg: roundKg(doneKg), plannedCount, skippedCount, pendingKg: roundKg(pendingKg), pendingFilled };
+  }, [drafts, logMap, productId]);
 
-    // Kiểm tra validation tồn kho theo từng sản phẩm
-    if (stockValidation.hasDeficit) {
-      const firstDeficit = stockValidation.deficits[0];
-      return showToast(
-        `Kho không đủ: Thức ăn "${firstDeficit.productName}" chỉ còn ${firstDeficit.available} ${firstDeficit.unit}, nhưng các cử hoàn thành cần ${firstDeficit.needed} ${firstDeficit.unit} (thiếu ${firstDeficit.excess} ${firstDeficit.unit}). Vui lòng giảm lượng ăn hoặc bấm "Bỏ cử" để cộng lại vào kho!`,
-        'error',
-      );
+  const stockLeft = product ? roundKg(product.quantity) : 0;
+  const notEnoughStock = !!product && summary.pendingKg > stockLeft;
+
+  // ── Thao tác ──
+  /**
+   * Chọn "N cử / ngày": bật đúng N cử CHO ĂN (đã cho ăn + chưa cho ăn, không tính cử đã bỏ).
+   * Thiếu cử trống thì mở lại các cử đã bỏ (chỉ trên màn hình, bấm "Đã cho ăn" mới ghi).
+   * Cử đã cho ăn giữ nguyên. Đang có kế hoạch chia → tự chia lại số kg.
+   */
+  const applyPreset = (id: string) => {
+    const preset = FEEDING_SESSION_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    presetRef.current = id;
+    try {
+      localStorage.setItem(presetKey(pondId), id);
+    } catch {
+      // ignore
     }
+    changeDrafts((prev) => {
+      const next = { ...prev };
+      const all = DEFAULT_FEEDING_SESSIONS.map((d) => d.session);
+      const fedCount = all.filter((x) => {
+        const log = logMap.get(x);
+        return log && log.feedingStatus !== 'SKIPPED';
+      }).length;
+      const free = all.filter((x) => !logMap.has(x));
+      const skipped = all.filter((x) => logMap.get(x)?.feedingStatus === 'SKIPPED');
+      // Ưu tiên: cử trống theo mẫu → cử trống khác → mở lại cử đã bỏ
+      const ordered = [
+        ...free.filter((x) => preset.activeSessions.includes(x)),
+        ...free.filter((x) => !preset.activeSessions.includes(x)),
+        ...skipped,
+      ];
+      const turnOn = new Set(ordered.slice(0, Math.max(0, preset.count - fedCount)));
+      for (const def of DEFAULT_FEEDING_SESSIONS) {
+        const x = def.session;
+        const log = logMap.get(x);
+        if (log && log.feedingStatus !== 'SKIPPED') continue; // đã cho ăn: giữ nguyên
+        if (log) {
+          // cử đã bỏ: bật = "cho ăn lại", tắt = quay về "đã bỏ cử"
+          const on = turnOn.has(x);
+          if (on !== prev[x].editing) next[x] = { ...prev[x], editing: on, amount: '', manual: false };
+          continue;
+        }
+        next[x] = { ...prev[x], active: turnOn.has(x), time: preset.times[x] || def.defaultTime };
+      }
+      return next;
+    });
+  };
+
+  /** Chia đều phần còn lại của tổng kg cho các cử chưa ghi */
+  // Các cử chưa ghi đang bật → nơi điền số kg chia đều / gợi ý
+  const fillTargets = DEFAULT_FEEDING_SESSIONS.filter((d) => {
+    const log = logMap.get(d.session);
+    return stateOf(d.session) === 'pending' && (!log || log.feedingStatus === 'SKIPPED');
+  });
+
+  const distribute = () => distributeTotal(parseFloat(totalInput));
+
+  /** Điền đúng số kg AI gợi ý cả ngày vào các cử còn lại */
+  const applySuggestedKg = () => {
+    if (!suggestion) return;
+    setTotalInput(String(suggestion.dailyKg));
+    distributeTotal(suggestion.dailyKg, 'AI');
+  };
+
+  const distributeTotal = (total: number, source: Distribution['source'] = 'MANUAL') => {
+    if (isNaN(total) || total <= 0) return showToast('Nhập tổng số kg thức ăn cả ngày (lớn hơn 0)', 'error');
+    if (fillTargets.length === 0) return showToast('Không còn cử nào chưa cho ăn để chia', 'error');
+    const remaining = roundKg(total - summary.doneKg);
+    if (remaining <= 0) return showToast(`Các cử đã cho ăn đã dùng ${summary.doneKg} kg, không còn để chia`, 'error');
+
+    const dist: Distribution = { totalKg: roundKg(total), source };
+    setDistribution(dist);
+    // Chia lại từ đầu: bỏ các số tự gõ tay trước đó
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const def of DEFAULT_FEEDING_SESSIONS) {
+        if (next[def.session].manual) next[def.session] = { ...next[def.session], manual: false };
+      }
+      return applyDistribution(next, dayLogsRef.current, dist);
+    });
+    showToast(`Đã chia ${remaining} kg cho ${fillTargets.length} cử còn lại`, 'success');
+  };
+
+  const buildPayload = (s: FeedingSession, amount: number, prodId: string): SingleSessionPayload => ({
+    feedingSession: s,
+    feedingTime: drafts[s].time || sessionInfo(s).defaultTime,
+    feedProductId: prodId,
+    feedAmount: amount,
+    feedingMethod: 'MANUAL',
+    feedingStatus: 'COMPLETED',
+  });
+
+  const send = async (sessions: SingleSessionPayload[]) => {
+    await feedingLogService.createDailyLog({ farmId, pondId, cropId, feedingDate: date, sessions });
+    await Promise.all([loadDay(false), loadProducts(), loadSuggestion()]);
+  };
+
+  const saveSession = async (s: FeedingSession) => {
+    if (busy) return;
+    const log = logMap.get(s);
+    const amount = parseFloat(drafts[s].amount);
+    const { name } = sessionInfo(s);
+    if (!amount || amount <= 0) return showToast(`Nhập số kg thức ăn cho ${name}`, 'error');
+    const prodId = log && log.feedingStatus !== 'SKIPPED' ? log.feedProductId : productId;
+    if (!prodId) return showToast('Kho trang trại chưa có thức ăn. Hãy nhập thức ăn vào kho trước.', 'error');
 
     try {
-      setSaving(true);
-      await feedingLogService.createDailyLog({
-        farmId: selectedFarmId,
-        pondId: selectedPondId,
-        cropId: selectedCropId,
-        feedingDate,
-        sessions: sessionList,
-      });
+      setBusy(s);
+      await send([buildPayload(s, amount, prodId)]);
+      updateDraft(s, { editing: false, manual: false });
+      showToast(`${name}: đã ghi ${amount} kg và trừ kho`, 'success');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không ghi được cử cho ăn', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
 
-      setBatchTotalFeedKg('');
-      setSavedSessions((prev) => {
+  const saveAll = async () => {
+    if (busy) return;
+    const list = DEFAULT_FEEDING_SESSIONS.filter(
+      (d) => {
+        const log = logMap.get(d.session);
+        // cử chưa ghi + cử đang "cho ăn lại" (cử đang sửa số kg đã ghi thì bấm Lưu riêng)
+        return (
+          stateOf(d.session) === 'pending' &&
+          (!log || log.feedingStatus === 'SKIPPED') &&
+          parseFloat(drafts[d.session].amount) > 0
+        );
+      },
+    );
+    if (list.length === 0) return showToast('Chưa có cử nào được nhập số kg', 'error');
+    if (!productId) return showToast('Kho trang trại chưa có thức ăn. Hãy nhập thức ăn vào kho trước.', 'error');
+    if (notEnoughStock) return showToast(`Kho chỉ còn ${stockLeft} ${product?.unit || 'kg'}, không đủ ${summary.pendingKg} kg`, 'error');
+
+    try {
+      setBusy('ALL');
+      await send(list.map((d) => buildPayload(d.session, parseFloat(drafts[d.session].amount), productId)));
+      // Các cử vừa ghi (kể cả cử "cho ăn lại") chuyển sang trạng thái đã cho ăn
+      changeDrafts((prev) => {
         const next = { ...prev };
-        sessionList.forEach((s) => {
-          if (s.feedingStatus === 'COMPLETED' && s.feedAmount > 0) {
-            next[s.feedingSession] = { amount: s.feedAmount, productId: s.feedProductId, locked: true };
-          } else {
-            delete next[s.feedingSession]; // bỏ cử -> server đã hoàn kho
-          }
+        list.forEach((d) => {
+          next[d.session] = { ...next[d.session], editing: false, manual: false };
         });
         return next;
       });
-      showToast('Ghi nhận nhật ký cho ăn và trừ kho thành công!', 'success');
-      await loadProducts();
+      showToast(`Đã ghi ${list.length} cử cho ăn và trừ kho`, 'success');
     } catch (err) {
-      showToast(getErrorMessage(err) || 'Không thể ghi nhận nhật ký cho ăn', 'error');
+      showToast(getErrorMessage(err) || 'Không ghi được nhật ký cho ăn', 'error');
     } finally {
-      setSaving(false);
+      setBusy(null);
     }
   };
 
-  if (loadingData) {
+  /** Bỏ 1 cử chưa cho ăn → ghi nhận "bỏ cử" (0 kg, không trừ kho) */
+  /**
+   * Bỏ cử khi các cử đã có số kg → chia lại số kg cho các cử còn lại NGAY trên màn hình.
+   * - Đang có kế hoạch chia: giữ tổng của kế hoạch.
+   * - Chưa có (số kg tự gõ): lấy tổng hiện tại của ngày (đã cho ăn + đang nhập) làm kế hoạch
+   *   rồi chia đều cho các cử còn lại.
+   * `hide`: cử chưa ghi bị bỏ → tạm ẩn ngay, không chờ server.
+   */
+  const redistributeOnSkip = (skipped: FeedingSession, hide: boolean) => {
+    let dist = distributionRef.current;
+    let resetManual = false;
+    if (!dist) {
+      const pendingKg = fillTargets.reduce((sum, d) => sum + (parseFloat(drafts[d.session].amount) || 0), 0);
+      const othersFilled = fillTargets.some((d) => d.session !== skipped && parseFloat(drafts[d.session].amount) > 0);
+      if (!othersFilled) {
+        if (hide) updateDraft(skipped, { active: false, amount: '', manual: false });
+        return;
+      }
+      dist = { totalKg: roundKg(summary.doneKg + pendingKg), source: 'MANUAL' };
+      setDistribution(dist);
+      resetManual = true;
+    }
+    const next = { ...drafts };
+    if (resetManual) {
+      for (const def of DEFAULT_FEEDING_SESSIONS) {
+        if (next[def.session].manual) next[def.session] = { ...next[def.session], manual: false };
+      }
+    }
+    if (hide) next[skipped] = { ...next[skipped], active: false, amount: '', manual: false };
+    setDrafts(applyDistribution(next, dayLogsRef.current, dist));
+  };
+
+  const skipPendingSession = async (s: FeedingSession) => {
+    if (busy) return;
+    const { name } = sessionInfo(s);
+    redistributeOnSkip(s, true);
+    // Server bắt buộc có mã thức ăn; kho chưa có thức ăn thì chỉ đánh dấu trên màn hình
+    if (!productId) return; // kho chưa có thức ăn: chỉ đánh dấu trên màn hình (đã làm ở trên)
+    try {
+      setBusy(s);
+      await send([
+        {
+          feedingSession: s,
+          feedingTime: drafts[s].time || sessionInfo(s).defaultTime,
+          feedProductId: productId,
+          feedAmount: 0,
+          feedingMethod: 'MANUAL',
+          feedingStatus: 'SKIPPED',
+        },
+      ]);
+      showToast(`${name}: đã ghi nhận bỏ cử`, 'success');
+    } catch (err) {
+      updateDraft(s, { active: true });
+      showToast(getErrorMessage(err) || 'Không ghi nhận được bỏ cử', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * Xoá tất cả các cử trong ngày của ao:
+   * - Cử đã ghi trên server → xoá nhật ký cả ngày, thức ăn đã dùng được hoàn lại kho.
+   * - Số kg đang nhập dở → xoá trắng, lịch cử trở về mặc định, ngừng tự chia.
+   */
+  const clearAllSessions = async () => {
+    setConfirmClearAll(false);
+    if (busy) return;
+    try {
+      setBusy('ALL');
+      if (dayLogs.length > 0) {
+        await feedingLogService.deleteDailyLog(farmId, pondId, cropId, date);
+      }
+      setDistribution(null);
+      setTotalInput('');
+      dayLogsRef.current = [];
+      setDayLogs([]);
+      setDrafts(buildDrafts(presetRef.current, []));
+      await Promise.all([loadDay(false), loadProducts(), loadSuggestion()]);
+      showToast(
+        dayLogs.length > 0
+          ? `Đã xoá tất cả các cử, ${summary.doneKg} kg thức ăn được hoàn lại kho`
+          : 'Đã xoá số kg đang nhập ở tất cả các cử',
+        'success',
+      );
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không xoá được các cử', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Bỏ 1 cử đã ghi → lượng thức ăn được hoàn lại kho */
+  const skipSavedSession = async (log: DayLog) => {
+    setConfirmSkip(null);
+    redistributeOnSkip(log.feedingSession, false);
+    try {
+      setBusy(log.feedingSession);
+      await send([
+        {
+          feedingSession: log.feedingSession,
+          feedingTime: log.feedingTime || sessionInfo(log.feedingSession).defaultTime,
+          feedProductId: log.feedProductId,
+          feedAmount: 0,
+          feedingMethod: log.feedingMethod || 'MANUAL',
+          feedingStatus: 'SKIPPED',
+        },
+      ]);
+      showToast(`${sessionInfo(log.feedingSession).name}: đã bỏ cử, ${Number(log.feedAmount)} kg được hoàn lại kho`, 'success');
+    } catch (err) {
+      showToast(getErrorMessage(err) || 'Không bỏ được cử này', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // ── Giao diện ──
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-80">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-slate-500">Đang tải dữ liệu trang trại...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-80 gap-3">
+        <Loader2 className="w-10 h-10 text-teal-600 animate-spin" />
+        <p className="text-base font-medium text-slate-600">Đang tải danh sách ao...</p>
       </div>
     );
   }
 
+  if (feedablePonds.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center">
+        <Waves className="w-14 h-14 text-slate-300 mx-auto mb-3" />
+        <p className="text-lg font-bold text-slate-700">Chưa có ao nào đang nuôi tôm</p>
+        <p className="text-base text-slate-500 mt-1">Chỉ ghi được nhật ký cho ăn khi ao đã có vụ nuôi.</p>
+      </div>
+    );
+  }
+
+  const progressPct = summary.plannedCount > 0 ? (summary.doneCount / summary.plannedCount) * 100 : 0;
+  // Số cử thật sự cho ăn hôm nay (không tính cử đã bỏ) → nút "N cử" tự khớp theo
+  const feedCount = summary.plannedCount - summary.skippedCount;
+  const skippedPct = summary.plannedCount > 0 ? (summary.skippedCount / summary.plannedCount) * 100 : 0;
+  const today = localToday();
+
   return (
-    <div className="w-full relative pb-8">
-      {toast && <Toast message={toast.message} type={toast.type} />}
+    <div className="w-full space-y-5 pb-28">
+      {toast && (
+        <div
+          role="status"
+          className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-xl border text-base font-semibold animate-in slide-in-from-right-8 fade-in duration-300 max-w-md ${
+            toast.type === 'success' ? 'bg-teal-50 border-teal-200 text-teal-900' : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          {toast.type === 'success' ? <CheckCircle2 className="w-6 h-6 text-teal-600 shrink-0" /> : <AlertCircle className="w-6 h-6 text-rose-600 shrink-0" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
 
-      <form onSubmit={handleSubmit} noValidate>
-        {/* ── Page Header with Top Save Action ─────────────────────────── */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 bg-white/90 backdrop-blur-xl px-6 py-5 rounded-3xl shadow-xl shadow-emerald-900/5 border border-white/60 mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 flex-shrink-0">
-              <Utensils className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-800 to-teal-600 tracking-tight">
-                Ghi Nhận Nhật Ký Cho Ăn Hàng Ngày
-              </h2>
-
-            </div>
-          </div>
-
-          {/* Top Actions & Summary */}
-          <div className="flex flex-wrap items-center gap-3.5 justify-end border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-100 flex-shrink-0">
-            {/* Quick summary badges */}
-            <div className="flex flex-wrap items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl border border-slate-200/70 text-xs">
-              <span className="text-slate-500 font-semibold">Tổng ăn:</span>
-              <span className="font-extrabold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-lg">
-                {summary.totalFeedKg.toFixed(1)} kg
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="font-bold text-slate-700">
-                {summary.completed}/{summary.activeCount} cử bật
-              </span>
-              {stockValidation.skippedFeedKg > 0 && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <span className="font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200" title="Lượng thức ăn của các cử bỏ không bị trừ khỏi kho">
-                    +{stockValidation.skippedFeedKg.toFixed(1)} kg hoàn kho
-                  </span>
-                </>
-              )}
-              {stockValidation.hasDeficit && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <span className="font-black text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-lg border border-rose-300 flex items-center gap-1 animate-pulse">
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" /> Thiếu tồn kho
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Top Save button */}
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black flex items-center gap-2 transition-all shadow-md shadow-emerald-600/20 hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" /> Lưu nhật ký cho ăn
-                </>
-              )}
-            </button>
+      {/* ── 1. Chọn ao & ngày ── */}
+      <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <Waves className="w-5 h-5 text-teal-600" /> Chọn ao cho ăn
+          </h3>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 bg-slate-50 border-2 border-slate-200 rounded-2xl px-3 py-2 focus-within:border-teal-500">
+              <Calendar className="w-5 h-5 text-teal-600" />
+              <span className="sr-only">Ngày cho ăn</span>
+              <input
+                type="date"
+                value={date}
+                max={today}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+                className="bg-transparent text-base font-bold text-slate-800 outline-none"
+              />
+            </label>
+            {date !== today && (
+              <button
+                type="button"
+                onClick={() => setDate(today)}
+                className="px-4 py-2.5 rounded-2xl bg-teal-50 text-teal-700 font-bold text-base hover:bg-teal-100 cursor-pointer"
+              >
+                Hôm nay
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Inline Status Banner if any */}
-        {statusBanner && (
-          <div
-            className={`mb-6 p-4 rounded-2xl text-xs font-bold flex items-center justify-between gap-2.5 animate-in fade-in duration-200 border ${statusBanner.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-red-50 text-red-800 border-red-200'
-              }`}
-          >
-            <div className="flex items-center gap-2">
-              {statusBanner.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+        <div className="flex flex-wrap gap-2.5">
+          {feedablePonds.map((p) => {
+            const selected = p.id === pondId;
+            const farm = farms.find((f) => f.id === p.farmId);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => choosePond(p.id)}
+                aria-pressed={selected}
+                className={`px-5 py-3 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                  selected
+                    ? 'bg-teal-600 border-teal-600 text-white shadow-md shadow-teal-600/25'
+                    : 'bg-white border-slate-200 text-slate-800 hover:border-teal-400'
+                }`}
+              >
+                <span className="block text-base font-black">{p.name}</span>
+                {showFarmName && (
+                  <span className={`block text-sm ${selected ? 'text-teal-50' : 'text-slate-500'}`}>{farm?.name}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {cropOptions.length > 1 && (
+          <label className="flex items-center gap-3 text-base">
+            <span className="font-bold text-slate-700">Vụ nuôi:</span>
+            <select
+              value={cropId}
+              onChange={(e) => setSelectedCropId(e.target.value)}
+              className="px-4 py-2.5 rounded-xl border-2 border-slate-200 bg-white font-semibold text-slate-800 outline-none focus:border-teal-500"
+            >
+              {cropOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Thả ngày {new Date(c.startDate).toLocaleDateString('vi-VN')}
+                  {c.stage === 'NURSERY' ? ' (ương giống)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </section>
+
+      {/* ── 2. Tiến độ trong ngày + thức ăn ── */}
+      <section className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <p className="text-base font-semibold text-slate-500">
+            {pond?.name} · {isToday(date) ? 'Hôm nay' : formatDayVN(date)}
+            {doc !== null && <> · Ngày nuôi thứ {doc}</>}
+          </p>
+          <div className="flex items-end justify-between gap-3 mt-1">
+            <p className="text-2xl font-black text-slate-900">
+              Đã cho ăn {summary.doneCount}
+              <span className="text-lg font-bold text-slate-400">/{summary.plannedCount} cử</span>
+            </p>
+            <p className="text-right">
+              <span className="block text-sm text-slate-500">Tổng đã cho ăn</span>
+              <span className="text-xl font-black text-teal-700">{summary.doneKg} kg</span>
+            </p>
+          </div>
+          <div className="mt-3 h-3 rounded-full bg-slate-100 overflow-hidden flex">
+            <div className="h-full bg-teal-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+            <div className="h-full bg-slate-300 transition-all duration-500" style={{ width: `${skippedPct}%` }} />
+          </div>
+          {summary.skippedCount > 0 && (
+            <p className="mt-2 text-sm text-slate-500 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-300" /> Đã bỏ {summary.skippedCount} cử
+            </p>
+          )}
+          {summary.plannedCount > 0 && summary.doneCount + summary.skippedCount === summary.plannedCount && (
+            <p className="mt-2 flex items-center gap-2 text-base font-bold text-teal-700">
+              <CheckCircle2 className="w-5 h-5" /> Đã xong các cử trong ngày
+            </p>
+          )}
+        </div>
+
+        <div className={`rounded-3xl border-2 shadow-sm p-5 sm:p-6 ${notEnoughStock ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'}`}>
+          <label className="block">
+            <span className="flex items-center gap-2 text-base font-bold text-slate-700 mb-2">
+              <Package className="w-5 h-5 text-teal-600" /> Loại thức ăn
+            </span>
+            {products.length === 0 ? (
+              <p className="text-base font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                Kho của trang trại chưa có thức ăn.
+              </p>
+            ) : (
+              <select
+                value={productId}
+                onChange={(e) => setSelectedProductId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-800 outline-none focus:border-teal-500"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.id === suggestion?.recommendedFeedProductId ? '★ ' : ''}
+                    {p.itemName} — còn {roundKg(p.quantity)} {p.unit}
+                    {p.quantity <= 0 ? ' (HẾT)' : ''}
+                    {p.id === suggestion?.recommendedFeedProductId ? ' (AI gợi ý)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+          {product && (
+            <div className="mt-3 flex items-center justify-between text-base">
+              <span className="text-slate-600">
+                Còn trong kho: <b className="text-slate-900">{stockLeft} {product.unit}</b>
+              </span>
+              {summary.pendingKg > 0 && (
+                <span className={notEnoughStock ? 'text-rose-700 font-bold' : 'text-slate-600'}>
+                  Sắp dùng: <b>{summary.pendingKg} kg</b>
+                </span>
               )}
-              <span>{statusBanner.message}</span>
+            </div>
+          )}
+          {notEnoughStock && (
+            <p className="mt-2 flex items-start gap-2 text-sm font-semibold text-rose-700">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              Kho không đủ thức ăn. Hãy giảm số kg hoặc chọn loại thức ăn khác.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ── AI gợi ý theo giai đoạn tôm (1 dải ngang) ── */}
+      <section className="rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-2 text-sm">
+        {!suggestion ? (
+          <div className="flex items-center gap-2 text-slate-600">
+            <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
+            {suggestionLoading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" /> AI đang phân tích...
+              </>
+            ) : (
+              <>
+                <span className="text-amber-700">{suggestionError || 'Chưa có gợi ý cho ao này.'}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadSuggestion()}
+                  className="ml-auto text-xs font-bold text-teal-700 hover:underline cursor-pointer"
+                >
+                  Thử lại
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          (() => {
+            const recId = suggestion.recommendedFeedProductId;
+            const recProduct = products.find((p) => p.id === recId);
+            const recIsExactSize = !!suggestion.matchingFeeds?.some((f) => f.id === recId);
+            const remaining = roundKg(Math.max(0, suggestion.dailyKg - summary.doneKg));
+            const perSession = fillTargets.length > 0 ? roundKg(remaining / fillTargets.length) : 0;
+            const sep = <span className="hidden md:inline text-teal-300">|</span>;
+            const smallBtn =
+              'h-6 px-2 rounded-md bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+            return (
+              <details className="group">
+                <summary className="list-none flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-black text-teal-800 flex items-center gap-1">
+                    <Sparkles className="w-4 h-4 text-teal-600" /> AI
+                  </span>
+
+                  <span className="text-slate-700" title={`${suggestion.growthStage || ''} · ${ABW_SOURCE_LABEL[suggestion.abwSource]}`}>
+                    Tôm <b>≈ {suggestion.abwGram} g/con</b>
+                  </span>
+                  {sep}
+
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-slate-700 truncate max-w-[220px]" title={recProduct?.itemName}>
+                      {recProduct ? (
+                        <>
+                          Dùng <b>{recProduct.itemName}</b>
+                        </>
+                      ) : (
+                        <span className="text-amber-700">Kho chưa có thức ăn {suggestion.recommendedFeedSize}</span>
+                      )}
+                    </span>
+                    {recProduct && !recIsExactSize && <span className="text-xs text-amber-700">(gần cỡ)</span>}
+                    {recProduct &&
+                      (recProduct.id === productId ? (
+                        <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" aria-label="Đang dùng" />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedProductId(recProduct.id);
+                          }}
+                          className={smallBtn}
+                        >
+                          Dùng
+                        </button>
+                      ))}
+                  </span>
+                  {sep}
+
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-slate-700">
+                      <b className="text-teal-700">{suggestion.dailyKg} kg</b>/ngày
+                      {fillTargets.length > 0 && remaining > 0 && <span className="text-slate-500"> · ≈ {perSession} kg/cử</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        applySuggestedKg();
+                      }}
+                      disabled={remaining <= 0 || fillTargets.length === 0}
+                      title={`Chia ${remaining} kg vào ${fillTargets.length} cử còn lại`}
+                      className={smallBtn}
+                    >
+                      Điền
+                    </button>
+                  </span>
+
+                  {suggestion.warnings.length > 0 && (
+                    <span className="text-amber-700 flex items-center gap-1" title={suggestion.warnings.join('\n')}>
+                      <AlertTriangle className="w-3.5 h-3.5" /> {suggestion.warnings.length} lưu ý
+                    </span>
+                  )}
+
+                  <span className="ml-auto flex items-center gap-1">
+                    <span className="text-xs font-semibold text-teal-700 cursor-pointer flex items-center gap-0.5">
+                      Chi tiết <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void loadSuggestion();
+                      }}
+                      disabled={suggestionLoading}
+                      title="Phân tích lại"
+                      aria-label="Phân tích lại"
+                      className="w-6 h-6 rounded-md text-teal-700 hover:bg-teal-100 flex items-center justify-center cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${suggestionLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </span>
+                </summary>
+
+                <div className="mt-2 pt-2 border-t border-teal-100 space-y-1 text-xs text-slate-600">
+                  <p>
+                    <b className="first-letter:uppercase">{suggestion.growthStage}</b> · {ABW_SOURCE_LABEL[suggestion.abwSource]} · sinh khối ≈{' '}
+                    {suggestion.biomassKg.toLocaleString('vi-VN')} kg · nên dùng thức ăn {suggestion.recommendedFeedSize}
+                    {recProduct && ` (kho còn ${roundKg(recProduct.quantity)} ${recProduct.unit})`}
+                  </p>
+                  {suggestion.warnings.map((w) => (
+                    <p key={w} className="text-amber-800 font-semibold flex items-start gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {w}
+                    </p>
+                  ))}
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {suggestion.notes.map((n) => (
+                      <li key={n}>{n}</li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            );
+          })()
+        )}
+      </section>
+
+      {/* ── 3. Số cử & chia nhanh ── */}
+      <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 flex flex-col xl:flex-row xl:items-end gap-5">
+        <div className="flex-1">
+          <p className="text-base font-bold text-slate-700 mb-2">Số cử cho ăn trong ngày</p>
+          <div className="flex flex-wrap gap-2">
+            {FEEDING_SESSION_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => applyPreset(p.id)}
+                aria-pressed={feedCount === p.count}
+                className={`min-w-14 h-12 px-4 rounded-xl border-2 text-base font-black transition-all cursor-pointer ${
+                  feedCount === p.count
+                    ? 'bg-teal-600 border-teal-600 text-white'
+                    : 'bg-white border-slate-200 text-slate-700 hover:border-teal-400'
+                }`}
+              >
+                {p.count} cử
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="xl:w-[420px]">
+          <p className="text-base font-bold text-slate-700 mb-2">Chia đều tổng thức ăn cả ngày</p>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.5"
+                value={totalInput}
+                onChange={(e) => setTotalInput(e.target.value)}
+                placeholder="Ví dụ: 20"
+                className="w-full h-12 pl-4 pr-12 rounded-xl border-2 border-slate-200 text-lg font-bold text-slate-900 outline-none focus:border-teal-500"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-base font-bold text-slate-400">kg</span>
             </div>
             <button
               type="button"
-              onClick={() => setStatusBanner(null)}
-              className="text-slate-400 hover:text-slate-600 p-1"
+              onClick={distribute}
+              className="h-12 px-5 rounded-xl bg-teal-50 border-2 border-teal-200 text-teal-800 text-base font-bold hover:bg-teal-100 flex items-center gap-2 cursor-pointer"
             >
-              ✕
+              <Calculator className="w-5 h-5" /> Chia đều
             </button>
           </div>
-        )}
-
-        {/* ── Section 1: Location & Date Selection ────────────────────── */}
-        <div className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/40 p-6 mb-6">
-          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-black">1</span>
-            Vị Trí & Ngày Cho Ăn
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Farm select */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                Trang trại <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedFarmId}
-                  onChange={(e) => {
-                    setSelectedFarmId(e.target.value);
-                    setSelectedPondId('');
-                    setSelectedCropId('');
-                  }}
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-800 appearance-none outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all cursor-pointer"
-                >
-                  <option value="">-- Chọn trang trại --</option>
-                  {farms.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Pond select */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                Ao nuôi <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedPondId}
-                  onChange={(e) => setSelectedPondId(e.target.value)}
-                  disabled={!selectedFarmId}
-                  className={`w-full px-4 py-2.5 pr-10 rounded-xl border text-sm font-semibold appearance-none outline-none transition-all cursor-pointer ${selectedFarmId
-                      ? 'border-slate-200 bg-slate-50/50 text-slate-800 hover:bg-white hover:border-slate-300 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20'
-                      : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'
-                    }`}
-                >
-                  <option value="">{selectedFarmId ? '-- Chọn ao nuôi --' : '-- Chọn trang trại trước --'}</option>
-                  {filteredPonds.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Crop Select (Active only) */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                Vụ nuôi hoạt động <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedCropId}
-                  onChange={(e) => setSelectedCropId(e.target.value)}
-                  disabled={!selectedPondId || activeCrops.length === 0}
-                  className={`w-full px-4 py-2.5 pr-10 rounded-xl border text-sm font-semibold appearance-none outline-none transition-all cursor-pointer ${selectedPondId && activeCrops.length > 0
-                      ? 'border-emerald-300 bg-emerald-50/30 text-emerald-900 hover:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20'
-                      : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'
-                    }`}
-                >
-                  {activeCrops.length === 0 ? (
-                    <option value="">Không có vụ ACTIVE</option>
-                  ) : (
-                    activeCrops.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        Vụ nuôi ngày thả {new Date(c.startDate).toLocaleDateString('vi-VN')}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <Layers className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Date picker */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                Ngày cho ăn <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={feedingDate}
-                  onChange={(e) => setFeedingDate(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-semibold text-slate-800 outline-none hover:bg-white hover:border-slate-300 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all"
-                />
-              </div>
-            </div>
-          </div>
         </div>
+      </section>
 
-        {/* ── Section 2: Session Presets & Batch Actions Toolbar ───────── */}
-        <div className="bg-white/90 backdrop-blur-lg rounded-3xl border border-white/60 shadow-lg shadow-slate-200/40 p-6 mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-black">2</span>
-              Chọn Nhanh Số Cử Cho Ăn
-            </h3>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Đang bật {summary.activeCount}/7 cử cho ăn
+      {/* ── Đang tự chia: thêm / bớt cử sẽ chia lại số kg ── */}
+      {distribution && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl bg-teal-50 border border-teal-200 px-4 py-3">
+          <p className="text-sm text-teal-900 flex items-start gap-2">
+            <Sparkles className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+            <span>
+              Đang tự chia <b>{distribution.totalKg} kg</b> {distribution.source === 'AI' ? 'theo gợi ý AI' : 'theo tổng bạn nhập'}.
+              Thêm / bớt cử sẽ tự chia lại; cử bạn tự sửa số kg được giữ nguyên.
             </span>
-          </div>
+          </p>
+          <button
+            type="button"
+            onClick={() => setDistribution(null)}
+            className="h-9 px-3 rounded-lg text-sm font-bold text-teal-800 hover:bg-teal-100 shrink-0 cursor-pointer"
+          >
+            Ngừng tự chia
+          </button>
+        </div>
+      )}
 
-          {/* Preset Buttons Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 mb-5">
-            {FEEDING_SESSION_PRESETS.map((preset) => {
-              const isSelected = selectedPresetId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => applyPreset(preset.id)}
-                  className={`py-2.5 px-3 rounded-2xl text-xs font-extrabold transition-all border flex flex-col items-center justify-center gap-1 ${isSelected
-                      ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white border-emerald-600 shadow-md shadow-emerald-500/25 scale-[1.02]'
-                      : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'
-                    }`}
-                >
-                  <span>{preset.name}</span>
-                </button>
-              );
-            })}
-          </div>
+      {/* ── 4. Các cử trong ngày ── */}
+      <section className="space-y-2.5" aria-busy={dayLoading}>
+        <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+          <Utensils className="w-5 h-5 text-teal-600" /> Các cử cho ăn
+          {dayLoading && <Loader2 className="w-4 h-4 text-teal-500 animate-spin" />}
+          {(dayLogs.length > 0 || DEFAULT_FEEDING_SESSIONS.some((d) => drafts[d.session].amount)) && (
+            <button
+              type="button"
+              onClick={() => setConfirmClearAll(true)}
+              disabled={!!busy}
+              className="ml-auto h-9 px-3 rounded-lg bg-white border border-slate-200 text-sm font-bold text-slate-600 hover:border-rose-300 hover:text-rose-700 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {busy === 'ALL' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Xoá tất cả các cử
+            </button>
+          )}
+        </h3>
 
-          {/* Batch Tools Bar */}
-          <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/70 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider">
-              <Sliders className="w-3.5 h-3.5 text-emerald-600" /> Công cụ hỗ trợ nhập liệu nhanh (Batch Tools)
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
-              {/* Batch Apply Product */}
-              <div className="lg:col-span-5 flex items-center gap-2.5 bg-white p-2.5 rounded-xl border border-slate-200 min-w-0 shadow-sm">
-                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Thức ăn:</span>
-                <select
-                  value={batchFeedProductId}
-                  onChange={(e) => handleSelectFeedProduct(e.target.value)}
-                  className="flex-1 min-w-0 truncate px-2 py-1 text-xs font-semibold text-slate-700 bg-transparent border-none outline-none cursor-pointer"
-                  title={feedProducts.find((p) => p.id === batchFeedProductId) ? formatProductLabel(feedProducts.find((p) => p.id === batchFeedProductId)!) : ''}
-                >
-                  <option value="">-- Chọn loại thức ăn chung cho các cử --</option>
-                  {feedProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {formatProductLabel(p)}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 whitespace-nowrap">
-                  Tất cả cử
-                </span>
+        {DEFAULT_FEEDING_SESSIONS.map((def) => {
+          const s = def.session;
+          const state = stateOf(s);
+          const log = logMap.get(s);
+          const d = drafts[s];
+          const { name, period } = sessionInfo(s);
+          const isBusy = busy === s;
+          const btn =
+            'h-9 px-3 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50';
+          const title = (
+            <div className="flex items-center gap-3 min-w-0">
+              <span
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-black ${
+                  state === 'done'
+                    ? 'bg-teal-600 text-white'
+                    : state === 'pending'
+                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                    : 'bg-slate-200 text-slate-500'
+                }`}
+              >
+                {state === 'done' ? <Check className="w-5 h-5" /> : s.replace('SESSION_', '')}
+              </span>
+              <div className="min-w-0">
+                <p className={`text-sm font-bold ${state === 'off' || state === 'skipped' ? 'text-slate-500' : 'text-slate-900'}`}>
+                  {name} <span className="font-medium text-slate-500">· {period}</span>
+                </p>
+                <p className="text-xs text-slate-500 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> {d.time}
+                </p>
               </div>
+            </div>
+          );
 
-              {/* Ô Nhập số kg thức ăn + Nút Chia + Nút Lưu ngay bên cạnh */}
-              <div className="lg:col-span-7 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                {/* Khung nhập kg thức ăn & Nút Chia */}
-                <div className="flex-1 flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 min-w-0 shadow-sm">
-                  <Scale className="w-4 h-4 text-emerald-600 ml-1 flex-shrink-0" />
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={batchTotalFeedKg}
-                    onChange={(e) => setBatchTotalFeedKg(e.target.value)}
-                    placeholder="Tổng kg thức ăn (ví dụ: 500)..."
-                    className="flex-1 min-w-0 px-2 py-1 text-xs font-bold text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400"
-                  />
+          if (state === 'done' && log) {
+            return (
+              <div key={s} className="bg-teal-50/60 border border-teal-200 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                {title}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <div className="text-right mr-1">
+                    <p className="text-base font-black text-teal-800 leading-tight">{Number(log.feedAmount)} kg</p>
+                    <p className="text-xs text-slate-500">{productName(log.feedProductId)}</p>
+                  </div>
                   <button
                     type="button"
-                    onClick={batchDistributeFeedAmount}
-                    className="px-3 py-2 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 cursor-pointer"
-                    title="Chia đều lượng thức ăn cho các cử đang bật"
+                    onClick={() => updateDraft(s, { editing: true, amount: String(Number(log.feedAmount)) })}
+                    disabled={!!busy}
+                    className={`${btn} bg-white border border-slate-200 text-slate-700 hover:border-teal-400`}
                   >
-                    <Calculator className="w-3 h-3" /> Chia {summary.activeCount} cử
+                    <Pencil className="w-3.5 h-3.5" /> Sửa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSkip(log)}
+                    disabled={!!busy}
+                    className={`${btn} bg-white border border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-700`}
+                  >
+                    {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />} Bỏ cử
                   </button>
                 </div>
-
-                {/* NÚT LƯU NGAY BÊN CẠNH Ô NHẬP KG */}
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-6 py-2.5 min-h-[42px] rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all duration-200 shadow-md shadow-emerald-500/25 hover:shadow-emerald-500/35 hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer flex-shrink-0"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Đang lưu...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Lưu Nhật Ký Cho Ăn ({summary.activeCount} Cử)
-                    </>
-                  )}
-                </button>
               </div>
-            </div>
+            );
+          }
 
-            {/* Real-time Inventory Stock & Credit Status Box */}
-            {feedProducts.length > 0 && (
-              <div className={`mt-3 p-3.5 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-                stockValidation.hasDeficit
-                  ? 'bg-rose-50/95 border-rose-200 text-rose-800 shadow-sm shadow-rose-200/40'
-                  : 'bg-emerald-50/80 border-emerald-200/80 text-emerald-900'
-              }`}>
-                <div className="flex items-start sm:items-center gap-2.5">
-                  {stockValidation.hasDeficit ? (
-                    <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5 sm:mt-0" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5 sm:mt-0" />
-                  )}
-                  <div>
-                    <div className="font-extrabold flex flex-wrap items-center gap-2">
-                      {(() => {
-                        const selProd = feedProducts.find((p) => p.id === batchFeedProductId) || feedProducts[0];
-                        const demanded = stockValidation.demands[selProd?.id || ''] || 0;
-                        const isEnough = (selProd?.quantity || 0) >= demanded;
-                        return (
-                          <>
-                            <span className="font-black text-slate-800">{selProd ? selProd.itemName : 'Thức ăn'}:</span>
-                            <span>Tồn kho: <strong>{selProd?.quantity || 0} {selProd?.unit || 'kg'}</strong></span>
-                            <span className="text-slate-300">|</span>
-                            <span>Xuất kho hôm nay: <strong>{demanded.toFixed(1)} {selProd?.unit || 'kg'}</strong></span>
-                            <span className="text-slate-300">|</span>
-                            <span>
-                              {isEnough ? (
-                                <span className="text-emerald-700">Tồn kho còn lại: <strong>{((selProd?.quantity || 0) - demanded).toFixed(1)} {selProd?.unit || 'kg'}</strong></span>
-                              ) : (
-                                <span className="text-rose-700 font-black">Thiếu hụt: <strong>{(demanded - (selProd?.quantity || 0)).toFixed(1)} {selProd?.unit || 'kg'}</strong></span>
-                              )}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    {stockValidation.hasDeficit ? (
-                      <p className="text-[11px] text-rose-600 font-semibold mt-1">
-                        👉 Số lượng trong kho không đủ để xuất! Bạn hãy bấm <strong>"Bỏ cử"</strong> ở các cử phía dưới để cộng lại thức ăn vào kho, hoặc giảm số kg thức ăn.
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-emerald-700/80 font-normal mt-0.5">
-                        ✓ Lượng thức ăn của các cử hoàn thành được trừ kho hợp lệ. Cử bỏ sẽ tự động được cộng lại vào kho.
-                      </p>
-                    )}
-                  </div>
+          if (state === 'skipped' || state === 'off') {
+            return (
+              <div key={s} className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                {title}
+                <div className="flex items-center gap-2.5">
+                  <span className="text-sm font-semibold text-slate-500">
+                    {state === 'skipped' ? 'Đã bỏ cử' : 'Không cho ăn cử này'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateDraft(s, state === 'skipped' ? { editing: true, active: true } : { active: true })}
+                    disabled={!!busy}
+                    className={`${btn} bg-white border border-slate-200 text-teal-700 hover:border-teal-400`}
+                  >
+                    {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    {state === 'skipped' ? 'Cho ăn lại' : 'Bật cử này'}
+                  </button>
                 </div>
+              </div>
+            );
+          }
 
-                {stockValidation.skippedFeedKg > 0 && (
-                  <div className="flex items-center gap-1.5 bg-white/90 px-3 py-1.5 rounded-lg border border-slate-200/70 text-slate-700 font-bold whitespace-nowrap self-start sm:self-auto shadow-sm">
-                    <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Đã cộng lại: <strong className="text-teal-700">+{stockValidation.skippedFeedKg.toFixed(1)} kg</strong> (do bỏ cử)</span>
-                  </div>
+          // pending: chưa cho ăn, hoặc đang sửa cử đã ghi
+          // Chỉ cử ĐÃ CHO ĂN mới mở giao diện sửa (Lưu / Huỷ).
+          // "Cho ăn lại" cử đã bỏ dùng y hệt giao diện cử chưa cho ăn (Đã cho ăn / Bỏ cử).
+          const isEditingSaved = !!log && d.editing && log.feedingStatus !== 'SKIPPED';
+          const isRefeeding = !!log && d.editing && log.feedingStatus === 'SKIPPED';
+          return (
+            <div key={s} className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              {title}
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <input
+                  type="time"
+                  value={d.time}
+                  onChange={(e) => updateDraft(s, { time: e.target.value })}
+                  aria-label={`Giờ cho ăn ${name}`}
+                  className="h-9 px-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-800 outline-none focus:border-teal-500"
+                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.1"
+                    value={d.amount}
+                    onChange={(e) => updateDraft(s, { amount: e.target.value, manual: true })}
+                    onKeyDown={(e) => e.key === 'Enter' && void saveSession(s)}
+                    placeholder="0"
+                    aria-label={`Số kg thức ăn ${name}`}
+                    className="w-28 h-9 pl-3 pr-9 rounded-lg border border-slate-200 text-sm font-bold text-slate-900 outline-none focus:border-teal-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">kg</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void saveSession(s)}
+                  disabled={!!busy}
+                  className={`${btn} bg-teal-600 hover:bg-teal-700 text-white shadow-sm`}
+                >
+                  {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditingSaved ? <Save className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                  {isEditingSaved ? 'Lưu' : 'Đã cho ăn'}
+                </button>
+                {isEditingSaved ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateDraft(s, {
+                        editing: false,
+                        amount: log.feedingStatus !== 'SKIPPED' ? String(Number(log.feedAmount)) : '',
+                        time: log.feedingTime || d.time,
+                      })
+                    }
+                    className={`${btn} text-slate-600 hover:bg-slate-100`}
+                  >
+                    Huỷ
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      // Cử này đã được ghi "bỏ cử" trên server → chỉ cần quay lại trạng thái đã bỏ
+                      isRefeeding ? updateDraft(s, { editing: false, amount: '', manual: false }) : void skipPendingSession(s)
+                    }
+                    disabled={!!busy}
+                    title="Ghi nhận hôm nay bỏ cử này (không trừ kho)"
+                    className={`${btn} bg-white border border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-700`}
+                  >
+                    <Ban className="w-3.5 h-3.5" /> Bỏ cử
+                  </button>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          );
+        })}
+      </section>
+
+      {/* ── Thanh lưu nhanh (khi đã nhập kg cho nhiều cử) ── */}
+      {summary.pendingFilled > 1 && (
+        <div className="sticky bottom-4 z-30 bg-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-base">
+            Đã nhập <b className="text-teal-300">{summary.pendingFilled} cử</b> chưa lưu · tổng <b className="text-teal-300">{summary.pendingKg} kg</b>
+          </p>
+          <button
+            type="button"
+            onClick={() => void saveAll()}
+            disabled={!!busy || notEnoughStock}
+            className="w-full sm:w-auto h-12 px-6 rounded-2xl bg-teal-500 hover:bg-teal-400 text-white text-base font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+          >
+            {busy === 'ALL' ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+            Ghi tất cả {summary.pendingFilled} cử
+          </button>
         </div>
+      )}
 
-        {/* ── Section 3: Detailed Cards for 7 Sessions ─────────────────── */}
-        <div className="mb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-black">3</span>
-              Chi Tiết Các Cử Cho Ăn
-            </h3>
-            {feedProducts.length === 0 && selectedFarmId && (
-              <span className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> Chưa có sản phẩm Thức ăn trong kho của trang trại này!
-              </span>
-            )}
-          </div>
-
-          {/* Detailed List for 7 Sessions (Chronological Vertical Stack) */}
-          <div className="space-y-3">
-            {DEFAULT_FEEDING_SESSIONS.map((defItem) => {
-              const sKey = defItem.session;
-              const isActive = activeSessions[sKey];
-              const s = sessionData[sKey];
-              const selectedProd = feedProducts.find((p) => p.id === s.feedProductId);
-              const totalProductDemanded = selectedProd ? (stockValidation.demands[selectedProd.id] || 0) : 0;
-              const isExcess = selectedProd && isActive && s.feedingStatus !== 'SKIPPED' && totalProductDemanded > selectedProd.quantity;
-              const displayAmount = s.feedAmount > 0 ? s.feedAmount : (cachedFeedAmounts[sKey] > 0 ? cachedFeedAmounts[sKey] : 0);
-              const isDone = Boolean(savedSessions[sKey]?.locked);
-              const isSavingThis = savingSession === sKey;
-              const isEditable = isActive && !isDone;
-
-              return (
-                <div
-                  key={sKey}
-                  className={`bg-white/90 backdrop-blur-md rounded-2xl border p-3.5 sm:p-4 transition-all duration-300 ${
-                    isDone
-                      ? 'border-slate-200 !bg-slate-100 opacity-60 grayscale'
-                      : !isActive
-                      ? 'border-slate-200 bg-slate-50/50 opacity-70'
-                      : 'border-white/80 shadow-md shadow-slate-200/30 hover:shadow-lg hover:border-emerald-200'
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    {/* Góc trái: Số cử + Tên cử + Giờ cho ăn */}
-                    <div className="flex flex-wrap items-center gap-3">
-                      {/* Số thứ tự cử */}
-                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs flex-shrink-0 ${
-                        isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {sKey.replace('SESSION_', '')}
-                      </span>
-
-                      {/* Tên cử */}
-                      <h4 className={`text-sm font-bold min-w-[120px] ${
-                        isActive ? 'text-slate-800' : 'text-slate-400 line-through'
-                      }`}>
-                        {defItem.label}
-                      </h4>
-
-                      {/* Giờ cho ăn */}
-                      <input
-                        type="time"
-                        disabled={!isEditable}
-                        value={s.feedingTime}
-                        onChange={(e) => updateSession(sKey, 'feedingTime', e.target.value)}
-                        className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold outline-none transition-all ${
-                          isEditable
-                            ? 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-emerald-500'
-                            : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
-                        }`}
-                      />
-                    </div>
-
-                    {/* Góc phải: Nút Hoàn thành / Bỏ cử + Ô nhập số kg thức ăn */}
-                    <div className="flex flex-wrap items-center gap-2.5 self-end sm:self-auto flex-shrink-0">
-                      {/* Nút Hoàn thành / Bỏ cử (cử đã cho ăn: nhãn + nút Sửa) */}
-                      {isDone ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="py-1.5 px-3 rounded-xl text-xs font-black bg-slate-300 text-slate-700 flex items-center gap-1.5">
-                            <Check className="w-3.5 h-3.5" /> Đã cho ăn
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => editSavedSession(sKey)}
-                            title="Mở khoá để chỉnh lại cử này"
-                            className="py-1.5 px-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
-                          >
-                            <Pencil className="w-3 h-3" /> Sửa
-                          </button>
-                        </div>
-                      ) : (
-                      <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70">
-                        <button
-                          type="button"
-                          onClick={() => void completeSession(sKey)}
-                          disabled={savingSession !== null}
-                          title="Ghi nhận ngay cử này (trừ kho) và khoá lại"
-                          className={`py-1.5 px-3 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait ${
-                            isActive
-                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 hover:bg-emerald-700'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          {isSavingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Hoàn thành
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSessionStatus(sKey, 'SKIPPED')}
-                          className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                            !isActive
-                              ? 'bg-slate-700 text-white shadow-sm'
-                              : 'text-slate-400 hover:text-slate-700'
-                          }`}
-                        >
-                          <Ban className="w-3 h-3" /> Bỏ cử
-                        </button>
-                      </div>
-                      )}
-
-                      {/* Ô nhập số kg thức ăn */}
-                      <div className="relative w-32 sm:w-36">
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          disabled={!isEditable}
-                          value={isActive ? (s.feedAmount > 0 ? s.feedAmount : '') : (displayAmount > 0 ? displayAmount : 0)}
-                          onChange={(e) => updateSession(sKey, 'feedAmount', e.target.value)}
-                          placeholder="0.0"
-                          className={`w-full px-3 py-1.5 pr-9 rounded-xl border text-sm font-extrabold outline-none transition-all ${
-                            !isEditable
-                              ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed font-bold'
-                              : isExcess
-                                ? 'bg-red-50 text-red-900 border-red-300 focus:border-red-500'
-                                : 'bg-slate-50 text-slate-900 border-slate-200 hover:bg-white focus:border-emerald-500'
-                          }`}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
-                          kg
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Thông tin Bỏ cử: cộng lại lượng thức ăn vào kho & vẫn lưu lại lượng đã set */}
-                  {!isActive && (
-                    <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
-                      <span>
-                        Đã bỏ cử — Lượng thức ăn <strong>({displayAmount} kg)</strong> được cộng lại vào kho (vẫn lưu lại để tự động khôi phục khi bạn chọn Hoàn thành lại).
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Cảnh báo vượt tồn kho */}
-                  {isEditable && isExcess && (
-                    <p className="text-[11px] text-red-600 font-bold flex items-center gap-1 mt-2.5 pt-2 border-t border-red-100">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> Cảnh báo: Tổng nhu cầu ({totalProductDemanded.toFixed(1)} kg) vượt tồn kho ({selectedProd?.quantity} kg)! Hãy giảm kg hoặc bấm "Bỏ cử".
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Summary & Actions Sticky Footer ─────────────────────────── */}
-        <div className="sticky bottom-4 z-40 bg-slate-900/95 backdrop-blur-xl text-white rounded-3xl p-5 shadow-2xl border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 mt-6">
-          {/* Summary counters */}
-          <div className="grid grid-cols-4 gap-4 w-full md:w-auto text-center md:text-left">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tổng Thức Ăn</p>
-              <p className="text-xl font-black text-emerald-400">{summary.totalFeedKg.toFixed(1)} <span className="text-xs text-emerald-200">kg</span></p>
+      {/* ── Xác nhận xoá tất cả các cử ── */}
+      {confirmClearAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-8 h-8" />
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hoàn Thành</p>
-              <p className="text-xl font-black text-emerald-400">{summary.completed} <span className="text-xs text-slate-400">/ {summary.activeCount} cử</span></p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bỏ Cử (Hoàn kho)</p>
-              <p className="text-xl font-black text-teal-400">{summary.skipped} <span className="text-xs text-slate-400">cử</span></p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tình Trạng Kho</p>
-              <p className={`text-xs font-black mt-1 ${stockValidation.hasDeficit ? 'text-rose-400' : 'text-emerald-400'}`}>
-                {stockValidation.hasDeficit ? '⚠️ Thiếu hàng' : '✅ Đủ hàng'}
-              </p>
-            </div>
-          </div>
-
-          {/* Action buttons & inline status banner */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full sm:w-auto px-8 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/40 hover:-translate-y-0.5 disabled:opacity-70 cursor-pointer"
-            >
-              {saving ? (
+            <h3 className="text-xl font-black text-slate-900 mb-2">Xoá tất cả các cử?</h3>
+            <p className="text-base text-slate-600 mb-6">
+              {pond?.name} · {isToday(date) ? 'Hôm nay' : formatDayVN(date)}
+              <br />
+              {dayLogs.length > 0 ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Đang lưu...
+                  Xoá <b>{dayLogs.length} cử đã ghi</b>
+                  {summary.doneKg > 0 && (
+                    <>
+                      , <b>{summary.doneKg} kg</b> thức ăn sẽ được <b>hoàn lại vào kho</b>
+                    </>
+                  )}
+                  . Số kg đang nhập cũng bị xoá.
                 </>
               ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Lưu Nhật Ký Cho Ăn ({summary.activeCount} Cử)
-                </>
+                'Xoá số kg đang nhập ở tất cả các cử.'
               )}
-            </button>
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmClearAll(false)}
+                className="flex-1 h-12 rounded-xl border-2 border-slate-200 text-slate-700 text-base font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Không
+              </button>
+              <button
+                type="button"
+                onClick={() => void clearAllSessions()}
+                className="flex-1 h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-5 h-5" /> Xoá tất cả
+              </button>
+            </div>
           </div>
         </div>
-      </form>
+      )}
+
+      {/* ── Xác nhận bỏ cử đã ghi ── */}
+      {confirmSkip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+              <Ban className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 mb-2">Bỏ {sessionInfo(confirmSkip.feedingSession).name}?</h3>
+            <p className="text-base text-slate-600 mb-6">
+              Cử này đã ghi <b>{Number(confirmSkip.feedAmount)} kg</b>. Khi bỏ cử, số thức ăn này sẽ được <b>hoàn lại vào kho</b>.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmSkip(null)}
+                className="flex-1 h-12 rounded-xl border-2 border-slate-200 text-slate-700 text-base font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Không
+              </button>
+              <button
+                type="button"
+                onClick={() => void skipSavedSession(confirmSkip)}
+                className="flex-1 h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-base font-bold cursor-pointer"
+              >
+                Bỏ cử
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

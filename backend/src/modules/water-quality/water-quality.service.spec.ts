@@ -129,3 +129,51 @@ describe('WaterQualityService manager trends', () => {
     );
   });
 });
+
+describe('WaterQualityService – lưu việc xử lý cảnh báo nước trên server', () => {
+  const user = { userId: 'tech-1', role: 'TECHNICIAN' } as any;
+  const makeService = (overrides: Record<string, any> = {}) => {
+    const prisma: any = {
+      waterQualityRecord: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'wq-1', pondId: 'p1', pond: { id: 'p1', farmId: 'f1' } }),
+      },
+      waterTreatment: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 't1', ...data })),
+        ...overrides,
+      },
+    };
+    const farmAccess = { assertCanAccessFarm: jest.fn().mockResolvedValue(undefined) };
+    const service = new WaterQualityService(prisma, farmAccess as any, {} as any);
+    return { service, prisma, farmAccess };
+  };
+
+  it('ghi nhận đã xử lý: lưu người xử lý, ghi chú, hóa chất', async () => {
+    const { service, prisma, farmAccess } = makeService();
+    await service.saveTreatment(user, 'wq-1', {
+      note: 'Tạt vôi CaCO3, chạy quạt 2 giờ',
+      chemicals: [{ name: 'Vôi CaCO3', quantity: 20, unit: 'kg' }],
+    });
+
+    expect(farmAccess.assertCanAccessFarm).toHaveBeenCalledWith(user, 'f1');
+    expect(prisma.waterTreatment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        waterQualityRecordId: 'wq-1',
+        pondId: 'p1',
+        treatedById: 'tech-1',
+        note: 'Tạt vôi CaCO3, chạy quạt 2 giờ',
+      }),
+    });
+  });
+
+  it('cảnh báo đã xử lý rồi -> báo lỗi, không tạo trùng', async () => {
+    const { service, prisma } = makeService({ findUnique: jest.fn().mockResolvedValue({ id: 'old' }) });
+    await expect(service.saveTreatment(user, 'wq-1', {})).rejects.toThrow('đã được xử lý');
+    expect(prisma.waterTreatment.create).not.toHaveBeenCalled();
+  });
+
+  it('chưa chạy prisma db push (thiếu bảng) -> thông báo rõ cách khắc phục', async () => {
+    const { service } = makeService({ findUnique: jest.fn().mockRejectedValue({ code: 'P2021' }) });
+    await expect(service.saveTreatment(user, 'wq-1', {})).rejects.toThrow('prisma db push');
+  });
+});

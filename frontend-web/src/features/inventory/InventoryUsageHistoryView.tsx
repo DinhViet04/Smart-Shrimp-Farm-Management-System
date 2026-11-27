@@ -24,6 +24,8 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import LoadingMotion from '../../components/LoadingMotion';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../hooks/usePagination';
 import { inventoryService, type InventoryItem, type InventoryUsageLog } from '../../services/inventory.service';
 import { cropService, type Crop } from '../../services/crop.service';
 import {
@@ -53,6 +55,16 @@ export default function InventoryUsageHistoryView({
   ponds,
   onBack,
 }: InventoryUsageHistoryViewProps) {
+  // Nông dân & Quản lý: giữ bố cục, chỉ làm gọn giao diện (tông teal, bỏ gradient / bóng / chữ in hoa)
+  const isCompact = (() => {
+    try {
+      const r = JSON.parse(localStorage.getItem('user') || '{}')?.role;
+      return r === 'FARMER' || r === 'FARM_MANAGER';
+    } catch {
+      return false;
+    }
+  })();
+  const fc = (farmer: string, other: string) => (isCompact ? farmer : other);
   const [logs, setLogs] = useState<InventoryUsageLog[]>([]);
   const [feedingGroups, setFeedingGroups] = useState<DailyFeedingGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -556,8 +568,13 @@ export default function InventoryUsageHistoryView({
     }
   };
 
+
+  // Phân trang 2 bảng (đổi bộ lọc → về trang 1)
+  const filterKey = `${farmId}|${movementType}|${categoryFilter}|${selectedYear}|${selectedPondId}|${selectedCropId}|${searchQuery}`;
+  const movementPage = usePagination(activeMovementLogs, 15, filterKey);
+  const feedingPage = usePagination(filteredFeedingGroups, 15, filterKey);
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300 relative">
+    <div className={fc('space-y-5 max-w-7xl mx-auto relative theme-farmer', 'space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300 relative')}>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[100] px-4 py-3 rounded-2xl shadow-xl border border-emerald-200 bg-emerald-50 text-emerald-700 flex items-center gap-3 animate-in slide-in-from-right-8 fade-in duration-300">
@@ -567,22 +584,24 @@ export default function InventoryUsageHistoryView({
       )}
 
       {/* ── 1. HEADER & BREADCRUMB ────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/90 backdrop-blur-xl p-5 sm:p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60">
+      <div className={fc('flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white px-5 py-4 rounded-2xl border border-slate-200', 'flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white/90 backdrop-blur-xl p-5 sm:p-6 rounded-3xl shadow-xl shadow-blue-900/5 border border-white/60')}>
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
-            className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-2xl border border-slate-200 transition-all hover:scale-105 active:scale-95 shadow-sm group"
+            className={fc('p-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg border border-slate-200 transition-colors group', 'p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-2xl border border-slate-200 transition-all hover:scale-105 active:scale-95 shadow-sm group')}
             title="Quay lại Quản lý kho"
           >
             <ArrowLeft className="w-5 h-5 text-slate-600 group-hover:-translate-x-0.5 transition-transform" />
           </button>
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+            {!isCompact && (
+<div className={fc('flex items-center gap-1.5 text-xs text-slate-400 mb-0.5', 'flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5')}>
               <span>Quản lý kho</span>
               <span>/</span>
               <span className="text-blue-600">Nhật ký Sử dụng</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+)}
+            <h1 className={fc('text-xl font-bold text-slate-900 flex items-center gap-2', 'text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3')}>
               Nhật ký Sử dụng
               <span className="text-xs font-bold px-3 py-1 bg-blue-100 text-blue-700 rounded-full border border-blue-200">
                 {farmName || 'Trang trại'}
@@ -599,7 +618,7 @@ export default function InventoryUsageHistoryView({
             title="Tải lại dữ liệu mới nhất"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
-            Làm mới
+            {!isCompact && 'Làm mới'}
           </button>
         </div>
       </div>
@@ -607,32 +626,35 @@ export default function InventoryUsageHistoryView({
       {/* ── 2. TOP 4 KPI CARDS THỐNG KÊ TRỰC QUAN ───────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Thẻ 1: Lịch sử Nhập kho */}
-        <div className="bg-gradient-to-br from-white to-emerald-50/40 p-5 rounded-3xl border border-emerald-200/80 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200 shadow-inner">
+        <div className={fc('bg-white px-4 py-3.5 rounded-2xl border border-slate-200 flex items-center gap-3', 'bg-gradient-to-br from-white to-emerald-50/40 p-5 rounded-3xl border border-emerald-200/80 shadow-sm flex items-center gap-4')}>
+          <div className={fc('w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0', 'w-12 h-12 rounded-2xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200 shadow-inner')}>
             <PackagePlus className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Lịch sử Nhập kho</p>
-            <p className="text-2xl font-black text-emerald-700 mt-0.5 truncate">
+            <p className={fc('text-sm text-slate-500', 'text-xs font-bold text-emerald-800 uppercase tracking-wider')}>{isCompact ? 'Nhập kho' : 'Lịch sử Nhập kho'}</p>
+            <p className={fc('text-xl font-semibold text-slate-900 mt-0.5 truncate tabular-nums', 'text-2xl font-black text-emerald-700 mt-0.5 truncate')}>
               {stats.importCount} <span className="text-xs font-bold text-emerald-600/70">lượt nhập</span>
             </p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+            {!isCompact && (
+<p className="text-[11px] text-slate-500 font-medium mt-0.5">
               Bổ sung hàng vào kho trang trại
             </p>
+)}
           </div>
         </div>
 
         {/* Thẻ 2: Lịch sử Xuất kho */}
-        <div className="bg-gradient-to-br from-white to-rose-50/40 p-5 rounded-3xl border border-rose-200/80 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-100/80 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200 shadow-inner">
+        <div className={fc('bg-white px-4 py-3.5 rounded-2xl border border-slate-200 flex items-center gap-3', 'bg-gradient-to-br from-white to-rose-50/40 p-5 rounded-3xl border border-rose-200/80 shadow-sm flex items-center gap-4')}>
+          <div className={fc('w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0', 'w-12 h-12 rounded-2xl bg-rose-100/80 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200 shadow-inner')}>
             <PackageMinus className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-rose-800 uppercase tracking-wider">Lịch sử Xuất kho</p>
-            <p className="text-2xl font-black text-rose-700 mt-0.5 truncate">
+            <p className={fc('text-sm text-slate-500', 'text-xs font-bold text-rose-800 uppercase tracking-wider')}>{isCompact ? 'Xuất kho' : 'Lịch sử Xuất kho'}</p>
+            <p className={fc('text-xl font-semibold text-slate-900 mt-0.5 truncate tabular-nums', 'text-2xl font-black text-rose-700 mt-0.5 truncate')}>
               {stats.exportCount} <span className="text-xs font-bold text-rose-600/70">lượt xuất</span>
             </p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
+            {!isCompact && (
+<p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
               {stats.totalExportKg > 0 ? (
                 <>
                   <span className="font-bold text-rose-600">-{stats.totalExportKg.toLocaleString('vi-VN')} kg</span> xuất dùng ao
@@ -641,98 +663,103 @@ export default function InventoryUsageHistoryView({
                 'Xuất dùng cho các ao nuôi trong kỳ'
               )}
             </p>
+)}
           </div>
         </div>
 
         {/* Thẻ 3: Mặt hàng phát sinh biến động */}
-        <div className="bg-gradient-to-br from-white to-blue-50/40 p-5 rounded-3xl border border-blue-200/80 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-100/80 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200 shadow-inner">
+        <div className={fc('bg-white px-4 py-3.5 rounded-2xl border border-slate-200 flex items-center gap-3', 'bg-gradient-to-br from-white to-blue-50/40 p-5 rounded-3xl border border-blue-200/80 shadow-sm flex items-center gap-4')}>
+          <div className={fc('w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0', 'w-12 h-12 rounded-2xl bg-blue-100/80 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200 shadow-inner')}>
             <Layers className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-wider">Mặt hàng biến động</p>
-            <p className="text-2xl font-black text-blue-700 mt-0.5 truncate">
+            <p className={fc('text-sm text-slate-500', 'text-xs font-bold text-blue-800 uppercase tracking-wider')}>{isCompact ? 'Mặt hàng' : 'Mặt hàng biến động'}</p>
+            <p className={fc('text-xl font-semibold text-slate-900 mt-0.5 truncate tabular-nums', 'text-2xl font-black text-blue-700 mt-0.5 truncate')}>
               {stats.uniqueActiveItems} <span className="text-xs font-bold text-slate-400">mặt hàng</span>
             </p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+            {!isCompact && (
+<p className="text-[11px] text-slate-500 font-medium mt-0.5">
               {stats.totalMovements} tổng lượt giao dịch phát sinh
             </p>
+)}
           </div>
         </div>
 
         {/* Thẻ 4: Cữ cho tôm ăn */}
-        <div className="bg-gradient-to-br from-white to-amber-50/40 p-5 rounded-3xl border border-amber-200/80 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-100/80 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200 shadow-inner">
+        <div className={fc('bg-white px-4 py-3.5 rounded-2xl border border-slate-200 flex items-center gap-3', 'bg-gradient-to-br from-white to-amber-50/40 p-5 rounded-3xl border border-amber-200/80 shadow-sm flex items-center gap-4')}>
+          <div className={fc('w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0', 'w-12 h-12 rounded-2xl bg-amber-100/80 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200 shadow-inner')}>
             <Utensils className="w-6 h-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Nhật ký cho ăn ao</p>
-            <p className="text-2xl font-black text-amber-700 mt-0.5 truncate">
+            <p className={fc('text-sm text-slate-500', 'text-xs font-bold text-amber-800 uppercase tracking-wider')}>{isCompact ? 'Cho ăn' : 'Nhật ký cho ăn ao'}</p>
+            <p className={fc('text-xl font-semibold text-slate-900 mt-0.5 truncate tabular-nums', 'text-2xl font-black text-amber-700 mt-0.5 truncate')}>
               {formatNumber(stats.totalFeedingKg)} <span className="text-xs font-bold text-amber-600/70">kg cám</span>
             </p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+            {!isCompact && (
+<p className="text-[11px] text-slate-500 font-medium mt-0.5">
               {stats.totalDays} ngày • Đúng giờ {stats.feedingCompletionRate}%
             </p>
+)}
           </div>
         </div>
       </div>
 
       {/* ── 3. THANH ĐIỀU HƯỚNG LOẠI BIẾN ĐỘNG & BỘ LỌC TỔNG THỂ ──────────────── */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+      <div className={fc('bg-white rounded-2xl border border-slate-200 p-4 space-y-3', 'bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 space-y-4')}>
         
         {/* HÀNG 1: Quick Switcher giữa các loại biến động */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/60 overflow-x-auto max-w-full">
+          <div className={fc('flex items-center gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto max-w-full', 'flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/60 overflow-x-auto max-w-full')}>
             <button
               type="button"
               onClick={() => setMovementType('ALL')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+              className={`${fc('px-3 py-2 rounded-lg text-sm font-medium', 'px-4 py-2.5 rounded-xl text-xs font-bold')} transition-all whitespace-nowrap flex items-center gap-2 ${
                 movementType === 'ALL'
                   ? 'bg-white text-blue-700 shadow-md shadow-blue-500/10 border border-blue-100'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              Tất cả biến động ({filteredLogsBase.length})
+              {isCompact ? 'Tất cả' : 'Tất cả biến động'} ({filteredLogsBase.length})
             </button>
 
             <button
               type="button"
               onClick={() => setMovementType('IMPORT')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+              className={`${fc('px-3 py-2 rounded-lg text-sm font-medium', 'px-4 py-2.5 rounded-xl text-xs font-bold')} transition-all whitespace-nowrap flex items-center gap-2 ${
                 movementType === 'IMPORT'
                   ? 'bg-white text-emerald-700 shadow-md shadow-emerald-500/10 border border-emerald-200'
                   : 'text-slate-600 hover:text-emerald-700 hover:bg-white/60'
               }`}
             >
               <PackagePlus className="w-3.5 h-3.5 text-emerald-600" />
-              Lịch sử Nhập kho ({stats.importCount})
+              {isCompact ? 'Nhập' : 'Lịch sử Nhập kho'} ({stats.importCount})
             </button>
 
             <button
               type="button"
               onClick={() => setMovementType('EXPORT')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+              className={`${fc('px-3 py-2 rounded-lg text-sm font-medium', 'px-4 py-2.5 rounded-xl text-xs font-bold')} transition-all whitespace-nowrap flex items-center gap-2 ${
                 movementType === 'EXPORT'
                   ? 'bg-white text-rose-700 shadow-md shadow-rose-500/10 border border-rose-200'
                   : 'text-slate-600 hover:text-rose-700 hover:bg-white/60'
               }`}
             >
               <PackageMinus className="w-3.5 h-3.5 text-rose-600" />
-              Lịch sử Xuất kho ({stats.exportCount})
+              {isCompact ? 'Xuất' : 'Lịch sử Xuất kho'} ({stats.exportCount})
             </button>
 
             <button
               type="button"
               onClick={() => setMovementType('FEEDING')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+              className={`${fc('px-3 py-2 rounded-lg text-sm font-medium', 'px-4 py-2.5 rounded-xl text-xs font-bold')} transition-all whitespace-nowrap flex items-center gap-2 ${
                 movementType === 'FEEDING'
                   ? 'bg-white text-amber-700 shadow-md shadow-amber-500/10 border border-amber-200'
                   : 'text-slate-600 hover:text-amber-700 hover:bg-white/60'
               }`}
             >
               <Utensils className="w-3.5 h-3.5 text-amber-600" />
-              Nhật ký cho ăn ao ({filteredFeedingGroups.length} ngày)
+              {isCompact ? `Cho ăn (${filteredFeedingGroups.length})` : `Nhật ký cho ăn ao (${filteredFeedingGroups.length} ngày)`}
             </button>
           </div>
 
@@ -741,14 +768,16 @@ export default function InventoryUsageHistoryView({
               onClick={resetFilters}
               className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors underline self-start sm:self-auto"
             >
-              Đặt lại tất cả bộ lọc
+              {isCompact ? 'Đặt lại' : 'Đặt lại tất cả bộ lọc'}
             </button>
           )}
         </div>
 
         {/* HÀNG 2: Bộ lọc Danh mục sản phẩm */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-xs font-black text-slate-400 uppercase tracking-wider mr-2">Danh mục sản phẩm:</span>
+          {!isCompact && (
+<span className={fc('text-sm text-slate-500 mr-1', 'text-xs font-black text-slate-400 uppercase tracking-wider mr-2')}>Danh mục sản phẩm:</span>
+)}
           <button
             onClick={() => setCategoryFilter('ALL')}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
@@ -758,7 +787,7 @@ export default function InventoryUsageHistoryView({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            Tất cả danh mục
+            {isCompact ? 'Tất cả' : 'Tất cả danh mục'}
           </button>
           <button
             onClick={() => setCategoryFilter('FEED')}
@@ -768,7 +797,7 @@ export default function InventoryUsageHistoryView({
                 : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
           >
-            <Package className="w-3.5 h-3.5" /> Thức ăn tôm
+            <Package className="w-3.5 h-3.5" /> {isCompact ? 'Thức ăn' : 'Thức ăn tôm'}
           </button>
           <button
             onClick={() => setCategoryFilter('MEDICINE')}
@@ -796,15 +825,17 @@ export default function InventoryUsageHistoryView({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
           {/* Lọc theo Năm */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            {!isCompact && (
+<label className={fc('flex items-center gap-1.5 text-sm font-medium text-slate-600 mb-1', 'flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5')}>
               <Calendar className="w-3.5 h-3.5 text-blue-600" />
               Năm thực hiện
             </label>
+)}
             <div className="relative">
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8"
+                className={fc('w-full h-9 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:border-blue-500 outline-none cursor-pointer appearance-none pr-8', 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8')}
               >
                 <option value="ALL">Tất cả các năm</option>
                 {availableYears.map((year) => (
@@ -819,10 +850,12 @@ export default function InventoryUsageHistoryView({
 
           {/* Lọc theo Vụ nuôi */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            {!isCompact && (
+<label className={fc('flex items-center gap-1.5 text-sm font-medium text-slate-600 mb-1', 'flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5')}>
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
               Vụ nuôi
             </label>
+)}
             <div className="relative">
               <select
                 value={selectedCropId}
@@ -838,7 +871,7 @@ export default function InventoryUsageHistoryView({
                     }
                   }
                 }}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8"
+                className={fc('w-full h-9 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:border-blue-500 outline-none cursor-pointer appearance-none pr-8', 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8')}
               >
                 <option value="ALL">Tất cả vụ nuôi</option>
                 {seasons.map((season) => (
@@ -853,10 +886,12 @@ export default function InventoryUsageHistoryView({
 
           {/* Lọc theo Ao nuôi */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            {!isCompact && (
+<label className={fc('flex items-center gap-1.5 text-sm font-medium text-slate-600 mb-1', 'flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5')}>
               <Waves className="w-3.5 h-3.5 text-cyan-600" />
               Ao nuôi
             </label>
+)}
             <div className="relative">
               <select
                 value={selectedPondId}
@@ -870,7 +905,7 @@ export default function InventoryUsageHistoryView({
                     }
                   }
                 }}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8"
+                className={fc('w-full h-9 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:border-blue-500 outline-none cursor-pointer appearance-none pr-8', 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none pr-8')}
               >
                 <option value="ALL">Tất cả các ao</option>
                 {ponds.map((pond) => (
@@ -885,17 +920,19 @@ export default function InventoryUsageHistoryView({
 
           {/* Ô tìm kiếm từ khóa */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            {!isCompact && (
+<label className={fc('flex items-center gap-1.5 text-sm font-medium text-slate-600 mb-1', 'flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5')}>
               <Search className="w-3.5 h-3.5 text-slate-500" />
               Tìm kiếm nhanh
             </label>
+)}
             <div className="relative">
               <input
                 type="text"
-                placeholder="Tên sản phẩm, người ghi, ghi chú..."
+                placeholder={isCompact ? 'Tìm kiếm...' : 'Tên sản phẩm, người ghi, ghi chú...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all pr-8 shadow-inner"
+                className={fc('w-full h-9 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:border-blue-500 outline-none pr-8', 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all pr-8 shadow-inner')}
               />
               {searchQuery && (
                 <button
@@ -915,19 +952,21 @@ export default function InventoryUsageHistoryView({
       {/* ── 4. BẢNG HIỂN THỊ DỮ LIỆU CHÍNH ───────────────────────────────── */}
       {movementType === 'FEEDING' ? (
         /* ──── TRƯỜNG HỢP A: BẢNG NHẬT KÝ CHO ĂN HẰNG NGÀY ──── */
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+        <div className={fc('bg-white rounded-2xl border border-slate-200 overflow-hidden', 'bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden')}>
+          <div className={fc('px-5 py-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3', 'px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50')}>
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold border border-amber-200">
                 <Utensils className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-800">
-                  Nhật ký cho ăn hằng ngày theo cữ
+                  {isCompact ? 'Cho ăn theo ngày' : 'Nhật ký cho ăn hằng ngày theo cữ'}
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">
+                {!isCompact && (
+<p className="text-xs text-slate-400 font-medium">
                   Tổng hợp lượng thức ăn cho tôm ăn thực tế tại từng ao nuôi qua các cữ trong ngày
                 </p>
+)}
               </div>
             </div>
             <span className="text-xs font-black bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full self-start sm:self-auto">
@@ -954,9 +993,11 @@ export default function InventoryUsageHistoryView({
                 <Utensils className="w-8 h-8" />
               </div>
               <h4 className="text-base font-bold text-slate-700">Chưa có nhật ký cho ăn nào</h4>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+              {!isCompact && (
+<p className="text-xs text-slate-400 mt-1 max-w-sm">
                 Không tìm thấy lượt cho ăn nào khớp với bộ lọc hiện tại. Khi nông dân ghi nhận cữ ăn, dữ liệu sẽ tự động đồng bộ tại đây.
               </p>
+)}
               <button
                 onClick={resetFilters}
                 className="mt-4 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-xl transition-colors"
@@ -965,6 +1006,7 @@ export default function InventoryUsageHistoryView({
               </button>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[1050px]">
                 <colgroup>
@@ -978,7 +1020,7 @@ export default function InventoryUsageHistoryView({
                   <col className="w-[100px]" />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                  <tr className={fc('bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 whitespace-nowrap', 'bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider')}>
                     <th className="px-4 py-3.5">Ngày cho ăn</th>
                     <th className="px-4 py-3.5">Ao nuôi</th>
                     <th className="px-4 py-3.5">Vụ nuôi</th>
@@ -990,7 +1032,7 @@ export default function InventoryUsageHistoryView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {filteredFeedingGroups.map((group) => {
+                  {feedingPage.pageItems.map((group) => {
                     const { dayName, dateFormatted } = formatDayOnly(group.feedingDate);
                     const uniqueFeeds = Array.from(
                       new Set(
@@ -1019,7 +1061,7 @@ export default function InventoryUsageHistoryView({
 
                         {/* Ao nuôi */}
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-100 shadow-2xs">
+                          <span className={fc('inline-flex items-center gap-1.5 text-sm font-medium text-slate-800', 'inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-100 shadow-2xs')}>
                             <Waves className="w-3.5 h-3.5" />
                             {group.pondName}
                           </span>
@@ -1053,7 +1095,7 @@ export default function InventoryUsageHistoryView({
 
                         {/* Tổng lượng cho ăn */}
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                          <span className="text-sm sm:text-base font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shadow-2xs">
+                          <span className={fc('text-sm font-semibold text-slate-900 tabular-nums', 'text-sm sm:text-base font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shadow-2xs')}>
                             - {formatNumber(group.totalFeedKg)} <span className="text-xs font-semibold text-slate-400">kg</span>
                           </span>
                         </td>
@@ -1121,7 +1163,7 @@ export default function InventoryUsageHistoryView({
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-xs font-bold shadow-2xs group cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5 text-blue-600 group-hover:text-white transition-colors" />
-                            Chi tiết cữ
+                            {!isCompact && 'Chi tiết cữ'}
                           </button>
                         </td>
                       </tr>
@@ -1130,12 +1172,23 @@ export default function InventoryUsageHistoryView({
                 </tbody>
               </table>
             </div>
+              <Pagination
+                className="px-5 py-3 border-t border-slate-100"
+                page={feedingPage.page}
+                totalPages={feedingPage.totalPages}
+                total={feedingPage.total}
+                from={feedingPage.from}
+                to={feedingPage.to}
+                onChange={feedingPage.setPage}
+                unit="ngày cho ăn"
+              />
+            </>
           )}
         </div>
       ) : (
         /* ──── TRƯỜNG HỢP B: BẢNG LỊCH SỬ BIẾN ĐỘNG KHO (NHẬP & XUẤT) ──── */
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+        <div className={fc('bg-white rounded-2xl border border-slate-200 overflow-hidden', 'bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden')}>
+          <div className={fc('px-5 py-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3', 'px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50')}>
             <div className="flex items-center gap-2.5">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold border ${
                 movementType === 'IMPORT'
@@ -1155,18 +1208,20 @@ export default function InventoryUsageHistoryView({
               <div>
                 <h3 className="text-base font-bold text-slate-800">
                   {movementType === 'IMPORT'
-                    ? 'Lịch sử Nhập kho (+)'
+                    ? isCompact ? 'Nhập kho' : 'Lịch sử Nhập kho (+)'
                     : movementType === 'EXPORT'
-                    ? 'Lịch sử Xuất kho (-)'
-                    : 'Lịch sử Biến động kho (Cả Nhập & Xuất)'}
+                    ? isCompact ? 'Xuất kho' : 'Lịch sử Xuất kho (-)'
+                    : isCompact ? 'Tất cả giao dịch' : 'Lịch sử Biến động kho (Cả Nhập & Xuất)'}
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">
+                {!isCompact && (
+<p className="text-xs text-slate-400 font-medium">
                   {movementType === 'IMPORT'
                     ? 'Danh sách các lần bổ sung nhập hàng vào kho trang trại'
                     : movementType === 'EXPORT'
                     ? 'Danh sách các lần xuất kho thức ăn, thuốc và hóa chất đem sử dụng'
                     : 'Chi tiết từng lần biến động tăng / giảm số lượng sản phẩm trong kho'}
                 </p>
+)}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -1213,7 +1268,8 @@ export default function InventoryUsageHistoryView({
                   ? 'Chưa có lịch sử xuất kho nào'
                   : 'Chưa có giao dịch biến động nào'}
               </h4>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+              {!isCompact && (
+<p className="text-xs text-slate-400 mt-1 max-w-sm">
                 {categoryFilter !== 'ALL' || selectedYear !== 'ALL' || selectedPondId !== 'ALL' || selectedCropId !== 'ALL' || searchQuery
                   ? 'Không tìm thấy dữ liệu khớp với bộ lọc đang chọn.'
                   : movementType === 'IMPORT'
@@ -1222,6 +1278,7 @@ export default function InventoryUsageHistoryView({
                   ? 'Hiện tại chưa ghi nhận lượt xuất kho nào trong hệ thống.'
                   : 'Hiện tại chưa có dữ liệu biến động kho nào được ghi nhận.'}
               </p>
+)}
               {(categoryFilter !== 'ALL' || selectedYear !== 'ALL' || selectedPondId !== 'ALL' || selectedCropId !== 'ALL' || searchQuery) && (
                 <div className="flex items-center justify-center mt-4">
                   <button
@@ -1235,6 +1292,7 @@ export default function InventoryUsageHistoryView({
               )}
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[1100px]">
                 <colgroup>
@@ -1247,18 +1305,18 @@ export default function InventoryUsageHistoryView({
                   <col className="w-[110px]" />
                 </colgroup>
                 <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                  <tr className={fc('bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 whitespace-nowrap', 'bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider')}>
                     <th className="px-4 py-3.5">Thời gian</th>
-                    <th className="px-4 py-3.5">Sản phẩm & Quy cách</th>
-                    <th className="px-4 py-3.5 text-center">Loại biến động</th>
-                    <th className="px-4 py-3.5 text-right">Lượng biến động</th>
-                    <th className="px-4 py-3.5">Nơi áp dụng & Ghi chú</th>
+                    <th className="px-4 py-3.5">{isCompact ? 'Sản phẩm' : 'Sản phẩm & Quy cách'}</th>
+                    <th className="px-4 py-3.5 text-center">{isCompact ? 'Loại' : 'Loại biến động'}</th>
+                    <th className="px-4 py-3.5 text-right">{isCompact ? 'Số lượng' : 'Lượng biến động'}</th>
+                    <th className="px-4 py-3.5">{isCompact ? 'Nơi dùng · Ghi chú' : 'Nơi áp dụng & Ghi chú'}</th>
                     <th className="px-4 py-3.5">Người thực hiện</th>
                     <th className="px-4 py-3.5 text-center">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {activeMovementLogs.map((log) => {
+                  {movementPage.pageItems.map((log) => {
                     const isImport = isImportLog(log);
                     const cat = getCategoryDetails(log.inventory?.category || '');
                     const details = parseLogDetails(log);
@@ -1277,6 +1335,13 @@ export default function InventoryUsageHistoryView({
                       <tr key={log.id} className="hover:bg-slate-50/70 transition-colors group">
                         {/* 1. Thời gian */}
                         <td className="px-4 py-3.5 whitespace-nowrap">
+                          {isCompact ? (
+                            <div className="leading-tight">
+                              <p className="text-sm text-slate-800 tabular-nums">{formatDate(log.usageDate).split(' ')[1] || ''}</p>
+                              <p className="text-xs text-slate-400 tabular-nums mt-0.5">{formatDate(log.usageDate).split(' ')[0]}</p>
+                            </div>
+                          ) : (
+                          <>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-xl bg-slate-100/90 text-slate-500 flex items-center justify-center shrink-0 border border-slate-200/60">
                               <Clock className="w-4 h-4 text-slate-400" />
@@ -1290,12 +1355,26 @@ export default function InventoryUsageHistoryView({
                               </p>
                             </div>
                           </div>
+                        </>
+                          )}
                         </td>
 
                         {/* 2. Sản phẩm & Quy cách */}
                         <td className="px-4 py-3.5">
+                          {isCompact ? (
+                            <div className="min-w-0 pr-2 leading-tight">
+                              <p className="text-sm font-medium text-slate-900 truncate" title={log.inventory?.itemName}>
+                                {log.inventory?.itemName || 'Sản phẩm đã xóa'}
+                              </p>
+                              <p className="text-xs text-slate-500 truncate mt-0.5">
+                                {cat.label}
+                                {weightPerPkg ? ` · ${weightPerPkg} ${unit}/${packageType}` : ''}
+                              </p>
+                            </div>
+                          ) : (
+                          <>
                           <div className="flex flex-col gap-1 min-w-0 pr-2">
-                            <span className="font-extrabold text-slate-900 text-sm truncate" title={log.inventory?.itemName}>
+                            <span className={fc('font-medium text-slate-900 text-sm truncate', 'font-extrabold text-slate-900 text-sm truncate')} title={log.inventory?.itemName}>
                               {log.inventory?.itemName || 'Sản phẩm đã xóa'}
                             </span>
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1310,10 +1389,24 @@ export default function InventoryUsageHistoryView({
                               )}
                             </div>
                           </div>
+                        </>
+                          )}
                         </td>
 
                         {/* 3. Loại biến động */}
                         <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                          {isCompact ? (
+                            <span className="inline-flex items-center gap-1.5 text-sm text-slate-700">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  isImport ? 'bg-teal-500' : log.notes?.includes('Nhật ký cho ăn') ? 'bg-amber-400' : 'bg-rose-500'
+                                }`}
+                              />
+                              {isImport ? 'Nhập kho' : log.notes?.includes('Nhật ký cho ăn') ? 'Cho ăn' : 'Xuất kho'}
+                              {isImport && details.isAI && <span className="text-xs text-slate-400">· AI</span>}
+                            </span>
+                          ) : (
+                          <>
                           {isImport ? (
                             <div className="flex flex-col items-center gap-1">
                               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
@@ -1338,13 +1431,29 @@ export default function InventoryUsageHistoryView({
                               Xuất kho
                             </span>
                           )}
+                        </>
+                          )}
                         </td>
 
                         {/* 4. Lượng biến động */}
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          {isCompact ? (
+                            <div className="leading-tight">
+                              <p className={`text-sm font-semibold tabular-nums ${isImport ? 'text-teal-700' : 'text-slate-800'}`}>
+                                {isImport ? '+' : '−'}
+                                {formatNumber(log.quantityUsed)} {unit}
+                              </p>
+                              {(details.packageInfo || equivalentPackages) && (
+                                <p className="text-xs text-slate-400 tabular-nums mt-0.5">
+                                  {isImport && details.packageInfo ? details.packageInfo : `~${equivalentPackages} ${packageType}`}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                          <>
                           {isImport ? (
                             <div className="flex flex-col items-end">
-                              <span className="text-sm font-black text-emerald-700 bg-emerald-50/90 px-2.5 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs">
+                              <span className={fc('text-sm font-semibold text-blue-700 tabular-nums', 'text-sm font-black text-emerald-700 bg-emerald-50/90 px-2.5 py-0.5 rounded-lg border border-emerald-200/90 shadow-2xs')}>
                                 + {formatNumber(log.quantityUsed)} <span className="text-xs font-bold text-emerald-600">{unit}</span>
                               </span>
                               {details.packageInfo ? (
@@ -1359,7 +1468,7 @@ export default function InventoryUsageHistoryView({
                             </div>
                           ) : (
                             <div className="flex flex-col items-end">
-                              <span className="text-sm font-black text-rose-700 bg-rose-50/90 px-2.5 py-0.5 rounded-lg border border-rose-200/90 shadow-2xs">
+                              <span className={fc('text-sm font-semibold text-slate-800 tabular-nums', 'text-sm font-black text-rose-700 bg-rose-50/90 px-2.5 py-0.5 rounded-lg border border-rose-200/90 shadow-2xs')}>
                                 - {formatNumber(log.quantityUsed)} <span className="text-xs font-bold text-rose-600">{unit}</span>
                               </span>
                               {equivalentPackages && (
@@ -1369,10 +1478,23 @@ export default function InventoryUsageHistoryView({
                               )}
                             </div>
                           )}
+                        </>
+                          )}
                         </td>
 
                         {/* 5. Nơi áp dụng & Ghi chú */}
                         <td className="px-4 py-3.5">
+                          {isCompact ? (
+                            <div className="min-w-0 pr-2 leading-tight">
+                              <p className="text-sm text-slate-800 truncate">
+                                {isImport ? 'Kho trang trại' : pondRelated || 'Toàn trang trại'}
+                              </p>
+                              <p className="text-xs text-slate-400 truncate mt-0.5" title={details.cleanNote || details.purpose}>
+                                {details.cleanNote || details.purpose || '—'}
+                              </p>
+                            </div>
+                          ) : (
+                          <>
                           <div className="flex flex-col gap-1 min-w-0 pr-2">
                             <div>
                               {isImport ? (
@@ -1398,6 +1520,8 @@ export default function InventoryUsageHistoryView({
                               {details.cleanNote ? details.cleanNote : details.purpose || 'Không có ghi chú thêm'}
                             </p>
                           </div>
+                        </>
+                          )}
                         </td>
 
                         {/* 6. Người thực hiện */}
@@ -1410,9 +1534,11 @@ export default function InventoryUsageHistoryView({
                               <p className="text-xs font-bold text-slate-800 leading-tight truncate">
                                 {log.creator?.fullName || 'Hệ thống'}
                               </p>
-                              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
+                              {!isCompact && (
+<p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
                                 {log.creator?.role || 'Nhân viên'}
                               </p>
+)}
                             </div>
                           </div>
                         </td>
@@ -1445,7 +1571,7 @@ export default function InventoryUsageHistoryView({
                                 title="Xem chi tiết các cữ cho ăn trong ngày"
                               >
                                 <Utensils className="w-3.5 h-3.5 text-amber-600 group-hover:text-white transition-colors" />
-                                Cữ ăn
+                                {!isCompact && 'Cữ ăn'}
                               </button>
                             )}
                             <button
@@ -1455,7 +1581,7 @@ export default function InventoryUsageHistoryView({
                               title="Xem chi tiết phiếu giao dịch"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-500 group-hover:text-white transition-colors" />
-                              Chi tiết
+                              {!isCompact && 'Chi tiết'}
                             </button>
                             {isImport && (
                               <button
@@ -1480,6 +1606,17 @@ export default function InventoryUsageHistoryView({
                 </tbody>
               </table>
             </div>
+              <Pagination
+                className="px-5 py-3 border-t border-slate-100"
+                page={movementPage.page}
+                totalPages={movementPage.totalPages}
+                total={movementPage.total}
+                from={movementPage.from}
+                to={movementPage.to}
+                onChange={movementPage.setPage}
+                unit="giao dịch"
+              />
+            </>
           )}
         </div>
       )}

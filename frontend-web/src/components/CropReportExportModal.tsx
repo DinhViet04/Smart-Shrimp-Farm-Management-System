@@ -12,7 +12,6 @@ import {
   Layers,
   ExternalLink,
   Archive,
-  FolderTree,
   Folder,
   Lock,
   AlertTriangle,
@@ -218,532 +217,301 @@ export default function CropReportExportModal({
     }
   };
 
+  const formats: {
+    id: Exclude<ExportFormat, 'pdf_print'>;
+    name: string;
+    ext: string;
+    desc: string;
+    icon: typeof FileText;
+    tone: string;
+  }[] = [
+    { id: 'pdf', name: 'PDF', ext: '.pdf', desc: 'Bản trình ký, khổ A4, có khung chữ ký nghiệm thu', icon: FileText, tone: 'text-rose-600 bg-rose-50' },
+    { id: 'docx', name: 'Word', ext: '.docx', desc: 'Văn bản đầy đủ các mục, chỉnh sửa được', icon: FileText, tone: 'text-blue-600 bg-blue-50' },
+    { id: 'xlsx', name: 'Excel', ext: '.xlsx', desc: '7 trang tính: tổng quan, chi phí, cho ăn, nước, tăng trưởng, thuốc, sự cố', icon: FileSpreadsheet, tone: 'text-emerald-600 bg-emerald-50' },
+  ];
+  const selectedFormatInfo = formats.find((f) => f.id === selectedFormat) || formats[0];
+  const pondsCount = cycle?.totals.totalPondsCount || availableCrops.length;
+
+  const summary = [
+    {
+      label: isFullCycleMode ? 'Phạm vi' : 'Ao',
+      value: isFullCycleMode ? `Toàn vụ · ${pondsCount} ao` : currentCrop?.pond?.name || '—',
+    },
+    {
+      label: 'Sản lượng',
+      value: isFullCycleMode
+        ? `${formatNumber(cycle?.totals.totalHarvestKg, 1)} kg`
+        : currentCrop?.actualHarvestKg
+        ? `${formatNumber(currentCrop.actualHarvestKg, 1)} kg`
+        : '—',
+    },
+    {
+      label: 'Tỷ lệ sống',
+      value: isFullCycleMode
+        ? cycle?.totals.overallSurvivalRate != null
+          ? `${cycle.totals.overallSurvivalRate}%`
+          : '—'
+        : currentCrop?.actualHarvestSurvivalRate
+        ? `${currentCrop.actualHarvestSurvivalRate}%`
+        : '—',
+    },
+    {
+      label: 'Lợi nhuận',
+      value: formatVND(isFullCycleMode ? cycle?.totals.totalProfit : currentCrop?.actualHarvestProfit),
+      negative: (isFullCycleMode ? cycle?.totals.totalProfit || 0 : currentCrop?.actualHarvestProfit || 0) < 0,
+    },
+  ];
+
+  const primaryLabel = !isTargetHarvested
+    ? 'Chưa thu hoạch'
+    : isFullCycleMode
+    ? 'Tải gói ZIP'
+    : `Tải ${selectedFormatInfo.name}`;
+  const primaryBusy = loading && (isFullCycleMode ? downloadingFormat === 'zip' : downloadingFormat === selectedFormat);
+
   const content = (
-      <div
-        className={`bg-white rounded-3xl w-full border border-slate-200/90 overflow-hidden flex flex-col relative ${
-          asPage ? 'shadow-sm' : 'max-w-3xl shadow-2xl max-h-[95vh]'
-        }`}
-      >
-        {/* Top Gradient Stripe */}
-        <div className="h-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 shrink-0" />
-
-        {/* Modal Header */}
-        <div className="p-5 sm:p-6 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/70 shrink-0">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
-              {isFullCycleMode ? <Archive className="w-6 h-6" /> : <FileDown className="w-6 h-6" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                  {isFullCycleMode ? 'Tải Toàn Bộ Báo Cáo Vụ Nuôi' : 'Tải Báo Cáo Ao Nuôi'}
-                </h3>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                    isTargetHarvested
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      : 'bg-amber-100 text-amber-900 border border-amber-200'
-                  }`}
-                >
-                  {isTargetHarvested ? '✓ Đã thu hoạch' : '🟢 Đang nuôi (Chưa thu hoạch)'}
-                </span>
-                {isFullCycleMode && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 flex items-center gap-1">
-                    <Archive className="w-3 h-3 text-indigo-600" /> Gói nén ZIP ({cycle?.totals.totalPondsCount} ao)
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                <span className="text-slate-700 font-semibold">{cycleTitle}</span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-blue-500" /> {farmName}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          {asPage ? (
+    <div
+      className={`bg-white w-full border border-slate-200 overflow-hidden flex flex-col ${
+        asPage ? 'rounded-2xl' : 'rounded-2xl max-w-3xl shadow-2xl max-h-[95vh]'
+      }`}
+    >
+      {/* ── Tiêu đề ── */}
+      <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          {asPage && (
             <button
               onClick={onClose}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-slate-300 transition-all cursor-pointer shrink-0"
+              title="Quay lại"
+              aria-label="Quay lại"
+              className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shrink-0 cursor-pointer"
             >
-              <ArrowLeft className="w-4 h-4 text-slate-500" /> Quay lại
-            </button>
-          ) : (
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-slate-200/70 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-              title="Đóng hộp thoại"
-            >
-              <X className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" />
             </button>
           )}
-        </div>
-
-        {/* Modal Body */}
-        <div className={`p-5 sm:p-6 space-y-5 ${asPage ? '' : 'overflow-y-auto flex-1'}`}>
-          {/* Cảnh báo nếu vụ / ao chưa thu hoạch */}
-          {!isTargetHarvested && (
-            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3 text-amber-900 animate-in fade-in duration-200">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-xs space-y-1">
-                <p className="font-black text-amber-900">
-                  {isFullCycleMode
-                    ? 'Vụ nuôi này đang trong quá trình nuôi, chưa hoàn thành thu hoạch!'
-                    : `Ao nuôi ${currentCrop?.pond?.name} đang nuôi, chưa hoàn tất thu hoạch!`}
-                </p>
-                <p className="text-amber-700 leading-relaxed font-medium">
-                  Theo quy định của hệ thống, chỉ các vụ nuôi hoặc ao nuôi đã hoàn thành thu hoạch và nghiệm thu số liệu mới có thể kết toán và tải file báo cáo (PDF, Word, Excel, ZIP).
-                </p>
-              </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Tải báo cáo</h3>
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ring-1 ring-inset ${
+                  isTargetHarvested ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isTargetHarvested ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                {isTargetHarvested ? 'Đã thu hoạch' : 'Đang nuôi'}
+              </span>
             </div>
-          )}
+            <p className="text-sm text-slate-500 truncate flex items-center gap-1">
+              {cycleTitle} <span className="text-slate-300">·</span> <Building2 className="w-3.5 h-3.5" /> {farmName}
+            </p>
+          </div>
+        </div>
+        {!asPage && (
+          <button
+            onClick={onClose}
+            title="Đóng"
+            aria-label="Đóng"
+            className="w-9 h-9 rounded-lg hover:bg-slate-100 text-slate-500 flex items-center justify-center shrink-0 cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
 
-          {/* Lựa chọn phạm vi: Toàn bộ vụ (ZIP) hoặc Từng ao riêng lẻ */}
-          {cycle && availableCrops.length > 1 && (
-            <div className="p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 rounded-2xl border border-blue-200/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wide">
-                  <Waves className="w-4 h-4 text-blue-600" />
-                  Chọn phạm vi báo cáo ({availableCrops.length} ao tham gia vụ):
-                </label>
-                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100/90 px-2.5 py-0.5 rounded-full">
-                  {selectedPond === 'ALL'
-                    ? '📦 Đang chọn: Toàn bộ vụ (File ZIP)'
-                    : `Ao: ${currentCrop?.pond?.name || ''}`}
-                </span>
-              </div>
+      {/* ── Nội dung ── */}
+      <div className={`p-5 space-y-5 ${asPage ? '' : 'overflow-y-auto flex-1'}`}>
+        {!isTargetHarvested && (
+          <div className="px-3.5 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              {isFullCycleMode ? 'Vụ nuôi' : `Ao ${currentCrop?.pond?.name}`} chưa thu hoạch xong — chỉ tải được báo cáo sau khi thu hoạch và nghiệm thu.
+            </span>
+          </div>
+        )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {/* Nút Chọn Toàn Bộ Vụ */}
+        {/* Bước 1: Phạm vi */}
+        {cycle && availableCrops.length > 1 && (
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Phạm vi báo cáo</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedPond('ALL')}
+                aria-pressed={selectedPond === 'ALL'}
+                className={`h-9 px-3 rounded-lg border text-sm font-medium flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  selectedPond === 'ALL'
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <Archive className="w-4 h-4" /> Toàn vụ ({availableCrops.length} ao)
+              </button>
+              {availableCrops.map((c) => (
                 <button
+                  key={c.id}
                   type="button"
-                  onClick={() => setSelectedPond('ALL')}
-                  className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left border flex items-center justify-between cursor-pointer col-span-2 sm:col-span-1 ${
-                    selectedPond === 'ALL'
-                      ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-indigo-600 shadow-md shadow-indigo-500/25 ring-2 ring-indigo-400/40'
-                      : 'bg-white text-indigo-900 hover:bg-indigo-100/60 border-indigo-200 font-semibold'
+                  onClick={() => setSelectedPond(c.id)}
+                  aria-pressed={selectedPond === c.id}
+                  className={`h-9 px-3 rounded-lg border text-sm font-medium flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    selectedPond === c.id
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  <span className="flex items-center gap-1.5 truncate">
-                    <Archive className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Toàn bộ vụ ({availableCrops.length} ao - ZIP)</span>
-                  </span>
+                  <Waves className="w-4 h-4" /> {c.pond?.name || 'Ao nuôi'}
+                  {c.stage === 'NURSERY' && <span className="text-xs text-slate-400">· ương</span>}
                 </button>
+              ))}
+            </div>
+          </section>
+        )}
 
-                {/* Các nút từng ao riêng lẻ */}
+        {/* Tóm tắt số liệu */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 rounded-xl border border-slate-200 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+          {summary.map((m) => (
+            <div key={m.label} className="px-4 py-3">
+              <p className="text-xs text-slate-500">{m.label}</p>
+              <p className={`text-sm font-semibold tabular-nums truncate ${m.negative ? 'text-rose-600' : 'text-slate-900'}`}>{m.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Bước 2: Định dạng */}
+        {isFullCycleMode ? (
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Nội dung gói ZIP</p>
+            <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <Archive className="w-5 h-5" />
+                </div>
+                <div className="text-sm">
+                  <p className="font-medium text-slate-900">
+                    BaoCao_ToanVu_{cycle?.name || 'VuNuoi'}.zip
+                  </p>
+                  <p className="text-slate-500">Mỗi ao là một thư mục, gồm đủ 3 file PDF, Word và Excel.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pl-[52px]">
                 {availableCrops.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedPond(c.id)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left border flex items-center justify-between cursor-pointer ${
-                      selectedPond === c.id
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-400/40'
-                        : 'bg-white text-slate-700 hover:bg-slate-100/80 border-slate-200'
-                    }`}
-                  >
-                    <span className="truncate">{c.pond?.name || 'Ao nuôi'}</span>
-                    {c.stage === 'NURSERY' && (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-normal shrink-0 ${
-                          selectedPond === c.id ? 'bg-blue-700 text-white' : 'bg-purple-100 text-purple-700'
-                        }`}
-                      >
-                        Ương
-                      </span>
-                    )}
-                  </button>
+                  <span key={c.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                    <Folder className="w-3.5 h-3.5 text-amber-500" />
+                    {c.pond?.name || 'Ao nuôi'}
+                    {c.stage === 'NURSERY' ? ' (ương)' : ''}
+                  </span>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Thẻ tóm tắt thông số phạm vi đang chọn */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-center">
-            <div className="p-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                {isFullCycleMode ? 'Phạm vi xuất' : 'Ao thực hiện'}
-              </span>
-              <span className="text-sm font-black text-slate-800 truncate block">
-                {isFullCycleMode
-                  ? `Toàn bộ vụ (${cycle?.totals.totalPondsCount || availableCrops.length} ao)`
-                  : currentCrop?.pond?.name || '--'}
-              </span>
-            </div>
-            <div className="p-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                {isFullCycleMode ? 'Tổng sản lượng' : 'Sản lượng'}
-              </span>
-              <span className="text-sm font-black text-blue-600">
-                {isFullCycleMode
-                  ? `${formatNumber(cycle?.totals.totalHarvestKg, 1)} kg`
-                  : currentCrop?.actualHarvestKg
-                  ? `${formatNumber(currentCrop.actualHarvestKg, 1)} kg`
-                  : 'Đang nuôi'}
-              </span>
-            </div>
-            <div className="p-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                {isFullCycleMode ? 'Tỷ lệ sống TB' : 'Tỷ lệ sống'}
-              </span>
-              <span className="text-sm font-black text-emerald-600">
-                {isFullCycleMode
-                  ? cycle?.totals.overallSurvivalRate !== null && cycle?.totals.overallSurvivalRate !== undefined
-                    ? `${cycle.totals.overallSurvivalRate}%`
-                    : '--'
-                  : currentCrop?.actualHarvestSurvivalRate
-                  ? `${currentCrop.actualHarvestSurvivalRate}%`
-                  : '--'}
-              </span>
-            </div>
-            <div className="p-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                {isFullCycleMode ? 'Tổng lợi nhuận ròng' : 'Lợi nhuận ròng'}
-              </span>
-              <span
-                className={`text-sm font-black ${
-                  (isFullCycleMode ? cycle?.totals.totalProfit || 0 : currentCrop?.actualHarvestProfit || 0) >= 0
-                    ? 'text-emerald-700'
-                    : 'text-rose-600'
-                }`}
-              >
-                {isFullCycleMode
-                  ? formatVND(cycle?.totals.totalProfit)
-                  : formatVND(currentCrop?.actualHarvestProfit)}
-              </span>
-            </div>
-          </div>
-
-          {/* ── GIAO DIỆN KHI CHỌN TOÀN BỘ VỤ NUÔI (GÓI ZIP TỪNG AO) ────────── */}
-          {isFullCycleMode ? (
-            <div className="space-y-4">
-              <div className="p-5 bg-gradient-to-br from-indigo-50/90 via-blue-50/60 to-purple-50/60 rounded-3xl border-2 border-indigo-200 shadow-sm space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black shadow-md shadow-indigo-600/30 shrink-0">
-                      <Archive className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-black text-slate-900 text-base">
-                          Tải Toàn Bộ Báo Cáo Vụ Nuôi (Gói ZIP Thư Mục)
-                        </h4>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white">
-                          .ZIP
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                        Hệ thống sẽ tổng hợp tất cả các file liên quan của từng ao trong vụ và gom lại thành 1 file ZIP duy nhất. Sau khi giải nén, mỗi ao sẽ là một thư mục con riêng biệt chứa đầy đủ 3 định dạng: <strong>PDF</strong>, <strong>Word</strong> và <strong>Excel</strong>.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sơ đồ cây thư mục khi giải nén */}
-                <div className="bg-white/90 backdrop-blur-xs rounded-2xl p-4 border border-indigo-100 font-mono text-xs text-slate-800 space-y-2 shadow-inner">
-                  <div className="flex items-center gap-2 text-indigo-900 font-bold font-sans">
-                    <FolderTree className="w-4 h-4 text-indigo-600" />
-                    <span>Cấu trúc thư mục sau khi giải nén file ZIP:</span>
-                  </div>
-                  <div className="pl-2 space-y-1.5 text-[11.5px] text-slate-700">
-                    <div className="flex items-center gap-2 text-indigo-700 font-bold">
-                      <Archive className="w-3.5 h-3.5" />
-                      <span>BaoCao_ToanVu_{cycle?.name || 'VuNuoi'}.zip</span>
-                    </div>
-                    {availableCrops.map((c) => {
-                      const isNursery = c.stage === 'NURSERY';
-                      const folderName = isNursery && !c.pond?.name?.toLowerCase().includes('ươm')
-                        ? `${c.pond?.name} (Ao ươm)`
-                        : c.pond?.name || 'Ao nuôi';
-                      return (
-                        <div key={c.id} className="pl-5 border-l-2 border-indigo-200 space-y-1 py-0.5">
-                          <div className="flex items-center gap-2 font-bold text-slate-900">
-                            <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                            <span>{folderName}/</span>
-                          </div>
-                          <div className="pl-6 space-y-0.5 text-slate-500 text-[11px] font-sans">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-rose-600 font-bold text-[10px]">[PDF]</span>
-                              <span>Báo cáo chuẩn in ấn A4 & nghiệm thu</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-blue-600 font-bold text-[10px]">[DOCX]</span>
-                              <span>Tài liệu Word chi tiết có thể biên tập</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-emerald-600 font-bold text-[10px]">[XLSX]</span>
-                              <span>Bảng tính Excel 7 trang tính (Chi phí, Cho ăn, Nước...)</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ── GIAO DIỆN KHI CHỌN TỪNG AO RIÊNG LẺ ──────────────────────── */
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                <span>Chọn định dạng file báo cáo ao {currentCrop?.pond?.name}:</span>
-                <span className="text-[11px] text-blue-600 font-semibold normal-case">
-                  Tự động lưu vào thư mục Downloads của bạn
-                </span>
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                {/* Option 1: PDF */}
-                <div
-                  onClick={() => setSelectedFormat('pdf')}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between group relative ${
-                    selectedFormat === 'pdf'
-                      ? 'border-rose-500 bg-rose-50/40 shadow-md shadow-rose-500/10'
-                      : 'border-slate-200 hover:border-rose-300 hover:bg-slate-50/60'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-black">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-100 text-rose-700">
-                        .PDF
-                      </span>
-                    </div>
-                    <h5 className="font-bold text-slate-900 text-sm mb-1 group-hover:text-rose-600 transition-colors">
-                      Báo cáo PDF
-                    </h5>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Trình bày trang trọng, biểu đồ KPI trực quan, chuẩn khổ in A4 kèm khung chữ ký nghiệm thu.
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-rose-600">
-                    <span>Trình ký & In ấn</span>
-                    <div
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        selectedFormat === 'pdf' ? 'border-rose-600 bg-rose-600' : 'border-slate-300'
-                      }`}
-                    >
-                      {selectedFormat === 'pdf' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Option 2: DOCX (Word) */}
-                <div
-                  onClick={() => setSelectedFormat('docx')}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between group relative ${
-                    selectedFormat === 'docx'
-                      ? 'border-blue-500 bg-blue-50/40 shadow-md shadow-blue-500/10'
-                      : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/60'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-black">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 text-blue-700">
-                        .DOCX
-                      </span>
-                    </div>
-                    <h5 className="font-bold text-slate-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
-                      Tài liệu Docs (Word)
-                    </h5>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      File văn bản chuẩn Microsoft Word, đầy đủ các mục chi tiết, dễ dàng chỉnh sửa hoặc bổ sung ý kiến.
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600">
-                    <span>Có thể chỉnh sửa</span>
-                    <div
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        selectedFormat === 'docx' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
-                      }`}
-                    >
-                      {selectedFormat === 'docx' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Option 3: EXCEL (XLSX) */}
-                <div
-                  onClick={() => setSelectedFormat('xlsx')}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between group relative ${
-                    selectedFormat === 'xlsx'
-                      ? 'border-emerald-500 bg-emerald-50/40 shadow-md shadow-emerald-500/10'
-                      : 'border-slate-200 hover:border-emerald-300 hover:bg-slate-50/60'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-black">
-                        <FileSpreadsheet className="w-5 h-5" />
-                      </div>
-                      <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
-                        .XLSX
-                      </span>
-                    </div>
-                    <h5 className="font-bold text-slate-900 text-sm mb-1 group-hover:text-emerald-600 transition-colors">
-                      Bảng tính Excel
-                    </h5>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Đa trang tính (7 Sheets): Tổng quan, Chi phí, Cho ăn, Nước, Tăng trưởng, Thuốc/Men và Sự cố.
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
-                    <span>Phân tích dữ liệu</span>
-                    <div
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        selectedFormat === 'xlsx' ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
-                      }`}
-                    >
-                      {selectedFormat === 'xlsx' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tùy chọn in ấn trực tiếp nếu chọn PDF */}
-              {selectedFormat === 'pdf' && (
-                <div className="p-3 bg-rose-50/60 rounded-2xl border border-rose-100 flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 text-rose-800">
-                    <Printer className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>Bạn muốn mở bản in xem trước và lưu PDF vector chuẩn A4?</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleExportSinglePond('pdf_print')}
-                    disabled={loading || !isTargetHarvested}
-                    className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 text-white font-bold transition-all shadow-xs shrink-0 cursor-pointer flex items-center gap-1.5"
+          </section>
+        ) : (
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Định dạng file</p>
+            <div className="rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden" role="radiogroup">
+              {formats.map((f) => {
+                const active = selectedFormat === f.id;
+                return (
+                  <label
+                    key={f.id}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${active ? 'bg-blue-50/60' : 'hover:bg-slate-50'}`}
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Mở bản in A4
-                  </button>
-                </div>
-              )}
+                    <input
+                      type="radio"
+                      name="report-format"
+                      checked={active}
+                      onChange={() => setSelectedFormat(f.id)}
+                      className="w-4 h-4 accent-blue-600 shrink-0"
+                    />
+                    <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${f.tone}`}>
+                      <f.icon className="w-5 h-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-900">
+                        {f.name} <span className="text-xs font-normal text-slate-400">{f.ext}</span>
+                      </span>
+                      <span className="block text-xs text-slate-500 truncate">{f.desc}</span>
+                    </span>
+                    {f.id === 'pdf' && active && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void handleExportSinglePond('pdf_print');
+                        }}
+                        disabled={loading || !isTargetHarvested}
+                        className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 hover:border-slate-300 flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
+                        title="Mở bản in A4 để xem trước hoặc lưu PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5" /> Bản in A4
+                      </button>
+                    )}
+                  </label>
+                );
+              })}
             </div>
-          )}
-        </div>
+          </section>
+        )}
+      </div>
 
-        {/* Modal Footer / Actions */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {onOpenDetailedPreview && !isFullCycleMode && currentCrop && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenDetailedPreview(currentCrop);
-                }}
-                className="px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer w-full sm:w-auto"
-              >
-                <ExternalLink className="w-4 h-4 text-slate-500" />
-                Xem trước trên web
-              </button>
-            )}
-
-            {!isFullCycleMode && (
-              <button
-                type="button"
-                onClick={handleExportAllSinglePond}
-                disabled={loading || !isTargetHarvested}
-                className="px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed text-indigo-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer w-full sm:w-auto"
-                title="Tải liên tiếp 3 file: PDF, Word và Excel của ao này"
-              >
-                {downloadingFormat === 'all' ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                ) : (
-                  <Layers className="w-4 h-4 text-indigo-600" />
-                )}
-                Tải trọn bộ 3 file ao này
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+      {/* ── Thao tác ── */}
+      <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          {onOpenDetailedPreview && !isFullCycleMode && currentCrop && (
             <button
               type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer w-full sm:w-auto"
+              onClick={() => {
+                onClose();
+                onOpenDetailedPreview(currentCrop);
+              }}
+              className="h-9 px-3 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200/60 flex items-center gap-1.5 cursor-pointer"
             >
-              {asPage ? 'Quay lại' : 'Hủy'}
+              <ExternalLink className="w-4 h-4" /> Xem trước
             </button>
+          )}
+          {!isFullCycleMode && (
+            <button
+              type="button"
+              onClick={handleExportAllSinglePond}
+              disabled={loading || !isTargetHarvested}
+              title="Tải lần lượt PDF, Word và Excel của ao này"
+              className="h-9 px-3 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200/60 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {downloadingFormat === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+              Tải cả 3 định dạng
+            </button>
+          )}
+        </div>
 
-            {isFullCycleMode ? (
-              /* Nút Tải Toàn Bộ Vụ (ZIP) */
-              <button
-                type="button"
-                onClick={handleExportZip}
-                disabled={loading || !isTargetHarvested}
-                className={`px-5 py-2.5 rounded-xl text-white text-xs font-black transition-all shadow-md flex items-center justify-center gap-2 w-full sm:w-auto ${
-                  !isTargetHarvested
-                    ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
-                    : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-600/25 cursor-pointer hover:scale-102'
-                }`}
-              >
-                {loading && downloadingFormat === 'zip' ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : !isTargetHarvested ? (
-                  <Lock className="w-4 h-4 text-slate-400" />
-                ) : (
-                  <Archive className="w-4 h-4" />
-                )}
-                <span>
-                  {!isTargetHarvested
-                    ? 'Chưa thể tải (Vụ chưa thu hoạch)'
-                    : `Tải toàn bộ báo cáo vụ (.zip)`}
-                </span>
-              </button>
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+          >
+            {asPage ? 'Quay lại' : 'Hủy'}
+          </button>
+          <button
+            type="button"
+            onClick={() => (isFullCycleMode ? void handleExportZip() : void handleExportSinglePond(selectedFormat))}
+            disabled={loading || !isTargetHarvested}
+            className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium flex items-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed"
+          >
+            {primaryBusy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : !isTargetHarvested ? (
+              <Lock className="w-4 h-4" />
             ) : (
-              /* Nút Tải Từng Ao */
-              <button
-                type="button"
-                onClick={() => handleExportSinglePond(selectedFormat)}
-                disabled={loading || !isTargetHarvested}
-                className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 w-full sm:w-auto ${
-                  !isTargetHarvested
-                    ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
-                    : selectedFormat === 'pdf'
-                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 cursor-pointer'
-                    : selectedFormat === 'docx'
-                    ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20 cursor-pointer'
-                    : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 cursor-pointer'
-                }`}
-              >
-                {loading && downloadingFormat === selectedFormat ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : !isTargetHarvested ? (
-                  <Lock className="w-4 h-4 text-slate-400" />
-                ) : (
-                  <FileDown className="w-4 h-4" />
-                )}
-                <span>
-                  {!isTargetHarvested
-                    ? 'Chưa thể tải (Ao chưa thu hoạch)'
-                    : selectedFormat === 'pdf'
-                    ? `Tải file PDF ao ${currentCrop?.pond?.name || ''} (.pdf)`
-                    : selectedFormat === 'docx'
-                    ? `Tải file Word ao ${currentCrop?.pond?.name || ''} (.docx)`
-                    : `Tải file Excel ao ${currentCrop?.pond?.name || ''} (.xlsx)`}
-                </span>
-              </button>
+              <FileDown className="w-4 h-4" />
             )}
-          </div>
+            {primaryLabel}
+          </button>
         </div>
       </div>
+    </div>
   );
 
   if (asPage) {
-    return <div className="w-full max-w-5xl mx-auto pb-12 animate-in fade-in duration-200">{content}</div>;
+    return <div className="w-full pb-12">{content}</div>;
   }
 
   return createPortal(

@@ -58,6 +58,12 @@ const INCIDENT_SEVERITIES = [
   { id: 'Khẩn cấp', label: 'Khẩn cấp', sublabel: 'Nguy cơ thiệt hại tức thì', color: 'border-rose-300 bg-rose-50 text-rose-700 font-bold' },
 ];
 
+/** Sự cố môi trường nước: xử lý 1 lần là xong (không có quá trình "Đang điều trị") */
+function isWaterIncident(inc: { title: string; description?: string | null }) {
+  const { category } = parseIncidentMetadata(inc.title || '', inc.description || '');
+  return /môi trường|nước ao/i.test(category);
+}
+
 function parseIncidentMetadata(title: string, description: string) {
   let category = '';
   let cleanTitle = title;
@@ -558,21 +564,25 @@ export default function IncidentDashboard({
   };
 
   const handleStartTreatmentDirectly = async (incident: Incident) => {
+    // Sự cố nước (xử lý 1 lần) không có bước "Quá trình điều trị": giữ ở tab "Sự cố" để khi quay lại
+    // vẫn thấy các thẻ sự cố môi trường nước. Loại khác chuyển sang tab "Quá trình điều trị".
+    const nextTab = isWaterIncident(incident) ? 'incident' : 'treatment';
     try {
       setSaving(true);
       setError('');
       let targetInc = incident;
-      if (incident.status === 'OPEN') {
+      // Sự cố nước: mở thẳng màn xử lý, xử lý xong là đóng luôn (không qua "Đang điều trị")
+      if (incident.status === 'OPEN' && !isWaterIncident(incident)) {
         targetInc = await incidentService.startTreatment(incident.id);
+        setIncidents((prev) =>
+          prev.map((item) => (item.id === targetInc.id ? { ...item, status: 'TREATING' } : item))
+        );
       }
-      setIncidents((prev) =>
-        prev.map((item) => (item.id === targetInc.id ? { ...item, status: 'TREATING' } : item))
-      );
-      setSubTab('treatment');
+      setSubTab(nextTab);
       openTreatmentWorkspace(targetInc);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
-      setSubTab('treatment');
+      setSubTab(nextTab);
       openTreatmentWorkspace(incident);
     } finally {
       setSaving(false);
@@ -957,7 +967,7 @@ export default function IncidentDashboard({
                                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs transition-all shadow-sm shadow-amber-600/20 cursor-pointer"
                               >
                                 <Stethoscope className="w-3.5 h-3.5" />
-                                <span>Tiếp nhận & Vào điều trị</span>
+                                <span>{isWaterIncident(item) ? 'Xử lý ngay' : 'Tiếp nhận & Vào điều trị'}</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
                               </button>}
                             </div>

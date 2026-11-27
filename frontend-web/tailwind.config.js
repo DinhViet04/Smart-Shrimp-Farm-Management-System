@@ -1,3 +1,9 @@
+// blue / cyan / indigo đọc qua biến CSS (khai báo trong src/index.css) để có thể
+// đổi tông màu theo role (vd: .theme-farmer → teal) mà không phải sửa từng component.
+const STEPS = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
+const cssVarColor = (name) =>
+  Object.fromEntries(STEPS.map((s) => [s, `rgb(var(--c-${name}-${s}) / <alpha-value>)`]));
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -7,6 +13,9 @@ export default {
   theme: {
     extend: {
       colors: {
+        blue: cssVarColor('blue'),
+        cyan: cssVarColor('cyan'),
+        indigo: cssVarColor('indigo'),
         agrigreen: {
           400: '#8cce55',
           500: '#7ac143', // Lime green

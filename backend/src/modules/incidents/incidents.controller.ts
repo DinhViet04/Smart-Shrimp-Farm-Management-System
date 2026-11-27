@@ -57,13 +57,15 @@ export class IncidentsController {
   }
 
   @Patch(':id/start-treatment')
-  @Roles('TECHNICIAN', 'FARM_MANAGER')
+  // Người được phân công có thể là Kỹ thuật viên hoặc Nông dân (kiểm tra cụ thể trong service)
+  @Roles('TECHNICIAN', 'FARMER', 'FARM_MANAGER')
   startTreatment(@Request() req: any, @Param('id') id: string) {
     return this.incidentsService.startTreatment(req.user, id);
   }
 
   @Post(':id/treatment-updates')
-  @Roles('TECHNICIAN', 'FARM_MANAGER')
+  // Người được phân công có thể là Kỹ thuật viên hoặc Nông dân (kiểm tra cụ thể trong service)
+  @Roles('TECHNICIAN', 'FARMER', 'FARM_MANAGER')
   @HttpCode(HttpStatus.CREATED)
   addTreatmentUpdate(
     @Request() req: any,
@@ -74,7 +76,8 @@ export class IncidentsController {
   }
 
   @Patch(':id/resolve')
-  @Roles('TECHNICIAN', 'FARM_MANAGER')
+  // Người được phân công có thể là Kỹ thuật viên hoặc Nông dân (kiểm tra cụ thể trong service)
+  @Roles('TECHNICIAN', 'FARMER', 'FARM_MANAGER')
   resolve(
     @Request() req: any,
     @Param('id') id: string,

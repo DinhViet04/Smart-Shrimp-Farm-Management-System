@@ -42,149 +42,154 @@ const formatDate = (dateStr?: string | null): string => {
   }
 };
 
+const STATUS_STYLE: Record<CropCycle['status'], { label: string; pill: string; accent: string }> = {
+  IN_PROGRESS: { label: 'Đang nuôi', pill: 'bg-amber-50 text-amber-700 ring-amber-200', accent: 'from-amber-400 to-orange-400' },
+  COMPLETED: { label: 'Đã thu hoạch', pill: 'bg-emerald-50 text-emerald-700 ring-emerald-200', accent: 'from-emerald-500 to-teal-500' },
+  FAILED: { label: 'Đóng vụ sớm', pill: 'bg-rose-50 text-rose-700 ring-rose-200', accent: 'from-rose-500 to-red-500' },
+};
+
+const POND_DOT: Record<string, string> = {
+  ACTIVE: 'bg-amber-400',
+  HARVESTED: 'bg-emerald-500',
+  FAILED: 'bg-rose-500',
+};
+
 export default function CropCycleCard({
   cycle,
   onOpenDetail,
   onOpenPondReport,
 }: CropCycleCardProps) {
+  const isOngoing = cycle.status === 'IN_PROGRESS';
   const isProfitPositive = cycle.totals.totalProfit >= 0;
+  const style = STATUS_STYLE[cycle.status] ?? STATUS_STYLE.IN_PROGRESS;
+  const activePonds = cycle.allCrops.filter((c) => c.status === 'ACTIVE').length;
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onOpenDetail(cycle)}
-      className="bg-white rounded-3xl border border-slate-200/90 shadow-xs hover:shadow-xl hover:shadow-blue-900/10 transition-all duration-300 hover:-translate-y-1 cursor-pointer overflow-hidden flex flex-col group relative"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpenDetail(cycle);
+      }}
+      className="group relative flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-lg hover:border-blue-200 transition-all duration-200 cursor-pointer overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
     >
-      {/* Top Gradient Banner */}
-      <div className="h-20 bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-600 p-4 sm:p-5 flex items-start justify-between relative overflow-hidden">
-        {/* Glow circles */}
-        <div className="absolute -right-6 -bottom-8 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none" />
-        <div className="absolute -left-4 -top-8 w-24 h-24 bg-cyan-400/20 rounded-full blur-lg pointer-events-none" />
+      {/* Vạch màu theo trạng thái */}
+      <div className={`h-1 bg-gradient-to-r ${style.accent}`} />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-inner">
-            <Waves className="w-6 h-6 text-cyan-200" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-white font-black text-base sm:text-lg tracking-tight group-hover:text-cyan-200 transition-colors">
-                {cycle.name}
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[11px] font-bold backdrop-blur-xs">
-                {cycle.code}
-              </span>
+      <div className="p-5 flex flex-col gap-4 flex-1">
+        {/* Tiêu đề: tên vụ + mã vụ + trạng thái */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Waves className="w-5 h-5" />
             </div>
-            <p className="text-xs text-blue-100 flex items-center gap-1.5 mt-0.5 font-medium">
-              <Building2 className="w-3.5 h-3.5 text-cyan-200" />
-              {cycle.farmName}
-            </p>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-slate-900 leading-snug truncate group-hover:text-blue-700 transition-colors" title={cycle.name}>
+                {cycle.name}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono font-semibold text-slate-600">{cycle.code}</span>
+                <span className="text-slate-300">•</span>
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <span className="truncate">{cycle.farmName}</span>
+                <span className="text-slate-300">•</span>
+                <span>{cycle.isHighTech ? 'Công nghệ cao (2 giai đoạn)' : 'Truyền thống'}</span>
+              </p>
+            </div>
           </div>
+          <span className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 whitespace-nowrap ${style.pill}`}>
+            {cycle.status === 'COMPLETED' ? (
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            ) : cycle.status === 'FAILED' ? (
+              <AlertTriangle className="w-3.5 h-3.5" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            )}
+            {style.label}
+          </span>
         </div>
 
-        {/* Status & Model Badges */}
-        <div className="relative z-10 flex flex-col items-end gap-1.5">
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-xs ${
-              cycle.status === 'COMPLETED'
-                ? 'bg-emerald-500/90 text-white border border-emerald-400/50'
-                : cycle.status === 'IN_PROGRESS'
-                ? 'bg-amber-400 text-slate-900 border border-amber-300 font-black'
-                : 'bg-rose-500/90 text-white'
-            }`}
-          >
-            {cycle.status === 'COMPLETED' ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-white" /> Đã hoàn thành
-              </>
-            ) : cycle.status === 'IN_PROGRESS' ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-slate-900 animate-pulse" /> Đang nuôi
-              </>
+        {/* Thời gian */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-600">
+          <span className="flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+            Thả <strong className="text-slate-800">{formatDate(cycle.startDate)}</strong>
+            <span className="text-slate-300">→</span>
+            {isOngoing ? (
+              <span className="text-amber-700 font-semibold">đang nuôi</span>
             ) : (
               <>
-                <AlertTriangle className="w-3.5 h-3.5 text-white" /> Đóng sớm
+                Thu <strong className="text-slate-800">{formatDate(cycle.endDate)}</strong>
               </>
             )}
           </span>
-
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-white/20 text-white text-[10.5px] font-bold backdrop-blur-xs">
-            {cycle.isHighTech ? '⚡ Công nghệ cao (2 Giai đoạn)' : '🌿 Truyền thống'}
+          <span className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            <strong className="text-slate-800">{cycle.durationDays}</strong> ngày {isOngoing ? 'tuổi' : 'nuôi'}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <GitFork className="w-3.5 h-3.5 text-slate-400" />
+            <strong className="text-slate-800">{cycle.totals.totalPondsCount}</strong> ao
           </span>
         </div>
-      </div>
 
-      {/* Main Body */}
-      <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between space-y-4">
-        {/* Timeline & Pond Count Meta */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 text-xs">
-          <div className="flex items-center gap-3 text-slate-600 font-medium">
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              Thả: <strong>{formatDate(cycle.startDate)}</strong>
-            </span>
-            <span>➔</span>
-            <span className="flex items-center gap-1">
-              Thu: <strong>{formatDate(cycle.endDate)}</strong>
-            </span>
+        {/* 3 chỉ số chính (vụ đang nuôi chưa có sản lượng / lợi nhuận) */}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+            <p className="text-[11px] font-medium text-slate-500">Giống thả</p>
+            <p className="text-base font-bold text-slate-900 mt-0.5 truncate">
+              {cycle.totals.totalStockedShrimp.toLocaleString('vi-VN')}
+              <span className="text-[11px] font-medium text-slate-400 ml-1">con</span>
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" /> {cycle.durationDays} ngày nuôi
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100 flex items-center gap-1">
-              <GitFork className="w-3.5 h-3.5" /> {cycle.totals.totalPondsCount} ao tham gia
-            </span>
-          </div>
+          {isOngoing ? (
+            <div className="rounded-xl bg-amber-50/70 px-3 py-2.5">
+              <p className="text-[11px] font-medium text-amber-700">Ao đang nuôi</p>
+              <p className="text-base font-bold text-amber-900 mt-0.5">
+                {activePonds}
+                <span className="text-[11px] font-medium text-amber-700/70 ml-1">/ {cycle.totals.totalPondsCount} ao</span>
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl bg-blue-50/70 px-3 py-2.5">
+              <p className="text-[11px] font-medium text-blue-700 flex items-center gap-1">
+                <Scale className="w-3 h-3" /> Sản lượng
+              </p>
+              <p className="text-base font-bold text-blue-900 mt-0.5 truncate">
+                {cycle.totals.totalHarvestTons}
+                <span className="text-[11px] font-medium text-blue-700/70 ml-1">tấn</span>
+              </p>
+            </div>
+          )}
+
+          {isOngoing ? (
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+              <p className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" /> Lợi nhuận
+              </p>
+              <p className="text-sm font-semibold text-slate-400 mt-1">Chưa thu hoạch</p>
+            </div>
+          ) : (
+            <div className={`rounded-xl px-3 py-2.5 ${isProfitPositive ? 'bg-emerald-50/80' : 'bg-rose-50/80'}`}>
+              <p className={`text-[11px] font-medium flex items-center gap-1 ${isProfitPositive ? 'text-emerald-700' : 'text-rose-700'}`}>
+                <TrendingUp className="w-3 h-3" /> {isProfitPositive ? 'Lời' : 'Lỗ'}
+              </p>
+              <p className={`text-base font-bold mt-0.5 truncate ${isProfitPositive ? 'text-emerald-800' : 'text-rose-800'}`}>
+                {isProfitPositive ? '+' : ''}
+                {formatVND(cycle.totals.totalProfit)}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* 3 Key Performance Indicators (Compact, Clean & Focused) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* 1. Tổng giống thả */}
-          <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex flex-col justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              🦐 Giống thả ban đầu
-            </span>
-            <span className="text-base sm:text-lg font-black text-slate-800 mt-1">
-              {cycle.totals.totalStockedShrimp.toLocaleString()} <span className="text-xs font-medium text-slate-400">con</span>
-            </span>
-          </div>
-
-          {/* 2. Tổng sản lượng */}
-          <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-100 flex flex-col justify-between">
-            <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1">
-              <Scale className="w-3.5 h-3.5" /> Tổng sản lượng
-            </span>
-            <span className="text-base sm:text-lg font-black text-blue-900 mt-1">
-              {cycle.totals.totalHarvestKg.toLocaleString()} <span className="text-xs font-medium text-blue-600">kg</span>
-              <span className="text-xs font-bold text-blue-600 ml-1.5">
-                (~{cycle.totals.totalHarvestTons} tấn)
-              </span>
-            </span>
-          </div>
-
-          {/* 3. Lợi nhuận ròng */}
-          <div
-            className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
-              isProfitPositive
-                ? 'bg-emerald-50/80 border-emerald-100 text-emerald-900'
-                : 'bg-rose-50/80 border-rose-100 text-rose-900'
-            }`}
-          >
-            <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" /> Lợi nhuận ròng
-            </span>
-            <span className="text-base sm:text-lg font-black mt-1">
-              {isProfitPositive ? '+' : ''}
-              {formatVND(cycle.totals.totalProfit)}
-            </span>
-          </div>
-        </div>
-
-        {/* Card Footer Actions */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        {/* Ao thuộc vụ + nút xem chi tiết */}
+        <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             {cycle.commercialPonds.slice(0, 3).map((cp) => (
-              <span
+              <button
+                type="button"
                 key={cp.pondId}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -192,39 +197,27 @@ export default function CropCycleCard({
                     onOpenPondReport?.(cp.crop);
                   } else {
                     toast.error(
-                      `Ao ${cp.pondName} đang nuôi. Cần các ao của vụ nuôi hoàn tất thu hoạch mới có thể xuất báo cáo!`,
+                      `Ao ${cp.pondName} đang nuôi. Cần hoàn tất thu hoạch mới xem được báo cáo!`,
                       { id: 'status-check-toast', duration: 4000 }
                     );
                   }
                 }}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors ${
-                  cp.status === 'HARVESTED'
-                    ? 'bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-700 border-slate-200'
-                    : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 cursor-pointer'
-                }`}
-                title={
-                  cp.status === 'HARVESTED'
-                    ? `Xem báo cáo ao ${cp.pondName}`
-                    : `Ao ${cp.pondName} đang nuôi - Cần hoàn tất thu hoạch mới xuất được báo cáo`
-                }
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 transition-colors cursor-pointer"
+                title={cp.status === 'HARVESTED' ? `Xem báo cáo ao ${cp.pondName}` : `Ao ${cp.pondName} đang nuôi`}
               >
+                <span className={`w-1.5 h-1.5 rounded-full ${POND_DOT[cp.status] ?? 'bg-slate-400'}`} />
                 {cp.pondName}
-              </span>
+              </button>
             ))}
             {cycle.commercialPonds.length > 3 && (
-              <span className="text-[11px] font-bold text-slate-400">
-                +{cycle.commercialPonds.length - 3} ao nữa
-              </span>
+              <span className="text-[11px] font-semibold text-slate-400">+{cycle.commercialPonds.length - 3} ao</span>
             )}
           </div>
 
-          <button
-            type="button"
-            className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 group-hover:from-blue-700 group-hover:to-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm group-hover:shadow-md group-hover:shadow-blue-500/20"
-          >
-            <span>Xem chi tiết vụ & các ao</span>
+          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">
+            Xem chi tiết
             <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </button>
+          </span>
         </div>
       </div>
     </div>

@@ -231,6 +231,7 @@ describe('FarmsService list query', () => {
     const prisma = {
       farm: { findMany: jest.fn().mockResolvedValue([farm]) },
       pond: { findMany: jest.fn().mockResolvedValue([pond]) },
+      crop: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const service = new FarmsService(

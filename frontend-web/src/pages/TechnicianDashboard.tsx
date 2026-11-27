@@ -365,7 +365,9 @@ export default function TechnicianDashboard() {
             <NotificationDropdown 
               themeColor="indigo" 
               onNavigateTab={(tab, config) => {
-                if (tab === 'Môi trường nước') {
+                if (tab === 'Quản Lý Kho') {
+                  setActiveTab('Kho thức ăn');
+                } else if (tab === 'Môi trường nước') {
                   if (config) setEnvConfig(config);
                   setActiveTab('Môi trường nước');
                 } else if (tab === 'Báo cáo sự cố' || tab === 'Sự cố trang trại' || tab === 'Sự cố') {

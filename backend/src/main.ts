@@ -2,13 +2,23 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { json } from 'express';
 import { getAllowedOrigins } from './config/environment.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Đóng kết nối DB gọn gàng khi Docker gửi SIGTERM (restart/redeploy)
+  app.enableShutdownHooks();
   if (process.env.TRUST_PROXY === 'true') {
     app.set('trust proxy', 1);
   }
+
+  // Lịch sử chat AI gửi cả cuộc trò chuyện (có thể vượt giới hạn 100kb mặc định) —
+  // chỉ nới giới hạn cho đúng route này, các route khác giữ mặc định.
+  // BẮT BUỘC bọc trong hàm khác tên: Nest bỏ qua bộ đọc JSON mặc định nếu thấy middleware
+  // tên "jsonParser" đã được đăng ký -> mọi route khác sẽ nhận body rỗng.
+  const chatSessionsJsonParser = json({ limit: '2mb' });
+  app.use('/api/chatbot/sessions', (req: any, res: any, next: any) => chatSessionsJsonParser(req, res, next));
 
   // Global prefix
   app.setGlobalPrefix('api');

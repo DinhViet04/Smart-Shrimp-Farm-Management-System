@@ -6,12 +6,14 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import OpenAI from 'openai';
 import { AskChatbotDto } from './dto/ask-chatbot.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { AgentActionResult, AgentActionService } from './agent-action.service';
+import { FeedingRecordAgentService } from './feeding-record-agent.service';
 import { ChatDataScopeService, ChatScope } from './data-scope/chat-data-scope.service';
 import { ChatToolsService } from './data-scope/chat-tools.service';
 import { FileParserService, UploadedFileDto } from './file-parser.service';
@@ -41,6 +43,7 @@ export class ChatbotService implements OnModuleInit {
     private readonly fileParserService: FileParserService,
     private readonly chatDataScope: ChatDataScopeService,
     private readonly chatTools: ChatToolsService,
+    @Optional() private readonly feedingAgent?: FeedingRecordAgentService,
   ) {
     this.apiKey = process.env.OPENAI_API_KEY || null;
     if (this.apiKey) {
@@ -199,6 +202,7 @@ export class ChatbotService implements OnModuleInit {
         },
       });
     }
+    this.invalidateChunkCache();
 
     return {
       message: 'Tạo tài liệu và trích xuất vector chunks thành công!',
@@ -229,10 +233,28 @@ export class ChatbotService implements OnModuleInit {
     });
   }
 
-  async deleteDocument(id: string) {
+  /**
+   * Kho tri thức dùng chung cho mọi trang trại: Admin xóa được mọi tài liệu,
+   * Quản lý trang trại chỉ xóa tài liệu do chính mình tải lên.
+   */
+  async deleteDocument(id: string, currentUser: AuthUser) {
+    const doc = await this.prisma.knowledgeDocument.findUnique({
+      where: { id },
+      select: { id: true, uploadedBy: true },
+    });
+    if (!doc) {
+      throw new NotFoundException('Không tìm thấy tài liệu.');
+    }
+    const uid = currentUser.userId || (currentUser as any).id;
+    if (currentUser.role !== 'ADMIN' && doc.uploadedBy !== uid) {
+      throw new ForbiddenException(
+        'Bạn chỉ có thể xóa tài liệu do chính mình tải lên. Tài liệu dùng chung chỉ Quản trị viên mới được xóa.',
+      );
+    }
     await this.prisma.knowledgeDocument.delete({
       where: { id },
     });
+    this.invalidateChunkCache();
     return { message: 'Đã xóa tài liệu và dữ liệu vector chunks liên quan.' };
   }
 
@@ -274,6 +296,52 @@ export class ChatbotService implements OnModuleInit {
   }
 
   // ── 3.5. SIMILARITY SEARCH ───────────────────────────────────────────────
+  /**
+   * Cache đoạn tài liệu + vector trong bộ nhớ để không phải tải toàn bộ bảng chunk
+   * (kèm embedding) từ DB ở mỗi câu hỏi. Tự làm mới sau TTL hoặc khi thêm / xóa tài liệu.
+   */
+  private chunkCache: { loadedAt: number; chunks: Array<Omit<ChunkMatch, 'score'> & { embedding: number[] }> } | null =
+    null;
+  private static readonly CHUNK_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  private invalidateChunkCache() {
+    this.chunkCache = null;
+  }
+
+  private async loadChunks() {
+    if (this.chunkCache && Date.now() - this.chunkCache.loadedAt < ChatbotService.CHUNK_CACHE_TTL_MS) {
+      return this.chunkCache.chunks;
+    }
+    const rows = await this.prisma.knowledgeChunk.findMany({
+      select: {
+        chunkIndex: true,
+        content: true,
+        embedding: true,
+        document: { select: { title: true } },
+      },
+    });
+    const chunks = rows.map((chunk) => {
+      let embedding: number[] = [];
+      if (Array.isArray(chunk.embedding)) {
+        embedding = chunk.embedding as number[];
+      } else if (typeof chunk.embedding === 'string') {
+        try {
+          embedding = JSON.parse(chunk.embedding);
+        } catch {
+          embedding = [];
+        }
+      }
+      return {
+        documentTitle: chunk.document?.title || 'Tài liệu nuôi tôm',
+        chunkIndex: chunk.chunkIndex,
+        content: chunk.content,
+        embedding,
+      };
+    });
+    this.chunkCache = { loadedAt: Date.now(), chunks };
+    return chunks;
+  }
+
   private async searchSimilarChunks(
     questionEmbedding: number[],
     topK = 3,
@@ -282,34 +350,12 @@ export class ChatbotService implements OnModuleInit {
       if (!this.prisma.knowledgeChunk) {
         return [];
       }
-      const chunks = await this.prisma.knowledgeChunk.findMany({
-        include: {
-          document: {
-            select: { title: true },
-          },
-        },
-      });
+      const chunks = await this.loadChunks();
 
-      const scoredChunks: ChunkMatch[] = chunks.map((chunk) => {
-        let chunkEmbedding: number[] = [];
-        if (Array.isArray(chunk.embedding)) {
-          chunkEmbedding = chunk.embedding as number[];
-        } else if (typeof chunk.embedding === 'string') {
-          try {
-            chunkEmbedding = JSON.parse(chunk.embedding);
-          } catch {
-            chunkEmbedding = [];
-          }
-        }
-
-        const score = this.cosineSimilarity(questionEmbedding, chunkEmbedding);
-        return {
-          documentTitle: chunk.document?.title || 'Tài liệu nuôi tôm',
-          chunkIndex: chunk.chunkIndex,
-          content: chunk.content,
-          score: score,
-        };
-      });
+      const scoredChunks: ChunkMatch[] = chunks.map(({ embedding, ...chunk }) => ({
+        ...chunk,
+        score: this.cosineSimilarity(questionEmbedding, embedding),
+      }));
 
       scoredChunks.sort((a, b) => b.score - a.score);
       return scoredChunks.slice(0, topK);
@@ -396,6 +442,7 @@ export class ChatbotService implements OnModuleInit {
         roleBasedSystemContext + focusPondHint,
         dto.history,
         currentUser,
+        dto.pondId,
       );
       if (dataAnswer && typeof dataAnswer === 'object') {
         // AI hiểu người dùng muốn tạo trang trại / ao / vụ -> trả phiếu
@@ -589,18 +636,19 @@ export class ChatbotService implements OnModuleInit {
           if (pondContextPayload?.farmLocation) {
             farmLocationHint = pondContextPayload.farmLocation;
           } else {
-            const uid = (currentUser as any)?.userId || (currentUser as any)?.id;
-            if (uid) {
+            // Dùng trang trại trong phạm vi người dùng (chủ trại, Kỹ thuật viên, Nông dân được phân công)
+            // thay vì chỉ trang trại do người dùng sở hữu.
+            if (targetFarmId) {
               try {
                 const userFarm = await this.prisma.farm.findFirst({
-                  where: { ownerId: uid, deletedAt: null },
+                  where: { id: targetFarmId, deletedAt: null },
                   select: { location: true, address: true, name: true },
                 });
                 if (userFarm) {
                   farmLocationHint = userFarm.location || userFarm.address || userFarm.name || '';
                 }
               } catch (dbFarmErr) {
-                this.logger.debug?.(`Could not query farm for user ${uid}: ${dbFarmErr}`);
+                this.logger.debug?.(`Could not query farm ${targetFarmId} for weather: ${dbFarmErr}`);
               }
             }
           }
@@ -618,6 +666,12 @@ export class ChatbotService implements OnModuleInit {
         }
       }
 
+      // Lịch sử hội thoại gần nhất để hiểu các câu hỏi nối tiếp ("thế còn ao kia?")
+      const recentHistory = (dto.history || []).slice(-4).map((h) => ({
+        role: h.sender === 'user' ? 'user' : 'assistant',
+        content: String(h.text || '').slice(0, 1500),
+      })) as Array<{ role: 'user' | 'assistant'; content: string }>;
+
       // 2. Gọi sang Python AI Microservice (FastAPI on :8000)
       const aiServiceUrl =
         process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -629,6 +683,7 @@ export class ChatbotService implements OnModuleInit {
             question,
             pondId: pondContextPayload?.pondId,
             pondContext: pondContextPayload,
+            conversationHistory: recentHistory,
           }),
           signal: AbortSignal.timeout(45000), // Timeout sau 45 giây cho phân tích lâm sàng RAG & đối chiếu kho
         });
@@ -729,6 +784,7 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
             model: 'gpt-4o-mini',
             messages: [
               { role: 'system', content: systemPrompt },
+              ...recentHistory,
               { role: 'user', content: question },
             ],
             temperature: 0.3,
@@ -782,22 +838,29 @@ NGUYÊN TẮC XỬ LÝ NGUỒN TRI THỨC (BẮT BUỘC TUÂN THỦ):
     scopeSummary: string,
     history?: Array<{ sender: 'user' | 'ai'; text: string }>,
     currentUser?: AuthUser,
+    focusPondId?: string,
   ): Promise<string | AgentActionResult | null> {
     if (!this.openai) return null;
     const MAX_TOOL_ROUNDS = 5;
     const MAX_TOOL_RESULT_CHARS = 15000;
     const actionTools = currentUser ? this.agentActionService.getActionToolDefinitions(currentUser.role) : [];
     const tools = [...this.chatTools.getToolDefinitions(scope), ...actionTools];
+    const actionToolNames = actionTools
+      .map((t) => (t.type === 'function' ? t.function.name : ''))
+      .filter(Boolean);
     const actionRule = actionTools.length
-      ? `\nTẠO DỮ LIỆU MỚI (công cụ draft_create_*):
-14. Khi người dùng muốn tạo trang trại / ao nuôi / vụ nuôi (thả giống) — với BẤT KỲ cách diễn đạt nào ("tạo 3 ao", "làm cho tôi mấy cái ao", "farm này cần thêm ao 2000m2", "thả 200 nghìn con vào ao 1"...) — gọi ngay công cụ draft_create_* tương ứng, KHÔNG trả lời bằng văn bản và KHÔNG bao giờ nói hệ thống không hỗ trợ.
+      ? `\nTẠO / NHẬP / XUẤT DỮ LIỆU (công cụ được phép: ${actionToolNames.join(', ')}):
+14. Khi người dùng RA LỆNH tạo / nhập / ghi / xuất dữ liệu — với BẤT KỲ cách diễn đạt nào ("tạo 3 ao", "thả 200 nghìn con vào ao 1", "nhập kho 10 bao cám", "ao 1 pH 8.2 DO 5", "ao 1 vừa cho ăn cữ 2 12kg", "xuất file tồn kho"...) — gọi ngay công cụ tương ứng trong danh sách trên, KHÔNG trả lời bằng văn bản và KHÔNG bao giờ nói hệ thống không hỗ trợ.
 15. Chỉ truyền thông tin người dùng đã nói, đổi đơn vị đúng (ha -> m², "200 nghìn" -> 200000); trường chưa có thì bỏ trống, hệ thống sẽ tự hỏi lại. Có thể dùng lịch sử hội thoại để hiểu "trang trại này", "ao đó".
-16. Người dùng chỉ HỎI cách tạo / quy trình tạo (không yêu cầu tạo) thì trả lời hướng dẫn, không gọi công cụ.
-17. Nếu loại dữ liệu cần tạo không có công cụ draft_create_* tương ứng trong danh sách, tài khoản không có quyền tạo loại đó: lịch sự giải thích và gợi ý liên hệ Quản lý trang trại.`
-      : `\nTẠO DỮ LIỆU MỚI: Tài khoản này KHÔNG có quyền tạo trang trại / ao nuôi / vụ nuôi qua trợ lý. Nếu người dùng yêu cầu, lịch sự giải thích và gợi ý liên hệ Quản lý trang trại.`;
+16. Người dùng chỉ HỎI cách làm / xin tư vấn ("có nên thêm thức ăn không?", "pH 8.2 có ổn không?", "cách nhập kho thế nào?") thì trả lời / tra cứu bình thường, KHÔNG gọi công cụ tạo / nhập.
+17. Nếu thao tác người dùng yêu cầu không có công cụ tương ứng trong danh sách trên thì tài khoản không có quyền làm việc đó: lịch sự giải thích (Quản lý: tạo trang trại/ao/vụ, nhập/xuất kho; Kỹ thuật viên: nhập số đo nước; Nông dân: ghi nhật ký cho ăn) và gợi ý liên hệ đúng người.`
+      : `\nTẠO / NHẬP / XUẤT DỮ LIỆU: Tài khoản này CHỈ được hỏi / xem, KHÔNG được tạo, nhập hay xuất dữ liệu qua trợ lý. Nếu người dùng yêu cầu (tạo ao, thả giống, nhập kho, ghi số đo nước, xuất file...), lịch sự giải thích: tạo trang trại/ao/vụ và nhập/xuất kho do Quản lý trang trại thực hiện, nhập số đo nước do Kỹ thuật viên thực hiện, ghi nhật ký cho ăn do Nông dân thực hiện. Nếu người dùng gửi số đo nước thì vẫn đánh giá / tư vấn bình thường, chỉ không lưu.`;
     const today = new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    // Ngày hôm nay dạng YYYY-MM-DD (giờ VN) để AI quy đổi "hôm nay / tuần này" ra fromDate/toDate
+    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const routingGuide = this.chatTools.describeRouting(scope);
 
-    const systemPrompt = `Bạn là Trợ lý dữ liệu của hệ thống Smart Shrimp Farm Management. Hôm nay là ${today}.
+    const systemPrompt = `Bạn là Trợ lý dữ liệu của hệ thống Smart Shrimp Farm Management. Hôm nay là ${today} (${todayIso}).
 
 ${scopeSummary}
 NHIỆM VỤ: Trả lời câu hỏi về DỮ LIỆU THỰC TẾ và LỊCH SỬ của người dùng (vụ nuôi trước/hiện tại, cho ăn, môi trường nước, sức khỏe tôm, tăng trưởng, sự cố, thu hoạch, kho...) bằng cách gọi các công cụ tra cứu.
@@ -812,6 +875,10 @@ QUY TẮC BẮT BUỘC:
 7. Có thể kèm nhận xét chuyên môn ngắn (so sánh, xu hướng, cảnh báo) dựa trên số liệu. Trả lời bằng tiếng Việt, rõ ràng, dùng gạch đầu dòng và in đậm số liệu quan trọng.
 7b. Hỏi tình hình chung / trại, ao của tôi / ao nào đang nuôi: gọi get_farm_overview. Hỏi ai trong trại, kỹ thuật viên/nông dân nào: list_farm_staff. Hỏi nhà cung cấp, mua ở đâu: query_suppliers. Hỏi "sự cố được giao cho tôi" dùng query_incidents với mine=ASSIGNED, "sự cố tôi báo cáo" dùng mine=REPORTED.
 7c. Câu hỏi tổng hợp nhiều mảng (vd: "vụ này ao C1 thế nào") có thể gọi nhiều công cụ trong cùng lượt rồi tổng hợp.
+7e. PHẠM VI MẶC ĐỊNH: mỗi câu hỏi được hiểu độc lập. Không nêu ao / trang trại thì tra cứu TẤT CẢ ao trong phạm vi (không truyền pondName/farmName), KHÔNG kế thừa ao từ các câu trả lời trước — trừ khi người dùng nói rõ "ao đó / ao này" hoặc đang mở một ao cụ thể (xem PHẠM VI DỮ LIỆU).
+7d. Câu vừa hỏi kiến thức vừa liên quan ao của người dùng (vd: "tôm ao A1 chết nhiều phải làm sao") -> gọi công cụ lấy số liệu ao trước rồi mới tư vấn; KHÔNG trả lời KNOWLEDGE.
+
+${routingGuide}
 
 NGHIỆP VỤ MÔI TRƯỜNG NƯỚC (khi có công cụ get_water_status trong danh sách — bạn kiêm vai trò chuyên gia môi trường nước):
 8. Hỏi hiện trạng / đánh giá nước / "ao nào có vấn đề" / "cần xử lý gì": gọi get_water_status. Đánh giá theo đúng trạng thái và ngưỡng (thresholds) hệ thống trả về: nêu đánh giá tổng quan, từng chỉ số vượt ngưỡng, thay đổi so với lần đo trước và cảnh báo nếu lần đo đã cũ (hoursAgo > 12).
@@ -823,7 +890,7 @@ NGHIỆP VỤ MÔI TRƯỜNG NƯỚC (khi có công cụ get_water_status trong 
     d. Các chỉ số cần đo lại sau 2 - 4 giờ.
 11. Hỏi đã xử lý gì / lịch sử dùng hóa chất cho ao: gọi query_water_treatments.
 12. Khi thời tiết ảnh hưởng tới nước (mưa, nắng nóng, gió) hoặc người dùng hỏi: gọi get_farm_weather.
-13. Kỹ thuật viên muốn NHẬP số đo nước: hướng dẫn nhắn gộp trong 1 câu, ví dụ "Nhập số đo Ao 1: nhiệt độ 29, pH 8.3, DO 5.2, mặn 15, kiềm 120, NH3 0.1, độ trong 35" — hệ thống sẽ tạo phiếu xác nhận. Không tự nhận là đã lưu số đo.
+13. Không bao giờ tự nhận là đã lưu dữ liệu: các công cụ tạo / nhập chỉ dựng PHIẾU, người dùng phải bấm xác nhận.
 ${actionRule}`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -835,14 +902,37 @@ ${actionRule}`;
       { role: 'user', content: question },
     ];
 
+    // Nông dân + câu nhắc tới việc cho ăn: OpenAI phân loại MUỐN GHI (RECORD) hay CHỈ HỎI (QUESTION).
+    // - RECORD: BẮT BUỘC gọi draft_record_feeding (OpenAI vẫn bóc tách ao / cữ / số ký) -> luôn hiện thẻ.
+    // - QUESTION: bỏ công cụ ghi khỏi lượt này -> chỉ tra cứu / tư vấn, không mở thẻ nhầm.
+    let feedingIntent: 'RECORD' | 'QUESTION' | 'OTHER' = 'OTHER';
+    if (actionToolNames.includes('draft_record_feeding')) {
+      feedingIntent = this.feedingAgent
+        ? await this.feedingAgent.classifyFeedingIntent(question, history)
+        : FeedingRecordAgentService.detectIntent(question)
+          ? 'RECORD'
+          : 'OTHER';
+      this.logger.debug?.(`Feeding intent "${question}" -> ${feedingIntent}`);
+    }
+    const forceFeedingCard = feedingIntent === 'RECORD';
+    const requestTools =
+      feedingIntent === 'QUESTION'
+        ? tools.filter((t) => !(t.type === 'function' && t.function.name === 'draft_record_feeding'))
+        : tools;
+
     try {
       for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
         const completion = await this.openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages,
-          tools,
+          tools: requestTools,
           // Lượt cuối buộc AI tổng hợp câu trả lời thay vì tiếp tục gọi công cụ
-          tool_choice: round === MAX_TOOL_ROUNDS ? 'none' : 'auto',
+          tool_choice:
+            round === 0 && forceFeedingCard
+              ? { type: 'function', function: { name: 'draft_record_feeding' } }
+              : round === MAX_TOOL_ROUNDS
+                ? 'none'
+                : 'auto',
           temperature: 0.2,
         });
         const message = completion.choices[0]?.message;
@@ -869,6 +959,7 @@ ${actionRule}`;
             actionArgs,
             currentUser,
             question,
+            { focusPondId, history },
           );
         }
 

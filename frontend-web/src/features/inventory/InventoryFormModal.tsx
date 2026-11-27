@@ -40,6 +40,8 @@ interface InventoryFormModalProps {
   isOpen: boolean;
   initialData?: InventoryItem | null;
   selectedFarmId: string;
+  /** Trang trại (kho) có thể chọn khi THÊM MỚI — mỗi trang trại là một kho riêng */
+  farms?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onSuccess: (message: string) => void;
 }
@@ -207,6 +209,7 @@ export default function InventoryFormModal({
   isOpen,
   initialData,
   selectedFarmId,
+  farms = [],
   onClose,
   onSuccess,
 }: InventoryFormModalProps) {
@@ -228,6 +231,13 @@ export default function InventoryFormModal({
     shape: 'Mảnh',
     sizeSpec: '',
   });
+
+  // Kho nhập: thêm mới -> theo lựa chọn (mặc định kho đang xem); sửa -> giữ nguyên kho của mặt hàng
+  const [targetFarmId, setTargetFarmId] = useState(selectedFarmId);
+  const warehouseFarmId = initialData?.farmId || targetFarmId || selectedFarmId;
+  useEffect(() => {
+    if (isOpen) setTargetFarmId(selectedFarmId);
+  }, [isOpen, selectedFarmId]);
 
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -287,11 +297,11 @@ export default function InventoryFormModal({
   }, [initialData, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !selectedFarmId) return;
+    if (!isOpen || !warehouseFarmId) return;
 
     const fetchSuppliers = async () => {
       try {
-        const data = await supplierService.getAll(selectedFarmId);
+        const data = await supplierService.getAll(warehouseFarmId);
         setSuppliers(data || []);
       } catch {
         setSuppliers([]);
@@ -299,7 +309,7 @@ export default function InventoryFormModal({
     };
 
     fetchSuppliers();
-  }, [isOpen, selectedFarmId]);
+  }, [isOpen, warehouseFarmId]);
 
   if (!isOpen) return null;
 
@@ -403,7 +413,7 @@ export default function InventoryFormModal({
           supplierId: formData.supplierId || null,
           description: formData.description?.trim() || '',
           imageUrl: formData.imageUrl?.trim() || '',
-          farmId: selectedFarmId,
+          farmId: warehouseFarmId,
         };
         await inventoryService.update(initialData.id, updatePayload);
         onSuccess('Cập nhật thông tin sản phẩm thành công!');
@@ -428,7 +438,7 @@ export default function InventoryFormModal({
           weightPerPkg: Number(formData.weightPerPkg) || 0,
           pricePerPackage: formData.pricePerPackage === '' ? 0 : Number(formData.pricePerPackage) || 0,
           supplierId: formData.supplierId || null,
-          farmId: selectedFarmId,
+          farmId: warehouseFarmId,
         };
         await inventoryService.create(createPayload);
         onSuccess('Thêm sản phẩm mới thành công!');
@@ -533,6 +543,33 @@ export default function InventoryFormModal({
           {/* ======================================================== */}
           {isEditMode ? (
             <form id="inventoryForm" onSubmit={handleSubmit} noValidate className="space-y-6">
+              {/* Kho nhập: mỗi trang trại là một kho riêng */}
+              {farms.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-2xl bg-blue-50/60 border border-blue-100">
+                  <span className="text-xs font-bold text-slate-600">Nhập vào kho trang trại:</span>
+                  {initialData || farms.length === 1 ? (
+                    <strong className="text-sm font-black text-blue-700">
+                      {farms.find((f) => f.id === warehouseFarmId)?.name || 'Trang trại'}
+                    </strong>
+                  ) : (
+                    <select
+                      value={targetFarmId}
+                      onChange={(e) => {
+                        setTargetFarmId(e.target.value);
+                        // Nhà cung cấp thuộc từng trang trại -> chọn lại sau khi đổi kho
+                        setFormData((prev) => ({ ...prev, supplierId: '' }));
+                      }}
+                      className="px-3 py-1.5 rounded-xl border border-blue-200 bg-white text-sm font-bold text-blue-700 outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      {farms.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
               {/* Card thông tin vật tư cố định (Read-Only Specs) */}
               <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50/90 via-white to-blue-50/40 p-4 sm:p-5 shadow-sm">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">

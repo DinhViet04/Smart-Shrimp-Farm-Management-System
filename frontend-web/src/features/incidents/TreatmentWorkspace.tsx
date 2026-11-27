@@ -709,6 +709,14 @@ export default function TreatmentWorkspace({
   const [submitting, setSubmitting] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [isShrimpRecovered, setIsShrimpRecovered] = useState(false);
+  // Sự cố môi trường nước: tạt hóa chất 1 lần là xong -> không có các đợt điều trị / xác nhận khỏi bệnh
+  const isWaterIncident = useMemo(() => {
+    const category =
+      incidentDetail.title?.match(/^\[(.*?)\]/)?.[1] ||
+      incidentDetail.description?.match(/\[Phân loại:\s*(.*?)\]/i)?.[1] ||
+      '';
+    return /môi trường|nước ao/i.test(category);
+  }, [incidentDetail.title, incidentDetail.description]);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // AI Diagnostic State
@@ -737,10 +745,10 @@ export default function TreatmentWorkspace({
   }, [incidentDetail.crop?.startDate]);
 
   // Quyền hạn cập nhật điều trị
+  // Quản lý, hoặc ĐÚNG người được phân công (Kỹ thuật viên hay Nông dân) — khớp quyền ở backend
   const canUpdateTreatment =
-    currentUserRole === 'TECHNICIAN'
-      ? incidentDetail.assignedToId === currentUserId
-      : currentUserRole === 'FARM_MANAGER';
+    currentUserRole === 'FARM_MANAGER' ||
+    (currentUserRole !== 'ADMIN' && Boolean(currentUserId) && incidentDetail.assignedToId === currentUserId);
 
   // Modal xác nhận áp dụng phác đồ AI vào điều trị
   const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -1346,7 +1354,7 @@ Hãy thực hiện các nội dung sau:
 
   // Lưu đợt điều trị hoặc Hoàn tất đóng ca
   const handleRecordTreatment = async (shouldResolve = false) => {
-    if (shouldResolve) {
+    if (shouldResolve && !isWaterIncident) {
       if (!isShrimpRecovered) {
         setNotice({
           type: 'error',
@@ -1380,7 +1388,8 @@ Hãy thực hiện các nội dung sau:
     setNotice(null);
 
     try {
-      if (incidentDetail.status === 'OPEN') {
+      // Sự cố nước: hoàn tất thẳng (backend tự ghi thời điểm bắt đầu), không qua "Đang điều trị"
+      if (incidentDetail.status === 'OPEN' && !isWaterIncident) {
         try {
           await incidentService.startTreatment(incidentDetail.id);
         } catch {
@@ -1419,12 +1428,16 @@ Hãy thực hiện các nội dung sau:
 
       if (shouldResolve) {
         await incidentService.resolve(incidentDetail.id, {
-          treatment: fullTreatmentText || 'Đã hoàn tất quá trình điều trị (Xác nhận tôm đã hết bệnh).',
+          treatment:
+            fullTreatmentText ||
+            (isWaterIncident ? 'Đã xử lý môi trường nước.' : 'Đã hoàn tất quá trình điều trị (Xác nhận tôm đã hết bệnh).'),
           result: resultNote.trim() || undefined,
         });
         setNotice({
           type: 'success',
-          message: '🎉 Chúc mừng! Đã hoàn tất điều trị thành công. Sự cố đã chuyển sang Lịch sử & Nhật ký điều trị.',
+          message: isWaterIncident
+            ? '✅ Đã xử lý môi trường nước và đóng sự cố. Nhật ký đã chuyển sang Lịch sử xử lý.'
+            : '🎉 Chúc mừng! Đã hoàn tất điều trị thành công. Sự cố đã chuyển sang Lịch sử & Nhật ký điều trị.',
         });
       } else {
         await incidentService.addUpdate(incidentDetail.id, {
@@ -1962,7 +1975,8 @@ Hãy thực hiện các nội dung sau:
                   </div>
                 </div>
 
-                {/* Khối Nghiệm thu lâm sàng: Xác nhận khỏi bệnh */}
+                {/* Khối Nghiệm thu lâm sàng: Xác nhận khỏi bệnh (không áp dụng cho sự cố nước) */}
+                {!isWaterIncident && (
                 <div
                   className={`rounded-2xl border p-4 transition-all ${isShrimpRecovered
                     ? 'border-emerald-300 bg-emerald-50/90 shadow-sm'
@@ -1992,9 +2006,41 @@ Hãy thực hiện các nội dung sau:
                     </label>
                   </div>
                 </div>
+                )}
+
+                {/* Sự cố nước: 1 nút xử lý & đóng luôn */}
+                {canUpdateTreatment && isWaterIncident && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleRecordTreatment(true)}
+                      disabled={submitting || resolving}
+                      className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 py-3.5 px-4 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {resolving ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Đang xử lý...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>
+                            {selectedItems.length > 0
+                              ? `Xử lý & hoàn tất ngay (trừ kho ${selectedItems.length} loại)`
+                              : 'Xử lý & hoàn tất ngay'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                    <p className="mt-2 text-[11px] text-slate-500 text-center">
+                      Xử lý môi trường nước là can thiệp 1 lần: lưu xong sự cố được đóng ngay, không cần theo dõi nhiều đợt.
+                    </p>
+                  </div>
+                )}
 
                 {/* Nút Hành Động Điều Trị */}
-                {canUpdateTreatment && (
+                {canUpdateTreatment && !isWaterIncident && (
                   <div className="flex flex-col sm:flex-row gap-3 pt-1">
                     {/* Nút 1: Lưu đợt điều trị */}
                     <button

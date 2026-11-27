@@ -43,6 +43,7 @@ const CHATBOT_INTENT_RESOURCE: Record<string, RealtimeResource> = {
   IMPORT_INVENTORY: 'inventory',
   EXPORT_INVENTORY: 'inventory',
   RECORD_WATER_QUALITY: 'water-quality',
+  RECORD_FEEDING: 'feeding-logs',
 };
 
 /**

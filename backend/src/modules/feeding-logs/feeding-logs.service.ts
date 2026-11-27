@@ -398,22 +398,28 @@ export class FeedingLogsService {
 
     const page = query.page ?? 0;
     const size = query.size ?? 10;
-    const [groupKeys, allGroupKeys] = await Promise.all([
-      this.prisma.feedingLog.groupBy({
-        by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
-        where,
-        orderBy: { feedingDate: 'desc' },
-        skip: page * size,
-        take: size,
-      }),
-      this.prisma.feedingLog.groupBy({
-        by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
-        where,
-      }),
-    ]);
+    const groupKeys = await this.prisma.feedingLog.groupBy({
+      by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
+      where,
+      orderBy: { feedingDate: 'desc' },
+      skip: page * size,
+      take: size,
+    });
+
+    // Trang chưa đầy và không rỗng ở trang sau → đã biết chính xác tổng số nhóm,
+    // khỏi phải quét lại toàn bộ lịch sử chỉ để đếm.
+    const total =
+      groupKeys.length < size && (groupKeys.length > 0 || page === 0)
+        ? page * size + groupKeys.length
+        : (
+            await this.prisma.feedingLog.groupBy({
+              by: ['feedingDate', 'farmId', 'pondId', 'cropId'],
+              where,
+            })
+          ).length;
 
     if (groupKeys.length === 0) {
-      return { data: [], total: allGroupKeys.length, page, size };
+      return { data: [], total, page, size };
     }
 
     const allLogs = await this.prisma.feedingLog.findMany({
@@ -506,7 +512,7 @@ export class FeedingLogsService {
 
     return {
       data: groupedList,
-      total: allGroupKeys.length,
+      total,
       page,
       size,
     };

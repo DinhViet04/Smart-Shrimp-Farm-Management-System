@@ -360,12 +360,12 @@ export const CASES: ApiCase[] = [
 
   // FE-43 Treatment timeline
   unauth('FE-43', 'treatment updates', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment),
-  forbid('FE-43', 'treatment updates', 'FARMER', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment),
+  forbid('FE-43', 'treatment updates', 'ADMIN', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment),
   invalid('FE-43', 'Invalid input', 'empty treatment description', 'TECHNICIAN', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment, { treatment: '' }, 'treatment'),
   invalid('FE-43', 'Max boundary', 'treatment of 2001 characters (maximum is 2000)', 'TECHNICIAN', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment, { treatment: long(2001) }, 'treatment'),
   notFound('FE-43', 'updating treatment of an incident that does not exist', 'TECHNICIAN', 'POST', `/api/incidents/${ID}/treatment-updates`, B.treatment),
   invalid('FE-43', 'Max boundary', 'reopen reason of 1001 characters (maximum is 1000)', 'FARM_MANAGER', 'PATCH', `/api/incidents/${ID}/reopen`, { reason: 'Symptoms returned' }, { reason: long(1001) }, 'reason'),
-  forbid('FE-43', 'incident resolution', 'FARMER', 'PATCH', `/api/incidents/${ID}/resolve`, { treatment: 'Recovered' }),
+  forbid('FE-43', 'incident resolution', 'ADMIN', 'PATCH', `/api/incidents/${ID}/resolve`, { treatment: 'Recovered' }),
 
   // FE-44 AI water quality evaluation
   unauth('FE-44', 'the AI assistant', 'POST', '/api/chatbot/ask', { question: 'Is pH 9.2 dangerous?' }),

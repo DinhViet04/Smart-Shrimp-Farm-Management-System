@@ -132,6 +132,7 @@ model User {
   devicePushTokens     DevicePushToken[]
 
   @@map("users")
+  waterTreatments  WaterTreatment[] @relation("WaterTreatmentsBy")
 }
 
 model Farm {
@@ -480,8 +481,28 @@ model WaterQualityRecord {
   creator         User     @relation(fields: [createdBy], references: [id])
   createdAt       DateTime @default(now())
 
+  /** Việc xử lý cảnh báo của lần đo này (nếu đã xử lý) */
+  treatment       WaterTreatment?
+
   @@index([pondId, recordTime])
   @@map("water_quality_records")
+}
+
+/// Xử lý 1 cảnh báo môi trường nước (can thiệp 1 lần: tạt hóa chất / vận hành) — dùng chung cho mọi tài khoản
+model WaterTreatment {
+  id                   String             @id @default(uuid())
+  waterQualityRecordId String             @unique @map("water_quality_record_id")
+  waterQualityRecord   WaterQualityRecord @relation(fields: [waterQualityRecordId], references: [id], onDelete: Cascade)
+  pondId               String             @map("pond_id")
+  treatedById          String             @map("treated_by")
+  treatedBy            User               @relation("WaterTreatmentsBy", fields: [treatedById], references: [id])
+  note                 String?
+  /// [{ inventoryId?, name, quantity, unit }]
+  chemicals            Json?
+  createdAt            DateTime           @default(now()) @map("created_at")
+
+  @@index([pondId, createdAt])
+  @@map("water_treatments")
 }
 
 enum InventoryCategory {
@@ -814,4 +835,20 @@ model AgentActionExecution {
 
   @@index([userId])
   @@map("agent_action_executions")
+}
+
+/// Lịch sử hội thoại với Trợ lý AI (khung chat nổi) — lưu theo tài khoản để
+/// đăng nhập lại / đổi máy vẫn xem được các cuộc trò chuyện cũ (giống ChatGPT).
+model AiChatSession {
+  /// Id do client sinh (session-<timestamp>-<rand>)
+  id        String   @id
+  userId    String   @map("user_id")
+  title     String
+  /// Danh sách tin nhắn (ChatMessage[] của frontend)
+  messages  Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@index([userId, updatedAt])
+  @@map("ai_chat_sessions")
 }

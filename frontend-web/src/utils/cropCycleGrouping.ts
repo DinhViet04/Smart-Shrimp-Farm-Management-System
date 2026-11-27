@@ -120,7 +120,8 @@ function getSeasonName(dateStr: string): string {
     const month = d.getMonth() + 1; // 1-12
     const year = d.getFullYear();
 
-    if (month >= 9 || month <= 11) {
+    // Trước đây dùng "||" nên mọi tháng 1-11 đều thành "Thu Đông"
+    if (month >= 9 && month <= 11) {
       return `Vụ Thu Đông ${year}`;
     } else if (month === 12 || month <= 2) {
       return `Vụ Đông Xuân ${year}`;
@@ -430,16 +431,22 @@ export function groupCropsIntoCycles(
       }
     }
 
-    const durationDays = latestEndDate
-      ? diffInDays(rootCrop.startDate, latestEndDate)
-      : (rootCrop.expectedDurationDays || 90);
+    // Vụ đang nuôi: chưa có ngày kết thúc, số ngày = ngày tuổi tính tới hôm nay
+    // (ngày tách ao của ao ương KHÔNG phải ngày kết thúc vụ)
+    const isOngoing = status === 'IN_PROGRESS';
+    const cycleEndDate = isOngoing ? null : latestEndDate;
+    const durationDays = isOngoing
+      ? Math.max(1, diffInDays(rootCrop.startDate, new Date().toISOString()))
+      : latestEndDate
+        ? diffInDays(rootCrop.startDate, latestEndDate)
+        : (rootCrop.expectedDurationDays || 90);
 
     // Đặt tên vụ thông minh
     const cycleIndex = cycleIndexMap.get(rootId) || 1;
     const seasonName = getSeasonName(rootCrop.startDate);
     const cycleName = `Vụ ${cycleIndex}: ${seasonName}`;
     const startYear = new Date(rootCrop.startDate).getFullYear() || 2026;
-    const cycleCode = `VU-${startYear}-0${cycleIndex}`;
+    const cycleCode = `VU-${startYear}-${String(cycleIndex).padStart(2, '0')}`;
 
     // Đếm tổng số ao tham gia
     const uniquePondIds = new Set(memberCrops.map((c) => c.pondId));
@@ -455,7 +462,7 @@ export function groupCropsIntoCycles(
       isSplit,
       status,
       startDate: rootCrop.startDate,
-      endDate: latestEndDate,
+      endDate: cycleEndDate,
       durationDays,
       nurseryInfo,
       splitAllocations,
@@ -478,5 +485,8 @@ export function groupCropsIntoCycles(
     });
   }
 
-  return cycles;
+  // Vụ đang nuôi lên trước; cùng trạng thái giữ thứ tự mới nhất trước (sort ổn định)
+  return cycles.sort(
+    (a, b) => Number(b.status === 'IN_PROGRESS') - Number(a.status === 'IN_PROGRESS'),
+  );
 }

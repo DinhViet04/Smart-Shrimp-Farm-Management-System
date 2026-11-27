@@ -83,7 +83,7 @@ export class CropsController {
   }
 
   @Post()
-  @Roles('FARM_MANAGER', 'FARMER')
+  @Roles('FARM_MANAGER') // Nông dân không được tạo vụ (chỉ theo dõi, ghi nhật ký, thu hoạch)
   @HttpCode(HttpStatus.CREATED)
   create(@Request() req: any, @Body() dto: CreateCropDto) {
     return this.cropsService.create(req.user, dto);
